@@ -843,6 +843,72 @@ test("reserveDirectPair locks requester and teacher without search requests", as
   assert.equal(store.get("users/teacher-a").currentSessionId, "session-direct");
 });
 
+test("reserveDirectPair refuses teacher outside schedule", async () => {
+  const {db, store, writes} = createFakeFirestore({
+    "users/student-a": studentUser(),
+    "users/teacher-a": teacherUser({
+      timezoneOffsetMinutes: 0,
+      availabilityToday: {
+        enabled: true,
+        intervals: [{start: "08:00", end: "09:00"}],
+      },
+    }),
+  });
+  const result = await db.runTransaction((transaction) =>
+    reserveDirectPairInTransaction({
+      db,
+      transaction,
+      requesterId: "student-a",
+      responderId: "teacher-a",
+      responderRole: "native_speaker",
+      sessionRef: db.collection("videoSessions").doc("session-direct"),
+      sessionData: {language: "en"},
+      nowMillis: fixedNowMillis,
+      serverTimestamp,
+      lockExpiresAt: timestampFromMillis(fixedNowMillis + 45_000),
+    }));
+
+  assert.deepEqual(result, {
+    locked: false,
+    reason: "responder_schedule_unavailable",
+  });
+  assert.equal(writes.length, 0);
+  assert.equal(store.get("videoSessions/session-direct"), undefined);
+  assert.equal(store.get("users/student-a").currentSessionId, "");
+  assert.equal(store.get("users/teacher-a").currentSessionId, "");
+});
+
+test("reserveDirectPair accepts teacher inside schedule", async () => {
+  const {db, store} = createFakeFirestore({
+    "users/student-a": studentUser(),
+    "users/teacher-a": teacherUser({
+      timezoneOffsetMinutes: 0,
+      availabilityToday: {
+        enabled: true,
+        intervals: [{start: "09:00", end: "11:00"}],
+      },
+    }),
+  });
+  const result = await db.runTransaction((transaction) =>
+    reserveDirectPairInTransaction({
+      db,
+      transaction,
+      requesterId: "student-a",
+      responderId: "teacher-a",
+      responderRole: "native_speaker",
+      sessionRef: db.collection("videoSessions").doc("session-direct"),
+      sessionData: {language: "en"},
+      nowMillis: fixedNowMillis,
+      serverTimestamp,
+      lockExpiresAt: timestampFromMillis(fixedNowMillis + 45_000),
+    }));
+
+  assert.equal(result.locked, true);
+  assert.equal(store.get("videoSessions/session-direct").responderId, "teacher-a");
+  assert.equal(store.get("users/student-a").currentSessionId, "session-direct");
+  assert.equal(store.get("users/teacher-a").currentSessionId, "session-direct");
+});
+
 test("reserveDirectPair refuses student responder without search requests", async () => {
   const {db, store, writes} = createFakeFirestore({
     "users/student-a": studentUser(),

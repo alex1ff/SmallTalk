@@ -179,6 +179,34 @@ test("direct call status collapses target-side denials to unavailable", () => {
   );
 });
 
+test("direct call status honors teacher schedule intervals", () => {
+  const within = decision({
+    targetData: availableTutor({
+      timezoneOffsetMinutes: 0,
+      availabilityToday: {
+        enabled: true,
+        intervals: [{start: "11:00", end: "13:00"}],
+      },
+    }),
+  });
+  const outside = decision({
+    targetData: availableTutor({
+      timezoneOffsetMinutes: 0,
+      availabilityToday: {
+        enabled: true,
+        intervals: [{start: "09:00", end: "10:00"}],
+      },
+    }),
+  });
+
+  assert.equal(within.canStartDirectCall, true);
+  assert.equal(within.callability, "callable");
+  assert.equal(within.reason, "ready");
+  assert.equal(outside.canStartDirectCall, false);
+  assert.equal(outside.callability, "unavailable");
+  assert.equal(outside.reason, "unavailable");
+});
+
 test("direct call status callable is exported and does not edit public projection", () => {
   const indexSource = fs.readFileSync(path.join(__dirname, "index.js"), "utf8");
   const publicProfileSource = fs.readFileSync(

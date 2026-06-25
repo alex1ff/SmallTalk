@@ -11,6 +11,9 @@ const {
   normalizeRole,
   VIDEO_SESSION_STATUS,
 } = require("./video_sessions_shared");
+const {
+  evaluateTutorAvailabilityWindow,
+} = require("./availability");
 
 const USER_COLLECTION = "users";
 const VIDEO_SESSION_COLLECTION = "videoSessions";
@@ -1418,6 +1421,14 @@ async function reserveDirectPairInTransaction({
   });
   if (!responderUserValidation.ok) {
     return buildPairLockFailure(responderUserValidation.reason);
+  }
+  const responderAvailability =
+    evaluateTutorAvailabilityWindow(
+      responderUserData,
+      new Date(nowMillis),
+    );
+  if (!responderAvailability.isAvailable) {
+    return buildPairLockFailure("responder_schedule_unavailable");
   }
 
   const sessionId = sessionRef.id;
