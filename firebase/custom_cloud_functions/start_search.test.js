@@ -90,24 +90,22 @@ function studentData(overrides = {}) {
 }
 
 test("start search input rejects direct-call payload", () => {
-  assert.throws(
-    () => normalizeStartSearchInput({directTutorId: "teacher-a"}),
-    (error) =>
-      error.code === "invalid-argument" &&
-      error.details?.reason === "direct_call_not_supported",
-  );
-  assert.throws(
-    () => normalizeStartSearchInput({directUserId: "student-b"}),
-    (error) =>
-      error.code === "invalid-argument" &&
-      error.details?.reason === "direct_call_not_supported",
-  );
-  assert.throws(
-    () => normalizeStartSearchInput({targetUserId: "teacher-a"}),
-    (error) =>
-      error.code === "invalid-argument" &&
-      error.details?.reason === "direct_call_not_supported",
-  );
+  for (const directAlias of [
+    "directTutorId",
+    "directUserId",
+    "targetUserId",
+    "targetTutorId",
+    "teacherId",
+    "tutorId",
+  ]) {
+    assert.throws(
+      () => normalizeStartSearchInput({[directAlias]: "teacher-a"}),
+      (error) =>
+        error.code === "invalid-argument" &&
+        error.details?.reason === "direct_call_not_supported",
+      directAlias,
+    );
+  }
   assert.equal(
     normalizeStartSearchInput({
       language: " EN ",

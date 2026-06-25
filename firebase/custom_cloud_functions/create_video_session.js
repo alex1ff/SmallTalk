@@ -1229,7 +1229,7 @@ exports.createVideoSession = functions
       }
 
       return {
-        status: "searching",
+        status: isDirectTutorCall ? "calling" : "searching",
         sessionId: sessionRef.id,
         message: isDirectTutorCall
           ? "Calling selected partner..."

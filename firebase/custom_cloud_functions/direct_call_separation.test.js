@@ -74,6 +74,14 @@ test("direct call creation uses direct lock instead of search request lock", () 
   assert.doesNotMatch(directBranchSource, /reserveMatchPairInTransaction\(\{/);
   assert.doesNotMatch(directBranchSource, /requesterSearchRequestId/);
   assert.doesNotMatch(directBranchSource, /responderSearchRequestId/);
+  assert.doesNotMatch(directBranchSource, /searchRequests/);
+  assert.doesNotMatch(directBranchSource, /SEARCH_REQUEST_COLLECTION/);
+});
+
+test("direct call response does not expose common search status", () => {
+  const source = readFunctionSource("create_video_session.js");
+
+  assert.match(source, /status:\s*isDirectTutorCall\s*\?\s*"calling"\s*:\s*"searching"/);
 });
 
 test("common search endpoint rejects direct call targets", () => {
@@ -83,5 +91,8 @@ test("common search endpoint rejects direct call targets", () => {
   assert.match(source, /payload\.directTutorId/);
   assert.match(source, /payload\.directUserId/);
   assert.match(source, /payload\.targetUserId/);
+  assert.match(source, /payload\.targetTutorId/);
+  assert.match(source, /payload\.teacherId/);
+  assert.match(source, /payload\.tutorId/);
   assert.match(source, /direct_call_not_supported/);
 });

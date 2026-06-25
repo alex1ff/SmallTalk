@@ -185,6 +185,9 @@ function hasDirectCallTarget(payload = {}) {
     payload.directTutorId,
     payload.directUserId,
     payload.targetUserId,
+    payload.targetTutorId,
+    payload.teacherId,
+    payload.tutorId,
   ].some((value) => normalizeString(value));
 }
 
