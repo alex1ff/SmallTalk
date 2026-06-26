@@ -417,9 +417,16 @@ void main() {
       ).canResumeConnection,
       isTrue,
     );
+    final activeState = activeSearchRecoveryState(
+      userId: userId,
+      requestId: 'request-active-predicate-test',
+      status: 'active',
+      currentSessionId: 'session-active-predicate-test',
+    );
+    expect(activeState.canResumeActiveSession, isTrue);
+    expect(activeState.canResumeConnection, isTrue);
 
     for (final status in <String>[
-      'active',
       'unknown',
       'expired',
       'failed',
@@ -1516,6 +1523,34 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('student dashboard restores active session-bound search',
+      (tester) async {
+    const userId = 'student-recover-active-session-status-test';
+    setActiveStudent(userId);
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSearchRecoveryReader: (_) async => activeSearchRecoveryState(
+            userId: userId,
+            requestId: 'request-active-session-status-test',
+            status: 'active',
+            currentSessionId: 'session-active-session-status-test',
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.idle();
+
+    expect(find.text('Соединяем'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsOneWidget);
+    expect(find.text('Начать поиск'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('student dashboard ignores unsupported session-bound statuses',
       (tester) async {
     const userId = 'student-recover-unsupported-session-status-test';
@@ -1547,7 +1582,6 @@ void main() {
       await tester.pump();
     }
 
-    await verifyStatus('active');
     await verifyStatus('unknown');
     await verifyStatus('expired');
     await verifyStatus('failed');
@@ -2854,6 +2888,305 @@ void main() {
       observedSearchState!.requestId,
       'request-startup-active-search-test',
     );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('startup recovery opens active session from search request',
+      (tester) async {
+    const userId = 'student-startup-active-session-search-test';
+    const peerId = 'student-startup-active-session-peer-test';
+    const sessionId = 'session-startup-active-session-search-test';
+    final tokenSessionIds = <String>[];
+    final openedSessions = <Map<String, String?>>[];
+    ActiveSearchRecoveryState? observedSearchState;
+    debugActiveSessionUserSnapshot = (_) async => _FakeSessionSnapshot(
+          userId,
+          const <String, dynamic>{
+            'isInCall': false,
+          },
+          FirebaseFirestore.instance.collection('users').doc(userId),
+        );
+    debugActiveSearchRequestSnapshot = (requestedUserId) async {
+      return _FakeSessionSnapshot(
+        requestedUserId,
+        <String, dynamic>{
+          'requestId': 'request-startup-active-session-search-test',
+          'userId': userId,
+          'status': 'active',
+          'heartbeatAt': DateTime.now(),
+          'expiresAt': DateTime.now().add(const Duration(minutes: 5)),
+          'currentSessionId': sessionId,
+        },
+        FirebaseFirestore.instance
+            .collection('searchRequests')
+            .doc(requestedUserId),
+      );
+    };
+    debugActiveSearchRecoveryObserver = (state) {
+      observedSearchState = state;
+    };
+    debugActiveCurrentSessionSnapshot = (requestedSessionId) async {
+      expect(requestedSessionId, sessionId);
+      return _FakeSessionSnapshot(
+        sessionId,
+        <String, dynamic>{
+          'status': 'active',
+          'participantIds': [userId, peerId],
+          'requesterId': userId,
+          'responderId': peerId,
+          'dailyRoomUrl': 'https://stale-daily.test/$sessionId',
+          'dailyRoomName': 'stale-room-$sessionId',
+        },
+        FirebaseFirestore.instance.collection('videoSessions').doc(sessionId),
+      );
+    };
+    debugActiveSessionTokenRequest = (requestedSessionId) async {
+      tokenSessionIds.add(requestedSessionId);
+      return <String, dynamic>{
+        'roomUrl': 'https://daily.test/$sessionId',
+        'roomName': 'room-$sessionId',
+        'meetingToken': 'token-$sessionId',
+      };
+    };
+    debugActiveSessionNavigator = (
+      videoDocRef, {
+      roomUrl,
+      roomName,
+      meetingToken,
+    }) {
+      openedSessions.add({
+        'sessionId': videoDocRef.id,
+        'roomUrl': roomUrl,
+        'roomName': roomName,
+        'meetingToken': meetingToken,
+      });
+    };
+    setActiveStudent(userId, isInCall: false);
+    bool? recovered;
+    final router = GoRouter(
+      initialLocation: StudentsDashboardWidget.routePath,
+      routes: [
+        GoRoute(
+          name: StudentsDashboardWidget.routeName,
+          path: StudentsDashboardWidget.routePath,
+          builder: (context, state) => TextButton(
+            key: const Key('recover-active-session-search-request'),
+            onPressed: () async {
+              recovered = await checkActiveSessionAndNavigate(context);
+            },
+            child: const Text('Recover active session search request'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildDashboardRouterTestApp(router));
+    await tester.pump();
+
+    await tester.tap(
+      find.byKey(const Key('recover-active-session-search-request')),
+    );
+    await tester.pump();
+    await tester.idle();
+
+    expect(recovered, isTrue);
+    expect(observedSearchState, isNotNull);
+    expect(observedSearchState!.canResumeActiveSession, isTrue);
+    expect(observedSearchState!.canResumeConnection, isTrue);
+    expect(tokenSessionIds, [sessionId]);
+    expect(openedSessions, hasLength(1));
+    expect(openedSessions.single['sessionId'], sessionId);
+    expect(openedSessions.single['roomUrl'], 'https://daily.test/$sessionId');
+    expect(openedSessions.single['roomName'], 'room-$sessionId');
+    expect(openedSessions.single['meetingToken'], 'token-$sessionId');
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('startup recovery waits when active search session lacks token',
+      (tester) async {
+    const userId = 'student-startup-active-session-no-token-test';
+    const peerId = 'student-startup-active-session-no-token-peer-test';
+    const sessionId = 'session-startup-active-session-no-token-test';
+    final tokenSessionIds = <String>[];
+    final openedSessionIds = <String>[];
+    debugActiveSessionUserSnapshot = (_) async => _FakeSessionSnapshot(
+          userId,
+          const <String, dynamic>{
+            'isInCall': false,
+          },
+          FirebaseFirestore.instance.collection('users').doc(userId),
+        );
+    debugActiveSearchRequestSnapshot = (requestedUserId) async {
+      return _FakeSessionSnapshot(
+        requestedUserId,
+        <String, dynamic>{
+          'requestId': 'request-startup-active-session-no-token-test',
+          'userId': userId,
+          'status': 'active',
+          'heartbeatAt': DateTime.now(),
+          'expiresAt': DateTime.now().add(const Duration(minutes: 5)),
+          'currentSessionId': sessionId,
+        },
+        FirebaseFirestore.instance
+            .collection('searchRequests')
+            .doc(requestedUserId),
+      );
+    };
+    debugActiveCurrentSessionSnapshot = (_) async => _FakeSessionSnapshot(
+          sessionId,
+          <String, dynamic>{
+            'status': 'active',
+            'participantIds': [userId, peerId],
+            'requesterId': userId,
+            'responderId': peerId,
+            'dailyRoomUrl': 'https://daily.test/$sessionId',
+          },
+          FirebaseFirestore.instance.collection('videoSessions').doc(sessionId),
+        );
+    debugActiveSessionTokenRequest = (requestedSessionId) async {
+      tokenSessionIds.add(requestedSessionId);
+      return <String, dynamic>{
+        'roomUrl': 'https://daily.test/$sessionId',
+      };
+    };
+    debugActiveSessionNavigator = (
+      videoDocRef, {
+      roomUrl,
+      roomName,
+      meetingToken,
+    }) {
+      openedSessionIds.add(videoDocRef.id);
+    };
+    setActiveStudent(userId, isInCall: false);
+    bool? recovered;
+    final router = GoRouter(
+      initialLocation: StudentsDashboardWidget.routePath,
+      routes: [
+        GoRoute(
+          name: StudentsDashboardWidget.routeName,
+          path: StudentsDashboardWidget.routePath,
+          builder: (context, state) => TextButton(
+            key: const Key('recover-active-session-no-token-search-request'),
+            onPressed: () async {
+              recovered = await checkActiveSessionAndNavigate(context);
+            },
+            child: const Text('Recover active session without token'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildDashboardRouterTestApp(router));
+    await tester.pump();
+
+    await tester.tap(
+      find.byKey(const Key('recover-active-session-no-token-search-request')),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 3));
+    await tester.idle();
+
+    expect(recovered, isTrue);
+    expect(tokenSessionIds, List.filled(5, sessionId));
+    expect(openedSessionIds, isEmpty);
+    expect(router.getCurrentLocation(), StudentsDashboardWidget.routePath);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('startup recovery ignores foreign active search session',
+      (tester) async {
+    const userId = 'student-startup-active-session-foreign-test';
+    const foreignRequesterId =
+        'student-startup-active-session-foreign-requester-test';
+    const foreignResponderId =
+        'student-startup-active-session-foreign-responder-test';
+    const sessionId = 'session-startup-active-session-foreign-test';
+    final tokenSessionIds = <String>[];
+    final openedSessionIds = <String>[];
+    debugActiveSessionUserSnapshot = (_) async => _FakeSessionSnapshot(
+          userId,
+          const <String, dynamic>{
+            'isInCall': false,
+          },
+          FirebaseFirestore.instance.collection('users').doc(userId),
+        );
+    debugActiveSearchRequestSnapshot = (requestedUserId) async {
+      return _FakeSessionSnapshot(
+        requestedUserId,
+        <String, dynamic>{
+          'requestId': 'request-startup-active-session-foreign-test',
+          'userId': userId,
+          'status': 'active',
+          'heartbeatAt': DateTime.now(),
+          'expiresAt': DateTime.now().add(const Duration(minutes: 5)),
+          'currentSessionId': sessionId,
+        },
+        FirebaseFirestore.instance
+            .collection('searchRequests')
+            .doc(requestedUserId),
+      );
+    };
+    debugActiveCurrentSessionSnapshot = (_) async => _FakeSessionSnapshot(
+          sessionId,
+          <String, dynamic>{
+            'status': 'active',
+            'participantIds': [foreignRequesterId, foreignResponderId],
+            'requesterId': foreignRequesterId,
+            'responderId': foreignResponderId,
+            'dailyRoomUrl': 'https://daily.test/$sessionId',
+          },
+          FirebaseFirestore.instance.collection('videoSessions').doc(sessionId),
+        );
+    debugActiveSessionTokenRequest = (requestedSessionId) async {
+      tokenSessionIds.add(requestedSessionId);
+      return <String, dynamic>{
+        'roomUrl': 'https://daily.test/$sessionId',
+        'meetingToken': 'token-$sessionId',
+      };
+    };
+    debugActiveSessionNavigator = (
+      videoDocRef, {
+      roomUrl,
+      roomName,
+      meetingToken,
+    }) {
+      openedSessionIds.add(videoDocRef.id);
+    };
+    setActiveStudent(userId, isInCall: false);
+    bool? recovered;
+    final router = GoRouter(
+      initialLocation: StudentsDashboardWidget.routePath,
+      routes: [
+        GoRoute(
+          name: StudentsDashboardWidget.routeName,
+          path: StudentsDashboardWidget.routePath,
+          builder: (context, state) => TextButton(
+            key: const Key('recover-active-session-foreign-search-request'),
+            onPressed: () async {
+              recovered = await checkActiveSessionAndNavigate(context);
+            },
+            child: const Text('Recover foreign active session'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildDashboardRouterTestApp(router));
+    await tester.pump();
+
+    await tester.tap(
+      find.byKey(const Key('recover-active-session-foreign-search-request')),
+    );
+    await tester.pump();
+    await tester.idle();
+
+    expect(recovered, isTrue);
+    expect(tokenSessionIds, isEmpty);
+    expect(openedSessionIds, isEmpty);
+    expect(router.getCurrentLocation(), StudentsDashboardWidget.routePath);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
@@ -5477,6 +5810,68 @@ void main() {
     expect(router.getCurrentLocation(), contains('videoDocRef='));
     expect(router.getCurrentLocation(), contains('meetingToken='));
     expect(tokenSessionIds, [sessionId]);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('foreground active session routes to video call', (tester) async {
+    StudentsDashboardWidget.debugDisableAutoOpenSessionNavigation = false;
+    final activeSessionController = StreamController<VideoSessionsRecord?>();
+    addTearDown(activeSessionController.close);
+    const sessionId = 'session-foreground-active-route-test';
+    const requesterId = 'student-foreground-active-requester-test';
+    const responderId = 'student-foreground-active-responder-test';
+    final openedSessions = <Map<String, String?>>[];
+    StudentsDashboardWidget.debugGetSessionTokensRequest = (sessionId) async {
+      return <String, dynamic>{
+        'roomUrl': 'https://daily.test/$sessionId',
+        'roomName': 'room-$sessionId',
+        'meetingToken': 'token-$sessionId',
+      };
+    };
+    StudentsDashboardWidget.debugAutoOpenSessionNavigator = (
+      context,
+      videoDocRef, {
+      roomUrl,
+      meetingToken,
+      roomName,
+    }) {
+      openedSessions.add({
+        'sessionId': videoDocRef.id,
+        'roomUrl': roomUrl,
+        'meetingToken': meetingToken,
+        'roomName': roomName,
+      });
+    };
+    setActiveStudent(requesterId, currentSessionId: sessionId);
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSessionStream: activeSessionController.stream,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    activeSessionController.add(
+      sessionFixture(
+        sessionId,
+        'active',
+        requesterId: requesterId,
+        responderId: responderId,
+        dailyRoomUrl: 'https://daily.test/$sessionId',
+        dailyRoomName: 'room-$sessionId',
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(openedSessions, hasLength(1));
+    expect(openedSessions.single['sessionId'], sessionId);
+    expect(openedSessions.single['roomUrl'], 'https://daily.test/$sessionId');
+    expect(openedSessions.single['meetingToken'], 'token-$sessionId');
+    expect(openedSessions.single['roomName'], 'room-$sessionId');
 
     await tester.pumpWidget(const SizedBox.shrink());
   });

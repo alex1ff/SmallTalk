@@ -619,6 +619,59 @@ Future<_ActiveSessionRecoveryCandidate?> _resolveActiveSessionCandidate({
   return null;
 }
 
+Future<bool> _navigateToActiveSessionCandidate({
+  required BuildContext context,
+  required String userId,
+  required _ActiveSessionRecoveryCandidate selectedCandidate,
+}) async {
+  final sessionRef = selectedCandidate.sessionDoc.reference;
+  final data = selectedCandidate.data;
+  final tokenData = selectedCandidate.tokenData;
+  final meetingToken = selectedCandidate.meetingToken;
+  final roomUrl = selectedCandidate.roomUrl;
+
+  if (!context.mounted) {
+    return false;
+  }
+
+  final flagField = _activeSessionNavigationFlagForUser(data, userId);
+  final roomName = _activeSessionNonEmpty(tokenData['roomName']) ??
+      _activeSessionNonEmpty(data['dailyRoomName']);
+  final debugNavigator = debugActiveSessionNavigator;
+  if (debugNavigator != null) {
+    debugNavigator(
+      sessionRef,
+      roomUrl: roomUrl,
+      roomName: roomName,
+      meetingToken: meetingToken,
+    );
+  } else {
+    context.goNamed(
+      app.VideoCallPageWidget.routeName,
+      queryParameters: {
+        'videoDocRef': serializeParam(
+          sessionRef,
+          ParamType.DocumentReference,
+        ),
+        'roomUrl': serializeParam(
+          roomUrl,
+          ParamType.String,
+        ),
+        'roomName': serializeParam(
+          roomName,
+          ParamType.String,
+        ),
+        'meetingToken': serializeParam(meetingToken, ParamType.String),
+      }.withoutNulls,
+    );
+  }
+  unawaited(_clearActiveSessionNavigationFlag(
+    sessionRef: sessionRef,
+    flagField: flagField,
+  ));
+  return true;
+}
+
 Future<bool> checkActiveSessionAndNavigate(BuildContext context) async {
   final userId = currentUserUid;
   if (userId.isEmpty) {
@@ -639,6 +692,34 @@ Future<bool> checkActiveSessionAndNavigate(BuildContext context) async {
         debugPrint(
           'ActiveSessionRecovery: failed to read active search for $userId: $error',
         );
+      }
+      if (activeSearchState?.canResumeActiveSession == true) {
+        try {
+          final activeSearchSession = await _readCurrentSessionSnapshot(
+            activeSearchState?.sessionId,
+          );
+          final activeSearchCandidate =
+              activeSearchSession != null && activeSearchSession.exists
+                  ? await _resolveActiveSessionCandidate(
+                      candidates: [activeSearchSession],
+                      userId: userId,
+                      tokenMaxAttempts: _activeSessionCurrentTokenMaxAttempts,
+                      tokenRetryDelay: _activeSessionCurrentTokenRetryDelay,
+                      retryMissingMeetingToken: true,
+                    )
+                  : null;
+          if (activeSearchCandidate != null) {
+            return _navigateToActiveSessionCandidate(
+              context: context,
+              userId: userId,
+              selectedCandidate: activeSearchCandidate,
+            );
+          }
+        } catch (error) {
+          debugPrint(
+            'ActiveSessionRecovery: failed to recover active search session for $userId: $error',
+          );
+        }
       }
       if (activeSearchState?.canResumeUnboundSearch == true) {
         debugPrint(
@@ -731,52 +812,11 @@ Future<bool> checkActiveSessionAndNavigate(BuildContext context) async {
       return false;
     }
 
-    final sessionRef = selectedCandidate.sessionDoc.reference;
-    final data = selectedCandidate.data;
-    final tokenData = selectedCandidate.tokenData;
-    final meetingToken = selectedCandidate.meetingToken;
-    final roomUrl = selectedCandidate.roomUrl;
-
-    if (!context.mounted) {
-      return false;
-    }
-
-    final flagField = _activeSessionNavigationFlagForUser(data, userId);
-    final roomName = _activeSessionNonEmpty(tokenData?['roomName']) ??
-        _activeSessionNonEmpty(data['dailyRoomName']);
-    final debugNavigator = debugActiveSessionNavigator;
-    if (debugNavigator != null) {
-      debugNavigator(
-        sessionRef,
-        roomUrl: roomUrl,
-        roomName: roomName,
-        meetingToken: meetingToken,
-      );
-    } else {
-      context.goNamed(
-        app.VideoCallPageWidget.routeName,
-        queryParameters: {
-          'videoDocRef': serializeParam(
-            sessionRef,
-            ParamType.DocumentReference,
-          ),
-          'roomUrl': serializeParam(
-            roomUrl,
-            ParamType.String,
-          ),
-          'roomName': serializeParam(
-            roomName,
-            ParamType.String,
-          ),
-          'meetingToken': serializeParam(meetingToken, ParamType.String),
-        }.withoutNulls,
-      );
-    }
-    unawaited(_clearActiveSessionNavigationFlag(
-      sessionRef: sessionRef,
-      flagField: flagField,
-    ));
-    return true;
+    return _navigateToActiveSessionCandidate(
+      context: context,
+      userId: userId,
+      selectedCandidate: selectedCandidate,
+    );
   } catch (error) {
     debugPrint(
       'ActiveSessionRecovery: failed to recover active session for $userId: $error',

@@ -48,12 +48,21 @@ class ActiveSearchRecoveryState {
 
   bool get canResumeUnboundSearch => canResumeSearch && sessionId == null;
 
+  bool get canResumeActiveSession {
+    if (!exists || !belongsToUser || sessionId == null || isExpired) {
+      return false;
+    }
+
+    return status == 'active';
+  }
+
   bool get canResumeConnection {
     if (!exists || !belongsToUser || sessionId == null || isExpired) {
       return false;
     }
 
     switch (status) {
+      case 'active':
       case 'matched':
       case 'matching':
       case 'pending_confirmation':
