@@ -335,7 +335,7 @@
 Цель этапа: приложение корректно восстанавливает экран после перезапуска.
 
 - [x] При старте приложения проверять активный поиск пользователя.
-- [ ] При активном поиске открывать состояние поиска.
+- [x] При активном поиске открывать состояние поиска.
 - [ ] При `pending_confirmation` или `connecting` открывать экран соединения.
 - [ ] При `active` открывать страницу звонка.
 - [ ] Восстанавливать звонок по `participantIds` и нейтральным полям `requesterId` / `responderId` / `currentResponderId`, а не только по legacy `studentId` / `tutorId` и `studentNavigationTriggered` / `tutorNavigationTriggered`.

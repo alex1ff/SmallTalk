@@ -7,6 +7,7 @@ import '/flutter_flow/flutter_flow_util.dart';
 import 'index.dart'; // Imports other custom actions
 import '/flutter_flow/custom_functions.dart'; // Imports custom functions
 import 'package:flutter/material.dart';
+export '/services/active_search_recovery.dart' show ActiveSearchRecoveryState;
 // Begin custom action code
 // DO NOT REMOVE OR MODIFY THE CODE ABOVE!
 
@@ -14,6 +15,7 @@ import 'index.dart'; // Imports other custom actions
 
 import 'dart:async';
 import '/auth/firebase_auth/auth_util.dart';
+import '/services/active_search_recovery.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
@@ -23,7 +25,6 @@ const int _activeSessionFallbackTokenMaxAttempts = 2;
 const int _activeSessionCurrentTokenMaxAttempts = 5;
 const int _activeSessionNavigationQueryLimit = 20;
 const int _activeSessionLegacyFallbackLimit = 100;
-const Duration _activeSearchHeartbeatStaleAfter = Duration(seconds: 90);
 const Duration _activeSessionFallbackTokenRetryDelay =
     Duration(milliseconds: 400);
 const Duration _activeSessionCurrentTokenRetryDelay =
@@ -43,29 +44,6 @@ class _ActiveSessionRecoveryCandidate {
   final Map<String, dynamic> tokenData;
   final String meetingToken;
   final String roomUrl;
-}
-
-class ActiveSearchRecoveryState {
-  const ActiveSearchRecoveryState({
-    required this.userId,
-    required this.requestId,
-    required this.data,
-    required this.exists,
-    required this.belongsToUser,
-    required this.isLiveStatus,
-    required this.isExpired,
-  });
-
-  final String userId;
-  final String? requestId;
-  final Map<String, dynamic> data;
-  final bool exists;
-  final bool belongsToUser;
-  final bool isLiveStatus;
-  final bool isExpired;
-
-  bool get hasActiveSearch =>
-      exists && belongsToUser && isLiveStatus && !isExpired;
 }
 
 @visibleForTesting
@@ -123,22 +101,6 @@ int _activeSessionTimestampMicros(dynamic value) {
     return value.toInt();
   }
   return 0;
-}
-
-DateTime? _activeSessionDateTime(dynamic value) {
-  if (value is Timestamp) {
-    return value.toDate();
-  }
-  if (value is DateTime) {
-    return value;
-  }
-  if (value is int) {
-    return DateTime.fromMillisecondsSinceEpoch(value);
-  }
-  if (value is num) {
-    return DateTime.fromMillisecondsSinceEpoch(value.toInt());
-  }
-  return null;
 }
 
 Map<String, dynamic> _activeSessionNestedMap(
@@ -371,138 +333,15 @@ Future<DocumentSnapshot<Map<String, dynamic>>> _readActiveSessionUserSnapshot(
   return FirebaseFirestore.instance.collection('users').doc(userId).get();
 }
 
-Future<DocumentSnapshot<Map<String, dynamic>>?>
-    _readActiveSearchRequestSnapshot(
-  String userId,
-) {
-  final debugReader = debugActiveSearchRequestSnapshot;
-  if (debugReader != null) {
-    return debugReader(userId);
-  }
-  return FirebaseFirestore.instance
-      .collection('searchRequests')
-      .doc(userId)
-      .get();
-}
-
-bool _activeSearchRequestBelongsToUser({
-  required DocumentSnapshot<Map<String, dynamic>> doc,
-  required Map<String, dynamic> data,
-  required String userId,
-}) {
-  if (doc.id != userId) {
-    return false;
-  }
-
-  String? referenceId(dynamic value) {
-    if (value is DocumentReference) {
-      return _activeSessionNonEmpty(value.id);
-    }
-    return null;
-  }
-
-  final ownerIds = <String?>[
-    _activeSessionNonEmpty(data['userId']),
-    _activeSessionNonEmpty(data['studentId']),
-    _activeSessionNonEmpty(data['requesterId']),
-    referenceId(data['userRef']),
-    referenceId(data['studentRef']),
-    referenceId(data['requesterRef']),
-  ].whereType<String>().toList();
-
-  return ownerIds.isEmpty || ownerIds.every((ownerId) => ownerId == userId);
-}
-
-bool _activeSearchRequestHasLiveStatus(Map<String, dynamic> data) {
-  switch (_activeSessionNonEmpty(data['status'])) {
-    case 'active':
-    case 'matching':
-      return true;
-    default:
-      return false;
-  }
-}
-
-bool _activeSearchRequestIsExpired(
-  Map<String, dynamic> data, {
-  DateTime? now,
-}) {
-  final status = _activeSessionNonEmpty(data['status']);
-  if (status == 'stopped' ||
-      status == 'expired' ||
-      status == 'cancelled' ||
-      status == 'error') {
-    return true;
-  }
-
-  final effectiveNow = now ?? DateTime.now();
-  final expiresAt = _activeSessionDateTime(data['expiresAt']);
-  if (expiresAt == null || !expiresAt.isAfter(effectiveNow)) {
-    return true;
-  }
-
-  if (_activeSessionNonEmpty(data['appState']) == 'background') {
-    final backgroundExpiresAt =
-        _activeSessionDateTime(data['backgroundExpiresAt']);
-    if (backgroundExpiresAt != null &&
-        !backgroundExpiresAt.isAfter(effectiveNow)) {
-      return true;
-    }
-    if (backgroundExpiresAt != null &&
-        backgroundExpiresAt.isAfter(effectiveNow)) {
-      return false;
-    }
-  }
-
-  final heartbeatAt = _activeSessionDateTime(data['heartbeatAt']);
-  if (heartbeatAt == null) {
-    return true;
-  }
-  if (effectiveNow.difference(heartbeatAt) > _activeSearchHeartbeatStaleAfter) {
-    return true;
-  }
-
-  return false;
-}
-
 Future<ActiveSearchRecoveryState> _readActiveSearchRecoveryState(
   String userId,
 ) async {
-  final snapshot = await _readActiveSearchRequestSnapshot(userId);
-  if (snapshot == null || !snapshot.exists) {
-    final state = ActiveSearchRecoveryState(
-      userId: userId,
-      requestId: null,
-      data: const <String, dynamic>{},
-      exists: false,
-      belongsToUser: false,
-      isLiveStatus: false,
-      isExpired: false,
-    );
-    debugActiveSearchRecoveryObserver?.call(state);
-    return state;
-  }
-
-  final data = snapshot.data() ?? const <String, dynamic>{};
-  final belongsToUser = _activeSearchRequestBelongsToUser(
-    doc: snapshot,
-    data: data,
-    userId: userId,
+  return readActiveSearchRecoveryState(
+    userId,
+    snapshotReader: debugActiveSearchRequestSnapshot,
+    observer: debugActiveSearchRecoveryObserver,
+    now: debugActiveSearchRecoveryNow,
   );
-  final state = ActiveSearchRecoveryState(
-    userId: userId,
-    requestId: _activeSessionNonEmpty(data['requestId']) ?? snapshot.id,
-    data: data,
-    exists: true,
-    belongsToUser: belongsToUser,
-    isLiveStatus: _activeSearchRequestHasLiveStatus(data),
-    isExpired: _activeSearchRequestIsExpired(
-      data,
-      now: debugActiveSearchRecoveryNow?.call(),
-    ),
-  );
-  debugActiveSearchRecoveryObserver?.call(state);
-  return state;
 }
 
 Future<List<DocumentSnapshot<Map<String, dynamic>>>>
@@ -801,10 +640,15 @@ Future<bool> checkActiveSessionAndNavigate(BuildContext context) async {
           'ActiveSessionRecovery: failed to read active search for $userId: $error',
         );
       }
-      if (activeSearchState?.hasActiveSearch == true) {
+      if (activeSearchState?.canResumeUnboundSearch == true) {
         debugPrint(
           'ActiveSessionRecovery: active search detected for $userId',
         );
+        if (!context.mounted) {
+          return false;
+        }
+        context.goNamed(app.StudentsDashboardWidget.routeName);
+        return true;
       }
       return false;
     }

@@ -181,6 +181,8 @@ void main() {
     };
     StudentsDashboardWidget.debugHeartbeatSearchRequest = (_) async {};
     StudentsDashboardWidget.debugStopSearchRequest = (_) async {};
+    StudentsDashboardWidget.debugActiveSearchRecoveryReader = null;
+    StudentsDashboardWidget.debugStopSearchPayloadObserver = null;
     StudentsDashboardWidget.debugAcceptCallRequest = null;
     StudentsDashboardWidget.debugGetSessionTokensRequest = null;
     StudentsDashboardWidget.debugAutoOpenSessionNavigator = null;
@@ -240,6 +242,8 @@ void main() {
     StudentsDashboardWidget.debugStartSearchRequest = null;
     StudentsDashboardWidget.debugHeartbeatSearchRequest = null;
     StudentsDashboardWidget.debugStopSearchRequest = null;
+    StudentsDashboardWidget.debugActiveSearchRecoveryReader = null;
+    StudentsDashboardWidget.debugStopSearchPayloadObserver = null;
     StudentsDashboardWidget.debugAcceptCallRequest = null;
     StudentsDashboardWidget.debugGetSessionTokensRequest = null;
     StudentsDashboardWidget.debugAutoOpenSessionNavigator = null;
@@ -339,6 +343,34 @@ void main() {
         if (currentSessionId != null) 'currentSessionId': currentSessionId,
       },
       UsersRecord.collection.doc(userId),
+    );
+  }
+
+  ActiveSearchRecoveryState activeSearchRecoveryState({
+    required String userId,
+    required String requestId,
+    String status = 'active',
+    DateTime? heartbeatAt,
+    DateTime? expiresAt,
+    String? currentSessionId,
+    bool isExpired = false,
+  }) {
+    return ActiveSearchRecoveryState(
+      userId: userId,
+      requestId: requestId,
+      data: <String, dynamic>{
+        'requestId': requestId,
+        'userId': userId,
+        'status': status,
+        'heartbeatAt': heartbeatAt ?? DateTime.now(),
+        'expiresAt':
+            expiresAt ?? DateTime.now().add(const Duration(minutes: 5)),
+        if (currentSessionId != null) 'currentSessionId': currentSessionId,
+      },
+      exists: true,
+      belongsToUser: true,
+      isLiveStatus: status == 'active' || status == 'matching',
+      isExpired: isExpired,
     );
   }
 
@@ -912,6 +944,257 @@ void main() {
       'requestId': 'request-reused-test',
       'appState': 'foreground',
     });
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard restores active search after restart',
+      (tester) async {
+    const userId = 'student-recover-active-search-ui-test';
+    setActiveStudent(userId);
+    final startPayloads = <Map<String, dynamic>>[];
+    final heartbeatPayloads = <Map<String, dynamic>>[];
+    final stopPayloads = <Map<String, dynamic>>[];
+    StudentsDashboardWidget.debugStopSearchPayloadObserver = (payload) {
+      stopPayloads.add(Map<String, dynamic>.from(payload));
+    };
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSearchRecoveryReader: (requestedUserId) async {
+            expect(requestedUserId, userId);
+            return activeSearchRecoveryState(
+              userId: userId,
+              requestId: 'request-recovered-search-ui-test',
+            );
+          },
+          startSearchRequest: (payload) async {
+            startPayloads.add(Map<String, dynamic>.from(payload));
+            return <String, dynamic>{
+              'requestId': 'request-should-not-start-test',
+            };
+          },
+          heartbeatSearchRequest: (payload) async {
+            heartbeatPayloads.add(Map<String, dynamic>.from(payload));
+          },
+          stopSearchRequest: (_) async => null,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.idle();
+
+    expect(find.text('Ищем собеседника'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsOneWidget);
+    expect(find.text('Начать поиск'), findsNothing);
+    expect(startPayloads, isEmpty);
+    expect(heartbeatPayloads, hasLength(1));
+    expect(heartbeatPayloads.single, <String, dynamic>{
+      'requestId': 'request-recovered-search-ui-test',
+      'appState': 'foreground',
+    });
+
+    await tester.pump(StudentsDashboardWidget.heartbeatSearchInterval);
+    await tester.pump();
+
+    expect(heartbeatPayloads, hasLength(2));
+    expect(heartbeatPayloads.last, <String, dynamic>{
+      'requestId': 'request-recovered-search-ui-test',
+      'appState': 'foreground',
+    });
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Остановить поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(stopPayloads, hasLength(1));
+    expect(stopPayloads.single, <String, dynamic>{
+      'requestId': 'request-recovered-search-ui-test',
+    });
+    expect(find.text('Начать поиск'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard clears recovered search on request mismatch',
+      (tester) async {
+    const userId = 'student-recover-request-mismatch-test';
+    setActiveStudent(userId);
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSearchRecoveryReader: (_) async => activeSearchRecoveryState(
+            userId: userId,
+            requestId: 'request-mismatch-recovery-test',
+          ),
+          heartbeatSearchRequest: (_) async => <String, dynamic>{
+            'status': 'noop',
+            'errorCode': 'request_mismatch',
+            'reason': 'request_mismatch',
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.idle();
+
+    expect(find.text('Пока никого не нашли'), findsOneWidget);
+    expect(find.text('Ищем собеседника'), findsNothing);
+    expect(find.text('Остановить поиск'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard ignores expired search recovery',
+      (tester) async {
+    const userId = 'student-recover-expired-search-ui-test';
+    setActiveStudent(userId);
+    final heartbeatPayloads = <Map<String, dynamic>>[];
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSearchRecoveryReader: (_) async => activeSearchRecoveryState(
+            userId: userId,
+            requestId: 'request-expired-recovery-test',
+            expiresAt: DateTime.now().subtract(const Duration(seconds: 1)),
+            isExpired: true,
+          ),
+          heartbeatSearchRequest: (payload) async {
+            heartbeatPayloads.add(Map<String, dynamic>.from(payload));
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.idle();
+
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Ищем собеседника'), findsNothing);
+    expect(find.text('Остановить поиск'), findsNothing);
+    expect(heartbeatPayloads, isEmpty);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard retries active search recovery after error',
+      (tester) async {
+    const userId = 'student-recover-search-retry-test';
+    setActiveStudent(userId);
+    var recoveryReadCount = 0;
+    final heartbeatPayloads = <Map<String, dynamic>>[];
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSearchRecoveryReader: (_) async {
+            recoveryReadCount += 1;
+            if (recoveryReadCount == 1) {
+              throw StateError('temporary recovery failure');
+            }
+            return activeSearchRecoveryState(
+              userId: userId,
+              requestId: 'request-retry-recovery-test',
+            );
+          },
+          heartbeatSearchRequest: (payload) async {
+            heartbeatPayloads.add(Map<String, dynamic>.from(payload));
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(recoveryReadCount, 1);
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(heartbeatPayloads, isEmpty);
+
+    await tester.pump(StudentsDashboardWidget.activeSearchRecoveryRetryDelay);
+    await tester.pump();
+    await tester.idle();
+
+    expect(recoveryReadCount, 2);
+    expect(find.text('Ищем собеседника'), findsOneWidget);
+    expect(heartbeatPayloads, hasLength(1));
+    expect(heartbeatPayloads.single, <String, dynamic>{
+      'requestId': 'request-retry-recovery-test',
+      'appState': 'foreground',
+    });
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets(
+      'student dashboard does not recover session-bound search as active search',
+      (tester) async {
+    const userId = 'student-recover-session-bound-search-test';
+    setActiveStudent(userId);
+    final heartbeatPayloads = <Map<String, dynamic>>[];
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSearchRecoveryReader: (_) async => activeSearchRecoveryState(
+            userId: userId,
+            requestId: 'request-session-bound-recovery-test',
+            status: 'matching',
+            currentSessionId: 'session-bound-recovery-test',
+          ),
+          heartbeatSearchRequest: (payload) async {
+            heartbeatPayloads.add(Map<String, dynamic>.from(payload));
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.idle();
+
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Ищем собеседника'), findsNothing);
+    expect(find.text('Остановить поиск'), findsNothing);
+    expect(heartbeatPayloads, isEmpty);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard uses recovered search expiry for timeout',
+      (tester) async {
+    const userId = 'student-recover-search-expiry-timeout-test';
+    setActiveStudent(userId);
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSearchRecoveryReader: (_) async => activeSearchRecoveryState(
+            userId: userId,
+            requestId: 'request-recovered-expiry-timeout-test',
+            expiresAt: DateTime.now().add(const Duration(seconds: 2)),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.idle();
+
+    expect(find.text('Ищем собеседника'), findsOneWidget);
+
+    await tester.pump(const Duration(milliseconds: 2100));
+    await tester.pump();
+
+    expect(find.text('Пока никого не нашли'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
@@ -2172,7 +2455,7 @@ void main() {
     await tester.pump();
     await tester.idle();
 
-    expect(recovered, isFalse);
+    expect(recovered, isTrue);
     expect(searchRequestReads, [userId]);
     expect(currentSessionRead, isFalse);
     expect(observedSearchState, isNotNull);
@@ -2185,6 +2468,72 @@ void main() {
       observedSearchState!.requestId,
       'request-startup-active-search-test',
     );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('startup recovery does not complete session-bound active search',
+      (tester) async {
+    const userId = 'student-startup-session-bound-search-test';
+    ActiveSearchRecoveryState? observedSearchState;
+    debugActiveSessionUserSnapshot = (_) async => _FakeSessionSnapshot(
+          userId,
+          const <String, dynamic>{
+            'isInCall': false,
+          },
+          FirebaseFirestore.instance.collection('users').doc(userId),
+        );
+    debugActiveSearchRequestSnapshot = (requestedUserId) async {
+      return _FakeSessionSnapshot(
+        requestedUserId,
+        <String, dynamic>{
+          'requestId': 'request-startup-session-bound-search-test',
+          'userId': userId,
+          'status': 'matching',
+          'heartbeatAt': DateTime.now(),
+          'expiresAt': DateTime.now().add(const Duration(minutes: 5)),
+          'currentSessionId': 'session-startup-session-bound-search-test',
+        },
+        FirebaseFirestore.instance
+            .collection('searchRequests')
+            .doc(requestedUserId),
+      );
+    };
+    debugActiveSearchRecoveryObserver = (state) {
+      observedSearchState = state;
+    };
+    setActiveStudent(userId, isInCall: false);
+    bool? recovered;
+    final router = GoRouter(
+      initialLocation: StudentsDashboardWidget.routePath,
+      routes: [
+        GoRoute(
+          name: StudentsDashboardWidget.routeName,
+          path: StudentsDashboardWidget.routePath,
+          builder: (context, state) => TextButton(
+            key: const Key('recover-session-bound-search-request'),
+            onPressed: () async {
+              recovered = await checkActiveSessionAndNavigate(context);
+            },
+            child: const Text('Recover session-bound search request'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildDashboardRouterTestApp(router));
+    await tester.pump();
+
+    await tester.tap(
+      find.byKey(const Key('recover-session-bound-search-request')),
+    );
+    await tester.pump();
+    await tester.idle();
+
+    expect(recovered, isFalse);
+    expect(observedSearchState, isNotNull);
+    expect(observedSearchState!.canResumeSearch, isTrue);
+    expect(observedSearchState!.canResumeUnboundSearch, isFalse);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
