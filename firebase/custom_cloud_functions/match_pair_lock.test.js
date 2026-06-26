@@ -2205,11 +2205,13 @@ test("releaseSessionPairLocks clears users and search requests for session", asy
       currentSessionId: "session-ab",
       isInCall: true,
       isAvailable: false,
+      availableAfter: timestampFromMillis(fixedNowMillis + 60_000),
     }),
     "users/student-b": studentUser({
       currentSessionId: "session-ab",
       isInCall: true,
       isAvailable: false,
+      availableAfter: timestampFromMillis(fixedNowMillis + 60_000),
     }),
   });
 
@@ -2231,8 +2233,14 @@ test("releaseSessionPairLocks clears users and search requests for session", asy
   assert.deepEqual(result.participantIds, ["student-a", "student-b"]);
   assert.equal(store.get("users/student-a").currentSessionId, fieldDelete);
   assert.equal(store.get("users/student-a").isInCall, false);
+  assert.equal(store.get("users/student-a").availableAfter, fieldDelete);
+  assert.equal(store.get("users/student-a").lastCallEndedAt, serverTimestamp);
   assert.equal(store.get("users/student-a").isAvailable, true);
   assert.equal(store.get("users/student-b").currentSessionId, fieldDelete);
+  assert.equal(store.get("users/student-b").isInCall, false);
+  assert.equal(store.get("users/student-b").availableAfter, fieldDelete);
+  assert.equal(store.get("users/student-b").lastCallEndedAt, serverTimestamp);
+  assert.equal(store.get("users/student-b").isAvailable, true);
   assert.equal(store.get("searchRequests/student-a").status, SEARCH_REQUEST_STATUS.STOPPED);
   assert.equal(store.get("searchRequests/student-a").currentSessionId, null);
   assert.equal(store.get("searchRequests/student-a").lockOwner, null);
@@ -2255,9 +2263,15 @@ test("releaseSessionPairLocks restores selected search participant", async () =>
     },
     "users/student-a": studentUser({
       currentSessionId: "session-ab",
+      isInCall: true,
+      isAvailable: false,
+      availableAfter: timestampFromMillis(fixedNowMillis + 60_000),
     }),
     "users/student-b": studentUser({
       currentSessionId: "session-ab",
+      isInCall: true,
+      isAvailable: false,
+      availableAfter: timestampFromMillis(fixedNowMillis + 60_000),
     }),
   });
 
@@ -2271,6 +2285,8 @@ test("releaseSessionPairLocks restores selected search participant", async () =>
       fieldDelete,
       searchRequestStatus: SEARCH_REQUEST_STATUS.CANCELLED,
       stopReason: "declined",
+      releaseCallState: true,
+      restoreLegacyAvailability: true,
       restoreSearchParticipantIds: ["student-a"],
       restoreSearchExcludedCandidateIdsByParticipantId: {
         "student-a": ["student-b"],
@@ -2279,7 +2295,19 @@ test("releaseSessionPairLocks restores selected search participant", async () =>
 
   const restoredRequest = store.get("searchRequests/student-a");
   const declinedRequest = store.get("searchRequests/student-b");
+  const restoredUser = store.get("users/student-a");
+  const declinedUser = store.get("users/student-b");
   assert.equal(result.released, true);
+  assert.equal(restoredUser.currentSessionId, fieldDelete);
+  assert.equal(restoredUser.isInCall, false);
+  assert.equal(restoredUser.isAvailable, true);
+  assert.equal(restoredUser.availableAfter, fieldDelete);
+  assert.equal(restoredUser.lastCallEndedAt, serverTimestamp);
+  assert.equal(declinedUser.currentSessionId, fieldDelete);
+  assert.equal(declinedUser.isInCall, false);
+  assert.equal(declinedUser.isAvailable, true);
+  assert.equal(declinedUser.availableAfter, fieldDelete);
+  assert.equal(declinedUser.lastCallEndedAt, serverTimestamp);
   assert.equal(restoredRequest.status, SEARCH_REQUEST_STATUS.ACTIVE);
   assert.equal(restoredRequest.heartbeatAt, serverTimestamp);
   assert.equal(restoredRequest.updatedAt, serverTimestamp);

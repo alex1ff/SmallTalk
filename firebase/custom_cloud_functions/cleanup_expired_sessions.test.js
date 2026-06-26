@@ -7,7 +7,14 @@ const {
   getUtcDayKey,
 } = require("./match_repeat_prevention");
 const {
+  SEARCH_REQUEST_STATUS,
+} = require("./search_requests");
+const {
+  releaseSessionPairLocksInTransaction,
+} = require("./match_pair_lock");
+const {
   __private__: {
+    buildExpiredSessionReleaseOptions,
     buildJoinTimeoutParticipantState,
     buildRestoreSearchExcludedCandidateIdsByParticipantId,
     buildExpiredSessionCleanupPayload,
@@ -22,6 +29,77 @@ const {
 
 if (!admin.apps.length) {
   admin.initializeApp({ projectId: "demo-smalltalk" });
+}
+
+function timestampFromMillis(millis) {
+  return {
+    toMillis: () => millis,
+    toDate: () => new Date(millis),
+  };
+}
+
+function createFakeFirestore(seed = {}) {
+  const store = new Map(Object.entries(seed));
+
+  const makeRef = (pathValue) => ({
+    path: pathValue,
+    id: pathValue.split("/").pop(),
+    async get() {
+      const data = store.get(pathValue);
+      return {
+        exists: data !== undefined,
+        data: () => data,
+        ref: makeRef(pathValue),
+      };
+    },
+  });
+
+  return {
+    db: {
+      collection(name) {
+        return {
+          doc(id) {
+            return makeRef(`${name}/${id}`);
+          },
+        };
+      },
+      async runTransaction(callback) {
+        const transaction = {
+          async get(ref) {
+            return ref.get();
+          },
+          update(ref, data) {
+            if (!store.has(ref.path)) {
+              throw new Error(`Document does not exist: ${ref.path}`);
+            }
+            store.set(ref.path, {...store.get(ref.path), ...data});
+          },
+        };
+        return callback(transaction);
+      },
+    },
+    store,
+  };
+}
+
+function matchedSearchRequest(userId, otherUserId, overrides = {}) {
+  return {
+    requestId: `request-${userId}`,
+    userId,
+    status: SEARCH_REQUEST_STATUS.MATCHED,
+    activeSessionId: null,
+    currentSessionId: "session-ab",
+    matchedSessionId: "session-ab",
+    matchedUserId: otherUserId,
+    matchedResponderId: otherUserId,
+    matchedRole: "student",
+    pairAttemptId: "pair-session-ab-student-a-student-b",
+    excludedCandidateIds: [],
+    attemptExcludedCandidateIds: [],
+    lockOwner: "pair-session-ab-student-a-student-b",
+    lockExpiresAt: timestampFromMillis(Date.parse("2026-04-14T12:00:45Z")),
+    ...overrides,
+  };
 }
 
 test("connected expired sessions write same-day repeat history", () => {
@@ -358,6 +436,120 @@ test("cleanup restore targets include room join signals", () => {
   assert.deepEqual(restoreParticipantIds, ["student-a"]);
 });
 
+test("expired connecting release clears call state while restoring joined search", () => {
+  const sessionData = {
+    status: "connecting",
+    participantIds: ["student-a", "student-b"],
+    requesterId: "student-a",
+    responderId: "student-b",
+    sessionMetadata: {
+      roomJoinParticipantSignals: {
+        "student-a": {source: "markSessionConnected"},
+      },
+    },
+  };
+  const serverTimestamp = Symbol("serverTimestamp");
+  const fieldDelete = Symbol("fieldDelete");
+
+  const options = buildExpiredSessionReleaseOptions({
+    sessionId: "session-ab",
+    sessionData,
+    serverTimestamp,
+    fieldDelete,
+  });
+
+  assert.equal(options.sessionId, "session-ab");
+  assert.equal(options.sessionData, sessionData);
+  assert.equal(options.serverTimestamp, serverTimestamp);
+  assert.equal(options.fieldDelete, fieldDelete);
+  assert.equal(options.searchRequestStatus, SEARCH_REQUEST_STATUS.EXPIRED);
+  assert.equal(options.stopReason, "session_expired");
+  assert.equal(options.releaseCallState, true);
+  assert.equal(options.restoreLegacyAvailability, true);
+  assert.deepEqual(options.restoreSearchParticipantIds, ["student-a"]);
+  assert.deepEqual(
+    options.restoreSearchExcludedCandidateIdsByParticipantId,
+    {"student-a": ["student-b"]},
+  );
+});
+
+test("expired connecting release options clear users in transaction", async () => {
+  const serverTimestamp = Symbol("serverTimestamp");
+  const fieldDelete = Symbol("fieldDelete");
+  const sessionData = {
+    status: "connecting",
+    participantIds: ["student-a", "student-b"],
+    requesterId: "student-a",
+    responderId: "student-b",
+    sessionMetadata: {
+      roomJoinParticipantSignals: {
+        "student-a": {source: "markSessionConnected"},
+      },
+    },
+  };
+  const {db, store} = createFakeFirestore({
+    "users/student-a": {
+      role: "student",
+      currentSessionId: "session-ab",
+      isInCall: true,
+      isAvailable: false,
+      availableAfter: timestampFromMillis(Date.parse("2026-04-14T12:01:00Z")),
+    },
+    "users/student-b": {
+      role: "student",
+      currentSessionId: "session-ab",
+      isInCall: true,
+      isAvailable: false,
+      availableAfter: timestampFromMillis(Date.parse("2026-04-14T12:01:00Z")),
+    },
+    "searchRequests/student-a": matchedSearchRequest(
+      "student-a",
+      "student-b",
+      {excludedCandidateIds: ["student-old"]},
+    ),
+    "searchRequests/student-b": matchedSearchRequest("student-b", "student-a"),
+  });
+
+  await db.runTransaction((transaction) =>
+    releaseSessionPairLocksInTransaction({
+      db,
+      transaction,
+      ...buildExpiredSessionReleaseOptions({
+        sessionId: "session-ab",
+        sessionData,
+        serverTimestamp,
+        fieldDelete,
+      }),
+    }));
+
+  assert.equal(store.get("users/student-a").currentSessionId, fieldDelete);
+  assert.equal(store.get("users/student-a").isInCall, false);
+  assert.equal(store.get("users/student-a").isAvailable, true);
+  assert.equal(store.get("users/student-a").availableAfter, fieldDelete);
+  assert.equal(store.get("users/student-a").lastCallEndedAt, serverTimestamp);
+  assert.equal(store.get("users/student-b").currentSessionId, fieldDelete);
+  assert.equal(store.get("users/student-b").isInCall, false);
+  assert.equal(store.get("users/student-b").isAvailable, true);
+  assert.equal(store.get("users/student-b").availableAfter, fieldDelete);
+  assert.equal(store.get("users/student-b").lastCallEndedAt, serverTimestamp);
+  assert.equal(
+    store.get("searchRequests/student-a").status,
+    SEARCH_REQUEST_STATUS.ACTIVE,
+  );
+  assert.deepEqual(
+    store.get("searchRequests/student-a").excludedCandidateIds,
+    ["student-b", "student-old"],
+  );
+  assert.equal(
+    store.get("searchRequests/student-b").status,
+    SEARCH_REQUEST_STATUS.EXPIRED,
+  );
+  assert.equal(
+    store.get("searchRequests/student-b").stopReason,
+    "session_expired",
+  );
+});
+
 test("cleanup restore is skipped after connected call evidence", () => {
   const sessionData = {
     status: "connecting",
@@ -587,12 +779,7 @@ test("cleanupExpiredSessions runs every minute as an expiry backstop", () => {
   assert.match(source, /getSessionCleanupDeadlineMillis\(freshData\)/);
   assert.match(
     source,
-    /const restoreSearchParticipantIds =\s*getCleanupRestoreSearchParticipantIds\(freshData\)/,
-  );
-  assert.match(source, /restoreSearchParticipantIds,/);
-  assert.match(
-    source,
-    /restoreSearchExcludedCandidateIdsByParticipantId:\s*buildRestoreSearchExcludedCandidateIdsByParticipantId\(\{/,
+    /releaseSessionPairLocksInTransaction\(\{[\s\S]*buildExpiredSessionReleaseOptions\(\{/,
   );
   assert.match(source, /dailyRoomName:\s*resolveDailyRoomName\(freshData\)/);
   assert.match(source, /await deleteDailyRoomForSession\(\{/);

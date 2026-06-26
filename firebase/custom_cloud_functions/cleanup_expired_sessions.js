@@ -233,6 +233,32 @@ function buildExpiredSessionCleanupPayload({
   };
 }
 
+function buildExpiredSessionReleaseOptions({
+  sessionId,
+  sessionData = {},
+  serverTimestamp,
+  fieldDelete,
+}) {
+  const restoreSearchParticipantIds =
+    getCleanupRestoreSearchParticipantIds(sessionData);
+  return {
+    sessionId,
+    sessionData,
+    serverTimestamp,
+    fieldDelete,
+    searchRequestStatus: SEARCH_REQUEST_STATUS.EXPIRED,
+    stopReason: "session_expired",
+    releaseCallState: true,
+    restoreLegacyAvailability: true,
+    restoreSearchParticipantIds,
+    restoreSearchExcludedCandidateIdsByParticipantId:
+      buildRestoreSearchExcludedCandidateIdsByParticipantId({
+        sessionData,
+        restoreParticipantIds: restoreSearchParticipantIds,
+      }),
+  };
+}
+
 function queueExpiredSessionCleanup({
   writer,
   db,
@@ -341,25 +367,15 @@ exports.cleanupExpiredSessions = functions
           }
 
           console.log(`🔚 Auto-ending expired session: ${doc.id}`);
-          const restoreSearchParticipantIds =
-            getCleanupRestoreSearchParticipantIds(freshData);
           await releaseSessionPairLocksInTransaction({
             db,
             transaction,
-            sessionId: doc.id,
-            sessionData: freshData,
-            serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
-            fieldDelete: admin.firestore.FieldValue.delete(),
-            searchRequestStatus: SEARCH_REQUEST_STATUS.EXPIRED,
-            stopReason: "session_expired",
-            releaseCallState: true,
-            restoreLegacyAvailability: true,
-            restoreSearchParticipantIds,
-            restoreSearchExcludedCandidateIdsByParticipantId:
-              buildRestoreSearchExcludedCandidateIdsByParticipantId({
-                sessionData: freshData,
-                restoreParticipantIds: restoreSearchParticipantIds,
-              }),
+            ...buildExpiredSessionReleaseOptions({
+              sessionId: doc.id,
+              sessionData: freshData,
+              serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+              fieldDelete: admin.firestore.FieldValue.delete(),
+            }),
           });
           const cleanupPayload = queueExpiredSessionCleanup({
             writer: transaction,
@@ -421,6 +437,7 @@ exports.cleanupExpiredSessions = functions
   });
 
 exports.__private__ = {
+  buildExpiredSessionReleaseOptions,
   buildJoinTimeoutParticipantState,
   buildRestoreSearchExcludedCandidateIdsByParticipantId,
   buildExpiredSessionCleanupPayload,
