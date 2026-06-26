@@ -89,68 +89,28 @@ function isExpiredEndReason(endReason) {
   return String(endReason || "").trim() === "expired";
 }
 
-function normalizeParticipantId(value) {
-  if (typeof value !== "string") {
-    return "";
-  }
-
-  const normalized = value.trim();
-  if (
-    !normalized ||
-    normalized.includes("/") ||
-    normalized === "." ||
-    normalized === ".." ||
-    /^__.*__$/.test(normalized)
-  ) {
-    return "";
-  }
-  return normalized;
-}
-
-function getSessionSearchRestoreParticipantIds(sessionData = {}) {
-  return Array.from(new Set([
-    ...(Array.isArray(sessionData.participantIds) ?
-      sessionData.participantIds :
-      []),
-    sessionData.studentId,
-    sessionData.requesterId,
-    sessionData.currentTutorId,
-    sessionData.currentResponderId,
-    sessionData.responderId,
-    sessionData.tutorId,
-    sessionData.matchContext?.requesterId,
-    sessionData.matchContext?.acceptedResponderId,
-  ].map(normalizeParticipantId).filter(Boolean))).sort();
-}
-
-function getPreActiveRestoreSearchParticipantIds({
+function buildPreActiveSessionPairLockReleaseOptions({
+  db,
+  transaction,
+  sessionId,
   sessionData = {},
-  failedParticipantId = "",
+  serverTimestamp,
+  fieldDelete,
+  searchRequestStatus,
+  stopReason,
 }) {
-  const normalizedFailedParticipantId =
-    normalizeParticipantId(failedParticipantId);
-  return getSessionSearchRestoreParticipantIds(sessionData)
-    .filter((participantId) => participantId !== normalizedFailedParticipantId);
-}
-
-function buildRestoreSearchExcludedCandidateIdsByParticipantId({
-  restoreParticipantIds = [],
-  excludedCandidateIds = [],
-}) {
-  const normalizedExcludedCandidateIds = excludedCandidateIds
-    .map(normalizeParticipantId)
-    .filter(Boolean);
-  return Object.fromEntries(
-    restoreParticipantIds
-      .map(normalizeParticipantId)
-      .filter(Boolean)
-      .map((participantId) => [
-        participantId,
-        normalizedExcludedCandidateIds.filter((candidateId) =>
-          candidateId !== participantId,
-        ),
-      ]),
-  );
+  return {
+    db,
+    transaction,
+    sessionId,
+    sessionData,
+    serverTimestamp,
+    fieldDelete,
+    searchRequestStatus,
+    stopReason,
+    releaseCallState: true,
+    restoreLegacyAvailability: true,
+  };
 }
 
 // Returns true if the user has a flat-rate subscription that is still active
@@ -361,29 +321,18 @@ exports.endSession = functions
           sessionUpdates.cancelReason = stopReason;
         }
 
-        const restoreSearchParticipantIds =
-          getPreActiveRestoreSearchParticipantIds({
+        await releaseSessionPairLocksInTransaction(
+          buildPreActiveSessionPairLockReleaseOptions({
+            db,
+            transaction,
+            sessionId,
             sessionData,
-            failedParticipantId: userId,
-          });
-        await releaseSessionPairLocksInTransaction({
-          db,
-          transaction,
-          sessionId,
-          sessionData,
-          serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
-          fieldDelete: admin.firestore.FieldValue.delete(),
-          searchRequestStatus,
-          stopReason,
-          releaseCallState: true,
-          restoreLegacyAvailability: true,
-          restoreSearchParticipantIds,
-          restoreSearchExcludedCandidateIdsByParticipantId:
-            buildRestoreSearchExcludedCandidateIdsByParticipantId({
-              restoreParticipantIds: restoreSearchParticipantIds,
-              excludedCandidateIds: [userId],
-            }),
-        });
+            serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+            fieldDelete: admin.firestore.FieldValue.delete(),
+            searchRequestStatus,
+            stopReason,
+          }),
+        );
         transaction.update(sessionRef, sessionUpdates);
 
         return {
@@ -974,9 +923,8 @@ async function cancelAllSessionNotifications(sessionId) {
 }
 
 exports.__private__ = {
-  buildRestoreSearchExcludedCandidateIdsByParticipantId,
+  buildPreActiveSessionPairLockReleaseOptions,
   buildStudentCallCharge,
-  getPreActiveRestoreSearchParticipantIds,
   hasConnectedCallEvidence,
   hasActiveSubscription,
   isExpiredEndReason,

@@ -26,73 +26,25 @@ const CANCELLABLE_SESSION_STATUSES = new Set([
   VIDEO_SESSION_STATUS.CONNECTING,
 ]);
 
-function normalizeParticipantId(value) {
-  if (typeof value !== "string") {
-    return "";
-  }
-
-  const normalized = value.trim();
-  if (
-    !normalized ||
-    normalized.includes("/") ||
-    normalized === "." ||
-    normalized === ".." ||
-    /^__.*__$/.test(normalized)
-  ) {
-    return "";
-  }
-  return normalized;
-}
-
-function readSessionParticipantIds(sessionData = {}) {
-  return Array.from(new Set([
-    ...(Array.isArray(sessionData.participantIds) ?
-      sessionData.participantIds :
-      []),
-    sessionData.studentId,
-    sessionData.requesterId,
-    sessionData.currentTutorId,
-    sessionData.currentResponderId,
-    sessionData.responderId,
-    sessionData.tutorId,
-    sessionData.matchContext?.requesterId,
-    sessionData.matchContext?.acceptedResponderId,
-  ].map(normalizeParticipantId).filter(Boolean))).sort();
-}
-
-function getCancelRestoreSearchParticipantIds({
+function buildCancelCallPairLockReleaseOptions({
+  db,
+  transaction,
+  sessionId,
   sessionData = {},
-  cancellingUserId = "",
+  serverTimestamp,
+  fieldDelete,
 }) {
-  if (
-    sessionData.sessionMetadata?.callConnectedAt ||
-    sessionData.sessionMetadata?.callConnectedAtTimestamp
-  ) {
-    return [];
-  }
-
-  const normalizedCancellingUserId = normalizeParticipantId(cancellingUserId);
-  return readSessionParticipantIds(sessionData)
-    .filter((participantId) => participantId !== normalizedCancellingUserId);
-}
-
-function buildCancelRestoreSearchExcludedCandidateIdsByParticipantId({
-  restoreParticipantIds = [],
-  cancellingUserId = "",
-}) {
-  const normalizedCancellingUserId = normalizeParticipantId(cancellingUserId);
-  return Object.fromEntries(
-    restoreParticipantIds
-      .map(normalizeParticipantId)
-      .filter(Boolean)
-      .map((participantId) => [
-        participantId,
-        normalizedCancellingUserId &&
-          normalizedCancellingUserId !== participantId ?
-          [normalizedCancellingUserId] :
-          [],
-      ]),
-  );
+  return {
+    db,
+    transaction,
+    sessionId,
+    sessionData,
+    serverTimestamp,
+    fieldDelete,
+    searchRequestStatus: SEARCH_REQUEST_STATUS.CANCELLED,
+    stopReason: "call_cancelled",
+    releaseCallState: true,
+  };
 }
 
 exports.cancelCall = functions
@@ -163,27 +115,16 @@ exports.cancelCall = functions
         );
       }
 
-      const restoreSearchParticipantIds = getCancelRestoreSearchParticipantIds({
-        sessionData,
-        cancellingUserId: studentId,
-      });
-      await releaseSessionPairLocksInTransaction({
-        db,
-        transaction,
-        sessionId,
-        sessionData,
-        serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
-        fieldDelete: admin.firestore.FieldValue.delete(),
-        searchRequestStatus: SEARCH_REQUEST_STATUS.CANCELLED,
-        stopReason: "call_cancelled",
-        releaseCallState: true,
-        restoreSearchParticipantIds,
-        restoreSearchExcludedCandidateIdsByParticipantId:
-          buildCancelRestoreSearchExcludedCandidateIdsByParticipantId({
-            restoreParticipantIds: restoreSearchParticipantIds,
-            cancellingUserId: studentId,
-          }),
-      });
+      await releaseSessionPairLocksInTransaction(
+        buildCancelCallPairLockReleaseOptions({
+          db,
+          transaction,
+          sessionId,
+          sessionData,
+          serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+          fieldDelete: admin.firestore.FieldValue.delete(),
+        }),
+      );
 
       transaction.update(sessionRef, {
         status: VIDEO_SESSION_STATUS.CANCELLED,
@@ -279,7 +220,5 @@ exports.cancelCall = functions
   });
 
 exports.__private__ = {
-  buildCancelRestoreSearchExcludedCandidateIdsByParticipantId,
-  getCancelRestoreSearchParticipantIds,
-  readSessionParticipantIds,
+  buildCancelCallPairLockReleaseOptions,
 };

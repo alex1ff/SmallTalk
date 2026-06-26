@@ -81,24 +81,6 @@ function readConnectedSignalParticipantIds(sessionData = {}) {
     .sort();
 }
 
-function buildRestoreSearchExcludedCandidateIdsByParticipantId({
-  sessionData = {},
-  restoreParticipantIds = [],
-}) {
-  const sessionParticipantIds = readSessionParticipantIds(sessionData);
-  return Object.fromEntries(
-    restoreParticipantIds
-      .map(normalizeParticipantId)
-      .filter(Boolean)
-      .map((participantId) => [
-        participantId,
-        sessionParticipantIds.filter((candidateId) =>
-          candidateId !== participantId,
-        ),
-      ]),
-  );
-}
-
 function hasConnectedCallEvidence(sessionData = {}) {
   return Boolean(
     sessionData.sessionMetadata?.callConnectedAt ||
@@ -131,17 +113,6 @@ function getSessionCleanupDeadlineMillis(sessionData = {}) {
     return timestampToMillis(sessionData.expiresAt);
   }
   return 0;
-}
-
-function getCleanupRestoreSearchParticipantIds(sessionData = {}) {
-  if (
-    sessionData.status !== VIDEO_SESSION_STATUS.CONNECTING ||
-    hasConnectedCallEvidence(sessionData)
-  ) {
-    return [];
-  }
-
-  return readConnectedSignalParticipantIds(sessionData);
 }
 
 function buildJoinTimeoutParticipantState(sessionData = {}) {
@@ -239,8 +210,6 @@ function buildExpiredSessionReleaseOptions({
   serverTimestamp,
   fieldDelete,
 }) {
-  const restoreSearchParticipantIds =
-    getCleanupRestoreSearchParticipantIds(sessionData);
   return {
     sessionId,
     sessionData,
@@ -250,12 +219,6 @@ function buildExpiredSessionReleaseOptions({
     stopReason: "session_expired",
     releaseCallState: true,
     restoreLegacyAvailability: true,
-    restoreSearchParticipantIds,
-    restoreSearchExcludedCandidateIdsByParticipantId:
-      buildRestoreSearchExcludedCandidateIdsByParticipantId({
-        sessionData,
-        restoreParticipantIds: restoreSearchParticipantIds,
-      }),
   };
 }
 
@@ -439,9 +402,7 @@ exports.cleanupExpiredSessions = functions
 exports.__private__ = {
   buildExpiredSessionReleaseOptions,
   buildJoinTimeoutParticipantState,
-  buildRestoreSearchExcludedCandidateIdsByParticipantId,
   buildExpiredSessionCleanupPayload,
-  getCleanupRestoreSearchParticipantIds,
   getSessionCleanupDeadlineMillis,
   hasConnectedCallEvidence,
   queueExpiredSessionCleanup,

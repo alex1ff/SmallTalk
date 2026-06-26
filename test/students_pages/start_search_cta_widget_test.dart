@@ -281,11 +281,12 @@ void main() {
     String? dailyRoomUrl,
     String? dailyRoomName,
     String? meetingToken,
+    List<String>? participantIds,
   }) {
     return VideoSessionsRecord.getDocumentFromData(
       {
         'status': status,
-        'participantIds': [currentUserUid],
+        'participantIds': participantIds ?? [currentUserUid],
         if (requesterId != null) 'requesterId': requesterId,
         if (requesterId != null) 'studentId': requesterId,
         if (responderId != null) 'responderId': responderId,
@@ -357,6 +358,7 @@ void main() {
     bool exists = true,
     bool belongsToUser = true,
     bool isExpired = false,
+    Map<String, dynamic> extraData = const <String, dynamic>{},
   }) {
     return ActiveSearchRecoveryState(
       userId: userId,
@@ -370,6 +372,7 @@ void main() {
             expiresAt ?? DateTime.now().add(const Duration(minutes: 5)),
         if (currentSessionId != null) 'currentSessionId': currentSessionId,
         if (matchedSessionId != null) 'matchedSessionId': matchedSessionId,
+        ...extraData,
       },
       exists: exists,
       belongsToUser: belongsToUser,
@@ -481,6 +484,182 @@ void main() {
       ).canResumeConnection,
       isFalse,
     );
+  });
+
+  test('active search recovery ignores terminal call results', () {
+    const userId = 'student-terminal-result-predicate-test';
+
+    final endedCallState = activeSearchRecoveryState(
+      userId: userId,
+      requestId: 'request-ended-call-predicate-test',
+      status: 'stopped',
+      extraData: const <String, dynamic>{
+        'stopReason': 'session_ended',
+      },
+    );
+    expect(endedCallState.hasTerminalResult, isTrue);
+    expect(endedCallState.hasActiveSearch, isFalse);
+    expect(endedCallState.canResumeSearch, isFalse);
+    expect(endedCallState.canResumeUnboundSearch, isFalse);
+
+    final staleLiveEndedCallState = activeSearchRecoveryState(
+      userId: userId,
+      requestId: 'request-stale-live-ended-call-predicate-test',
+      status: 'active',
+      extraData: const <String, dynamic>{
+        'stopReason': 'session_ended',
+      },
+    );
+    expect(staleLiveEndedCallState.hasTerminalResult, isTrue);
+    expect(staleLiveEndedCallState.isLiveStatus, isTrue);
+    expect(staleLiveEndedCallState.hasActiveSearch, isFalse);
+    expect(staleLiveEndedCallState.canResumeSearch, isFalse);
+    expect(staleLiveEndedCallState.canResumeUnboundSearch, isFalse);
+
+    final staleLiveCancelledCallState = activeSearchRecoveryState(
+      userId: userId,
+      requestId: 'request-stale-live-cancelled-call-predicate-test',
+      status: 'matching',
+      currentSessionId: 'session-stale-live-cancelled-call-test',
+      extraData: const <String, dynamic>{
+        'stopReason': 'call_cancelled',
+      },
+    );
+    expect(staleLiveCancelledCallState.hasTerminalResult, isTrue);
+    expect(staleLiveCancelledCallState.isLiveStatus, isTrue);
+    expect(staleLiveCancelledCallState.hasActiveSearch, isFalse);
+    expect(staleLiveCancelledCallState.canResumeConnection, isFalse);
+
+    final futureBackendReasonState = activeSearchRecoveryState(
+      userId: userId,
+      requestId: 'request-future-backend-reason-predicate-test',
+      status: 'active',
+      currentSessionId: 'session-future-backend-reason-test',
+      extraData: const <String, dynamic>{
+        'stopReason': 'future_backend_terminal_reason',
+      },
+    );
+    expect(futureBackendReasonState.hasTerminalResult, isTrue);
+    expect(futureBackendReasonState.hasActiveSearch, isFalse);
+    expect(futureBackendReasonState.canResumeActiveSession, isFalse);
+    expect(futureBackendReasonState.canResumeConnection, isFalse);
+
+    for (final entry in const <Map<String, String>>[
+      {
+        'status': 'stopped',
+        'stopReason': 'session_ended',
+      },
+      {
+        'status': 'cancelled',
+        'stopReason': 'call_cancelled',
+      },
+      {
+        'status': 'expired',
+        'stopReason': 'session_expired',
+      },
+      {
+        'status': 'expired',
+        'stopReason': 'search_timeout',
+      },
+      {
+        'status': 'expired',
+        'stopReason': 'background_timeout',
+      },
+      {
+        'status': 'expired',
+        'stopReason': 'heartbeat_stale',
+      },
+      {
+        'status': 'cancelled',
+        'stopReason': 'student_pair_declined',
+      },
+      {
+        'status': 'expired',
+        'stopReason': 'student_pair_response_timeout',
+      },
+      {
+        'status': 'cancelled',
+        'stopReason': 'direct_call_declined',
+      },
+      {
+        'status': 'cancelled',
+        'stopReason': 'no_available_responder_after_decline',
+      },
+      {
+        'status': 'expired',
+        'stopReason': 'direct_call_timeout',
+      },
+      {
+        'status': 'cancelled',
+        'stopReason': 'teacher_push_failed',
+      },
+    ]) {
+      final state = activeSearchRecoveryState(
+        userId: userId,
+        requestId:
+            'request-${entry['status']}-${entry['stopReason']}-predicate-test',
+        status: entry['status']!,
+        extraData: <String, dynamic>{
+          'stopReason': entry['stopReason'],
+        },
+      );
+      expect(state.hasTerminalResult, isTrue);
+      expect(state.hasActiveSearch, isFalse);
+      expect(state.canResumeSearch, isFalse);
+    }
+
+    final callStartedState = activeSearchRecoveryState(
+      userId: userId,
+      requestId: 'request-call-started-predicate-test',
+      currentSessionId: 'session-call-started-predicate-test',
+      extraData: const <String, dynamic>{
+        'stopReason': 'call_started',
+      },
+    );
+    expect(callStartedState.hasTerminalResult, isTrue);
+    expect(callStartedState.hasActiveSearch, isFalse);
+    expect(callStartedState.canResumeActiveSession, isFalse);
+    expect(callStartedState.canResumeConnection, isFalse);
+
+    final restoredActiveState = activeSearchRecoveryState(
+      userId: userId,
+      requestId: 'request-restored-active-predicate-test',
+      extraData: const <String, dynamic>{
+        'excludedCandidateIds': ['teacher-push-failed-test'],
+        'attemptExcludedCandidateIds': <String>[],
+        'stopReason': null,
+      },
+    );
+    expect(restoredActiveState.hasTerminalResult, isFalse);
+    expect(restoredActiveState.hasActiveSearch, isTrue);
+    expect(restoredActiveState.canResumeUnboundSearch, isTrue);
+
+    final pendingState = activeSearchRecoveryState(
+      userId: userId,
+      requestId: 'request-pending-live-predicate-test',
+      status: 'pending_confirmation',
+      currentSessionId: 'session-pending-live-predicate-test',
+    );
+    expect(pendingState.hasTerminalResult, isFalse);
+    expect(pendingState.canResumeConnection, isTrue);
+
+    final connectingState = activeSearchRecoveryState(
+      userId: userId,
+      requestId: 'request-connecting-live-predicate-test',
+      status: 'connecting',
+      currentSessionId: 'session-connecting-live-predicate-test',
+    );
+    expect(connectingState.hasTerminalResult, isFalse);
+    expect(connectingState.canResumeConnection, isTrue);
+
+    final matchedState = activeSearchRecoveryState(
+      userId: userId,
+      requestId: 'request-matched-live-predicate-test',
+      status: 'matched',
+      matchedSessionId: 'session-matched-live-predicate-test',
+    );
+    expect(matchedState.hasTerminalResult, isFalse);
+    expect(matchedState.canResumeConnection, isTrue);
   });
 
   Future<ActiveSearchRecoveryState?> runStartupSearchRecoveryTest(
@@ -1195,6 +1374,78 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('student dashboard ignores terminal call search recovery',
+      (tester) async {
+    const userId = 'student-recover-terminal-call-ui-test';
+    setActiveStudent(userId);
+    final heartbeatPayloads = <Map<String, dynamic>>[];
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSearchRecoveryReader: (_) async => activeSearchRecoveryState(
+            userId: userId,
+            requestId: 'request-terminal-call-recovery-test',
+            status: 'stopped',
+            extraData: const <String, dynamic>{
+              'stopReason': 'session_ended',
+            },
+          ),
+          heartbeatSearchRequest: (payload) async {
+            heartbeatPayloads.add(Map<String, dynamic>.from(payload));
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.idle();
+
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Ищем собеседника'), findsNothing);
+    expect(find.text('Соединяем'), findsNothing);
+    expect(find.text('Остановить поиск'), findsNothing);
+    expect(heartbeatPayloads, isEmpty);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard ignores live search with terminal stop reason',
+      (tester) async {
+    const userId = 'student-recover-live-terminal-reason-ui-test';
+    setActiveStudent(userId);
+    final heartbeatPayloads = <Map<String, dynamic>>[];
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSearchRecoveryReader: (_) async => activeSearchRecoveryState(
+            userId: userId,
+            requestId: 'request-live-terminal-reason-recovery-test',
+            status: 'active',
+            extraData: const <String, dynamic>{
+              'stopReason': 'session_ended',
+            },
+          ),
+          heartbeatSearchRequest: (payload) async {
+            heartbeatPayloads.add(Map<String, dynamic>.from(payload));
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.idle();
+
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Ищем собеседника'), findsNothing);
+    expect(find.text('Соединяем'), findsNothing);
+    expect(find.text('Остановить поиск'), findsNothing);
+    expect(heartbeatPayloads, isEmpty);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('student dashboard retries active search recovery after error',
       (tester) async {
     const userId = 'student-recover-search-retry-test';
@@ -1440,6 +1691,114 @@ void main() {
 
     activeSessionController.add(sessionFixture(sessionId, 'ended'));
     await tester.pump();
+
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Соединяем'), findsNothing);
+    expect(find.text('Остановить поиск'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard ignores terminal linked search recovery',
+      (tester) async {
+    const userId = 'student-recover-terminal-linked-session-test';
+    const sessionId = 'session-terminal-linked-recovery-test';
+    setActiveStudent(userId);
+    StudentsDashboardWidget.debugActiveSessionReader = (sessionRef) async {
+      expect(sessionRef.id, sessionId);
+      return sessionFixture(sessionId, 'ended');
+    };
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSearchRecoveryReader: (_) async => activeSearchRecoveryState(
+            userId: userId,
+            requestId: 'request-terminal-linked-session-test',
+            status: 'matched',
+            currentSessionId: sessionId,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.idle();
+
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Соединяем'), findsNothing);
+    expect(find.text('Остановить поиск'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets(
+      'student dashboard ignores recovered search on session read error',
+      (tester) async {
+    const userId = 'student-recover-session-read-error-test';
+    const sessionId = 'session-read-error-recovery-test';
+    setActiveStudent(userId);
+    StudentsDashboardWidget.debugActiveSessionReader = (sessionRef) async {
+      expect(sessionRef.id, sessionId);
+      throw StateError('linked session read failed');
+    };
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSearchRecoveryReader: (_) async => activeSearchRecoveryState(
+            userId: userId,
+            requestId: 'request-session-read-error-test',
+            status: 'matched',
+            currentSessionId: sessionId,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.idle();
+
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Соединяем'), findsNothing);
+    expect(find.text('Остановить поиск'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard ignores foreign linked search recovery',
+      (tester) async {
+    const userId = 'student-recover-foreign-linked-session-test';
+    const sessionId = 'session-foreign-linked-recovery-test';
+    const foreignRequesterId = 'student-foreign-linked-requester-test';
+    const foreignResponderId = 'student-foreign-linked-responder-test';
+    setActiveStudent(userId);
+    StudentsDashboardWidget.debugActiveSessionReader = (sessionRef) async {
+      expect(sessionRef.id, sessionId);
+      return sessionFixture(
+        sessionId,
+        'connecting',
+        requesterId: foreignRequesterId,
+        responderId: foreignResponderId,
+        participantIds: [foreignRequesterId, foreignResponderId],
+      );
+    };
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSearchRecoveryReader: (_) async => activeSearchRecoveryState(
+            userId: userId,
+            requestId: 'request-foreign-linked-session-test',
+            status: 'matched',
+            currentSessionId: sessionId,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.idle();
 
     expect(find.text('Начать поиск'), findsOneWidget);
     expect(find.text('Соединяем'), findsNothing);
@@ -3003,6 +3362,152 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('startup recovery ignores terminal cancelled search request',
+      (tester) async {
+    const userId = 'student-startup-cancelled-search-test';
+    ActiveSearchRecoveryState? observedSearchState;
+    var currentSessionRead = false;
+    debugActiveSessionUserSnapshot = (_) async => _FakeSessionSnapshot(
+          userId,
+          const <String, dynamic>{
+            'isInCall': false,
+          },
+          FirebaseFirestore.instance.collection('users').doc(userId),
+        );
+    debugActiveSearchRequestSnapshot = (requestedUserId) async {
+      return _FakeSessionSnapshot(
+        requestedUserId,
+        <String, dynamic>{
+          'requestId': 'request-startup-cancelled-search-test',
+          'userId': userId,
+          'status': 'cancelled',
+          'heartbeatAt': DateTime.now(),
+          'expiresAt': DateTime.now().add(const Duration(minutes: 5)),
+          'stopReason': 'call_cancelled',
+        },
+        FirebaseFirestore.instance
+            .collection('searchRequests')
+            .doc(requestedUserId),
+      );
+    };
+    debugActiveSearchRecoveryObserver = (state) {
+      observedSearchState = state;
+    };
+    debugActiveCurrentSessionSnapshot = (_) async {
+      currentSessionRead = true;
+      return null;
+    };
+    setActiveStudent(userId, isInCall: false);
+    bool? recovered;
+    final router = GoRouter(
+      initialLocation: StudentsDashboardWidget.routePath,
+      routes: [
+        GoRoute(
+          name: StudentsDashboardWidget.routeName,
+          path: StudentsDashboardWidget.routePath,
+          builder: (context, state) => TextButton(
+            key: const Key('recover-cancelled-search-request'),
+            onPressed: () async {
+              recovered = await checkActiveSessionAndNavigate(context);
+            },
+            child: const Text('Recover cancelled search request'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildDashboardRouterTestApp(router));
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('recover-cancelled-search-request')));
+    await tester.pump();
+    await tester.idle();
+
+    expect(recovered, isFalse);
+    expect(currentSessionRead, isFalse);
+    expect(observedSearchState, isNotNull);
+    expect(observedSearchState!.hasTerminalResult, isTrue);
+    expect(observedSearchState!.hasActiveSearch, isFalse);
+    expect(observedSearchState!.canResumeActiveSession, isFalse);
+    expect(observedSearchState!.canResumeConnection, isFalse);
+    expect(observedSearchState!.canResumeUnboundSearch, isFalse);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('startup recovery ignores live search with terminal stop reason',
+      (tester) async {
+    const userId = 'student-startup-live-terminal-reason-test';
+    var currentSessionRead = false;
+    ActiveSearchRecoveryState? observedSearchState;
+    debugActiveSessionUserSnapshot = (_) async => _FakeSessionSnapshot(
+          userId,
+          const <String, dynamic>{
+            'isInCall': false,
+          },
+          FirebaseFirestore.instance.collection('users').doc(userId),
+        );
+    debugActiveSearchRequestSnapshot = (requestedUserId) async {
+      return _FakeSessionSnapshot(
+        requestedUserId,
+        <String, dynamic>{
+          'requestId': 'request-startup-live-terminal-reason-test',
+          'userId': userId,
+          'status': 'active',
+          'heartbeatAt': DateTime.now(),
+          'expiresAt': DateTime.now().add(const Duration(minutes: 5)),
+          'stopReason': 'session_ended',
+        },
+        FirebaseFirestore.instance
+            .collection('searchRequests')
+            .doc(requestedUserId),
+      );
+    };
+    debugActiveSearchRecoveryObserver = (state) {
+      observedSearchState = state;
+    };
+    debugActiveCurrentSessionSnapshot = (_) async {
+      currentSessionRead = true;
+      return null;
+    };
+    setActiveStudent(userId, isInCall: false);
+    bool? recovered;
+    final router = GoRouter(
+      initialLocation: StudentsDashboardWidget.routePath,
+      routes: [
+        GoRoute(
+          name: StudentsDashboardWidget.routeName,
+          path: StudentsDashboardWidget.routePath,
+          builder: (context, state) => TextButton(
+            key: const Key('recover-live-terminal-reason-search-request'),
+            onPressed: () async {
+              recovered = await checkActiveSessionAndNavigate(context);
+            },
+            child: const Text('Recover live terminal reason search request'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildDashboardRouterTestApp(router));
+    await tester.pump();
+
+    await tester.tap(
+      find.byKey(const Key('recover-live-terminal-reason-search-request')),
+    );
+    await tester.pump();
+    await tester.idle();
+
+    expect(recovered, isFalse);
+    expect(currentSessionRead, isFalse);
+    expect(observedSearchState, isNotNull);
+    expect(observedSearchState!.isLiveStatus, isTrue);
+    expect(observedSearchState!.hasTerminalResult, isTrue);
+    expect(observedSearchState!.hasActiveSearch, isFalse);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('startup recovery opens active session from search request',
       (tester) async {
     const userId = 'student-startup-active-session-search-test';
@@ -3207,6 +3712,247 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('startup recovery opens linked connecting session',
+      (tester) async {
+    const userId = 'student-startup-connecting-session-search-test';
+    const peerId = 'student-startup-connecting-session-peer-test';
+    const sessionId = 'session-startup-connecting-session-search-test';
+    final openedSessions = <String>[];
+    debugActiveSessionUserSnapshot = (_) async => _FakeSessionSnapshot(
+          userId,
+          const <String, dynamic>{
+            'isInCall': false,
+          },
+          FirebaseFirestore.instance.collection('users').doc(userId),
+        );
+    debugActiveSearchRequestSnapshot = (requestedUserId) async {
+      return _FakeSessionSnapshot(
+        requestedUserId,
+        <String, dynamic>{
+          'requestId': 'request-startup-connecting-session-search-test',
+          'userId': userId,
+          'status': 'active',
+          'heartbeatAt': DateTime.now(),
+          'expiresAt': DateTime.now().add(const Duration(minutes: 5)),
+          'currentSessionId': sessionId,
+        },
+        FirebaseFirestore.instance
+            .collection('searchRequests')
+            .doc(requestedUserId),
+      );
+    };
+    debugActiveCurrentSessionSnapshot = (requestedSessionId) async {
+      expect(requestedSessionId, sessionId);
+      return _FakeSessionSnapshot(
+        sessionId,
+        <String, dynamic>{
+          'status': 'connecting',
+          'participantIds': [userId, peerId],
+          'requesterId': userId,
+          'responderId': peerId,
+          'dailyRoomUrl': 'https://daily.test/$sessionId',
+        },
+        FirebaseFirestore.instance.collection('videoSessions').doc(sessionId),
+      );
+    };
+    debugActiveSessionTokenRequest = (_) async => <String, dynamic>{
+          'roomUrl': 'https://daily.test/$sessionId',
+          'meetingToken': 'token-$sessionId',
+        };
+    debugActiveSessionNavigator = (
+      videoDocRef, {
+      roomUrl,
+      roomName,
+      meetingToken,
+    }) {
+      openedSessions.add(videoDocRef.id);
+    };
+    setActiveStudent(userId, isInCall: false);
+    bool? recovered;
+    final router = GoRouter(
+      initialLocation: StudentsDashboardWidget.routePath,
+      routes: [
+        GoRoute(
+          name: StudentsDashboardWidget.routeName,
+          path: StudentsDashboardWidget.routePath,
+          builder: (context, state) => TextButton(
+            key: const Key('recover-connecting-session-search-request'),
+            onPressed: () async {
+              recovered = await checkActiveSessionAndNavigate(context);
+            },
+            child: const Text('Recover connecting session'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildDashboardRouterTestApp(router));
+    await tester.pump();
+
+    await tester.tap(
+      find.byKey(const Key('recover-connecting-session-search-request')),
+    );
+    await tester.pump();
+    await tester.idle();
+
+    expect(recovered, isTrue);
+    expect(openedSessions, [sessionId]);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('startup recovery ignores terminal linked active session',
+      (tester) async {
+    const userId = 'student-startup-terminal-active-session-test';
+    const peerId = 'student-startup-terminal-active-session-peer-test';
+    const sessionId = 'session-startup-terminal-active-session-test';
+    final tokenSessionIds = <String>[];
+    debugActiveSessionUserSnapshot = (_) async => _FakeSessionSnapshot(
+          userId,
+          const <String, dynamic>{
+            'isInCall': false,
+          },
+          FirebaseFirestore.instance.collection('users').doc(userId),
+        );
+    debugActiveSearchRequestSnapshot = (requestedUserId) async {
+      return _FakeSessionSnapshot(
+        requestedUserId,
+        <String, dynamic>{
+          'requestId': 'request-startup-terminal-active-session-test',
+          'userId': userId,
+          'status': 'active',
+          'heartbeatAt': DateTime.now(),
+          'expiresAt': DateTime.now().add(const Duration(minutes: 5)),
+          'currentSessionId': sessionId,
+        },
+        FirebaseFirestore.instance
+            .collection('searchRequests')
+            .doc(requestedUserId),
+      );
+    };
+    debugActiveCurrentSessionSnapshot = (requestedSessionId) async {
+      expect(requestedSessionId, sessionId);
+      return _FakeSessionSnapshot(
+        sessionId,
+        <String, dynamic>{
+          'status': 'ended',
+          'participantIds': [userId, peerId],
+          'requesterId': userId,
+          'responderId': peerId,
+        },
+        FirebaseFirestore.instance.collection('videoSessions').doc(sessionId),
+      );
+    };
+    debugActiveSessionTokenRequest = (requestedSessionId) async {
+      tokenSessionIds.add(requestedSessionId);
+      return <String, dynamic>{
+        'roomUrl': 'https://daily.test/$sessionId',
+        'meetingToken': 'token-$sessionId',
+      };
+    };
+    setActiveStudent(userId, isInCall: false);
+    bool? recovered;
+    final router = GoRouter(
+      initialLocation: StudentsDashboardWidget.routePath,
+      routes: [
+        GoRoute(
+          name: StudentsDashboardWidget.routeName,
+          path: StudentsDashboardWidget.routePath,
+          builder: (context, state) => TextButton(
+            key: const Key('recover-terminal-active-session'),
+            onPressed: () async {
+              recovered = await checkActiveSessionAndNavigate(context);
+            },
+            child: const Text('Recover terminal active session'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildDashboardRouterTestApp(router));
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('recover-terminal-active-session')));
+    await tester.pump();
+    await tester.idle();
+
+    expect(recovered, isFalse);
+    expect(tokenSessionIds, isEmpty);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('startup recovery fails closed when linked session read fails',
+      (tester) async {
+    const userId = 'student-startup-session-read-error-test';
+    const sessionId = 'session-startup-session-read-error-test';
+    final tokenSessionIds = <String>[];
+    debugActiveSessionUserSnapshot = (_) async => _FakeSessionSnapshot(
+          userId,
+          const <String, dynamic>{
+            'isInCall': false,
+          },
+          FirebaseFirestore.instance.collection('users').doc(userId),
+        );
+    debugActiveSearchRequestSnapshot = (requestedUserId) async {
+      return _FakeSessionSnapshot(
+        requestedUserId,
+        <String, dynamic>{
+          'requestId': 'request-startup-session-read-error-test',
+          'userId': userId,
+          'status': 'active',
+          'heartbeatAt': DateTime.now(),
+          'expiresAt': DateTime.now().add(const Duration(minutes: 5)),
+          'currentSessionId': sessionId,
+        },
+        FirebaseFirestore.instance
+            .collection('searchRequests')
+            .doc(requestedUserId),
+      );
+    };
+    debugActiveCurrentSessionSnapshot = (requestedSessionId) async {
+      expect(requestedSessionId, sessionId);
+      throw StateError('linked session unavailable');
+    };
+    debugActiveSessionTokenRequest = (requestedSessionId) async {
+      tokenSessionIds.add(requestedSessionId);
+      return <String, dynamic>{
+        'roomUrl': 'https://daily.test/$sessionId',
+        'meetingToken': 'token-$sessionId',
+      };
+    };
+    setActiveStudent(userId, isInCall: false);
+    bool? recovered;
+    final router = GoRouter(
+      initialLocation: StudentsDashboardWidget.routePath,
+      routes: [
+        GoRoute(
+          name: StudentsDashboardWidget.routeName,
+          path: StudentsDashboardWidget.routePath,
+          builder: (context, state) => TextButton(
+            key: const Key('recover-session-read-error'),
+            onPressed: () async {
+              recovered = await checkActiveSessionAndNavigate(context);
+            },
+            child: const Text('Recover session read error'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildDashboardRouterTestApp(router));
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('recover-session-read-error')));
+    await tester.pump();
+    await tester.idle();
+
+    expect(recovered, isFalse);
+    expect(tokenSessionIds, isEmpty);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('startup recovery ignores foreign active search session',
       (tester) async {
     const userId = 'student-startup-active-session-foreign-test';
@@ -3294,7 +4040,7 @@ void main() {
     await tester.pump();
     await tester.idle();
 
-    expect(recovered, isTrue);
+    expect(recovered, isFalse);
     expect(tokenSessionIds, isEmpty);
     expect(openedSessionIds, isEmpty);
     expect(router.getCurrentLocation(), StudentsDashboardWidget.routePath);
@@ -3302,9 +4048,80 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('startup recovery ignores terminal session-bound search',
+      (tester) async {
+    const userId = 'student-startup-terminal-bound-search-test';
+    const sessionId = 'session-startup-terminal-bound-search-test';
+    debugActiveSessionUserSnapshot = (_) async => _FakeSessionSnapshot(
+          userId,
+          const <String, dynamic>{
+            'isInCall': false,
+          },
+          FirebaseFirestore.instance.collection('users').doc(userId),
+        );
+    debugActiveSearchRequestSnapshot = (requestedUserId) async {
+      return _FakeSessionSnapshot(
+        requestedUserId,
+        <String, dynamic>{
+          'requestId': 'request-startup-terminal-bound-search-test',
+          'userId': userId,
+          'status': 'matching',
+          'heartbeatAt': DateTime.now(),
+          'expiresAt': DateTime.now().add(const Duration(minutes: 5)),
+          'currentSessionId': sessionId,
+        },
+        FirebaseFirestore.instance
+            .collection('searchRequests')
+            .doc(requestedUserId),
+      );
+    };
+    debugActiveCurrentSessionSnapshot = (requestedSessionId) async {
+      expect(requestedSessionId, sessionId);
+      return _FakeSessionSnapshot(
+        sessionId,
+        const <String, dynamic>{
+          'status': 'cancelled',
+        },
+        FirebaseFirestore.instance.collection('videoSessions').doc(sessionId),
+      );
+    };
+    setActiveStudent(userId, isInCall: false);
+    bool? recovered;
+    final router = GoRouter(
+      initialLocation: StudentsDashboardWidget.routePath,
+      routes: [
+        GoRoute(
+          name: StudentsDashboardWidget.routeName,
+          path: StudentsDashboardWidget.routePath,
+          builder: (context, state) => TextButton(
+            key: const Key('recover-terminal-bound-search-request'),
+            onPressed: () async {
+              recovered = await checkActiveSessionAndNavigate(context);
+            },
+            child: const Text('Recover terminal bound search request'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildDashboardRouterTestApp(router));
+    await tester.pump();
+
+    await tester.tap(
+      find.byKey(const Key('recover-terminal-bound-search-request')),
+    );
+    await tester.pump();
+    await tester.idle();
+
+    expect(recovered, isFalse);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('startup recovery completes session-bound active search',
       (tester) async {
     const userId = 'student-startup-session-bound-search-test';
+    const sessionId = 'session-startup-session-bound-search-test';
     ActiveSearchRecoveryState? observedSearchState;
     debugActiveSessionUserSnapshot = (_) async => _FakeSessionSnapshot(
           userId,
@@ -3322,7 +4139,7 @@ void main() {
           'status': 'matching',
           'heartbeatAt': DateTime.now(),
           'expiresAt': DateTime.now().add(const Duration(minutes: 5)),
-          'currentSessionId': 'session-startup-session-bound-search-test',
+          'currentSessionId': sessionId,
         },
         FirebaseFirestore.instance
             .collection('searchRequests')
@@ -3331,6 +4148,17 @@ void main() {
     };
     debugActiveSearchRecoveryObserver = (state) {
       observedSearchState = state;
+    };
+    debugActiveCurrentSessionSnapshot = (requestedSessionId) async {
+      expect(requestedSessionId, sessionId);
+      return _FakeSessionSnapshot(
+        sessionId,
+        const <String, dynamic>{
+          'status': 'pending_confirmation',
+          'participantIds': [userId],
+        },
+        FirebaseFirestore.instance.collection('videoSessions').doc(sessionId),
+      );
     };
     setActiveStudent(userId, isInCall: false);
     bool? recovered;

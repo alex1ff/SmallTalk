@@ -4,6 +4,16 @@ const {
   SEARCH_REQUEST_STATUS,
 } = require("./search_requests");
 const {
+  __private__: {
+    buildCancelCallPairLockReleaseOptions,
+  },
+} = require("./cancel_call");
+const {
+  __private__: {
+    buildPreActiveSessionPairLockReleaseOptions,
+  },
+} = require("./end_session");
+const {
   applyPreparedPairLockWrites,
   buildPairAttemptId,
   buildSearchRequestActiveRestoreUpdate,
@@ -2248,6 +2258,74 @@ test("releaseSessionPairLocks clears users and search requests for session", asy
   assert.equal(store.get("searchRequests/student-b").matchedUserId, null);
 });
 
+test("cancel call release options stop all participant searches", async () => {
+  const {db, store} = createFakeFirestore(seedExistingStudentSession());
+
+  await db.runTransaction((transaction) =>
+    releaseSessionPairLocksInTransaction(
+      buildCancelCallPairLockReleaseOptions({
+        db,
+        transaction,
+        sessionId: "session-ab",
+        sessionData: store.get("videoSessions/session-ab"),
+        serverTimestamp,
+        fieldDelete,
+      }),
+    ));
+
+  assert.equal(
+    store.get("searchRequests/student-a").status,
+    SEARCH_REQUEST_STATUS.CANCELLED,
+  );
+  assert.equal(
+    store.get("searchRequests/student-a").stopReason,
+    "call_cancelled",
+  );
+  assert.equal(
+    store.get("searchRequests/student-b").status,
+    SEARCH_REQUEST_STATUS.CANCELLED,
+  );
+  assert.equal(
+    store.get("searchRequests/student-b").stopReason,
+    "call_cancelled",
+  );
+});
+
+test("pre-active end release options stop all participant searches", async () => {
+  const {db, store} = createFakeFirestore(seedExistingStudentSession());
+
+  await db.runTransaction((transaction) =>
+    releaseSessionPairLocksInTransaction(
+      buildPreActiveSessionPairLockReleaseOptions({
+        db,
+        transaction,
+        sessionId: "session-ab",
+        sessionData: store.get("videoSessions/session-ab"),
+        serverTimestamp,
+        fieldDelete,
+        searchRequestStatus: SEARCH_REQUEST_STATUS.EXPIRED,
+        stopReason: "pre_active_expired",
+      }),
+    ));
+
+  assert.equal(
+    store.get("searchRequests/student-a").status,
+    SEARCH_REQUEST_STATUS.EXPIRED,
+  );
+  assert.equal(
+    store.get("searchRequests/student-a").stopReason,
+    "pre_active_expired",
+  );
+  assert.equal(
+    store.get("searchRequests/student-b").status,
+    SEARCH_REQUEST_STATUS.EXPIRED,
+  );
+  assert.equal(
+    store.get("searchRequests/student-b").stopReason,
+    "pre_active_expired",
+  );
+});
+
 test("releaseSessionPairLocks restores selected search participant", async () => {
   const seed = seedExistingStudentSession();
   const requesterExpiresAt = timestampFromMillis(fixedNowMillis + 9 * 60_000);
@@ -2484,6 +2562,43 @@ test("active restore helper keeps lifecycle fields and clears match state", () =
     canRestoreSearchRequestToActive({status: SEARCH_REQUEST_STATUS.STOPPED}),
     false,
   );
+});
+
+test("active restore helper clears stale terminal reason and bindings", () => {
+  const update = buildSearchRequestActiveRestoreUpdate({
+    requestData: activeSearchRequest("student-a", {
+      activeSessionId: "session-old",
+      currentSessionId: "session-old",
+      matchedSessionId: "session-old",
+      matchedUserId: "student-b",
+      matchedResponderId: "student-b",
+      matchedRole: "student",
+      pairAttemptId: "pair-old",
+      attemptExcludedCandidateIds: ["student-c"],
+      lockOwner: "pair-old",
+      lockExpiresAt: timestampFromMillis(fixedNowMillis + 30_000),
+      stopReason: "student_pair_response_timeout",
+      stoppedAt: timestampFromMillis(fixedNowMillis - 30_000),
+    }),
+    excludedCandidateIds: ["student-b"],
+    serverTimestamp,
+    fieldDelete,
+  });
+
+  assert.equal(update.status, SEARCH_REQUEST_STATUS.ACTIVE);
+  assert.equal(update.activeSessionId, fieldDelete);
+  assert.equal(update.currentSessionId, null);
+  assert.equal(update.matchedSessionId, fieldDelete);
+  assert.equal(update.matchedUserId, null);
+  assert.equal(update.matchedResponderId, fieldDelete);
+  assert.equal(update.matchedRole, null);
+  assert.equal(update.pairAttemptId, null);
+  assert.deepEqual(update.attemptExcludedCandidateIds, []);
+  assert.equal(update.lockOwner, null);
+  assert.equal(update.lockExpiresAt, null);
+  assert.equal(update.stopReason, null);
+  assert.equal(update.stoppedAt, null);
+  assert.equal(update.stoppedBy, fieldDelete);
 });
 
 test("stopSessionSearchRequests stops search without clearing active call users", async () => {

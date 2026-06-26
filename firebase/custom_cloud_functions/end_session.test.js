@@ -4,9 +4,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const {
   __private__: {
-    buildRestoreSearchExcludedCandidateIdsByParticipantId,
+    buildPreActiveSessionPairLockReleaseOptions,
     buildStudentCallCharge,
-    getPreActiveRestoreSearchParticipantIds,
     hasConnectedCallEvidence,
     hasActiveSubscription,
     isExpiredEndReason,
@@ -77,30 +76,38 @@ test("pre-active session helper requires connected call evidence", () => {
   assert.equal(isExpiredEndReason("user_ended"), false);
 });
 
-test("pre-active restore returns every participant except failed actor", () => {
-  const sessionData = {
-    participantIds: ["student-b", "student-a"],
-    studentId: "student-a",
-    currentTutorId: "student-b",
-    matchContext: {
-      requesterId: "student-a",
-      acceptedResponderId: "student-b",
-    },
-  };
+test("pre-active end closes search without restoring participants", () => {
+  const db = Symbol("db");
+  const transaction = Symbol("transaction");
+  const sessionData = {status: "connecting"};
+  const serverTimestamp = Symbol("serverTimestamp");
+  const fieldDelete = Symbol("fieldDelete");
 
-  assert.deepEqual(
-    getPreActiveRestoreSearchParticipantIds({
-      sessionData,
-      failedParticipantId: "student-b",
-    }),
-    ["student-a"],
-  );
-  assert.deepEqual(
-    buildRestoreSearchExcludedCandidateIdsByParticipantId({
-      restoreParticipantIds: ["student-a"],
-      excludedCandidateIds: ["student-b"],
-    }),
-    {"student-a": ["student-b"]},
+  const options = buildPreActiveSessionPairLockReleaseOptions({
+    db,
+    transaction,
+    sessionId: "session-pre-active-test",
+    sessionData,
+    serverTimestamp,
+    fieldDelete,
+    searchRequestStatus: "expired",
+    stopReason: "pre_active_expired",
+  });
+
+  assert.equal(options.db, db);
+  assert.equal(options.transaction, transaction);
+  assert.equal(options.sessionId, "session-pre-active-test");
+  assert.equal(options.sessionData, sessionData);
+  assert.equal(options.serverTimestamp, serverTimestamp);
+  assert.equal(options.fieldDelete, fieldDelete);
+  assert.equal(options.searchRequestStatus, "expired");
+  assert.equal(options.stopReason, "pre_active_expired");
+  assert.equal(options.releaseCallState, true);
+  assert.equal(options.restoreLegacyAvailability, true);
+  assert.equal(options.restoreSearchParticipantIds, undefined);
+  assert.equal(
+    options.restoreSearchExcludedCandidateIdsByParticipantId,
+    undefined,
   );
 });
 

@@ -4,13 +4,12 @@ const fs = require("node:fs");
 const path = require("node:path");
 const {
   __private__: {
+    buildManualStopPairLockReleaseOptions,
     buildResponse,
     buildStopSearchDecision,
-    buildStopSearchRestoreExcludedCandidateIdsByParticipantId,
     buildStopSessionDecision,
     canStopSessionAfterSearchDecision,
     getAssignedResponderId,
-    getStopSearchRestoreParticipantIds,
     normalizeRequestId,
     normalizeSessionId,
     requestBelongsToUser,
@@ -480,26 +479,33 @@ test("stopSearch is exported and included in readiness deploy target", () => {
   assert.match(deployScript, /functions:custom_cloud_functions:stopSearch\b/);
 });
 
-test("stopSearch restores responder search when requester cancels pair", () => {
-  const restoreParticipantIds = getStopSearchRestoreParticipantIds({
-    responderUserId: "student-b",
-    userId: "student-a",
+test("manual stop closes pair locks without restoring participants", () => {
+  const db = Symbol("db");
+  const transaction = Symbol("transaction");
+  const sessionData = {status: "pending_confirmation"};
+
+  const options = buildManualStopPairLockReleaseOptions({
+    db,
+    transaction,
+    sessionId: "session-manual-stop",
+    sessionData,
+    serverTimestamp,
+    fieldDelete,
   });
 
-  assert.deepEqual(restoreParticipantIds, ["student-b"]);
-  assert.deepEqual(
-    buildStopSearchRestoreExcludedCandidateIdsByParticipantId({
-      restoreParticipantIds,
-      userId: "student-a",
-    }),
-    {"student-b": ["student-a"]},
-  );
-  assert.deepEqual(
-    getStopSearchRestoreParticipantIds({
-      responderUserId: "student-a",
-      userId: "student-a",
-    }),
-    [],
+  assert.equal(options.db, db);
+  assert.equal(options.transaction, transaction);
+  assert.equal(options.sessionId, "session-manual-stop");
+  assert.equal(options.sessionData, sessionData);
+  assert.equal(options.serverTimestamp, serverTimestamp);
+  assert.equal(options.fieldDelete, fieldDelete);
+  assert.equal(options.searchRequestStatus, "stopped");
+  assert.equal(options.stopReason, "manual_stop_search");
+  assert.equal(options.releaseCallState, true);
+  assert.equal(options.restoreSearchParticipantIds, undefined);
+  assert.equal(
+    options.restoreSearchExcludedCandidateIdsByParticipantId,
+    undefined,
   );
 });
 

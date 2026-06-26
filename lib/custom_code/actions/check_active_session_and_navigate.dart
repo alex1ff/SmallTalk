@@ -157,6 +157,20 @@ bool _activeSessionIsJoinableStatus(String? status) {
   return status == 'active' || status == 'connected' || status == 'connecting';
 }
 
+bool _activeSessionIsTerminalStatus(String? status) {
+  switch (status?.trim()) {
+    case 'cancelled':
+    case 'ended':
+    case 'expired':
+    case 'failed':
+    case 'completed':
+    case 'no_tutors_available':
+      return true;
+    default:
+      return false;
+  }
+}
+
 bool _activeSessionIsJoinableParticipant(
   Map<String, dynamic> data,
   String userId,
@@ -676,6 +690,33 @@ Future<DocumentSnapshot<Map<String, dynamic>>?> _readCurrentSessionSnapshot(
       .get();
 }
 
+bool _activeSessionSnapshotHasTerminalStatus(
+  DocumentSnapshot<Map<String, dynamic>>? snapshot,
+) {
+  if (snapshot == null || !snapshot.exists) {
+    return false;
+  }
+  final data = snapshot.data();
+  if (data == null) {
+    return false;
+  }
+  return _activeSessionIsTerminalStatus(_activeSessionNonEmpty(data['status']));
+}
+
+bool _activeSessionSnapshotHasParticipant(
+  DocumentSnapshot<Map<String, dynamic>>? snapshot,
+  String userId,
+) {
+  if (snapshot == null || !snapshot.exists) {
+    return true;
+  }
+  final data = snapshot.data();
+  if (data == null) {
+    return false;
+  }
+  return _activeSessionHasParticipant(data, userId);
+}
+
 Future<_ActiveSessionRecoveryCandidate?> _resolveActiveSessionCandidate({
   required Iterable<DocumentSnapshot<Map<String, dynamic>>> candidates,
   required String userId,
@@ -790,11 +831,39 @@ Future<bool> checkActiveSessionAndNavigate(BuildContext context) async {
           'ActiveSessionRecovery: failed to read active search for $userId: $error',
         );
       }
-      if (activeSearchState?.canResumeActiveSession == true) {
+      DocumentSnapshot<Map<String, dynamic>>? activeSearchSession;
+      var activeSearchSessionRead = false;
+      var activeSearchLinkedSessionTerminal = false;
+      Object? activeSearchSessionReadError;
+
+      Future<DocumentSnapshot<Map<String, dynamic>>?>
+          readActiveSearchSessionOnce() async {
+        if (activeSearchSessionRead) {
+          if (activeSearchSessionReadError != null) {
+            throw activeSearchSessionReadError!;
+          }
+          return activeSearchSession;
+        }
+        activeSearchSessionRead = true;
         try {
-          final activeSearchSession = await _readCurrentSessionSnapshot(
+          activeSearchSession = await _readCurrentSessionSnapshot(
             activeSearchState?.sessionId,
           );
+        } catch (error) {
+          activeSearchSessionReadError = error;
+          rethrow;
+        }
+        activeSearchLinkedSessionTerminal =
+            _activeSessionSnapshotHasTerminalStatus(activeSearchSession);
+        return activeSearchSession;
+      }
+
+      if (activeSearchState?.canResumeActiveSession == true) {
+        try {
+          final activeSearchSession = await readActiveSearchSessionOnce();
+          if (activeSearchLinkedSessionTerminal) {
+            return false;
+          }
           final activeSearchCandidate =
               activeSearchSession != null && activeSearchSession.exists
                   ? await _resolveActiveSessionCandidate(
@@ -816,6 +885,9 @@ Future<bool> checkActiveSessionAndNavigate(BuildContext context) async {
           debugPrint(
             'ActiveSessionRecovery: failed to recover active search session for $userId: $error',
           );
+          if (activeSearchSessionReadError != null) {
+            return false;
+          }
         }
       }
       if (activeSearchState?.canResumeUnboundSearch == true) {
@@ -829,6 +901,23 @@ Future<bool> checkActiveSessionAndNavigate(BuildContext context) async {
         return true;
       }
       if (activeSearchState?.canResumeConnection == true) {
+        try {
+          final activeSearchSession = await readActiveSearchSessionOnce();
+          if (activeSearchLinkedSessionTerminal) {
+            return false;
+          }
+          if (!_activeSessionSnapshotHasParticipant(
+            activeSearchSession,
+            userId,
+          )) {
+            return false;
+          }
+        } catch (error) {
+          debugPrint(
+            'ActiveSessionRecovery: failed to check search session terminal status for $userId: $error',
+          );
+          return false;
+        }
         debugPrint(
           'ActiveSessionRecovery: connection search detected for $userId',
         );

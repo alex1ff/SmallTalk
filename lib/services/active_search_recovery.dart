@@ -25,9 +25,15 @@ class ActiveSearchRecoveryState {
   final bool isExpired;
 
   bool get hasActiveSearch =>
-      exists && belongsToUser && isLiveStatus && !isExpired;
+      exists &&
+      belongsToUser &&
+      isLiveStatus &&
+      !isExpired &&
+      !hasTerminalResult;
 
   bool get canResumeSearch => hasActiveSearch && requestId != null;
+
+  bool get hasTerminalResult => activeSearchRequestHasTerminalResult(data);
 
   bool get isTerminalStatus {
     final normalizedStatus = status;
@@ -49,7 +55,11 @@ class ActiveSearchRecoveryState {
   bool get canResumeUnboundSearch => canResumeSearch && sessionId == null;
 
   bool get canResumeActiveSession {
-    if (!exists || !belongsToUser || sessionId == null || isExpired) {
+    if (!exists ||
+        !belongsToUser ||
+        sessionId == null ||
+        isExpired ||
+        hasTerminalResult) {
       return false;
     }
 
@@ -57,7 +67,11 @@ class ActiveSearchRecoveryState {
   }
 
   bool get canResumeConnection {
-    if (!exists || !belongsToUser || sessionId == null || isExpired) {
+    if (!exists ||
+        !belongsToUser ||
+        sessionId == null ||
+        isExpired ||
+        hasTerminalResult) {
       return false;
     }
 
@@ -156,10 +170,48 @@ bool activeSearchRequestHasLiveStatus(Map<String, dynamic> data) {
   }
 }
 
+bool _activeSearchStringIn(
+  Map<String, dynamic> data,
+  Iterable<String> keys,
+  Set<String> values,
+) {
+  for (final key in keys) {
+    final value = activeSearchNonEmpty(data[key]);
+    if (value != null && values.contains(value)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool activeSearchRequestHasTerminalResult(Map<String, dynamic> data) {
+  const terminalSearchStatuses = <String>{
+    'stopped',
+    'expired',
+    'cancelled',
+    'error',
+    'failed',
+    'completed',
+  };
+  if (_activeSearchStringIn(data, const ['status'], terminalSearchStatuses)) {
+    return true;
+  }
+
+  if (activeSearchNonEmpty(data['stopReason']) != null) {
+    return true;
+  }
+
+  return false;
+}
+
 bool activeSearchRequestIsExpired(
   Map<String, dynamic> data, {
   DateTime? now,
 }) {
+  if (activeSearchRequestHasTerminalResult(data)) {
+    return true;
+  }
+
   final status = activeSearchNonEmpty(data['status']);
   if (status == 'stopped' ||
       status == 'expired' ||

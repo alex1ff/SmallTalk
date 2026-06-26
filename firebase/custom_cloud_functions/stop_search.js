@@ -149,36 +149,6 @@ function getAssignedResponderId(sessionData = {}) {
     normalizeNonEmptyString(sessionData.matchContext?.acceptedResponderId);
 }
 
-function getStopSearchRestoreParticipantIds({
-  responderUserId = "",
-  userId = "",
-}) {
-  const normalizedResponderUserId = normalizeDocumentId(responderUserId);
-  const normalizedUserId = normalizeDocumentId(userId);
-  return normalizedResponderUserId &&
-    normalizedResponderUserId !== normalizedUserId ?
-    [normalizedResponderUserId] :
-    [];
-}
-
-function buildStopSearchRestoreExcludedCandidateIdsByParticipantId({
-  restoreParticipantIds = [],
-  userId = "",
-}) {
-  const normalizedUserId = normalizeDocumentId(userId);
-  return Object.fromEntries(
-    restoreParticipantIds
-      .map(normalizeDocumentId)
-      .filter(Boolean)
-      .map((participantId) => [
-        participantId,
-        normalizedUserId && normalizedUserId !== participantId ?
-          [normalizedUserId] :
-          [],
-      ]),
-  );
-}
-
 function timestampToMillis(value) {
   if (!value) {
     return null;
@@ -482,6 +452,27 @@ function canStopSessionAfterSearchDecision({
   return Boolean(explicitSessionId) || !mismatchReason;
 }
 
+function buildManualStopPairLockReleaseOptions({
+  db,
+  transaction,
+  sessionId,
+  sessionData = {},
+  serverTimestamp,
+  fieldDelete,
+}) {
+  return {
+    db,
+    transaction,
+    sessionId,
+    sessionData,
+    serverTimestamp,
+    fieldDelete,
+    searchRequestStatus: SEARCH_REQUEST_STATUS.STOPPED,
+    stopReason: "manual_stop_search",
+    releaseCallState: true,
+  };
+}
+
 function throwCallableError(decision) {
   throw new functions.https.HttpsError(decision.code, decision.message);
 }
@@ -624,27 +615,16 @@ exports.stopSearch = functions
       }
 
       if (sessionDecision.sessionUpdate && sessionRef) {
-        const restoreSearchParticipantIds = getStopSearchRestoreParticipantIds({
-          responderUserId,
-          userId,
-        });
-        await releaseSessionPairLocksInTransaction({
-          db,
-          transaction,
-          sessionId: sessionIdForStop,
-          sessionData,
-          serverTimestamp,
-          fieldDelete,
-          searchRequestStatus: SEARCH_REQUEST_STATUS.STOPPED,
-          stopReason: "manual_stop_search",
-          releaseCallState: true,
-          restoreSearchParticipantIds,
-          restoreSearchExcludedCandidateIdsByParticipantId:
-            buildStopSearchRestoreExcludedCandidateIdsByParticipantId({
-              restoreParticipantIds: restoreSearchParticipantIds,
-              userId,
-            }),
-        });
+        await releaseSessionPairLocksInTransaction(
+          buildManualStopPairLockReleaseOptions({
+            db,
+            transaction,
+            sessionId: sessionIdForStop,
+            sessionData,
+            serverTimestamp,
+            fieldDelete,
+          }),
+        );
       }
       if (searchDecision.update) {
         transaction.update(searchRequestRef, searchDecision.update);
@@ -717,14 +697,13 @@ exports.__private__ = {
   STOPPABLE_SESSION_STATUSES,
   TERMINAL_SEARCH_REQUEST_STATUSES,
   TERMINAL_SESSION_STATUSES,
+  buildManualStopPairLockReleaseOptions,
   buildResponse,
   buildStopSearchDecision,
-  buildStopSearchRestoreExcludedCandidateIdsByParticipantId,
   buildStopSessionDecision,
   canStopSessionAfterSearchDecision,
   cancelSentNotificationsForSession,
   getAssignedResponderId,
-  getStopSearchRestoreParticipantIds,
   normalizeRequestId,
   normalizeSessionId,
   requestBelongsToUser,

@@ -569,6 +569,18 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
         if (sessionId == null) {
           return;
         }
+        final canRestoreConnection =
+            await _canRestoreRecoveredConnectionSession(
+          sessionId: sessionId,
+          userId: userId,
+        );
+        if (!canRestoreConnection ||
+            !mounted ||
+            _currentSearchUserId() != userId ||
+            _searchState != StudentDashboardSearchState.idle ||
+            _suppressedActiveSearchUserId == userId) {
+          return;
+        }
 
         _clearActiveSearchRecoveryRetryTimer();
         _clearSearchTimeoutTimer();
@@ -615,6 +627,44 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     } finally {
       _activeSearchRecoveryInFlight = false;
     }
+  }
+
+  Future<bool> _canRestoreRecoveredConnectionSession({
+    required String sessionId,
+    required String userId,
+  }) async {
+    try {
+      final session = await _readActiveSessionOnce(sessionId);
+      if (session == null) {
+        return true;
+      }
+      return !_isTerminalSessionStatus(session.status) &&
+          _sessionHasParticipant(session, userId);
+    } catch (error) {
+      debugPrint(
+        'StudentsDashboard: failed to check recovered connection session '
+        '$sessionId: $error',
+      );
+      return false;
+    }
+  }
+
+  bool _sessionHasParticipant(VideoSessionsRecord session, String userId) {
+    final normalizedUserId = _normalizedNonEmptyString(userId);
+    if (normalizedUserId == null) {
+      return false;
+    }
+
+    if (session.participantIds.any(
+      (participantId) =>
+          _normalizedNonEmptyString(participantId) == normalizedUserId,
+    )) {
+      return true;
+    }
+
+    return _sessionRequesterId(session) == normalizedUserId ||
+        _sessionResponderId(session) == normalizedUserId ||
+        _normalizedNonEmptyString(session.tutorId) == normalizedUserId;
   }
 
   Future<Map<String, dynamic>> _acceptForegroundSessionRequest(
@@ -825,6 +875,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       case 'ended':
       case 'expired':
       case 'failed':
+      case 'completed':
       case 'no_tutors_available':
         return true;
       default:
