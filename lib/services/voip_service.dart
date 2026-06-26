@@ -398,6 +398,7 @@ class VoIPService {
   );
   static final Map<String, DateTime> _processAcceptClaimedAtBySession = {};
   static const Duration _processAcceptDedupeWindow = Duration(minutes: 2);
+  static const Duration _declineDedupeWindow = Duration(minutes: 2);
   static const Duration _pendingNavigationRetryDelay =
       Duration(milliseconds: 100);
   static const int _pendingNavigationMaxAttempts = 600;
@@ -428,6 +429,8 @@ class VoIPService {
   final Set<String> _acceptedSessions = {};
   final Set<String> _handledCallKitAcceptIds = {};
   final Map<String, DateTime> _recentAcceptBySession = {};
+  final Set<String> _declineInProgress = {};
+  final Map<String, DateTime> _recentDeclineBySession = {};
   final Map<String, int> _sessionStateGenerations = {};
   final Set<String> _handledNotificationIds = {};
   String? _lastAcceptedSessionId;
@@ -639,6 +642,17 @@ class VoIPService {
   @visibleForTesting
   bool debugAcceptInProgressForTesting(String sessionId) {
     return _acceptInProgress.contains(sessionId);
+  }
+
+  @visibleForTesting
+  bool debugDeclineInProgressForTesting(String sessionId) {
+    return _declineInProgress.contains(sessionId);
+  }
+
+  @visibleForTesting
+  bool debugRecentlyDeclinedSessionForTesting(String sessionId) {
+    _pruneRecentDeclineState(DateTime.now());
+    return _recentDeclineBySession.containsKey(sessionId);
   }
 
   @visibleForTesting
@@ -1269,6 +1283,8 @@ class VoIPService {
     _acceptedSessions.clear();
     _handledCallKitAcceptIds.clear();
     _recentAcceptBySession.clear();
+    _declineInProgress.clear();
+    _recentDeclineBySession.clear();
     _sessionStateGenerations.clear();
     _handledNotificationIds.clear();
     _sessionCallKitIds.clear();
@@ -1316,6 +1332,7 @@ class VoIPService {
   void _pruneStaleSessionState() {
     if (_sessionStateTouchedAt.isEmpty &&
         _recentAcceptBySession.isEmpty &&
+        _recentDeclineBySession.isEmpty &&
         _acceptedSessions.isEmpty &&
         _sessionCallKitIds.isEmpty) {
       return;
@@ -1339,6 +1356,7 @@ class VoIPService {
         staleSessionIds.add(entry.key);
       }
     }
+    _pruneRecentDeclineState(now);
 
     for (final sessionId in List<String>.from(_acceptedSessions)) {
       final touchedAt = _sessionStateTouchedAt[sessionId];
@@ -1761,6 +1779,12 @@ class VoIPService {
       return !requireQueuedUserForUntargeted && currentUserId != null;
     }
     return currentUserId != null && targetUserId == currentUserId;
+  }
+
+  void _pruneRecentDeclineState(DateTime now) {
+    _recentDeclineBySession.removeWhere(
+      (_, declinedAt) => now.difference(declinedAt) >= _declineDedupeWindow,
+    );
   }
 
   bool _shouldDropCallKitActionForCurrentUser({
@@ -2262,16 +2286,33 @@ class VoIPService {
           'ℹ️ VoIPService: Ignoring decline for active session: $sessionId');
       return;
     }
+    final declineTime = DateTime.now();
+    _pruneRecentDeclineState(declineTime);
+    if (_declineInProgress.contains(sessionId)) {
+      debugPrint('⚠️ VoIPService: Decline already in progress for $sessionId');
+      return;
+    }
+    final recentDeclineAt = _recentDeclineBySession[sessionId];
+    if (recentDeclineAt != null &&
+        declineTime.difference(recentDeclineAt) < _declineDedupeWindow) {
+      debugPrint('⚠️ VoIPService: Duplicate decline event for $sessionId');
+      return;
+    }
 
-    _clearSessionState(sessionId);
+    _declineInProgress.add(sessionId);
+    _touchSessionState(sessionId);
     debugPrint('❌ VoIPService: Call declined: $sessionId');
 
     try {
       await _callDeclineCallFunction(sessionId);
+      _recentDeclineBySession[sessionId] = DateTime.now();
+      _clearSessionState(sessionId);
 
       debugPrint('✅ VoIPService: declineCall completed');
     } catch (e) {
       debugPrint('❌ VoIPService: Error declining call: $e');
+    } finally {
+      _declineInProgress.remove(sessionId);
     }
   }
 
@@ -2377,6 +2418,7 @@ class VoIPService {
     _acceptInProgress.remove(sessionId);
     _acceptedSessions.remove(sessionId);
     _recentAcceptBySession.remove(sessionId);
+    _declineInProgress.remove(sessionId);
     _processAcceptClaimedAtBySession.remove(sessionId);
     final callKitIdForSession = _sessionCallKitIds[sessionId];
     if (callKitIdForSession != null) {

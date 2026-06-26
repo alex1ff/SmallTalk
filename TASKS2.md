@@ -309,7 +309,7 @@
 - [x] Обработать accept из background.
 - [x] Обработать accept из закрытого приложения.
 - [x] Обработать accept/decline, если CallKit event пришел до готовности auth, router или `VoIPService.initialize()`.
-- [ ] Обработать decline.
+- [x] Обработать decline.
 - [ ] Обработать timeout 45 секунд.
 - [ ] Проверить, что после accept приложение открывает страницу звонка.
 - [ ] Проверить, что после decline/timeout backend отменяет пару или продолжает подбор.
