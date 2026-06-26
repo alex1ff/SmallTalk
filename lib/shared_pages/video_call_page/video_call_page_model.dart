@@ -7,6 +7,10 @@ import 'package:flutter/material.dart';
 class VideoCallPageModel extends FlutterFlowModel<VideoCallPageWidget> {
   ///  State fields for stateful widgets in this page.
 
+  @visibleForTesting
+  static Stream<VideoSessionsRecord> Function(DocumentReference sessionRef)?
+      debugSessionStream;
+
   // Cached session stream so it is not recreated on every build().
   Stream<VideoSessionsRecord>? sessionStream;
   DocumentReference? _sessionRef;
@@ -23,7 +27,10 @@ class VideoCallPageModel extends FlutterFlowModel<VideoCallPageWidget> {
     }
 
     _sessionRef = videoDocRef;
-    sessionStream = VideoSessionsRecord.getDocument(videoDocRef);
+    final debugSessionStream = VideoCallPageModel.debugSessionStream;
+    sessionStream = debugSessionStream != null
+        ? debugSessionStream(videoDocRef)
+        : VideoSessionsRecord.getDocument(videoDocRef);
   }
 
   @override

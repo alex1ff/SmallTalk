@@ -1,3 +1,4 @@
+import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -92,22 +93,36 @@ Map<String, dynamic> _sessionMatchContext(Map<String, dynamic> sessionData) {
 
 String? resolveSessionRequesterId(Map<String, dynamic> sessionData) {
   final matchContext = _sessionMatchContext(sessionData);
-  final requesterId = _normalizeSessionParticipantId(
-    sessionData['studentId'] ??
-        matchContext['requesterId'] ??
-        sessionData['requesterId'],
-  );
-  return requesterId.isNotEmpty ? requesterId : null;
+  for (final candidate in [
+    sessionData['studentId'],
+    matchContext['requesterId'],
+    sessionData['requesterId'],
+  ]) {
+    final requesterId = _normalizeSessionParticipantId(candidate);
+    if (requesterId.isNotEmpty) {
+      return requesterId;
+    }
+  }
+  return null;
 }
 
 String? resolveSessionResponderId(Map<String, dynamic> sessionData) {
   final matchContext = _sessionMatchContext(sessionData);
-  final responderId = _normalizeSessionParticipantId(
-    sessionData['tutorId'] ??
-        sessionData['currentTutorId'] ??
-        matchContext['acceptedResponderId'],
-  );
-  return responderId.isNotEmpty ? responderId : null;
+  for (final candidate in [
+    sessionData['tutorId'],
+    matchContext['acceptedResponderId'],
+    sessionData['responderId'],
+    sessionData['currentResponderId'],
+    sessionData['currentTutorId'],
+    matchContext['responderId'],
+    matchContext['currentResponderId'],
+  ]) {
+    final responderId = _normalizeSessionParticipantId(candidate);
+    if (responderId.isNotEmpty) {
+      return responderId;
+    }
+  }
+  return null;
 }
 
 List<String> resolveSessionParticipantIds(Map<String, dynamic> sessionData) {
@@ -334,12 +349,16 @@ Future<PairReviewState> resolveCurrentUserPairReview({
 Map<String, dynamic> buildSessionReviewUpdate({
   required bool isTeacher,
   DocumentReference? reviewRef,
+  bool? reviewedAsRequester,
 }) {
+  final markRequesterReviewed = reviewedAsRequester ?? !isTeacher;
   return <String, dynamic>{
-    if (isTeacher) 'tutorHasReviewed': true,
-    if (!isTeacher) 'studentHasReviewed': true,
-    if (isTeacher && reviewRef != null) 'tutorReviewRef': reviewRef,
-    if (!isTeacher && reviewRef != null) 'studentReviewRef': reviewRef,
+    if (markRequesterReviewed) 'studentHasReviewed': true,
+    if (!markRequesterReviewed) 'tutorHasReviewed': true,
+    if (markRequesterReviewed && reviewRef != null)
+      'studentReviewRef': reviewRef,
+    if (!markRequesterReviewed && reviewRef != null)
+      'tutorReviewRef': reviewRef,
   };
 }
 
@@ -347,12 +366,41 @@ Future<void> syncSessionReviewState({
   required DocumentReference sessionRef,
   required bool isTeacher,
   DocumentReference? reviewRef,
+  String? currentUserId,
 }) async {
+  bool? reviewedAsRequester;
+
+  final normalizedCurrentUserId = (currentUserId ?? '').trim();
+  if (normalizedCurrentUserId.isNotEmpty) {
+    try {
+      final sessionSnap = await sessionRef.get();
+      final rawSessionData = sessionSnap.data();
+      if (rawSessionData is Map) {
+        final sessionData = rawSessionData.map(
+          (key, value) => MapEntry(key.toString(), value),
+        );
+        final participantResolution = resolveSessionReviewParticipant(
+          sessionData: sessionData,
+          currentUserId: normalizedCurrentUserId,
+        );
+        if (participantResolution.isRequester) {
+          reviewedAsRequester = true;
+        } else if (participantResolution.isResponder) {
+          reviewedAsRequester = false;
+        }
+      }
+    } catch (error) {
+      debugPrint(
+          'Failed to resolve review side for ${sessionRef.path}: $error');
+    }
+  }
+
   try {
     await sessionRef.set(
       buildSessionReviewUpdate(
         isTeacher: isTeacher,
         reviewRef: reviewRef,
+        reviewedAsRequester: reviewedAsRequester,
       ),
       SetOptions(merge: true),
     );
@@ -467,6 +515,7 @@ Future<ReviewSubmissionResult> submitSessionReview({
     sessionRef: sessionRef,
     isTeacher: isTeacher,
     reviewRef: reviewRef,
+    currentUserId: currentUserUid,
   );
 
   return ReviewSubmissionResult(

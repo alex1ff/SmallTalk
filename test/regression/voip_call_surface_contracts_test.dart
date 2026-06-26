@@ -1641,10 +1641,12 @@ void main() {
       expect(widgetSource,
           contains('final terminalSessionRef = widget.videoDocRef;'));
       expect(widgetSource, contains('terminalSessionId != null'));
+      expect(widgetSource, contains('VideoCallPageWidget.debugEndCurrentCall'));
       expect(
-          widgetSource,
-          contains(
-              'VoIPService().endCurrentCall(sessionId: terminalSessionId)'));
+        widgetSource,
+        contains('VoIPService().endCurrentCall('),
+      );
+      expect(widgetSource, contains('sessionId: terminalSessionId'));
       expect(widgetSource, contains("sessionStatus == 'expired'"));
       expect(widgetSource, contains('sessionRefOverride: terminalSessionRef'));
 
@@ -1657,6 +1659,125 @@ void main() {
         modelSource,
         contains('VideoSessionsRecord.getDocument(videoDocRef)'),
       );
+    });
+
+    test('VideoCallPage opens call summary after terminal call events', () {
+      final widgetSource = _source(
+          'lib/shared_pages/video_call_page/video_call_page_widget.dart');
+      final summarySource =
+          _source('lib/shared_pages/call_summary/call_summary_widget.dart');
+      final navigateToSummarySource =
+          _curlyBlockSource(widgetSource, 'Future<void> _navigateToSummary(');
+      final connectedCallStartedAtSource = _curlyBlockSource(
+        widgetSource,
+        'DateTime? _connectedCallStartedAt(',
+      );
+      final connectedCallMetadataAtSource = _curlyBlockSource(
+        widgetSource,
+        'DateTime? _connectedCallMetadataAt(',
+      );
+      final summaryGateSource = _curlyBlockSource(
+        widgetSource,
+        'bool _shouldOpenSummaryForTerminalStatus(',
+      );
+      final terminalStatusSource = _curlyBlockSource(
+        widgetSource,
+        'if (_isTerminalSessionStatus(sessionStatus)) {',
+      );
+      final endCallCallbackSource = _curlyBlockSource(
+        widgetSource,
+        'endCallCallback: (endReason) async {',
+      );
+      final participantLeftCallbackSource = _curlyBlockSource(
+        widgetSource,
+        'participantLeftCallback: () async {',
+      );
+      final summaryNavigateHomeSource = _curlyBlockSource(
+        summarySource,
+        'void _navigateToHome() {',
+      );
+      final summaryReviewSectionSource = _curlyBlockSource(
+        summarySource,
+        'Widget _buildReviewSection(BuildContext context) {',
+      );
+      final summaryFinishSource = _curlyBlockSource(
+        summarySource,
+        'Future<void> finishSummary() async {',
+      );
+      final studentDashboardQuerySource = _sourceBetween(
+        summaryNavigateHomeSource,
+        "'zn': serializeParam(",
+        '}.withoutNulls',
+      );
+
+      expect(navigateToSummarySource, contains('_didNavigateToSummary'));
+      expect(navigateToSummarySource, contains('context.goNamed('));
+      expect(navigateToSummarySource, contains('CallSummaryWidget.routeName'));
+      expect(navigateToSummarySource, contains("'userRef': serializeParam("));
+      expect(navigateToSummarySource, contains("'sessionID': serializeParam("));
+      expect(navigateToSummarySource, contains("'lang': serializeParam("));
+      expect(navigateToSummarySource, contains("'dur': serializeParam("));
+      expect(navigateToSummarySource,
+          contains('_connectedCallStartedAt(session)'));
+      expect(connectedCallMetadataAtSource, contains('value is Timestamp'));
+      expect(connectedCallMetadataAtSource,
+          contains('DateTime.fromMillisecondsSinceEpoch'));
+      expect(connectedCallMetadataAtSource,
+          contains('DateTime.tryParse(trimmed)'));
+      expect(connectedCallStartedAtSource,
+          contains("sessionMetadata['callConnectedAt']"));
+      expect(
+        connectedCallStartedAtSource,
+        contains("sessionMetadata['callConnectedAtTimestamp']"),
+      );
+      expect(
+        connectedCallStartedAtSource,
+        contains("sessionMetadata['dailyWebhookConnectedAt']"),
+      );
+      expect(summaryGateSource, contains("sessionStatus == 'ended'"));
+      expect(summaryGateSource, contains("sessionStatus == 'cancelled'"));
+      expect(summaryGateSource, contains("sessionStatus == 'expired'"));
+      expect(summaryGateSource, contains('_hasConnectedCallEvidence(session)'));
+      expect(terminalStatusSource,
+          contains('_shouldOpenSummaryForTerminalStatus('));
+      expect(terminalStatusSource, contains('_didClearTerminalCallUi'));
+      expect(terminalStatusSource, contains('_navigateToSummary('));
+      expect(
+        terminalStatusSource,
+        contains('VideoCallPageWidget.debugEndCurrentCall'),
+      );
+      expect(
+        terminalStatusSource,
+        contains('VoIPService().endCurrentCall('),
+      );
+      expect(terminalStatusSource, contains('sessionId: terminalSessionId'));
+      expect(
+        terminalStatusSource,
+        contains('sessionRefOverride: terminalSessionRef'),
+      );
+      expect(terminalStatusSource, contains('if (shouldOpenSummary)'));
+      expect(
+          terminalStatusSource, contains('_buildMissingSessionState(context)'));
+      expect(endCallCallbackSource,
+          contains('await _openSummaryAfterCallCallback('));
+      expect(endCallCallbackSource,
+          contains('allowConnectedSnapshotFallback: false'));
+      expect(
+        participantLeftCallbackSource,
+        contains('await _openSummaryAfterCallCallback('),
+      );
+      expect(
+        participantLeftCallbackSource,
+        contains('allowConnectedSnapshotFallback: true'),
+      );
+      expect(
+          summarySource, contains("static String routeName = 'CallSummary'"));
+      expect(summaryFinishSource, contains('submitSessionReview('));
+      expect(summaryReviewSectionSource, contains('PairReviewContent('));
+      expect(summaryNavigateHomeSource,
+          contains('StudentsDashboardWidget.routeName'));
+      expect(studentDashboardQuerySource, contains('false'));
+      expect(studentDashboardQuerySource, contains('ParamType.bool'));
     });
 
     test('Daily call and chat controls have accessible labels', () {

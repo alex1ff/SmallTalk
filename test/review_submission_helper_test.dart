@@ -113,7 +113,8 @@ void main() {
   });
 
   group('session review participant resolution', () {
-    test('prefers participantIds plus generalized requester/responder fields', () {
+    test('prefers participantIds plus generalized requester/responder fields',
+        () {
       final resolution = resolveSessionReviewParticipant(
         sessionData: {
           'participantIds': ['user-a'],
@@ -128,6 +129,38 @@ void main() {
       expect(resolution.isParticipant, isTrue);
       expect(resolution.isRequester, isTrue);
       expect(resolution.isResponder, isFalse);
+      expect(resolution.counterpartUserId, 'user-b');
+    });
+
+    test('resolves neutral responder fields without legacy tutor mirrors', () {
+      final resolution = resolveSessionReviewParticipant(
+        sessionData: {
+          'requesterId': 'user-a',
+          'currentResponderId': 'user-b',
+        },
+        currentUserId: 'user-a',
+      );
+
+      expect(resolution.isParticipant, isTrue);
+      expect(resolution.isRequester, isTrue);
+      expect(resolution.isResponder, isFalse);
+      expect(resolution.counterpartUserId, 'user-b');
+    });
+
+    test('skips empty legacy responder fields before neutral responder fields',
+        () {
+      final resolution = resolveSessionReviewParticipant(
+        sessionData: {
+          'studentId': '',
+          'requesterId': 'user-a',
+          'tutorId': '   ',
+          'currentTutorId': '',
+          'responderId': 'user-b',
+        },
+        currentUserId: 'user-a',
+      );
+
+      expect(resolution.isParticipant, isTrue);
       expect(resolution.counterpartUserId, 'user-b');
     });
 
@@ -159,16 +192,38 @@ void main() {
       expect(resolution.counterpartUserId, isNull);
     });
 
-    test('Call Details wires counterpart resolution through the shared helper', () {
+    test(
+        'review sync update marks requester side independently from profile role',
+        () {
+      expect(
+        buildSessionReviewUpdate(
+          isTeacher: true,
+          reviewedAsRequester: true,
+        ),
+        {'studentHasReviewed': true},
+      );
+      expect(
+        buildSessionReviewUpdate(
+          isTeacher: false,
+          reviewedAsRequester: false,
+        ),
+        {'tutorHasReviewed': true},
+      );
+    });
+
+    test('Call Details wires counterpart resolution through the shared helper',
+        () {
       final source = File(
         'lib/shared_pages/call_details/call_details_widget.dart',
       ).readAsStringSync();
 
       expect(source, contains('resolveSessionReviewParticipant('));
-      expect(source, contains('_participantResolution(session).counterpartUserId'));
+      expect(source,
+          contains('_participantResolution(session).counterpartUserId'));
     });
 
-    test('Video Call summary routing uses the shared counterpart resolution', () {
+    test('Video Call summary routing uses the shared counterpart resolution',
+        () {
       final source = File(
         'lib/shared_pages/video_call_page/video_call_page_widget.dart',
       ).readAsStringSync();

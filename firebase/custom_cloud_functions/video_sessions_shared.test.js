@@ -148,6 +148,17 @@ test("getSessionParticipantIds includes accepted responder fallback", () => {
   );
 });
 
+test("getSessionParticipantIds skips empty legacy requester fields", () => {
+  assert.deepEqual(
+    getSessionParticipantIds({
+      studentId: "   ",
+      requesterId: "requester-a",
+      responderId: "responder-b",
+    }),
+    ["requester-a", "responder-b"],
+  );
+});
+
 test("getAssignedResponderId supports student responder assignments", () => {
   assert.equal(
     getAssignedResponderId({currentResponderId: "student-b"}),
@@ -159,6 +170,13 @@ test("getAssignedResponderId supports student responder assignments", () => {
       currentTutorId: "teacher-a",
     }),
     "student-b",
+  );
+  assert.equal(
+    getAssignedResponderId({
+      responderId: "student-neutral",
+      currentTutorId: "teacher-a",
+    }),
+    "student-neutral",
   );
   assert.equal(
     getAssignedResponderId({currentTutorId: "teacher-a"}),
@@ -181,6 +199,14 @@ test("getAssignedResponderId supports student responder assignments", () => {
       currentResponderId: "stale-student",
     }),
     "student-c",
+  );
+  assert.equal(
+    getAssignedResponderId({
+      tutorId: "   ",
+      responderId: "student-b",
+      currentTutorId: "teacher-a",
+    }),
+    "student-b",
   );
   assert.equal(
     getAssignedResponderId({

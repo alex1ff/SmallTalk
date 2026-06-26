@@ -671,9 +671,9 @@ function buildStoredMatchProfile(
 
 function getRequesterId(sessionData = {}) {
   return normalizeString(
-    sessionData.studentId ||
-      sessionData.matchContext?.requesterId ||
-      sessionData.requesterId,
+    normalizeString(sessionData.studentId) ||
+      normalizeString(sessionData.matchContext?.requesterId) ||
+      normalizeString(sessionData.requesterId),
   ) || null;
 }
 
@@ -681,8 +681,11 @@ function getAssignedResponderId(sessionData = {}) {
   return normalizeString(
     normalizeString(sessionData.tutorId) ||
       normalizeString(sessionData.matchContext?.acceptedResponderId) ||
+      normalizeString(sessionData.responderId) ||
       normalizeString(sessionData.currentResponderId) ||
-      normalizeString(sessionData.currentTutorId),
+      normalizeString(sessionData.currentTutorId) ||
+      normalizeString(sessionData.matchContext?.responderId) ||
+      normalizeString(sessionData.matchContext?.currentResponderId),
   ) || null;
 }
 

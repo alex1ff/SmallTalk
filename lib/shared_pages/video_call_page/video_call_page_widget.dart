@@ -36,6 +36,12 @@ class VideoCallPageWidget extends StatefulWidget {
   static String routeName = 'VideoCallPage';
   static String routePath = '/videoCallPage';
 
+  @visibleForTesting
+  static Future<bool> Function()? debugEnsureMediaPermissions;
+
+  @visibleForTesting
+  static Future<void> Function(String sessionId)? debugEndCurrentCall;
+
   @override
   State<VideoCallPageWidget> createState() => _VideoCallPageWidgetState();
 }
@@ -51,6 +57,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
   String? _tokenLoadingSessionId;
   String? _lastTokenSessionId;
   bool _didNavigateToSummary = false;
+  bool _didClearTerminalCallUi = false;
   String? _lastLoggedTokenSource;
   String? _lastLoggedRoomName;
   String? _lastLoggedRoomUrl;
@@ -143,6 +150,12 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
   }) async {
     if (!_hasValidVideoDocRef) {
       return false;
+    }
+
+    final debugEnsureMediaPermissions =
+        VideoCallPageWidget.debugEnsureMediaPermissions;
+    if (debugEnsureMediaPermissions != null) {
+      return debugEnsureMediaPermissions();
     }
 
     final hasMediaPermissions = await ensureCameraAndMicrophonePermissions();
@@ -300,6 +313,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
     _tokenLoadingSessionId = null;
     _lastTokenSessionId = null;
     _didNavigateToSummary = false;
+    _didClearTerminalCallUi = false;
     _lastLoggedTokenSource = null;
     _lastLoggedRoomName = null;
     _lastLoggedRoomUrl = null;
@@ -347,6 +361,128 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
         lowered == 'none');
   }
 
+  bool _hasConnectedCallEvidence(VideoSessionsRecord? session) {
+    if (session == null) return false;
+
+    final sessionMetadata = session.snapshotData['sessionMetadata'];
+    if (sessionMetadata is! Map) return false;
+
+    for (final connectedAt in [
+      sessionMetadata['callConnectedAt'],
+      sessionMetadata['callConnectedAtTimestamp'],
+      sessionMetadata['dailyWebhookConnectedAt'],
+    ]) {
+      if (_connectedCallMetadataAt(connectedAt) != null) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  DateTime? _connectedCallMetadataAt(dynamic value) {
+    if (value is DateTime) return value;
+    if (value is Timestamp) return value.toDate();
+    if (value is num && value > 0) {
+      try {
+        return DateTime.fromMillisecondsSinceEpoch(value.toInt());
+      } catch (_) {
+        return null;
+      }
+    }
+    if (value is String) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty) return null;
+
+      final numericMillis = int.tryParse(trimmed);
+      if (numericMillis != null && numericMillis > 0) {
+        try {
+          return DateTime.fromMillisecondsSinceEpoch(numericMillis);
+        } catch (_) {
+          return null;
+        }
+      }
+
+      return DateTime.tryParse(trimmed);
+    }
+    return null;
+  }
+
+  DateTime? _connectedCallStartedAt(VideoSessionsRecord? session) {
+    if (session == null) return null;
+    final sessionMetadata = session.snapshotData['sessionMetadata'];
+    if (sessionMetadata is! Map) return null;
+
+    for (final connectedAt in [
+      sessionMetadata['callConnectedAt'],
+      sessionMetadata['callConnectedAtTimestamp'],
+      sessionMetadata['dailyWebhookConnectedAt'],
+    ]) {
+      final startedAt = _connectedCallMetadataAt(connectedAt);
+      if (startedAt != null) {
+        return startedAt;
+      }
+    }
+    return null;
+  }
+
+  bool _shouldOpenSummaryForTerminalStatus(
+    String? sessionStatus,
+    VideoSessionsRecord? session,
+  ) {
+    if (sessionStatus == 'ended') return true;
+    if (sessionStatus == 'cancelled' || sessionStatus == 'expired') {
+      return _hasConnectedCallEvidence(session);
+    }
+    return false;
+  }
+
+  bool _isTerminalSessionStatus(String? sessionStatus) {
+    return sessionStatus == 'ended' ||
+        sessionStatus == 'cancelled' ||
+        sessionStatus == 'expired';
+  }
+
+  Future<VideoSessionsRecord?> _loadLatestSessionForSummary(
+    VideoSessionsRecord? fallbackSession,
+  ) async {
+    final sessionRef = widget.videoDocRef;
+    if (sessionRef == null) return fallbackSession;
+
+    try {
+      return await VideoSessionsRecord.getDocumentOnce(sessionRef);
+    } catch (_) {
+      return fallbackSession;
+    }
+  }
+
+  Future<void> _openSummaryAfterCallCallback(
+    VideoSessionsRecord? fallbackSession, {
+    required bool allowConnectedSnapshotFallback,
+  }) async {
+    if (!mounted || _didNavigateToSummary) return;
+
+    final latestSession = await _loadLatestSessionForSummary(fallbackSession);
+    if (!mounted || _didNavigateToSummary) return;
+
+    final latestStatus = _nonEmptyValue(latestSession?.status);
+    final shouldOpenSummary =
+        _shouldOpenSummaryForTerminalStatus(latestStatus, latestSession) ||
+            (allowConnectedSnapshotFallback &&
+                _hasConnectedCallEvidence(latestSession));
+
+    if (shouldOpenSummary) {
+      await _navigateToSummary(
+        latestSession,
+        sessionRefOverride: widget.videoDocRef,
+      );
+      return;
+    }
+
+    if (mounted) {
+      context.safePop();
+    }
+  }
+
   Future<void> _navigateToSummary(
     VideoSessionsRecord? session, {
     DocumentReference? sessionRefOverride,
@@ -373,11 +509,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
       return;
     }
 
-    final sessionMetadata = session?.snapshotData['sessionMetadata'];
-    final connectedAt =
-        sessionMetadata is Map ? sessionMetadata['callConnectedAt'] : null;
-    final fallbackStartedAt =
-        connectedAt is DateTime ? connectedAt : session?.startedAt;
+    final fallbackStartedAt = _connectedCallStartedAt(session);
 
     // If the Firestore duration is 0 (e.g. endSession cloud function hasn't
     // finished yet), use the server-authored call-connected timestamp.
@@ -410,6 +542,14 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
       builder: (context, snapshot) {
         final videoCallPageVideoSessionsRecord = snapshot.data;
         String? _nonEmpty(String? value) => _nonEmptyValue(value);
+        final hasInitialJoinCredentials =
+            _nonEmpty(widget.initialRoomUrl) != null &&
+                _nonEmpty(widget.initialMeetingToken) != null;
+
+        if (videoCallPageVideoSessionsRecord == null &&
+            !hasInitialJoinCredentials) {
+          return _buildMediaPermissionState(context, isLoading: true);
+        }
 
         final resolvedRoomUrl = _nonEmpty(_freshRoomUrl) ??
             _nonEmpty(videoCallPageVideoSessionsRecord?.dailyRoomUrl) ??
@@ -464,31 +604,64 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
         // Daily SDK participantLeft timer.
         // Also end the native CallKit/ConnectionService UI so the
         // iPhone call screen is dismissed.
-        if ((sessionStatus == 'ended' ||
-                sessionStatus == 'cancelled' ||
-                sessionStatus == 'expired') &&
-            !_didNavigateToSummary) {
+        if (_isTerminalSessionStatus(sessionStatus)) {
+          final shouldOpenSummary = _shouldOpenSummaryForTerminalStatus(
+            sessionStatus,
+            videoCallPageVideoSessionsRecord,
+          );
+
           final terminalSessionRef = widget.videoDocRef;
           final terminalSessionId = terminalSessionRef?.id;
           final terminalSessionPath = terminalSessionRef?.path;
           final terminalSession = videoCallPageVideoSessionsRecord;
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted &&
-                !_didNavigateToSummary &&
-                terminalSessionId != null &&
-                _isCurrentSession(
-                  sessionId: terminalSessionId,
-                  sessionPath: terminalSessionPath,
-                )) {
-              unawaited(
-                VoIPService().endCurrentCall(sessionId: terminalSessionId),
-              );
-              _navigateToSummary(
-                terminalSession,
-                sessionRefOverride: terminalSessionRef,
-              );
-            }
-          });
+
+          if (!_didClearTerminalCallUi) {
+            _didClearTerminalCallUi = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted &&
+                  terminalSessionId != null &&
+                  _isCurrentSession(
+                    sessionId: terminalSessionId,
+                    sessionPath: terminalSessionPath,
+                  )) {
+                final debugEndCurrentCall =
+                    VideoCallPageWidget.debugEndCurrentCall;
+                unawaited(
+                  debugEndCurrentCall != null
+                      ? debugEndCurrentCall(terminalSessionId)
+                      : VoIPService().endCurrentCall(
+                          sessionId: terminalSessionId,
+                        ),
+                );
+              }
+            });
+          }
+
+          if (shouldOpenSummary && !_didNavigateToSummary) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted &&
+                  !_didNavigateToSummary &&
+                  terminalSessionId != null &&
+                  _isCurrentSession(
+                    sessionId: terminalSessionId,
+                    sessionPath: terminalSessionPath,
+                  )) {
+                _navigateToSummary(
+                  terminalSession,
+                  sessionRefOverride: terminalSessionRef,
+                );
+              }
+            });
+          }
+
+          if (shouldOpenSummary) {
+            return const Scaffold(
+              backgroundColor: ExpatlioDesign.background,
+              body: SizedBox.shrink(),
+            );
+          }
+
+          return _buildMissingSessionState(context);
         }
 
         return FutureBuilder<bool>(
@@ -585,13 +758,17 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                       ).then((value) => safeSetState(() {}));
                     },
                     endCallCallback: (endReason) async {
-                      await _navigateToSummary(
-                          videoCallPageVideoSessionsRecord);
+                      await _openSummaryAfterCallCallback(
+                        videoCallPageVideoSessionsRecord,
+                        allowConnectedSnapshotFallback: false,
+                      );
                       safeSetState(() {});
                     },
                     participantLeftCallback: () async {
-                      await _navigateToSummary(
-                          videoCallPageVideoSessionsRecord);
+                      await _openSummaryAfterCallCallback(
+                        videoCallPageVideoSessionsRecord,
+                        allowConnectedSnapshotFallback: true,
+                      );
                     },
                   ),
                 ),
