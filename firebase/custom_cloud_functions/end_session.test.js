@@ -61,6 +61,80 @@ function studentUser(overrides = {}) {
   };
 }
 
+function callableSessionSeed({
+  sessionId,
+  firstStudentId,
+  secondStudentId,
+  status = "connecting",
+  sessionMetadata = {},
+  overrides = {},
+}) {
+  const pairAttemptId = `pair-${sessionId}-${firstStudentId}-${secondStudentId}`;
+  return {
+    [`users/${firstStudentId}`]: studentUser({
+      currentSessionId: sessionId,
+      isInCall: true,
+      isAvailable: false,
+    }),
+    [`users/${secondStudentId}`]: studentUser({
+      currentSessionId: sessionId,
+      isInCall: true,
+      isAvailable: false,
+    }),
+    [`searchRequests/${firstStudentId}`]: activeSearchRequest(firstStudentId, {
+      currentSessionId: sessionId,
+      activeSessionId: sessionId,
+      matchedSessionId: sessionId,
+      matchedUserId: secondStudentId,
+      matchedResponderId: secondStudentId,
+      matchedRole: "student",
+      pairAttemptId,
+      lockOwner: pairAttemptId,
+      lockExpiresAt: timestampFromMillis(Date.now() + 45_000),
+    }),
+    [`searchRequests/${secondStudentId}`]: activeSearchRequest(secondStudentId, {
+      currentSessionId: sessionId,
+      activeSessionId: sessionId,
+      matchedSessionId: sessionId,
+      matchedUserId: firstStudentId,
+      matchedResponderId: secondStudentId,
+      matchedRole: "student",
+      pairAttemptId,
+      lockOwner: pairAttemptId,
+      lockExpiresAt: timestampFromMillis(Date.now() + 45_000),
+    }),
+    [`videoSessions/${sessionId}`]: {
+      status,
+      language: "en",
+      studentId: firstStudentId,
+      tutorId: secondStudentId,
+      requesterId: firstStudentId,
+      requesterRole: "student",
+      responderId: secondStudentId,
+      responderRole: "student",
+      currentTutorId: secondStudentId,
+      currentResponderId: secondStudentId,
+      currentResponderRole: "student",
+      participantIds: [firstStudentId, secondStudentId],
+      participantRoles: {
+        [firstStudentId]: "student",
+        [secondStudentId]: "student",
+      },
+      searchRequestIds: {
+        requester: `request-${firstStudentId}`,
+        responder: `request-${secondStudentId}`,
+      },
+      matchContext: {
+        requesterRole: "student",
+        acceptedResponderId: secondStudentId,
+        acceptedResponderRole: "student",
+      },
+      sessionMetadata,
+      ...overrides,
+    },
+  };
+}
+
 function applyFieldValue(target, key, value) {
   const segments = key.split(".");
   let cursor = target;
@@ -559,6 +633,94 @@ test("endSession callable stops both active search participants", async () => {
   assert.equal(store.get(`users/${secondStudentId}`).isInCall, false);
   assert.equal(store.get(`users/${firstStudentId}`).isAvailable, true);
   assert.equal(store.get(`users/${secondStudentId}`).isAvailable, true);
+});
+
+test("endSession callable cancels pre-active user-ended sessions", async () => {
+  const sessionId = "session-pre-active-cancelled";
+  const firstStudentId = "student-pre-active-cancel-a";
+  const secondStudentId = "student-pre-active-cancel-b";
+  const {firestore, store} = createFakeFirestore(callableSessionSeed({
+    sessionId,
+    firstStudentId,
+    secondStudentId,
+    status: "connecting",
+  }));
+
+  const response = await withFakeFirestore(firestore, () =>
+    endSession.run(
+      {sessionId, endReason: "user_ended"},
+      {auth: {uid: firstStudentId}},
+    ));
+  const sessionData = store.get(`videoSessions/${sessionId}`);
+
+  assert.equal(response.status, "cancelled");
+  assert.equal(sessionData.status, "cancelled");
+  assert.equal(sessionData.cancelReason, "pre_active_cancelled");
+  assert.notEqual(sessionData.status, "ended");
+  assert.equal(
+    store.get(`searchRequests/${firstStudentId}`).status,
+    "cancelled",
+  );
+  assert.equal(
+    store.get(`searchRequests/${secondStudentId}`).status,
+    "cancelled",
+  );
+});
+
+test("endSession callable expires pre-active expired sessions", async () => {
+  const sessionId = "session-pre-active-expired";
+  const firstStudentId = "student-pre-active-expired-a";
+  const secondStudentId = "student-pre-active-expired-b";
+  const {firestore, store} = createFakeFirestore(callableSessionSeed({
+    sessionId,
+    firstStudentId,
+    secondStudentId,
+    status: "connecting",
+  }));
+
+  const response = await withFakeFirestore(firestore, () =>
+    endSession.run(
+      {sessionId, endReason: "expired"},
+      {auth: {uid: firstStudentId}},
+    ));
+  const sessionData = store.get(`videoSessions/${sessionId}`);
+
+  assert.equal(response.status, "expired");
+  assert.equal(sessionData.status, "expired");
+  assert.equal(sessionData.expireReason, "pre_active_expired");
+  assert.notEqual(sessionData.status, "ended");
+  assert.equal(
+    store.get(`searchRequests/${firstStudentId}`).status,
+    "expired",
+  );
+  assert.equal(
+    store.get(`searchRequests/${secondStudentId}`).status,
+    "expired",
+  );
+});
+
+test("endSession callable keeps already terminal sessions terminal", async () => {
+  for (const terminalStatus of ["cancelled", "expired"]) {
+    const sessionId = `session-already-${terminalStatus}`;
+    const firstStudentId = `student-already-${terminalStatus}-a`;
+    const secondStudentId = `student-already-${terminalStatus}-b`;
+    const {firestore, store} = createFakeFirestore(callableSessionSeed({
+      sessionId,
+      firstStudentId,
+      secondStudentId,
+      status: terminalStatus,
+    }));
+
+    const response = await withFakeFirestore(firestore, () =>
+      endSession.run(
+        {sessionId, endReason: "user_ended"},
+        {auth: {uid: firstStudentId}},
+      ));
+
+    assert.equal(response.status, `already_${terminalStatus}`);
+    assert.equal(store.get(`videoSessions/${sessionId}`).status, terminalStatus);
+    assert.notEqual(store.get(`videoSessions/${sessionId}`).status, "ended");
+  }
 });
 
 test("buildStudentCallCharge debits gift minutes for non-subscribers", () => {
