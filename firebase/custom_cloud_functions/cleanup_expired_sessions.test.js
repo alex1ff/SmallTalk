@@ -585,6 +585,15 @@ test("cleanupExpiredSessions runs every minute as an expiry backstop", () => {
     /\.where\("status", "==", VIDEO_SESSION_STATUS\.CONNECTING\)[\s\S]*\.where\("expiresAt", "<=", now\)/,
   );
   assert.match(source, /getSessionCleanupDeadlineMillis\(freshData\)/);
+  assert.match(
+    source,
+    /const restoreSearchParticipantIds =\s*getCleanupRestoreSearchParticipantIds\(freshData\)/,
+  );
+  assert.match(source, /restoreSearchParticipantIds,/);
+  assert.match(
+    source,
+    /restoreSearchExcludedCandidateIdsByParticipantId:\s*buildRestoreSearchExcludedCandidateIdsByParticipantId\(\{/,
+  );
   assert.match(source, /dailyRoomName:\s*resolveDailyRoomName\(freshData\)/);
   assert.match(source, /await deleteDailyRoomForSession\(\{/);
   assert.match(source, /source:\s*"cleanupExpiredSessions"/);
