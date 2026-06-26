@@ -44,7 +44,39 @@ function buildCancelCallPairLockReleaseOptions({
     searchRequestStatus: SEARCH_REQUEST_STATUS.CANCELLED,
     stopReason: "call_cancelled",
     releaseCallState: true,
+    restoreLegacyAvailability: true,
   };
+}
+
+function buildCancelCallSessionUpdate({
+  cancelledBy,
+  serverTimestamp,
+  fieldDelete,
+}) {
+  return {
+    status: VIDEO_SESSION_STATUS.CANCELLED,
+    endedAt: serverTimestamp,
+    cancelledAt: serverTimestamp,
+    cancelledBy,
+    cancelReason: "cancelled_by_student",
+    currentTutorId: fieldDelete,
+    currentResponderId: fieldDelete,
+    currentResponderRole: fieldDelete,
+    acceptingTutorId: fieldDelete,
+    acceptingAt: fieldDelete,
+    acceptAttemptId: fieldDelete,
+    tutorNavigationTriggered: false,
+    studentNavigationTriggered: false,
+  };
+}
+
+function normalizeUserId(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function resolveCancelCallEventPartnerId(sessionData = {}) {
+  return normalizeUserId(sessionData.currentResponderId) ||
+    normalizeUserId(sessionData.currentTutorId);
 }
 
 exports.cancelCall = functions
@@ -126,19 +158,11 @@ exports.cancelCall = functions
         }),
       );
 
-      transaction.update(sessionRef, {
-        status: VIDEO_SESSION_STATUS.CANCELLED,
-        endedAt: admin.firestore.FieldValue.serverTimestamp(),
-        cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+      transaction.update(sessionRef, buildCancelCallSessionUpdate({
         cancelledBy: studentId,
-        cancelReason: "cancelled_by_student",
-        currentTutorId: admin.firestore.FieldValue.delete(),
-        acceptingTutorId: admin.firestore.FieldValue.delete(),
-        acceptingAt: admin.firestore.FieldValue.delete(),
-        acceptAttemptId: admin.firestore.FieldValue.delete(),
-        tutorNavigationTriggered: false,
-        studentNavigationTriggered: false,
-      });
+        serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+        fieldDelete: admin.firestore.FieldValue.delete(),
+      }));
 
       return {
         dailyRoomName: resolveDailyRoomName(sessionData),
@@ -157,7 +181,7 @@ exports.cancelCall = functions
         },
         callOutcome: CALL_EVENT_OUTCOME_CANCELLED,
         eventMillis: Date.now(),
-        partnerId: txResult.sessionData.currentTutorId,
+        partnerId: resolveCancelCallEventPartnerId(txResult.sessionData),
       });
     } catch (error) {
       console.error("⚠️ Failed to create cancelled call event:", error);
@@ -221,4 +245,6 @@ exports.cancelCall = functions
 
 exports.__private__ = {
   buildCancelCallPairLockReleaseOptions,
+  buildCancelCallSessionUpdate,
+  resolveCancelCallEventPartnerId,
 };

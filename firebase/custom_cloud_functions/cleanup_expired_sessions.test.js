@@ -16,11 +16,18 @@ const {
   __private__: {
     buildExpiredSessionReleaseOptions,
     buildJoinTimeoutParticipantState,
+    buildPendingResponseTimeoutReleaseOptions,
+    buildPendingResponseTimeoutSessionProjection,
+    buildPendingResponseTimeoutSessionUpdate,
     buildExpiredSessionCleanupPayload,
     getSessionCleanupDeadlineMillis,
+    getPendingResponseCleanupDeadlineMillis,
     hasConnectedCallEvidence,
+    hasSentIncomingCallNotification,
+    queuePendingResponseTimeoutCleanup,
     queueExpiredSessionCleanup,
     readConnectedSignalParticipantIds,
+    resolvePendingResponderId,
     timestampToMillis,
   },
 } = require("./cleanup_expired_sessions");
@@ -355,6 +362,34 @@ test("cleanup deadline falls back for legacy connecting sessions", () => {
   assert.equal(timestampToMillis("bad"), 0);
 });
 
+test("cleanup deadline uses response expiry for pending response sessions", () => {
+  const responseExpiresAt = admin.firestore.Timestamp.fromMillis(
+    Date.parse("2026-04-14T11:05:00Z"),
+  );
+
+  assert.equal(
+    getPendingResponseCleanupDeadlineMillis({
+      status: "pending_confirmation",
+      responseExpiresAt,
+    }),
+    responseExpiresAt.toMillis(),
+  );
+  assert.equal(
+    getPendingResponseCleanupDeadlineMillis({
+      status: "searching",
+      responseExpiresAt,
+    }),
+    responseExpiresAt.toMillis(),
+  );
+  assert.equal(
+    getPendingResponseCleanupDeadlineMillis({
+      status: "connecting",
+      responseExpiresAt,
+    }),
+    0,
+  );
+});
+
 test("join timeout state includes only valid joined participants", () => {
   const sessionData = {
     status: "connecting",
@@ -562,6 +597,19 @@ test("connected call evidence still reports joined participants", () => {
   );
 });
 
+test("Daily webhook connected timestamp is verified call evidence", () => {
+  assert.equal(
+    hasConnectedCallEvidence({
+      sessionMetadata: {
+        dailyWebhookConnectedAt: admin.firestore.Timestamp.fromMillis(
+          Date.parse("2026-04-14T12:05:00Z"),
+        ),
+      },
+    }),
+    true,
+  );
+});
+
 test("client-signal-only expired sessions do not write repeat history", () => {
   const db = admin.firestore();
   const endedAtMillis = Date.parse("2026-04-14T11:30:00Z");
@@ -665,6 +713,281 @@ test("legacy connected timestamp keeps connecting cleanup as ended", () => {
   assert.equal(payload.sessionUpdate.sessionMetadata.endReason, "expired");
 });
 
+test("pending response timeout cleanup expires orphaned pending sessions", () => {
+  const endedAtMillis = Date.parse("2026-04-14T12:10:00Z");
+  const sessionUpdate = buildPendingResponseTimeoutSessionUpdate({
+    sessionData: {
+      status: "pending_confirmation",
+      sessionMetadata: {
+        pairAttemptId: "pair-attempt-a",
+      },
+    },
+    endedAtMillis,
+  });
+
+  assert.equal(sessionUpdate.status, "expired");
+  assert.equal(sessionUpdate.expireReason, "pending_response_timeout");
+  assert.equal(sessionUpdate.sessionMetadata.endReason, "pending_response_timeout");
+  assert.equal(sessionUpdate.sessionMetadata.endedAtTimestamp, endedAtMillis);
+  assert.equal(sessionUpdate.sessionMetadata.finalDuration, 0);
+  assert.notEqual(sessionUpdate.currentTutorId, undefined);
+  assert.notEqual(sessionUpdate.currentResponderId, undefined);
+  assert.notEqual(sessionUpdate.acceptAttemptId, undefined);
+});
+
+test("pending response timeout projection keeps call event data sentinel-free", () => {
+  const endedAtMillis = Date.parse("2026-04-14T12:10:00Z");
+  const projection = buildPendingResponseTimeoutSessionProjection({
+    sessionData: {
+      status: "pending_confirmation",
+      studentId: "student-a",
+      currentResponderId: "student-b",
+      currentResponderRole: "student",
+      sessionMetadata: {
+        pairAttemptId: "pair-attempt-a",
+      },
+    },
+    endedAtMillis,
+  });
+
+  assert.equal(projection.status, "expired");
+  assert.equal(projection.currentTutorId, null);
+  assert.equal(projection.currentResponderId, null);
+  assert.equal(projection.currentResponderRole, null);
+  assert.equal(projection.acceptAttemptId, null);
+  assert.equal(projection.sessionMetadata.endReason, "pending_response_timeout");
+  assert.equal(projection.sessionMetadata.endedAtTimestamp, endedAtMillis);
+});
+
+test("pending response timeout release clears call state and searches", async () => {
+  const serverTimestamp = Symbol("serverTimestamp");
+  const fieldDelete = Symbol("fieldDelete");
+  const sessionData = {
+    status: "pending_confirmation",
+    participantIds: ["student-a", "student-b"],
+    requesterId: "student-a",
+    responderId: "student-b",
+  };
+  const {db, store} = createFakeFirestore({
+    "users/student-a": {
+      role: "student",
+      currentSessionId: "session-ab",
+      isInCall: true,
+      isAvailable: false,
+      availableAfter: timestampFromMillis(Date.parse("2026-04-14T12:11:00Z")),
+    },
+    "users/student-b": {
+      role: "student",
+      currentSessionId: "session-ab",
+      isInCall: true,
+      isAvailable: false,
+      availableAfter: timestampFromMillis(Date.parse("2026-04-14T12:11:00Z")),
+    },
+    "searchRequests/student-a": matchedSearchRequest("student-a", "student-b"),
+    "searchRequests/student-b": matchedSearchRequest("student-b", "student-a"),
+  });
+
+  await db.runTransaction((transaction) =>
+    releaseSessionPairLocksInTransaction({
+      db,
+      transaction,
+      ...buildPendingResponseTimeoutReleaseOptions({
+        sessionId: "session-ab",
+        sessionData,
+        serverTimestamp,
+        fieldDelete,
+      }),
+    }));
+
+  assert.equal(store.get("users/student-a").currentSessionId, fieldDelete);
+  assert.equal(store.get("users/student-a").isInCall, false);
+  assert.equal(store.get("users/student-a").isAvailable, true);
+  assert.equal(store.get("users/student-b").currentSessionId, fieldDelete);
+  assert.equal(store.get("users/student-b").isInCall, false);
+  assert.equal(store.get("users/student-b").isAvailable, true);
+  assert.equal(
+    store.get("searchRequests/student-a").status,
+    SEARCH_REQUEST_STATUS.EXPIRED,
+  );
+  assert.equal(
+    store.get("searchRequests/student-a").stopReason,
+    "pending_response_timeout",
+  );
+  assert.equal(
+    store.get("searchRequests/student-b").status,
+    SEARCH_REQUEST_STATUS.EXPIRED,
+  );
+  assert.equal(
+    store.get("searchRequests/student-b").stopReason,
+    "pending_response_timeout",
+  );
+});
+
+test("queuePendingResponseTimeoutCleanup writes expired session update", () => {
+  const endedAtMillis = Date.parse("2026-04-14T12:12:00Z");
+  const writerOperations = [];
+  const writer = {
+    update(ref, data) {
+      writerOperations.push({ref, data});
+    },
+  };
+  const doc = {
+    id: "pending-orphan",
+    ref: {
+      id: "pending-orphan",
+      path: "videoSessions/pending-orphan",
+    },
+    data() {
+      return {
+        status: "pending_confirmation",
+      };
+    },
+  };
+
+  const payload = queuePendingResponseTimeoutCleanup({
+    writer,
+    doc,
+    endedAtMillis,
+  });
+
+  assert.equal(writerOperations.length, 1);
+  assert.equal(writerOperations[0].ref.path, "videoSessions/pending-orphan");
+  assert.equal(writerOperations[0].data.status, "expired");
+  assert.equal(payload.sessionUpdate.sessionMetadata.endedAtTimestamp, endedAtMillis);
+});
+
+test("pending responder resolver prefers neutral assignment", () => {
+  assert.equal(
+    resolvePendingResponderId({
+      currentTutorId: "legacy-teacher",
+      currentResponderId: "student-b",
+    }),
+    "student-b",
+  );
+  assert.equal(
+    resolvePendingResponderId({
+      currentTutorId: "legacy-teacher",
+    }),
+    "legacy-teacher",
+  );
+});
+
+test("pending response backstop leaves current sent notifications to notification processor", async () => {
+  const expiresAtMillis = Date.parse("2026-04-14T12:10:00Z");
+  const transaction = {
+    async get(ref) {
+      assert.equal(ref.path, "notifications/session-ab_student-b");
+      return {
+        exists: true,
+        data: () => ({
+          type: "incoming_call",
+          sessionId: "session-ab",
+          recipientId: "student-b",
+          status: "sent",
+          expiresAt: timestampFromMillis(expiresAtMillis),
+        }),
+      };
+    },
+  };
+  const db = {
+    collection(name) {
+      assert.equal(name, "notifications");
+      return {
+        doc(id) {
+          return {path: `${name}/${id}`};
+        },
+      };
+    },
+  };
+
+  assert.equal(
+    await hasSentIncomingCallNotification({
+      db,
+      transaction,
+      sessionId: "session-ab",
+      sessionData: {
+        currentResponderId: "student-b",
+      },
+      nowMillis: expiresAtMillis + 60_000,
+    }),
+    true,
+  );
+});
+
+test("pending response backstop ignores stale sent notification for previous responder", async () => {
+  const transaction = {
+    async get(ref) {
+      assert.equal(ref.path, "notifications/session-ab_student-b");
+      return {exists: false};
+    },
+  };
+  const db = {
+    collection(name) {
+      assert.equal(name, "notifications");
+      return {
+        doc(id) {
+          return {path: `${name}/${id}`};
+        },
+      };
+    },
+  };
+
+  assert.equal(
+    await hasSentIncomingCallNotification({
+      db,
+      transaction,
+      sessionId: "session-ab",
+      sessionData: {
+        currentResponderId: "student-b",
+      },
+      nowMillis: Date.parse("2026-04-14T12:15:00Z"),
+    }),
+    false,
+  );
+});
+
+test("pending response backstop ignores old current sent notification after grace", async () => {
+  const expiresAtMillis = Date.parse("2026-04-14T12:10:00Z");
+  const transaction = {
+    async get(ref) {
+      assert.equal(ref.path, "notifications/session-ab_student-b");
+      return {
+        exists: true,
+        data: () => ({
+          type: "incoming_call",
+          sessionId: "session-ab",
+          recipientId: "student-b",
+          status: "sent",
+          expiresAt: timestampFromMillis(expiresAtMillis),
+        }),
+      };
+    },
+  };
+  const db = {
+    collection(name) {
+      assert.equal(name, "notifications");
+      return {
+        doc(id) {
+          return {path: `${name}/${id}`};
+        },
+      };
+    },
+  };
+
+  assert.equal(
+    await hasSentIncomingCallNotification({
+      db,
+      transaction,
+      sessionId: "session-ab",
+      sessionData: {
+        currentResponderId: "student-b",
+      },
+      nowMillis: expiresAtMillis + 180_000,
+    }),
+    false,
+  );
+});
+
 test("queueExpiredSessionCleanup writes repeat history and release updates", () => {
   const endedAtMillis = Date.parse("2026-04-14T12:00:00Z");
   const historyDocId = `${getUtcDayKey(endedAtMillis)}_student-a_teacher-b`;
@@ -761,12 +1084,45 @@ test("cleanupExpiredSessions runs every minute as an expiry backstop", () => {
     source,
     /\.where\("status", "==", VIDEO_SESSION_STATUS\.CONNECTING\)[\s\S]*\.where\("expiresAt", "<=", now\)/,
   );
+  assert.match(
+    source,
+    /\.where\("status", "==", VIDEO_SESSION_STATUS\.PENDING_CONFIRMATION\)[\s\S]*\.where\("responseExpiresAt", "<=", now\)/,
+  );
+  assert.match(
+    source,
+    /\.where\("status", "==", VIDEO_SESSION_STATUS\.SEARCHING\)[\s\S]*\.where\("responseExpiresAt", "<=", now\)/,
+  );
+  assert.match(source, /hasSentIncomingCallNotification\(\{/);
   assert.match(source, /getSessionCleanupDeadlineMillis\(freshData\)/);
   assert.match(
     source,
     /releaseSessionPairLocksInTransaction\(\{[\s\S]*buildExpiredSessionReleaseOptions\(\{/,
   );
+  assert.match(
+    source,
+    /releaseSessionPairLocksInTransaction\(\{[\s\S]*buildPendingResponseTimeoutReleaseOptions\(\{/,
+  );
   assert.match(source, /dailyRoomName:\s*resolveDailyRoomName\(freshData\)/);
   assert.match(source, /await deleteDailyRoomForSession\(\{/);
   assert.match(source, /source:\s*"cleanupExpiredSessions"/);
+});
+
+test("Firestore indexes support pending response timeout cleanup query", () => {
+  const indexes = JSON.parse(fs.readFileSync(
+    path.join(__dirname, "..", "firestore.indexes.json"),
+    "utf8",
+  )).indexes;
+
+  const hasResponseExpiryIndex = indexes.some((index) =>
+    index.collectionGroup === "videoSessions" &&
+    index.queryScope === "COLLECTION" &&
+    index.fields.some((field) =>
+      field.fieldPath === "status" && field.order === "ASCENDING",
+    ) &&
+    index.fields.some((field) =>
+      field.fieldPath === "responseExpiresAt" &&
+      field.order === "ASCENDING",
+    ));
+
+  assert.equal(hasResponseExpiryIndex, true);
 });

@@ -10,6 +10,9 @@ const {
   ensureConversationCallEventForSession,
 } = require("./chats_shared");
 const {
+  incomingCallNotificationRef,
+} = require("./call_notifications");
+const {
   buildCompletedPairHistoryWrite,
 } = require("./match_repeat_prevention");
 const {
@@ -22,6 +25,11 @@ const {
   VIDEO_SESSION_STATUS,
 } = require("./video_sessions_shared");
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
+const PENDING_RESPONSE_TIMEOUT_SESSION_STATUSES = new Set([
+  VIDEO_SESSION_STATUS.SEARCHING,
+  VIDEO_SESSION_STATUS.PENDING_CONFIRMATION,
+]);
+const PENDING_RESPONSE_NOTIFICATION_BACKSTOP_GRACE_MS = 2 * 60 * 1000;
 /*
 АВТОМАТИЧЕСКАЯ ФУНКЦИЯ: cleanupExpiredSessions
 Завершает истекшие активные сессии (запускается по расписанию)
@@ -84,7 +92,8 @@ function readConnectedSignalParticipantIds(sessionData = {}) {
 function hasConnectedCallEvidence(sessionData = {}) {
   return Boolean(
     sessionData.sessionMetadata?.callConnectedAt ||
-    sessionData.sessionMetadata?.callConnectedAtTimestamp,
+    sessionData.sessionMetadata?.callConnectedAtTimestamp ||
+    sessionData.sessionMetadata?.dailyWebhookConnectedAt,
   );
 }
 
@@ -113,6 +122,68 @@ function getSessionCleanupDeadlineMillis(sessionData = {}) {
     return timestampToMillis(sessionData.expiresAt);
   }
   return 0;
+}
+
+function getPendingResponseCleanupDeadlineMillis(sessionData = {}) {
+  if (!PENDING_RESPONSE_TIMEOUT_SESSION_STATUSES.has(sessionData.status)) {
+    return 0;
+  }
+  return timestampToMillis(sessionData.responseExpiresAt);
+}
+
+function resolvePendingResponderId(sessionData = {}) {
+  return normalizeParticipantId(sessionData.currentResponderId) ||
+    normalizeParticipantId(sessionData.currentTutorId);
+}
+
+function buildPendingResponseTimeoutSessionUpdate({
+  sessionData = {},
+  endedAtMillis = Date.now(),
+}) {
+  return {
+    status: VIDEO_SESSION_STATUS.EXPIRED,
+    endedAt: admin.firestore.FieldValue.serverTimestamp(),
+    expiredAt: admin.firestore.FieldValue.serverTimestamp(),
+    expireReason: "pending_response_timeout",
+    currentTutorId: admin.firestore.FieldValue.delete(),
+    currentResponderId: admin.firestore.FieldValue.delete(),
+    currentResponderRole: admin.firestore.FieldValue.delete(),
+    acceptingTutorId: admin.firestore.FieldValue.delete(),
+    acceptingAt: admin.firestore.FieldValue.delete(),
+    acceptAttemptId: admin.firestore.FieldValue.delete(),
+    tutorNavigationTriggered: false,
+    studentNavigationTriggered: false,
+    sessionMetadata: {
+      ...(sessionData.sessionMetadata || {}),
+      endReason: "pending_response_timeout",
+      endedAtTimestamp: endedAtMillis,
+      finalDuration: 0,
+    },
+  };
+}
+
+function buildPendingResponseTimeoutSessionProjection({
+  sessionData = {},
+  endedAtMillis = Date.now(),
+}) {
+  return {
+    ...sessionData,
+    status: VIDEO_SESSION_STATUS.EXPIRED,
+    currentTutorId: null,
+    currentResponderId: null,
+    currentResponderRole: null,
+    acceptingTutorId: null,
+    acceptingAt: null,
+    acceptAttemptId: null,
+    tutorNavigationTriggered: false,
+    studentNavigationTriggered: false,
+    sessionMetadata: {
+      ...(sessionData.sessionMetadata || {}),
+      endReason: "pending_response_timeout",
+      endedAtTimestamp: endedAtMillis,
+      finalDuration: 0,
+    },
+  };
 }
 
 function buildJoinTimeoutParticipantState(sessionData = {}) {
@@ -222,6 +293,24 @@ function buildExpiredSessionReleaseOptions({
   };
 }
 
+function buildPendingResponseTimeoutReleaseOptions({
+  sessionId,
+  sessionData = {},
+  serverTimestamp,
+  fieldDelete,
+}) {
+  return {
+    sessionId,
+    sessionData,
+    serverTimestamp,
+    fieldDelete,
+    searchRequestStatus: SEARCH_REQUEST_STATUS.EXPIRED,
+    stopReason: "pending_response_timeout",
+    releaseCallState: true,
+    restoreLegacyAvailability: true,
+  };
+}
+
 function queueExpiredSessionCleanup({
   writer,
   db,
@@ -261,6 +350,62 @@ function queueExpiredSessionCleanup({
   return cleanupPayload;
 }
 
+function queuePendingResponseTimeoutCleanup({
+  writer,
+  doc,
+  endedAtMillis = Date.now(),
+}) {
+  const sessionData = doc.data();
+  const sessionUpdate = buildPendingResponseTimeoutSessionUpdate({
+    sessionData,
+    endedAtMillis,
+  });
+
+  writer.update(doc.ref, sessionUpdate);
+
+  return {
+    sessionUpdate,
+  };
+}
+
+async function hasSentIncomingCallNotification({
+  db,
+  transaction,
+  sessionId,
+  sessionData = {},
+  nowMillis = Date.now(),
+}) {
+  const responderId = resolvePendingResponderId(sessionData);
+  if (!responderId) {
+    return false;
+  }
+
+  const notificationSnap = await transaction.get(
+    incomingCallNotificationRef(db, sessionId, responderId),
+  );
+  if (!notificationSnap.exists) {
+    return false;
+  }
+
+  const notificationData = notificationSnap.data() || {};
+  if (
+    notificationData.type !== "incoming_call" ||
+    notificationData.sessionId !== sessionId ||
+    notificationData.recipientId !== responderId ||
+    notificationData.status !== "sent"
+  ) {
+    return false;
+  }
+
+  const notificationExpiresAtMillis = timestampToMillis(notificationData.expiresAt);
+  if (!notificationExpiresAtMillis) {
+    return false;
+  }
+
+  return notificationExpiresAtMillis +
+    PENDING_RESPONSE_NOTIFICATION_BACKSTOP_GRACE_MS >= nowMillis;
+}
+
 exports.cleanupExpiredSessions = functions
   .runWith({ secrets: dailySecrets })
   .pubsub
@@ -276,6 +421,8 @@ exports.cleanupExpiredSessions = functions
         expiredActiveSessionsQuery,
         expiredConnectingSessionsQuery,
         expiredLegacyConnectingSessionsQuery,
+        expiredPendingConfirmationSessionsQuery,
+        expiredSearchingSessionsQuery,
       ] = await Promise.all([
         videoSessions
           .where("status", "==", VIDEO_SESSION_STATUS.ACTIVE)
@@ -289,12 +436,22 @@ exports.cleanupExpiredSessions = functions
           .where("status", "==", VIDEO_SESSION_STATUS.CONNECTING)
           .where("expiresAt", "<=", now)
           .get(),
+        videoSessions
+          .where("status", "==", VIDEO_SESSION_STATUS.PENDING_CONFIRMATION)
+          .where("responseExpiresAt", "<=", now)
+          .get(),
+        videoSessions
+          .where("status", "==", VIDEO_SESSION_STATUS.SEARCHING)
+          .where("responseExpiresAt", "<=", now)
+          .get(),
       ]);
       const expiredSessionDocsById = new Map();
       [
         ...expiredActiveSessionsQuery.docs,
         ...expiredConnectingSessionsQuery.docs,
         ...expiredLegacyConnectingSessionsQuery.docs,
+        ...expiredPendingConfirmationSessionsQuery.docs,
+        ...expiredSearchingSessionsQuery.docs,
       ].forEach((doc) => {
         expiredSessionDocsById.set(doc.id, doc);
       });
@@ -319,8 +476,59 @@ exports.cleanupExpiredSessions = functions
           if (![
             VIDEO_SESSION_STATUS.ACTIVE,
             VIDEO_SESSION_STATUS.CONNECTING,
+            VIDEO_SESSION_STATUS.PENDING_CONFIRMATION,
+            VIDEO_SESSION_STATUS.SEARCHING,
           ].includes(freshData.status)) {
             return { cleaned: false, dailyRoomName: null, sessionData: null };
+          }
+
+          const pendingResponseCleanupDeadlineMillis =
+            getPendingResponseCleanupDeadlineMillis(freshData);
+          if (pendingResponseCleanupDeadlineMillis) {
+            if (pendingResponseCleanupDeadlineMillis > now.toMillis()) {
+              return { cleaned: false, dailyRoomName: null, sessionData: null };
+            }
+            if (await hasSentIncomingCallNotification({
+              db,
+              transaction,
+              sessionId: doc.id,
+              sessionData: freshData,
+              nowMillis: now.toMillis(),
+            })) {
+              return { cleaned: false, dailyRoomName: null, sessionData: null };
+            }
+
+            console.log(`🔚 Expiring orphaned pending session: ${doc.id}`);
+            await releaseSessionPairLocksInTransaction({
+              db,
+              transaction,
+              ...buildPendingResponseTimeoutReleaseOptions({
+                sessionId: doc.id,
+                sessionData: freshData,
+                serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+                fieldDelete: admin.firestore.FieldValue.delete(),
+              }),
+            });
+            queuePendingResponseTimeoutCleanup({
+              writer: transaction,
+              doc: {
+                id: doc.id,
+                ref: doc.ref,
+                data: () => freshData,
+              },
+              endedAtMillis: pendingResponseCleanupDeadlineMillis,
+            });
+
+            return {
+              cleaned: true,
+              dailyRoomName: resolveDailyRoomName(freshData),
+              partnerId: resolvePendingResponderId(freshData),
+              sessionData: buildPendingResponseTimeoutSessionProjection({
+                sessionData: freshData,
+                endedAtMillis: pendingResponseCleanupDeadlineMillis,
+              }),
+              endedAtMillis: pendingResponseCleanupDeadlineMillis,
+            };
           }
 
           const cleanupDeadlineMillis =
@@ -375,6 +583,7 @@ exports.cleanupExpiredSessions = functions
             sessionRef: doc.ref,
             sessionData: cleanupResult.sessionData || {},
             eventMillis: cleanupResult.endedAtMillis || now.toMillis(),
+            partnerId: cleanupResult.partnerId,
           });
         } catch (error) {
           console.error("⚠️ Failed to create expired call event:", error);
@@ -402,10 +611,17 @@ exports.cleanupExpiredSessions = functions
 exports.__private__ = {
   buildExpiredSessionReleaseOptions,
   buildJoinTimeoutParticipantState,
+  buildPendingResponseTimeoutReleaseOptions,
+  buildPendingResponseTimeoutSessionProjection,
+  buildPendingResponseTimeoutSessionUpdate,
   buildExpiredSessionCleanupPayload,
   getSessionCleanupDeadlineMillis,
+  getPendingResponseCleanupDeadlineMillis,
   hasConnectedCallEvidence,
+  hasSentIncomingCallNotification,
+  queuePendingResponseTimeoutCleanup,
   queueExpiredSessionCleanup,
   readConnectedSignalParticipantIds,
+  resolvePendingResponderId,
   timestampToMillis,
 };
