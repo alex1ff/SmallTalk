@@ -63,6 +63,7 @@ void main() async {
 
   // 🔔 Register background handler
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  unawaited(VoIPService().startEarlyCallKitEventHandling());
   debugPrint('🔔 VoIP background handler registered');
 
   await initFirebase();
@@ -127,6 +128,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   Future<void> _initializeVoipService() async {
     try {
       await VoIPService().initialize();
+      if (mounted && loggedIn) {
+        await VoIPService().setCallActionHandlingReady(true);
+      }
       debugPrint('✅ VoIP Service initialized successfully');
     } catch (e) {
       debugPrint('❌ VoIP Service initialization failed: $e');
@@ -205,6 +209,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         FFAppState().clearPendingSocialAuthContext();
         UserPresenceService.instance.stop();
         if (wasLoggedIn) {
+          unawaited(VoIPService().setCallActionHandlingReady(false));
           unawaited(_deinitializeVoipService());
         }
       } else if (!wasLoggedIn) {
@@ -225,7 +230,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       unawaited(_refreshAuthUserOnResume());
       unawaited(UserPresenceService.instance.markSeen(force: true));
-      unawaited(VoIPService().recoverBackgroundAcceptedCalls());
+      if (loggedIn) {
+        unawaited(VoIPService().drainPendingCallKitActions());
+        unawaited(VoIPService().recoverBackgroundAcceptedCalls());
+      }
       unawaited(_recoverActiveSessionOnResume());
     }
   }

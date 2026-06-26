@@ -140,6 +140,7 @@ function buildIncomingCallPayloadMetadata({
     responderRole;
 
   return {
+    recipientId: normalizedRecipientId,
     scenario,
     requesterId,
     responderId,
@@ -282,6 +283,9 @@ function buildTeacherIncomingCallPushData(callData = {}) {
   return {
     type: "incoming_call",
     sessionId,
+    recipientId:
+      normalizeString(callData.recipientId) ||
+      normalizeString(callData.responderId),
     callerName: studentName,
     callerId,
     callerPhoto:

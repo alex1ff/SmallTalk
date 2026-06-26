@@ -50,6 +50,7 @@ const List<String> _voipIncomingCallExtraKeys = <String>[
   'studentPhoto',
   'language',
   'scenario',
+  'recipientId',
   'requesterId',
   'responderId',
   'requesterRole',
@@ -369,6 +370,25 @@ bool voipAcceptGateRequiresProcessClaimRelease(
   return decision != VoipAcceptGateDecision.proceed;
 }
 
+enum _PendingCallKitActionType {
+  accept,
+  decline,
+}
+
+class _PendingCallKitAction {
+  const _PendingCallKitAction({
+    required this.type,
+    required this.data,
+    required this.queuedAt,
+    required this.queuedForUserId,
+  });
+
+  final _PendingCallKitActionType type;
+  final Map<String, dynamic> data;
+  final DateTime queuedAt;
+  final String? queuedForUserId;
+}
+
 /// VoIP сервис для обработки входящих звонков
 /// Использует CallKit (iOS) и ConnectionService (Android)
 class VoIPService {
@@ -381,6 +401,8 @@ class VoIPService {
   static const Duration _pendingNavigationRetryDelay =
       Duration(milliseconds: 100);
   static const int _pendingNavigationMaxAttempts = 600;
+  static const Duration _pendingCallKitActionTtl = Duration(minutes: 2);
+  static const int _pendingCallKitActionMaxCount = 16;
   factory VoIPService() => _instance;
   VoIPService._internal();
 
@@ -397,7 +419,11 @@ class VoIPService {
       _incomingNotificationSub;
   StreamSubscription<CallEvent?>? _callKitSubscription;
   Timer? _sessionPruneTimer;
+  bool _callActionHandlingReady = false;
+  bool _pendingCallKitActionsDraining = false;
   final Map<String, DateTime> _sessionStateTouchedAt = {};
+  final List<_PendingCallKitAction> _pendingCallKitActions =
+      <_PendingCallKitAction>[];
   final Set<String> _acceptInProgress = {};
   final Set<String> _acceptedSessions = {};
   final Set<String> _handledCallKitAcceptIds = {};
@@ -446,6 +472,8 @@ class VoIPService {
     required String callKitId,
   })? debugEndCallKitCallOverride;
   @visibleForTesting
+  String? debugCurrentUserIdOverride;
+  @visibleForTesting
   Future<Map<String, dynamic>> Function(String sessionId)?
       debugGetSessionTokensOverride;
   @visibleForTesting
@@ -471,6 +499,61 @@ class VoIPService {
   bool hasPendingNavigation() =>
       _pendingSessionId != null || _lastAcceptedSessionId != null;
 
+  bool get _canHandleCallKitActions => _callActionHandlingReady && _initialized;
+
+  String? _currentUserIdOrNull() {
+    final override = debugCurrentUserIdOverride;
+    if (override != null) {
+      return override;
+    }
+    try {
+      return _auth.currentUser?.uid;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> startEarlyCallKitEventHandling() async {
+    if (kIsWeb) return;
+    _ensureCallKitEventSubscription();
+  }
+
+  Future<void> setCallActionHandlingReady(bool ready, {DateTime? now}) async {
+    _callActionHandlingReady = ready;
+    if (!ready) {
+      _pendingCallKitActions.clear();
+      return;
+    }
+    await drainPendingCallKitActions(now: now);
+  }
+
+  Future<void> drainPendingCallKitActions({DateTime? now}) async {
+    if (!_canHandleCallKitActions || _pendingCallKitActionsDraining) {
+      return;
+    }
+    _pendingCallKitActionsDraining = true;
+    try {
+      _prunePendingCallKitActions(now: now);
+      while (_canHandleCallKitActions && _pendingCallKitActions.isNotEmpty) {
+        final action = _pendingCallKitActions.removeAt(0);
+        if (_pendingCallKitActionHasExpired(action, now: now) ||
+            !_pendingCallKitActionTargetsCurrentUser(action)) {
+          continue;
+        }
+        switch (action.type) {
+          case _PendingCallKitActionType.accept:
+            await _handleCallAccept(action.data, now: now);
+            break;
+          case _PendingCallKitActionType.decline:
+            await _handleCallDecline(action.data);
+            break;
+        }
+      }
+    } finally {
+      _pendingCallKitActionsDraining = false;
+    }
+  }
+
   @visibleForTesting
   Duration get debugPendingNavigationRetryDelayForTesting =>
       _pendingNavigationRetryDelay;
@@ -478,6 +561,22 @@ class VoIPService {
   @visibleForTesting
   int get debugPendingNavigationMaxAttemptsForTesting =>
       _pendingNavigationMaxAttempts;
+
+  @visibleForTesting
+  bool get debugCallActionHandlingReadyForTesting => _callActionHandlingReady;
+
+  @visibleForTesting
+  int get debugPendingCallKitActionCountForTesting =>
+      _pendingCallKitActions.length;
+
+  @visibleForTesting
+  int get debugPendingCallKitActionMaxCountForTesting =>
+      _pendingCallKitActionMaxCount;
+
+  @visibleForTesting
+  void debugSetInitializedForTesting(bool initialized) {
+    _initialized = initialized;
+  }
 
   Future<void> recoverBackgroundAcceptedCalls() async {
     if (kIsWeb) return;
@@ -490,6 +589,18 @@ class VoIPService {
         debugPrint(
           '📞 VoIPService: Replaying background accepted call: $sessionId',
         );
+        if (_queueCallKitActionIfNotReady(
+          type: _PendingCallKitActionType.accept,
+          data: acceptData,
+        )) {
+          continue;
+        }
+        if (_shouldDropCallKitActionForCurrentUser(
+          type: _PendingCallKitActionType.accept,
+          data: acceptData,
+        )) {
+          continue;
+        }
         await _handleCallAccept(acceptData);
       }
     } catch (e) {
@@ -499,6 +610,8 @@ class VoIPService {
 
   @visibleForTesting
   void debugResetInMemoryStateForTesting() {
+    _initialized = false;
+    _initializing = false;
     _resetInMemoryState();
     _resetTestingOverrides();
   }
@@ -603,8 +716,39 @@ class VoIPService {
   }
 
   @visibleForTesting
+  Future<void> debugHandleCallKitAcceptEventForTesting(
+    Map<String, dynamic> data,
+  ) {
+    return _handleCallKitEvent(
+      CallEvent(data, Event.actionCallAccept),
+    );
+  }
+
+  @visibleForTesting
   Future<void> debugHandleCallDeclineForTesting(Map<String, dynamic> data) {
     return _handleCallDecline(data);
+  }
+
+  @visibleForTesting
+  Future<void> debugHandleCallKitDeclineEventForTesting(
+    Map<String, dynamic> data,
+  ) {
+    return _handleCallKitEvent(
+      CallEvent(data, Event.actionCallDecline),
+    );
+  }
+
+  @visibleForTesting
+  Future<void> debugSetCallActionHandlingReadyForTesting(
+    bool ready, {
+    DateTime? now,
+  }) {
+    return setCallActionHandlingReady(ready, now: now);
+  }
+
+  @visibleForTesting
+  Future<void> debugDrainPendingCallKitActionsForTesting({DateTime? now}) {
+    return drainPendingCallKitActions(now: now);
   }
 
   @visibleForTesting
@@ -635,6 +779,7 @@ class VoIPService {
     debugRecoverActiveSessionOverride = null;
     debugPrefetchSessionTokensOverride = null;
     debugEndCallKitCallOverride = null;
+    debugCurrentUserIdOverride = null;
     debugGetSessionTokensOverride = null;
     debugMarkNavigationTriggeredOverride = null;
     debugNavigateToVideoCallOverride = null;
@@ -875,6 +1020,8 @@ class VoIPService {
   Future<void> initialize() async {
     if (_initialized || _initializing) {
       debugPrint('🔔 VoIPService: Initialize skipped (already running)');
+      _ensureCallKitEventSubscription();
+      await drainPendingCallKitActions();
       return;
     }
     _initializing = true;
@@ -930,9 +1077,7 @@ class VoIPService {
       });
 
       // 4. Слушаем события CallKit/ConnectionService
-      _callKitSubscription?.cancel();
-      _callKitSubscription =
-          FlutterCallkitIncoming.onEvent.listen(_handleCallKitEvent);
+      _ensureCallKitEventSubscription();
       await recoverBackgroundAcceptedCalls();
       _startSessionPruneTimer();
 
@@ -941,6 +1086,7 @@ class VoIPService {
       _startIncomingNotificationListener();
 
       _initialized = true;
+      await drainPendingCallKitActions();
       debugPrint('✅ VoIPService: Initialized successfully');
     } catch (e) {
       debugPrint('❌ VoIPService: Initialization error: $e');
@@ -1126,6 +1272,9 @@ class VoIPService {
     _sessionStateGenerations.clear();
     _handledNotificationIds.clear();
     _sessionCallKitIds.clear();
+    _pendingCallKitActions.clear();
+    _pendingCallKitActionsDraining = false;
+    _callActionHandlingReady = false;
     _processAcceptClaimedAtBySession.clear();
 
     _lastAcceptedSessionId = null;
@@ -1230,11 +1379,13 @@ class VoIPService {
 
   /// Деинициализация VoIP сервиса (например, при logout).
   Future<void> deinitialize() async {
+    _callActionHandlingReady = false;
+    _pendingCallKitActions.clear();
+    _pendingCallKitActionsDraining = false;
     if (!_initialized &&
         !_initializing &&
         _tokenRefreshSub == null &&
-        _foregroundMessageSub == null &&
-        _callKitSubscription == null) {
+        _foregroundMessageSub == null) {
       return;
     }
 
@@ -1260,14 +1411,9 @@ class VoIPService {
       await notificationSub.cancel();
     }
 
-    final callKitSub = _callKitSubscription;
-    _callKitSubscription = null;
-    if (callKitSub != null) {
-      await callKitSub.cancel();
-    }
-
     _resetInMemoryState();
     _initialized = false;
+    _ensureCallKitEventSubscription();
     debugPrint('✅ VoIPService: Deinitialized');
   }
 
@@ -1442,9 +1588,33 @@ class VoIPService {
           await _handlePushKitTokenUpdate(event.body);
           break;
         case Event.actionCallAccept:
+          if (_queueCallKitActionIfNotReady(
+            type: _PendingCallKitActionType.accept,
+            data: event.body,
+          )) {
+            return;
+          }
+          if (_shouldDropCallKitActionForCurrentUser(
+            type: _PendingCallKitActionType.accept,
+            data: event.body,
+          )) {
+            return;
+          }
           await _handleCallAccept(event.body);
           break;
         case Event.actionCallDecline:
+          if (_queueCallKitActionIfNotReady(
+            type: _PendingCallKitActionType.decline,
+            data: event.body,
+          )) {
+            return;
+          }
+          if (_shouldDropCallKitActionForCurrentUser(
+            type: _PendingCallKitActionType.decline,
+            data: event.body,
+          )) {
+            return;
+          }
           await _handleCallDecline(event.body);
           break;
         case Event.actionCallEnded:
@@ -1482,6 +1652,141 @@ class VoIPService {
     } catch (e) {
       debugPrint('⚠️ VoIPService: Failed to handle PushKit token update: $e');
     }
+  }
+
+  void _ensureCallKitEventSubscription() {
+    if (kIsWeb || _callKitSubscription != null) {
+      return;
+    }
+    _callKitSubscription =
+        FlutterCallkitIncoming.onEvent.listen(_handleCallKitEvent);
+  }
+
+  bool _queueCallKitActionIfNotReady({
+    required _PendingCallKitActionType type,
+    required Map<String, dynamic>? data,
+  }) {
+    if (_canHandleCallKitActions) {
+      return false;
+    }
+    if (data == null) {
+      return true;
+    }
+    final normalizedData = _voipMapFrom(data);
+    final sessionId = _voipStringFromPayload(normalizedData, 'sessionId');
+    if (sessionId == null) {
+      debugPrint(
+          '⚠️ VoIPService: Dropping early CallKit action without sessionId');
+      return true;
+    }
+
+    final callKitId = _normalizeCallKitId(
+      _voipNonEmptyString(normalizedData['id']) ??
+          _voipStringFromPayload(normalizedData, 'callKitId'),
+    );
+    final incomingKey = _pendingCallKitActionIdentityKey(
+      sessionId: sessionId,
+      callKitId: callKitId,
+    );
+    final existingIndex = _pendingCallKitActions.indexWhere((action) {
+      final existingSessionId =
+          _voipStringFromPayload(action.data, 'sessionId');
+      final existingCallKitId = _normalizeCallKitId(
+        _voipNonEmptyString(action.data['id']) ??
+            _voipStringFromPayload(action.data, 'callKitId'),
+      );
+      return incomingKey ==
+          _pendingCallKitActionIdentityKey(
+            sessionId: existingSessionId,
+            callKitId: existingCallKitId,
+          );
+    });
+    final action = _PendingCallKitAction(
+      type: type,
+      data: normalizedData,
+      queuedAt: DateTime.now(),
+      queuedForUserId: _currentUserIdOrNull(),
+    );
+    if (existingIndex >= 0) {
+      _pendingCallKitActions[existingIndex] = action;
+    } else {
+      _pendingCallKitActions.add(action);
+      if (_pendingCallKitActions.length > _pendingCallKitActionMaxCount) {
+        _pendingCallKitActions.removeAt(0);
+      }
+    }
+    debugPrint(
+      '📞 VoIPService: Queued early CallKit ${type.name} for $sessionId',
+    );
+    return true;
+  }
+
+  String _pendingCallKitActionIdentityKey({
+    required String? sessionId,
+    required String? callKitId,
+  }) {
+    return '${sessionId ?? ''}:${callKitId ?? ''}';
+  }
+
+  bool _pendingCallKitActionHasExpired(
+    _PendingCallKitAction action, {
+    DateTime? now,
+  }) {
+    final effectiveNow = now ?? DateTime.now();
+    if (effectiveNow.difference(action.queuedAt) >= _pendingCallKitActionTtl) {
+      return true;
+    }
+    return voipIncomingCallPayloadHasExpired(action.data, now: effectiveNow);
+  }
+
+  bool _pendingCallKitActionTargetsCurrentUser(_PendingCallKitAction action) {
+    return _callKitActionTargetsCurrentUser(
+      action.data,
+      queuedForUserId: action.queuedForUserId,
+      requireQueuedUserForUntargeted: true,
+    );
+  }
+
+  bool _callKitActionTargetsCurrentUser(
+    Map<String, dynamic> data, {
+    String? queuedForUserId,
+    bool requireQueuedUserForUntargeted = false,
+  }) {
+    final targetUserId = _voipStringFromPayload(data, 'recipientId');
+    final currentUserId = _currentUserIdOrNull();
+    if (targetUserId == null) {
+      if (queuedForUserId != null) {
+        return currentUserId != null && queuedForUserId == currentUserId;
+      }
+      return !requireQueuedUserForUntargeted && currentUserId != null;
+    }
+    return currentUserId != null && targetUserId == currentUserId;
+  }
+
+  bool _shouldDropCallKitActionForCurrentUser({
+    required _PendingCallKitActionType type,
+    required Map<String, dynamic>? data,
+  }) {
+    if (data == null) {
+      return false;
+    }
+    final normalizedData = _voipMapFrom(data);
+    if (_callKitActionTargetsCurrentUser(normalizedData)) {
+      return false;
+    }
+    final sessionId =
+        _voipStringFromPayload(normalizedData, 'sessionId') ?? 'unknown';
+    debugPrint(
+      '⚠️ VoIPService: Dropping CallKit ${type.name} for another user: $sessionId',
+    );
+    return true;
+  }
+
+  void _prunePendingCallKitActions({DateTime? now}) {
+    _pendingCallKitActions.removeWhere((action) {
+      return _pendingCallKitActionHasExpired(action, now: now) ||
+          !_pendingCallKitActionTargetsCurrentUser(action);
+    });
   }
 
   bool _stopAcceptForGateDecision({
@@ -1938,18 +2243,14 @@ class VoIPService {
   Future<void> _handleCallDecline(Map<String, dynamic>? data) async {
     if (data == null) return;
 
-    final extra = data['extra'] is Map
-        ? Map<String, dynamic>.from(data['extra'] as Map)
-        : <String, dynamic>{};
-    final rawSessionId =
-        extra['sessionId'] as String? ?? data['sessionId'] as String?;
-    final sessionId = rawSessionId?.trim();
+    final sessionId = _voipStringFromPayload(data, 'sessionId');
     if (sessionId == null || sessionId.isEmpty) {
       debugPrint('❌ VoIPService: No sessionId in decline event');
       return;
     }
     final callKitId = _normalizeCallKitId(
-      data['id'] as String? ?? extra['callKitId'] as String?,
+      _voipNonEmptyString(data['id']) ??
+          _voipStringFromPayload(data, 'callKitId'),
     );
     if (_hasMismatchedTrackedCallKitId(sessionId, callKitId)) {
       debugPrint(

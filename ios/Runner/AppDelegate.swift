@@ -15,6 +15,7 @@ private let incomingCallExtraKeys: Set<String> = [
   "studentPhoto",
   "language",
   "scenario",
+  "recipientId",
   "requesterId",
   "responderId",
   "requesterRole",

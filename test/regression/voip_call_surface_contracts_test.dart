@@ -288,6 +288,7 @@ void main() {
         appDelegateSource,
         contains('private let incomingCallExtraKeys: Set<String>'),
       );
+      expect(appDelegateSource, contains('"recipientId"'));
       expect(
         appDelegateSource,
         contains('private func incomingCallExtraData'),
@@ -307,6 +308,55 @@ void main() {
       expect(
         appDelegateSource,
         contains('return existingUuid.uuidString.lowercased()'),
+      );
+    });
+
+    test('root app starts CallKit event handling before Firebase init', () {
+      final mainSource = _source('lib/main.dart');
+      final mainFunctionSource = _curlyBlockSource(
+        mainSource,
+        'void main() async {',
+      );
+
+      final backgroundHandlerIndex = mainFunctionSource.indexOf(
+        'FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler)',
+      );
+      final earlyCallKitIndex = mainFunctionSource.indexOf(
+        'VoIPService().startEarlyCallKitEventHandling()',
+      );
+      final firebaseInitIndex =
+          mainFunctionSource.indexOf('await initFirebase()');
+      final runAppIndex = mainFunctionSource.indexOf('runApp(');
+
+      expect(backgroundHandlerIndex, greaterThanOrEqualTo(0));
+      expect(earlyCallKitIndex, greaterThan(backgroundHandlerIndex));
+      expect(firebaseInitIndex, greaterThan(earlyCallKitIndex));
+      expect(runAppIndex, greaterThan(firebaseInitIndex));
+    });
+
+    test('root app clears queued CallKit actions only on real logout', () {
+      final mainSource = _source('lib/main.dart');
+      final loggedOutBranchSource = _sourceBetween(
+        mainSource,
+        'if (!user.loggedIn) {',
+        '} else if (!wasLoggedIn) {',
+      );
+      final realLogoutSource = _curlyBlockSource(
+        loggedOutBranchSource,
+        'if (wasLoggedIn) {',
+      );
+
+      final clearIndex = loggedOutBranchSource.indexOf(
+        'VoIPService().setCallActionHandlingReady(false)',
+      );
+      final wasLoggedInIndex =
+          loggedOutBranchSource.indexOf('if (wasLoggedIn)');
+
+      expect(clearIndex, greaterThanOrEqualTo(0));
+      expect(clearIndex, greaterThan(wasLoggedInIndex));
+      expect(
+        realLogoutSource,
+        contains('VoIPService().setCallActionHandlingReady(false)'),
       );
     });
 
@@ -333,6 +383,10 @@ void main() {
           _source('android/app/src/main/AndroidManifest.xml');
       final initializeSource =
           _curlyBlockSource(voipSource, 'Future<void> initialize() async');
+      final callKitSubscriptionSource = _curlyBlockSource(
+        voipSource,
+        'void _ensureCallKitEventSubscription() {',
+      );
       final notificationListenerSource = _curlyBlockSource(
         voipSource,
         'void _startIncomingNotificationListener()',
@@ -439,6 +493,10 @@ void main() {
           initializeSource, contains('_startIncomingNotificationListener();'));
       expect(
         initializeSource,
+        contains('_ensureCallKitEventSubscription()'),
+      );
+      expect(
+        callKitSubscriptionSource,
         contains('FlutterCallkitIncoming.onEvent.listen(_handleCallKitEvent)'),
       );
       expect(
@@ -1397,6 +1455,10 @@ void main() {
         voipSource,
         'Future<void> initialize() async {',
       );
+      final callKitSubscriptionSource = _curlyBlockSource(
+        voipSource,
+        'void _ensureCallKitEventSubscription() {',
+      );
       final recoverSource = _curlyBlockSource(
         voipSource,
         'Future<void> recoverBackgroundAcceptedCalls() async {',
@@ -1404,7 +1466,11 @@ void main() {
 
       expect(mainSource,
           contains('VoIPService().recoverBackgroundAcceptedCalls()'));
-      expect(initializeSource, contains('FlutterCallkitIncoming.onEvent'));
+      expect(initializeSource, contains('_ensureCallKitEventSubscription()'));
+      expect(
+        callKitSubscriptionSource,
+        contains('FlutterCallkitIncoming.onEvent'),
+      );
       expect(
           initializeSource, contains('await recoverBackgroundAcceptedCalls()'));
       expect(recoverSource, contains('_callActiveCalls()'));

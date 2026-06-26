@@ -536,6 +536,9 @@ function buildStudentPairResponderCallData({
     callerPhoto: normalizeString(pushPayload.studentPhoto),
     language: normalizeString(pushPayload.language),
     scenario: normalizeString(pushPayload.scenario),
+    recipientId:
+      normalizeString(pushPayload.recipientId) ||
+      normalizeString(pushPayload.responderId),
     requesterId: normalizeString(pushPayload.requesterId),
     responderId: normalizeString(pushPayload.responderId),
     requesterRole: normalizeString(pushPayload.requesterRole),
@@ -562,6 +565,9 @@ function buildStudentPairResponderPushPayload(callData = {}) {
     callerPhoto: normalizeString(callData.callerPhoto),
     language: normalizeString(callData.language),
     scenario: normalizeString(callData.scenario),
+    recipientId:
+      normalizeString(callData.recipientId) ||
+      normalizeString(callData.responderId),
     requesterId: normalizeString(callData.requesterId),
     responderId: normalizeString(callData.responderId),
     requesterRole: normalizeString(callData.requesterRole),

@@ -18,6 +18,7 @@ function timestampFromMillis(millis) {
 
 function expectedTeacherMetadata(overrides = {}) {
   return {
+    recipientId: "",
     scenario: "student_teacher",
     requesterId: "student-a",
     responderId: "",
@@ -154,6 +155,7 @@ test("incoming call push payload carries routing metadata without room token", (
     studentId: "student-a",
     studentPhoto: "photo-url",
     language: "English",
+    recipientId: "teacher-a",
     scenario: "student_teacher",
     requesterId: "student-a",
     responderId: "teacher-a",
@@ -200,6 +202,7 @@ test("incoming call notification data keeps metadata for Firestore fallback", ()
   });
 
   assert.equal(notificationData.notificationId, "session-b_student-b");
+  assert.equal(notificationData.recipientId, "student-b");
   assert.equal(notificationData.scenario, "student_student");
   assert.equal(notificationData.requesterId, "student-a");
   assert.equal(notificationData.responderId, "student-b");

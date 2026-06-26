@@ -14,7 +14,13 @@ void main() {
     appNavigatorKey = GlobalKey<NavigatorState>();
     service = VoIPService();
     service.debugResetInMemoryStateForTesting();
+    service.debugCurrentUserIdOverride = 'current-user';
   });
+
+  Future<void> markCallActionsReady() async {
+    service.debugSetInitializedForTesting(true);
+    await service.debugSetCallActionHandlingReadyForTesting(true);
+  }
 
   group('VoIP accept helpers', () {
     test('assigned responder prefers currentResponderId with legacy fallback',
@@ -423,6 +429,528 @@ void main() {
       expect(find.byKey(const Key('video-call-route')), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    test('early accept event waits for auth and service initialization',
+        () async {
+      final navigationCalls = <Map<String, dynamic>>[];
+      final prefetched = Completer<String>();
+      var acceptCallInvoked = false;
+      const sessionId = 'early-accept-session';
+
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+      service.debugNavigateToVideoCallOverride = ({
+        required sessionId,
+        required isTutor,
+        roomUrl,
+        meetingToken,
+        roomName,
+      }) {
+        navigationCalls.add({
+          'sessionId': sessionId,
+          'isTutor': isTutor,
+          'roomUrl': roomUrl,
+          'meetingToken': meetingToken,
+          'roomName': roomName,
+        });
+      };
+      service.debugPrefetchSessionTokensOverride = (sessionId) async {
+        if (!prefetched.isCompleted) {
+          prefetched.complete(sessionId);
+        }
+      };
+      service.debugMarkNavigationTriggeredOverride = ({
+        required sessionId,
+        required isTutor,
+      }) async {};
+
+      await service.debugHandleCallKitAcceptEventForTesting({
+        'sessionId': sessionId,
+        'extra': {
+          'tokenStrategy': 'get_session_tokens',
+          'roomName': 'early-room',
+        },
+      });
+      await service.debugHandleCallKitAcceptEventForTesting({
+        'sessionId': sessionId,
+        'extra': {
+          'tokenStrategy': 'get_session_tokens',
+          'roomName': 'early-room',
+        },
+      });
+
+      expect(service.debugPendingCallKitActionCountForTesting, 1);
+      expect(navigationCalls, isEmpty);
+      expect(acceptCallInvoked, isFalse);
+
+      await service.debugSetCallActionHandlingReadyForTesting(true);
+
+      expect(service.debugPendingCallKitActionCountForTesting, 1);
+      expect(navigationCalls, isEmpty);
+      expect(acceptCallInvoked, isFalse);
+
+      service.debugSetInitializedForTesting(true);
+      await service.debugDrainPendingCallKitActionsForTesting();
+
+      expect(service.debugPendingCallKitActionCountForTesting, 0);
+      expect(await prefetched.future.timeout(const Duration(seconds: 1)),
+          sessionId);
+      expect(acceptCallInvoked, isFalse);
+      expect(navigationCalls, hasLength(1));
+      expect(navigationCalls.single, {
+        'sessionId': sessionId,
+        'isTutor': false,
+        'roomUrl': null,
+        'meetingToken': null,
+        'roomName': 'early-room',
+      });
+    });
+
+    test('background accepted replay waits for call actions ready', () async {
+      final navigationCalls = <Map<String, dynamic>>[];
+      const sessionId = 'early-background-replay-session';
+
+      service.debugActiveCallsOverride = () async => [
+            {
+              'id': _deterministicCallKitIdForTest(sessionId),
+              'accepted': true,
+              'extra': {
+                'sessionId': sessionId,
+                'tokenStrategy': 'get_session_tokens',
+                'roomName': 'background-early-room',
+              },
+            },
+          ];
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugNavigateToVideoCallOverride = ({
+        required sessionId,
+        required isTutor,
+        roomUrl,
+        meetingToken,
+        roomName,
+      }) {
+        navigationCalls.add({
+          'sessionId': sessionId,
+          'isTutor': isTutor,
+          'roomName': roomName,
+        });
+      };
+      service.debugPrefetchSessionTokensOverride = (_) async {};
+      service.debugMarkNavigationTriggeredOverride = ({
+        required sessionId,
+        required isTutor,
+      }) async {};
+
+      await service.recoverBackgroundAcceptedCalls();
+
+      expect(service.debugPendingCallKitActionCountForTesting, 1);
+      expect(navigationCalls, isEmpty);
+
+      await service.debugSetCallActionHandlingReadyForTesting(true);
+
+      expect(service.debugPendingCallKitActionCountForTesting, 1);
+      expect(navigationCalls, isEmpty);
+
+      service.debugSetInitializedForTesting(true);
+      await service.debugDrainPendingCallKitActionsForTesting();
+
+      expect(service.debugPendingCallKitActionCountForTesting, 0);
+      expect(navigationCalls, hasLength(1));
+      expect(navigationCalls.single, {
+        'sessionId': sessionId,
+        'isTutor': false,
+        'roomName': 'background-early-room',
+      });
+    });
+
+    test('background accepted replay is dropped for a different user',
+        () async {
+      final navigationCalls = <String>[];
+      var acceptCallInvoked = false;
+      const sessionId = 'background-wrong-user-session';
+
+      service.debugActiveCallsOverride = () async => [
+            {
+              'id': _deterministicCallKitIdForTest(sessionId),
+              'accepted': true,
+              'extra': {
+                'sessionId': sessionId,
+                'recipientId': 'other-user',
+                'tokenStrategy': 'get_session_tokens',
+                'roomName': 'background-wrong-user-room',
+              },
+            },
+          ];
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+      service.debugNavigateToVideoCallOverride = ({
+        required sessionId,
+        required isTutor,
+        roomUrl,
+        meetingToken,
+        roomName,
+      }) {
+        navigationCalls.add(sessionId);
+      };
+
+      await markCallActionsReady();
+      await service.recoverBackgroundAcceptedCalls();
+
+      expect(service.debugPendingCallKitActionCountForTesting, 0);
+      expect(acceptCallInvoked, isFalse);
+      expect(navigationCalls, isEmpty);
+    });
+
+    test('early decline event queues serialized extra until ready', () async {
+      final declined = Completer<String>();
+      const sessionId = 'early-decline-session';
+
+      service.debugDeclineCallOverride = (declinedSessionId) async {
+        if (!declined.isCompleted) {
+          declined.complete(declinedSessionId);
+        }
+      };
+
+      await service.debugHandleCallKitDeclineEventForTesting({
+        'id': _deterministicCallKitIdForTest(sessionId),
+        'extra': '{"sessionId":"$sessionId"}',
+      });
+
+      expect(service.debugPendingCallKitActionCountForTesting, 1);
+      expect(declined.isCompleted, isFalse);
+
+      service.debugSetInitializedForTesting(true);
+      await service.debugSetCallActionHandlingReadyForTesting(true);
+
+      expect(service.debugPendingCallKitActionCountForTesting, 0);
+      expect(
+          await declined.future.timeout(const Duration(seconds: 1)), sessionId);
+    });
+
+    test('expired early accept is dropped when actions become ready', () async {
+      var permissionsChecked = false;
+      var acceptCallInvoked = false;
+
+      service.debugEnsureMediaPermissionsOverride = () async {
+        permissionsChecked = true;
+        return true;
+      };
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+
+      await service.debugHandleCallKitAcceptEventForTesting({
+        'sessionId': 'early-expired-session',
+        'expiresAt': '2000-01-01T00:00:00.000Z',
+      });
+
+      expect(service.debugPendingCallKitActionCountForTesting, 1);
+
+      service.debugSetInitializedForTesting(true);
+      await service.debugSetCallActionHandlingReadyForTesting(true);
+
+      expect(service.debugPendingCallKitActionCountForTesting, 0);
+      expect(permissionsChecked, isFalse);
+      expect(acceptCallInvoked, isFalse);
+    });
+
+    test('early accept queued past ttl is dropped before processing', () async {
+      var permissionsChecked = false;
+      var acceptCallInvoked = false;
+
+      service.debugEnsureMediaPermissionsOverride = () async {
+        permissionsChecked = true;
+        return true;
+      };
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+
+      await service.debugHandleCallKitAcceptEventForTesting({
+        'sessionId': 'early-ttl-session',
+      });
+
+      expect(service.debugPendingCallKitActionCountForTesting, 1);
+
+      service.debugSetInitializedForTesting(true);
+      await service.debugSetCallActionHandlingReadyForTesting(
+        true,
+        now: DateTime.now().add(const Duration(minutes: 3)),
+      );
+
+      expect(service.debugPendingCallKitActionCountForTesting, 0);
+      expect(permissionsChecked, isFalse);
+      expect(acceptCallInvoked, isFalse);
+    });
+
+    test('early action queue is bounded', () async {
+      final maxCount = service.debugPendingCallKitActionMaxCountForTesting;
+
+      for (var index = 0; index < maxCount + 3; index++) {
+        await service.debugHandleCallKitAcceptEventForTesting({
+          'sessionId': 'early-bounded-session-$index',
+        });
+      }
+
+      expect(service.debugPendingCallKitActionCountForTesting, maxCount);
+    });
+
+    test('latest early action wins for the same CallKit session', () async {
+      final declined = Completer<String>();
+      var acceptCallInvoked = false;
+      const sessionId = 'early-latest-action-session';
+
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+      service.debugDeclineCallOverride = (declinedSessionId) async {
+        if (!declined.isCompleted) {
+          declined.complete(declinedSessionId);
+        }
+      };
+
+      await service.debugHandleCallKitAcceptEventForTesting({
+        'id': _deterministicCallKitIdForTest(sessionId),
+        'sessionId': sessionId,
+      });
+      await service.debugHandleCallKitDeclineEventForTesting({
+        'id': _deterministicCallKitIdForTest(sessionId),
+        'sessionId': sessionId,
+      });
+
+      expect(service.debugPendingCallKitActionCountForTesting, 1);
+
+      service.debugSetInitializedForTesting(true);
+      await service.debugSetCallActionHandlingReadyForTesting(true);
+
+      expect(service.debugPendingCallKitActionCountForTesting, 0);
+      expect(acceptCallInvoked, isFalse);
+      expect(
+          await declined.future.timeout(const Duration(seconds: 1)), sessionId);
+    });
+
+    test('targeted early action is dropped for a different user', () async {
+      var acceptCallInvoked = false;
+
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+
+      await service.debugHandleCallKitAcceptEventForTesting({
+        'sessionId': 'early-targeted-session',
+        'recipientId': 'other-user',
+      });
+
+      expect(service.debugPendingCallKitActionCountForTesting, 1);
+
+      service.debugSetInitializedForTesting(true);
+      await service.debugSetCallActionHandlingReadyForTesting(true);
+
+      expect(service.debugPendingCallKitActionCountForTesting, 0);
+      expect(acceptCallInvoked, isFalse);
+    });
+
+    test('ready accept event is dropped for a different user', () async {
+      final navigationCalls = <String>[];
+      var permissionsChecked = false;
+      var acceptCallInvoked = false;
+
+      service.debugEnsureMediaPermissionsOverride = () async {
+        permissionsChecked = true;
+        return true;
+      };
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+      service.debugNavigateToVideoCallOverride = ({
+        required sessionId,
+        required isTutor,
+        roomUrl,
+        meetingToken,
+        roomName,
+      }) {
+        navigationCalls.add(sessionId);
+      };
+
+      await markCallActionsReady();
+      await service.debugHandleCallKitAcceptEventForTesting({
+        'sessionId': 'ready-wrong-user-accept',
+        'recipientId': 'other-user',
+        'extra': {
+          'acceptMode': 'open_session',
+          'tokenStrategy': 'get_session_tokens',
+          'roomName': 'wrong-user-room',
+        },
+      });
+
+      expect(service.debugPendingCallKitActionCountForTesting, 0);
+      expect(permissionsChecked, isFalse);
+      expect(acceptCallInvoked, isFalse);
+      expect(navigationCalls, isEmpty);
+    });
+
+    test('ready decline event is dropped for a different user', () async {
+      var declineCallInvoked = false;
+
+      service.debugDeclineCallOverride = (_) async {
+        declineCallInvoked = true;
+      };
+
+      await markCallActionsReady();
+      await service.debugHandleCallKitDeclineEventForTesting({
+        'sessionId': 'ready-wrong-user-decline',
+        'recipientId': 'other-user',
+      });
+
+      expect(service.debugPendingCallKitActionCountForTesting, 0);
+      expect(declineCallInvoked, isFalse);
+    });
+
+    test('untargeted early action is dropped without known user', () async {
+      var acceptCallInvoked = false;
+
+      service.debugCurrentUserIdOverride = null;
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+
+      await service.debugHandleCallKitAcceptEventForTesting({
+        'sessionId': 'early-unknown-user-session',
+      });
+
+      expect(service.debugPendingCallKitActionCountForTesting, 1);
+
+      service.debugSetInitializedForTesting(true);
+      await service.debugSetCallActionHandlingReadyForTesting(true);
+
+      expect(service.debugPendingCallKitActionCountForTesting, 0);
+      expect(acceptCallInvoked, isFalse);
+    });
+
+    test('targeted early action runs for current user', () async {
+      final navigationCalls = <Map<String, dynamic>>[];
+      const sessionId = 'early-current-user-session';
+
+      service.debugCurrentUserIdOverride = 'current-user';
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugNavigateToVideoCallOverride = ({
+        required sessionId,
+        required isTutor,
+        roomUrl,
+        meetingToken,
+        roomName,
+      }) {
+        navigationCalls.add({
+          'sessionId': sessionId,
+          'isTutor': isTutor,
+          'roomName': roomName,
+        });
+      };
+      service.debugPrefetchSessionTokensOverride = (_) async {};
+      service.debugMarkNavigationTriggeredOverride = ({
+        required sessionId,
+        required isTutor,
+      }) async {};
+
+      await service.debugHandleCallKitAcceptEventForTesting({
+        'sessionId': sessionId,
+        'recipientId': 'current-user',
+        'extra': {
+          'tokenStrategy': 'get_session_tokens',
+          'roomName': 'current-user-room',
+        },
+      });
+
+      service.debugSetInitializedForTesting(true);
+      await service.debugSetCallActionHandlingReadyForTesting(true);
+
+      expect(service.debugPendingCallKitActionCountForTesting, 0);
+      expect(navigationCalls, hasLength(1));
+      expect(navigationCalls.single, {
+        'sessionId': sessionId,
+        'isTutor': false,
+        'roomName': 'current-user-room',
+      });
+    });
+
+    test('student open-session action is not targeted by responderId',
+        () async {
+      final navigationCalls = <Map<String, dynamic>>[];
+      const sessionId = 'early-student-open-session';
+
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugNavigateToVideoCallOverride = ({
+        required sessionId,
+        required isTutor,
+        roomUrl,
+        meetingToken,
+        roomName,
+      }) {
+        navigationCalls.add({
+          'sessionId': sessionId,
+          'isTutor': isTutor,
+          'roomName': roomName,
+        });
+      };
+      service.debugPrefetchSessionTokensOverride = (_) async {};
+      service.debugMarkNavigationTriggeredOverride = ({
+        required sessionId,
+        required isTutor,
+      }) async {};
+
+      await service.debugHandleCallKitAcceptEventForTesting({
+        'sessionId': sessionId,
+        'requesterId': 'student-user',
+        'responderId': 'teacher-user',
+        'navRole': 'student',
+        'extra': {
+          'acceptMode': 'open_session',
+          'tokenStrategy': 'get_session_tokens',
+          'roomName': 'student-open-room',
+        },
+      });
+
+      service.debugSetInitializedForTesting(true);
+      await service.debugSetCallActionHandlingReadyForTesting(true);
+
+      expect(service.debugPendingCallKitActionCountForTesting, 0);
+      expect(navigationCalls, hasLength(1));
+      expect(navigationCalls.single, {
+        'sessionId': sessionId,
+        'isTutor': false,
+        'roomName': 'student-open-room',
+      });
+    });
+
+    test('pending early events are cleared when actions become not ready',
+        () async {
+      await service.debugHandleCallKitAcceptEventForTesting({
+        'sessionId': 'early-cleared-session',
+        'extra': {'tokenStrategy': 'get_session_tokens'},
+      });
+
+      expect(service.debugPendingCallKitActionCountForTesting, 1);
+
+      await service.debugSetCallActionHandlingReadyForTesting(false);
+
+      expect(service.debugPendingCallKitActionCountForTesting, 0);
+      expect(service.debugCallActionHandlingReadyForTesting, isFalse);
     });
 
     test('accept payload requires roomUrl for already accepted room branch',
@@ -1609,6 +2137,7 @@ void main() {
         required isTutor,
       }) async {};
 
+      await markCallActionsReady();
       await service.recoverBackgroundAcceptedCalls();
 
       expect(await prefetched.future.timeout(const Duration(seconds: 1)),
@@ -1663,6 +2192,7 @@ void main() {
         required isTutor,
       }) async {};
 
+      await markCallActionsReady();
       await service.recoverBackgroundAcceptedCalls();
 
       expect(await prefetched.future.timeout(const Duration(seconds: 1)),
@@ -1721,6 +2251,7 @@ void main() {
         }
       };
 
+      await markCallActionsReady();
       await service.recoverBackgroundAcceptedCalls();
 
       expect(
@@ -1777,6 +2308,7 @@ void main() {
         required isTutor,
       }) async {};
 
+      await markCallActionsReady();
       await service.recoverBackgroundAcceptedCalls();
 
       expect(await prefetched.future.timeout(const Duration(seconds: 1)),
@@ -1839,6 +2371,7 @@ void main() {
         }
       };
 
+      await markCallActionsReady();
       await service.recoverBackgroundAcceptedCalls();
 
       expect(
@@ -1905,6 +2438,7 @@ void main() {
             },
           ];
 
+      await markCallActionsReady();
       await service.recoverBackgroundAcceptedCalls();
 
       expect(acceptCallInvoked, isFalse);
@@ -1946,6 +2480,7 @@ void main() {
         });
       };
 
+      await markCallActionsReady();
       await service.recoverBackgroundAcceptedCalls();
 
       expect(acceptCallInvoked, isFalse);

@@ -1015,6 +1015,7 @@ async function sendVoipPushToStudent(studentId, callData) {
         aps: { "content-available": 1 },
         type: "incoming_call",
         sessionId: callData.sessionId,
+        recipientId: callData.recipientId || studentId,
         callerName: callData.callerName,
         callerId: callData.callerId,
         callerPhoto: callData.callerPhoto || "",
@@ -1062,6 +1063,7 @@ async function sendVoipPushToStudent(studentId, callData) {
       data: {
         type: "incoming_call",
         sessionId: callData.sessionId,
+        recipientId: callData.recipientId || studentId,
         callerName: callData.callerName,
         callerId: callData.callerId,
         callerPhoto: callData.callerPhoto || "",

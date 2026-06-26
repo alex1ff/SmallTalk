@@ -111,6 +111,7 @@ test("incoming call push payload reuses notification identity data", () => {
       studentId: "student-a",
       studentPhoto: "photo-url",
       language: "Spanish",
+      recipientId: "teacher-a",
       scenario: "student_teacher",
       requesterId: "student-a",
       responderId: "teacher-a",
