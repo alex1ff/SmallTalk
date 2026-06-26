@@ -107,6 +107,90 @@ enum VoipAcceptGateDecision {
 }
 
 @visibleForTesting
+enum VoipAcceptPayloadAction {
+  acceptCall,
+  openSession,
+}
+
+dynamic _voipValueFromPayload(Map<String, dynamic> data, String key) {
+  final extra = _voipMapFrom(data['extra']);
+  final extraValue = extra[key];
+  if (extraValue != null && _voipNonEmptyString(extraValue) != null) {
+    return extraValue;
+  }
+  return data[key];
+}
+
+String? _voipStringFromPayload(Map<String, dynamic> data, String key) {
+  return _voipNonEmptyString(_voipValueFromPayload(data, key));
+}
+
+DateTime? _voipDateTimeFromPayloadValue(dynamic value) {
+  if (value == null) return null;
+  if (value is DateTime) return value;
+  if (value is num) {
+    return DateTime.fromMillisecondsSinceEpoch(value.toInt(), isUtc: true);
+  }
+  if (value is String) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return null;
+    final parsed = DateTime.tryParse(trimmed);
+    if (parsed != null) return parsed;
+    final millis = int.tryParse(trimmed);
+    return millis == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(millis, isUtc: true);
+  }
+
+  try {
+    final dynamic dynamicValue = value;
+    final converted = dynamicValue.toDate();
+    if (converted is DateTime) {
+      return converted;
+    }
+  } catch (_) {
+    return null;
+  }
+
+  return null;
+}
+
+@visibleForTesting
+VoipAcceptPayloadAction voipAcceptActionFromPayload(
+  Map<String, dynamic> data,
+) {
+  if (voipRoomUrlFromAcceptPayload(data) != null) {
+    return VoipAcceptPayloadAction.openSession;
+  }
+
+  final acceptMode = _voipStringFromPayload(data, 'acceptMode')?.toLowerCase();
+  final tokenStrategy =
+      _voipStringFromPayload(data, 'tokenStrategy')?.toLowerCase();
+  if (acceptMode == 'open_session' ||
+      tokenStrategy == 'payload_room' ||
+      tokenStrategy == 'get_session_tokens') {
+    return VoipAcceptPayloadAction.openSession;
+  }
+
+  return VoipAcceptPayloadAction.acceptCall;
+}
+
+@visibleForTesting
+bool voipIncomingCallPayloadHasExpired(
+  Map<String, dynamic> data, {
+  DateTime? now,
+}) {
+  final parsedExpiresAt = _voipDateTimeFromPayloadValue(
+    _voipValueFromPayload(data, 'expiresAt'),
+  );
+  if (parsedExpiresAt == null) {
+    return false;
+  }
+
+  return !parsedExpiresAt.isAfter(now ?? DateTime.now());
+}
+
+@visibleForTesting
 String? voipAssignedResponderIdForSession(Map<String, dynamic> sessionData) {
   return _voipNonEmptyString(sessionData['currentResponderId']) ??
       _voipNonEmptyString(sessionData['currentTutorId']);
@@ -126,23 +210,17 @@ bool voipIncomingSessionMatchesResponder({
 
 @visibleForTesting
 String? voipRoomUrlFromAcceptPayload(Map<String, dynamic> data) {
-  final extra = _voipMapFrom(data['extra']);
-  return _voipNonEmptyString(extra['roomUrl']) ??
-      _voipNonEmptyString(data['roomUrl']);
+  return _voipStringFromPayload(data, 'roomUrl');
 }
 
 @visibleForTesting
 String? voipMeetingTokenFromAcceptPayload(Map<String, dynamic> data) {
-  final extra = _voipMapFrom(data['extra']);
-  return _voipNonEmptyString(extra['meetingToken']) ??
-      _voipNonEmptyString(data['meetingToken']);
+  return _voipStringFromPayload(data, 'meetingToken');
 }
 
 @visibleForTesting
 String? voipRoomNameFromAcceptPayload(Map<String, dynamic> data) {
-  final extra = _voipMapFrom(data['extra']);
-  return _voipNonEmptyString(extra['roomName']) ??
-      _voipNonEmptyString(data['roomName']);
+  return _voipStringFromPayload(data, 'roomName');
 }
 
 @visibleForTesting
@@ -277,6 +355,11 @@ class VoIPService {
   @visibleForTesting
   Future<void> Function(String sessionId)? debugPrefetchSessionTokensOverride;
   @visibleForTesting
+  Future<void> Function({
+    required String sessionId,
+    required String callKitId,
+  })? debugEndCallKitCallOverride;
+  @visibleForTesting
   Future<Map<String, dynamic>> Function(String sessionId)?
       debugGetSessionTokensOverride;
   @visibleForTesting
@@ -344,6 +427,22 @@ class VoIPService {
   }
 
   @visibleForTesting
+  String? debugCallKitIdForSessionForTesting(String sessionId) {
+    return _sessionCallKitIds[sessionId];
+  }
+
+  @visibleForTesting
+  void debugTrackCallKitSessionForTesting({
+    required String sessionId,
+    required String callKitId,
+  }) {
+    final normalizedCallKitId = _normalizeCallKitId(callKitId);
+    if (normalizedCallKitId == null) return;
+    _sessionCallKitIds[sessionId] = normalizedCallKitId;
+    _lastCallKitId = normalizedCallKitId;
+  }
+
+  @visibleForTesting
   void debugTrackHandledCallKitAcceptForTesting({
     required String sessionId,
     required String callKitId,
@@ -374,13 +473,21 @@ class VoIPService {
   }
 
   @visibleForTesting
+  void debugMarkLastAcceptedSessionForTesting(String sessionId) {
+    _lastAcceptedSessionId = sessionId;
+  }
+
+  @visibleForTesting
   void debugClearSessionStateForTesting(String sessionId) {
     _clearSessionState(sessionId);
   }
 
   @visibleForTesting
-  Future<void> debugHandleCallAcceptForTesting(Map<String, dynamic> data) {
-    return _handleCallAccept(data);
+  Future<void> debugHandleCallAcceptForTesting(
+    Map<String, dynamic> data, {
+    DateTime? now,
+  }) {
+    return _handleCallAccept(data, now: now);
   }
 
   @visibleForTesting
@@ -414,6 +521,7 @@ class VoIPService {
     debugDeclineCallOverride = null;
     debugRecoverActiveSessionOverride = null;
     debugPrefetchSessionTokensOverride = null;
+    debugEndCallKitCallOverride = null;
     debugGetSessionTokensOverride = null;
     debugMarkNavigationTriggeredOverride = null;
     debugNavigateToVideoCallOverride = null;
@@ -1129,6 +1237,11 @@ class VoIPService {
     Map<String, dynamic>? extraData,
   }) async {
     try {
+      if (extraData != null && voipIncomingCallPayloadHasExpired(extraData)) {
+        debugPrint('ℹ️ VoIPService: Ignoring expired incoming call payload');
+        return;
+      }
+
       debugPrint('📞 VoIPService: Showing incoming call from $callerName');
 
       final callKitId = sessionId.isNotEmpty
@@ -1249,9 +1362,40 @@ class VoIPService {
     }
   }
 
+  bool _stopAcceptForGateDecision({
+    required String sessionId,
+    required String effectiveCallKitId,
+    required VoipAcceptGateDecision decision,
+    required bool releaseProcessClaim,
+  }) {
+    switch (decision) {
+      case VoipAcceptGateDecision.proceed:
+        return false;
+      case VoipAcceptGateDecision.duplicateTimeWindow:
+        debugPrint('⚠️ VoIPService: Duplicate accept event (time window)');
+        break;
+      case VoipAcceptGateDecision.duplicateCallKitId:
+        debugPrint(
+            '⚠️ VoIPService: Duplicate accept event (callKitId): $effectiveCallKitId');
+        break;
+      case VoipAcceptGateDecision.alreadyAccepted:
+        debugPrint('⚠️ VoIPService: Call already accepted: $sessionId');
+        break;
+      case VoipAcceptGateDecision.acceptInProgress:
+        debugPrint('⚠️ VoIPService: Accept already in progress for $sessionId');
+        break;
+    }
+    if (releaseProcessClaim) {
+      _releaseProcessAcceptClaim(sessionId);
+    }
+    return true;
+  }
+
   /// Пользователь принял звонок
-  /// Пользователь принял звонок
-  Future<void> _handleCallAccept(Map<String, dynamic>? data) async {
+  Future<void> _handleCallAccept(
+    Map<String, dynamic>? data, {
+    DateTime? now,
+  }) async {
     if (data == null) return;
 
     final extra = data['extra'] is Map
@@ -1261,7 +1405,8 @@ class VoIPService {
         extra['sessionId'] as String? ?? data['sessionId'] as String?;
     final sessionId = rawSessionId?.trim();
     final callKitId = _normalizeCallKitId(
-      data['id'] as String? ?? extra['callKitId'] as String?,
+      _voipNonEmptyString(data['id']) ??
+          _voipStringFromPayload(data, 'callKitId'),
     );
     if (sessionId == null || sessionId.isEmpty) {
       debugPrint('❌ VoIPService: No sessionId in accept event');
@@ -1276,44 +1421,66 @@ class VoIPService {
           'ℹ️ VoIPService: Ignoring accept for stale callKitId: $callKitId');
       return;
     }
-    if (!_tryClaimProcessAccept(sessionId)) {
-      debugPrint('⚠️ VoIPService: Duplicate accept event (process gate)');
-      return;
-    }
-    _touchSessionState(sessionId);
-
-    final now = DateTime.now();
-    final acceptGateDecision = voipEvaluateAcceptGate(
-      now: now,
+    final acceptTime = now ?? DateTime.now();
+    final preExpiredGateDecision = voipEvaluateAcceptGate(
+      now: acceptTime,
       lastAcceptAt: _recentAcceptBySession[sessionId],
       handledCallKitAcceptId:
           _handledCallKitAcceptIds.contains(effectiveCallKitId),
       acceptedSession: _acceptedSessions.contains(sessionId),
       acceptInProgress: _acceptInProgress.contains(sessionId),
     );
-    switch (acceptGateDecision) {
-      case VoipAcceptGateDecision.proceed:
-        break;
-      case VoipAcceptGateDecision.duplicateTimeWindow:
-        debugPrint('⚠️ VoIPService: Duplicate accept event (time window)');
-        _releaseProcessAcceptClaim(sessionId);
-        return;
-      case VoipAcceptGateDecision.duplicateCallKitId:
+    if (_stopAcceptForGateDecision(
+      sessionId: sessionId,
+      effectiveCallKitId: effectiveCallKitId,
+      decision: preExpiredGateDecision,
+      releaseProcessClaim: false,
+    )) {
+      return;
+    }
+    if (_hasProtectedLiveSessionState(sessionId)) {
+      debugPrint(
+          'ℹ️ VoIPService: Ignoring accept for protected session state: $sessionId');
+      return;
+    }
+    if (voipIncomingCallPayloadHasExpired(data, now: acceptTime)) {
+      debugPrint('ℹ️ VoIPService: Ignoring expired accept payload');
+      if (callKitId == null) {
         debugPrint(
-            '⚠️ VoIPService: Duplicate accept event (callKitId): $effectiveCallKitId');
-        _releaseProcessAcceptClaim(sessionId);
+            'ℹ️ VoIPService: Expired accept has no callKitId; leaving system calls untouched');
         return;
-      case VoipAcceptGateDecision.alreadyAccepted:
-        debugPrint('⚠️ VoIPService: Call already accepted: $sessionId');
-        _releaseProcessAcceptClaim(sessionId);
-        return;
-      case VoipAcceptGateDecision.acceptInProgress:
-        debugPrint('⚠️ VoIPService: Accept already in progress for $sessionId');
-        _releaseProcessAcceptClaim(sessionId);
-        return;
+      }
+      _sessionCallKitIds[sessionId] = callKitId;
+      await _endExpiredAcceptSystemCall(
+        sessionId: sessionId,
+        callKitId: callKitId,
+      );
+      return;
+    }
+    if (!_tryClaimProcessAccept(sessionId)) {
+      debugPrint('⚠️ VoIPService: Duplicate accept event (process gate)');
+      return;
+    }
+    _touchSessionState(sessionId);
+
+    final acceptGateDecision = voipEvaluateAcceptGate(
+      now: acceptTime,
+      lastAcceptAt: _recentAcceptBySession[sessionId],
+      handledCallKitAcceptId:
+          _handledCallKitAcceptIds.contains(effectiveCallKitId),
+      acceptedSession: _acceptedSessions.contains(sessionId),
+      acceptInProgress: _acceptInProgress.contains(sessionId),
+    );
+    if (_stopAcceptForGateDecision(
+      sessionId: sessionId,
+      effectiveCallKitId: effectiveCallKitId,
+      decision: acceptGateDecision,
+      releaseProcessClaim: true,
+    )) {
+      return;
     }
 
-    _recentAcceptBySession[sessionId] = now;
+    _recentAcceptBySession[sessionId] = acceptTime;
     _handledCallKitAcceptIds.add(effectiveCallKitId);
     _lastCallKitId = effectiveCallKitId;
     _sessionCallKitIds[sessionId] = effectiveCallKitId;
@@ -1344,14 +1511,18 @@ class VoIPService {
       debugPrint('✅ VoIPService: Call accepted: $sessionId');
 
       final payloadCredentials = voipRoomCredentialsFromAcceptedPayload(data);
+      final acceptAction = voipAcceptActionFromPayload(data);
       _lastAcceptedIsTutor = payloadCredentials == null;
 
-      // Если в payload уже есть URL комнаты, значит backend уже принял звонок.
-      if (payloadCredentials != null) {
+      // open_session means backend already accepted the pair. Do not call
+      // acceptCall again; VideoCallPage/getSessionTokens can resolve credentials.
+      if (payloadCredentials != null ||
+          acceptAction == VoipAcceptPayloadAction.openSession) {
         _lastAcceptedIsTutor = false;
-        _lastRoomUrl = payloadCredentials.roomUrl;
+        _lastRoomUrl = payloadCredentials?.roomUrl;
         _lastMeetingToken = null;
-        _lastRoomName = payloadCredentials.roomName;
+        _lastRoomName =
+            payloadCredentials?.roomName ?? voipRoomNameFromAcceptPayload(data);
         unawaited(_prefetchSessionTokensForAccept(sessionId));
         _acceptedSessions.add(sessionId);
 
@@ -1816,6 +1987,24 @@ class VoIPService {
       _prefetchInProgress = false;
     }
     _sessionCallKitIds.remove(sessionId);
+  }
+
+  Future<void> _endExpiredAcceptSystemCall({
+    required String sessionId,
+    required String callKitId,
+  }) async {
+    try {
+      final override = debugEndCallKitCallOverride;
+      if (override != null) {
+        await override(sessionId: sessionId, callKitId: callKitId);
+      } else {
+        await FlutterCallkitIncoming.endCall(callKitId);
+      }
+      _clearSessionState(sessionId);
+      debugPrint('✅ VoIPService: Expired accept system call cleared');
+    } catch (e) {
+      debugPrint('❌ VoIPService: Error ending expired accept call: $e');
+    }
   }
 
   Future<void> _prefetchSessionTokens(String sessionId) async {

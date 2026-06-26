@@ -162,7 +162,7 @@ void main() {
       final handleAcceptIndex =
           source.indexOf('Future<void> _handleCallAccept');
       final claimIndex =
-          source.indexOf('_recentAcceptBySession[sessionId] = now;');
+          source.indexOf('_recentAcceptBySession[sessionId] = acceptTime;');
       final processClaimIndex =
           source.indexOf('_tryClaimProcessAccept', handleAcceptIndex);
       final handledIdIndex = source.indexOf(
@@ -456,10 +456,19 @@ void main() {
       expect(showIncomingCallSource, contains('AndroidParams('));
       expect(showIncomingCallSource, contains('IOSParams('));
       expect(showIncomingCallSource, contains('duration: 45000'));
+      expect(
+        showIncomingCallSource,
+        contains('voipIncomingCallPayloadHasExpired(extraData)'),
+      );
       expect(showIncomingCallSource, contains('voipBuildCallKitExtraData('));
       expect(showIncomingCallSource, contains('sessionId: sessionId'));
       expect(showIncomingCallSource, contains('callKitId: callKitId'));
       expect(acceptSource, contains('_lastAcceptedIsTutor = true;'));
+      expect(acceptSource, contains('voipAcceptActionFromPayload(data)'));
+      expect(
+        acceptSource,
+        contains('acceptAction == VoipAcceptPayloadAction.openSession'),
+      );
       expect(acceptSource, contains('_callAcceptCallFunction(sessionId)'));
       expect(acceptSource, contains('isTutor: true'));
       expect(declineSource, contains('_callDeclineCallFunction(sessionId)'));
@@ -804,7 +813,7 @@ void main() {
       expect(tutorNavigateIndex, greaterThan(acceptCallIndex));
     });
 
-    test('CallKit accept treats room URL as the only complete payload signal',
+    test('CallKit accept opens existing foreground sessions without acceptCall',
         () {
       final source = _source('lib/services/voip_service.dart');
 
@@ -822,12 +831,16 @@ void main() {
       final payloadCredentialsIndex = source.indexOf(
         'final payloadCredentials = voipRoomCredentialsFromAcceptedPayload(data);',
       );
+      final acceptActionIndex = source.indexOf(
+        'final acceptAction = voipAcceptActionFromPayload(data);',
+        payloadCredentialsIndex,
+      );
       final acceptedRoleIndex = source.indexOf(
         '_lastAcceptedIsTutor = payloadCredentials == null;',
         payloadCredentialsIndex,
       );
       final payloadBranchIndex = source.indexOf(
-        'if (payloadCredentials != null)',
+        'acceptAction == VoipAcceptPayloadAction.openSession',
         acceptedRoleIndex,
       );
       final studentNavigationIndex = source.indexOf(
@@ -843,6 +856,7 @@ void main() {
       expect(roomUrlGuardIndex, greaterThan(credentialsHelperIndex));
       expect(nullGuardIndex, greaterThan(roomUrlGuardIndex));
       expect(payloadCredentialsIndex, greaterThan(nullGuardIndex));
+      expect(acceptActionIndex, greaterThan(payloadCredentialsIndex));
       expect(acceptedRoleIndex, greaterThan(payloadCredentialsIndex));
       expect(payloadBranchIndex, greaterThan(acceptedRoleIndex));
       expect(studentNavigationIndex, greaterThan(payloadBranchIndex));

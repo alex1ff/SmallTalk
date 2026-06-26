@@ -156,6 +156,106 @@ void main() {
       expect(extra['scenario'], 'student_teacher');
     });
 
+    test('accept action treats open_session metadata as already accepted', () {
+      expect(
+        voipAcceptActionFromPayload({
+          'acceptMode': 'OPEN_SESSION',
+          'tokenStrategy': 'GET_SESSION_TOKENS',
+        }),
+        VoipAcceptPayloadAction.openSession,
+      );
+      expect(
+        voipAcceptActionFromPayload({
+          'tokenStrategy': 'PAYLOAD_ROOM',
+        }),
+        VoipAcceptPayloadAction.openSession,
+      );
+      expect(
+        voipAcceptActionFromPayload({
+          'extra': {
+            'roomUrl': 'https://daily.test/room-a',
+            'acceptMode': 'responder_accepts',
+          },
+        }),
+        VoipAcceptPayloadAction.openSession,
+      );
+      expect(
+        voipAcceptActionFromPayload({
+          'acceptMode': 'responder_accepts',
+          'tokenStrategy': 'accept_call',
+        }),
+        VoipAcceptPayloadAction.acceptCall,
+      );
+    });
+
+    test('incoming call payload expiry is evaluated from foreground metadata',
+        () {
+      final now = DateTime.utc(2026, 6, 21, 10, 1);
+
+      expect(
+        voipIncomingCallPayloadHasExpired(
+          {'expiresAt': '2026-06-21T10:00:45.000Z'},
+          now: now,
+        ),
+        isTrue,
+      );
+      expect(
+        voipIncomingCallPayloadHasExpired(
+          {
+            'extra': {'expiresAt': '2026-06-21T10:01:45.000Z'},
+          },
+          now: now,
+        ),
+        isFalse,
+      );
+      expect(
+        voipIncomingCallPayloadHasExpired({'expiresAt': ''}, now: now),
+        isFalse,
+      );
+      expect(
+        voipIncomingCallPayloadHasExpired(
+          {'expiresAt': DateTime.utc(2026, 6, 21, 10, 0, 45)},
+          now: now,
+        ),
+        isTrue,
+      );
+      expect(
+        voipIncomingCallPayloadHasExpired(
+          {'expiresAt': DateTime.utc(2026, 6, 21, 10, 1, 45)},
+          now: now,
+        ),
+        isFalse,
+      );
+      expect(
+        voipIncomingCallPayloadHasExpired(
+          {
+            'expiresAt':
+                DateTime.utc(2026, 6, 21, 10, 0, 45).millisecondsSinceEpoch
+          },
+          now: now,
+        ),
+        isTrue,
+      );
+      expect(
+        voipIncomingCallPayloadHasExpired(
+          {
+            'expiresAt': DateTime.utc(2026, 6, 21, 10, 0, 45)
+                .millisecondsSinceEpoch
+                .toString(),
+          },
+          now: now,
+        ),
+        isTrue,
+      );
+      expect(
+        voipIncomingCallPayloadHasExpired(
+          {'expiresAt': _TimestampLike(DateTime.utc(2026, 6, 21, 10, 0, 45))},
+          now: now,
+        ),
+        isTrue,
+      );
+    });
+
     test('accept payload requires roomUrl for already accepted room branch',
         () {
       final credentials = voipRoomCredentialsFromAcceptedPayload({
@@ -533,6 +633,652 @@ void main() {
       );
     });
 
+    test(
+        'runtime open_session foreground payload skips acceptCall without room',
+        () async {
+      final navigationCalls = <Map<String, dynamic>>[];
+      final prefetched = Completer<String>();
+      final navigationMarked = Completer<bool>();
+      var acceptCallInvoked = false;
+
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+      service.debugNavigateToVideoCallOverride = ({
+        required sessionId,
+        required isTutor,
+        roomUrl,
+        meetingToken,
+        roomName,
+      }) {
+        navigationCalls.add({
+          'sessionId': sessionId,
+          'isTutor': isTutor,
+          'roomUrl': roomUrl,
+          'meetingToken': meetingToken,
+          'roomName': roomName,
+        });
+      };
+      service.debugPrefetchSessionTokensOverride = (sessionId) async {
+        if (!prefetched.isCompleted) {
+          prefetched.complete(sessionId);
+        }
+      };
+      service.debugMarkNavigationTriggeredOverride = ({
+        required sessionId,
+        required isTutor,
+      }) async {
+        expect(sessionId, 'session-open-foreground');
+        if (!navigationMarked.isCompleted) {
+          navigationMarked.complete(isTutor);
+        }
+      };
+
+      await service.debugHandleCallAcceptForTesting({
+        'sessionId': 'session-open-foreground',
+        'extra': {
+          'acceptMode': 'open_session',
+          'tokenStrategy': 'get_session_tokens',
+          'roomName': 'room-open',
+        },
+      });
+
+      expect(
+        await prefetched.future.timeout(const Duration(seconds: 1)),
+        'session-open-foreground',
+      );
+      expect(
+        await navigationMarked.future.timeout(const Duration(seconds: 1)),
+        isFalse,
+      );
+      expect(acceptCallInvoked, isFalse);
+      expect(navigationCalls, hasLength(1));
+      expect(navigationCalls.single, {
+        'sessionId': 'session-open-foreground',
+        'isTutor': false,
+        'roomUrl': null,
+        'meetingToken': null,
+        'roomName': 'room-open',
+      });
+      expect(
+        service.debugAcceptedSessionForTesting('session-open-foreground'),
+        isTrue,
+      );
+      expect(
+        service.debugAcceptInProgressForTesting('session-open-foreground'),
+        isFalse,
+      );
+    });
+
+    test('runtime root open_session payload skips acceptCall without room',
+        () async {
+      final navigationCalls = <Map<String, dynamic>>[];
+      final prefetched = Completer<String>();
+      var acceptCallInvoked = false;
+
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+      service.debugNavigateToVideoCallOverride = ({
+        required sessionId,
+        required isTutor,
+        roomUrl,
+        meetingToken,
+        roomName,
+      }) {
+        navigationCalls.add({
+          'sessionId': sessionId,
+          'isTutor': isTutor,
+          'roomUrl': roomUrl,
+          'meetingToken': meetingToken,
+          'roomName': roomName,
+        });
+      };
+      service.debugPrefetchSessionTokensOverride = (sessionId) async {
+        if (!prefetched.isCompleted) {
+          prefetched.complete(sessionId);
+        }
+      };
+      service.debugMarkNavigationTriggeredOverride = ({
+        required sessionId,
+        required isTutor,
+      }) async {};
+
+      await service.debugHandleCallAcceptForTesting({
+        'sessionId': 'session-open-root',
+        'acceptMode': 'open_session',
+        'tokenStrategy': 'get_session_tokens',
+        'roomName': 'root-room',
+      });
+
+      expect(
+        await prefetched.future.timeout(const Duration(seconds: 1)),
+        'session-open-root',
+      );
+      expect(acceptCallInvoked, isFalse);
+      expect(navigationCalls, hasLength(1));
+      expect(navigationCalls.single, {
+        'sessionId': 'session-open-root',
+        'isTutor': false,
+        'roomUrl': null,
+        'meetingToken': null,
+        'roomName': 'root-room',
+      });
+      expect(
+        service.debugAcceptedSessionForTesting('session-open-root'),
+        isTrue,
+      );
+      expect(
+        service.debugAcceptInProgressForTesting('session-open-root'),
+        isFalse,
+      );
+    });
+
+    test('runtime payload_room accept skips acceptCall without room', () async {
+      final navigationCalls = <Map<String, dynamic>>[];
+      final prefetched = Completer<String>();
+      var acceptCallInvoked = false;
+
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+      service.debugNavigateToVideoCallOverride = ({
+        required sessionId,
+        required isTutor,
+        roomUrl,
+        meetingToken,
+        roomName,
+      }) {
+        navigationCalls.add({
+          'sessionId': sessionId,
+          'isTutor': isTutor,
+          'roomUrl': roomUrl,
+          'meetingToken': meetingToken,
+          'roomName': roomName,
+        });
+      };
+      service.debugPrefetchSessionTokensOverride = (sessionId) async {
+        if (!prefetched.isCompleted) {
+          prefetched.complete(sessionId);
+        }
+      };
+      service.debugMarkNavigationTriggeredOverride = ({
+        required sessionId,
+        required isTutor,
+      }) async {};
+
+      await service.debugHandleCallAcceptForTesting({
+        'sessionId': 'session-payload-room',
+        'extra': {
+          'tokenStrategy': 'payload_room',
+        },
+      });
+
+      expect(
+        await prefetched.future.timeout(const Duration(seconds: 1)),
+        'session-payload-room',
+      );
+      expect(acceptCallInvoked, isFalse);
+      expect(navigationCalls, hasLength(1));
+      expect(navigationCalls.single, {
+        'sessionId': 'session-payload-room',
+        'isTutor': false,
+        'roomUrl': null,
+        'meetingToken': null,
+        'roomName': null,
+      });
+      expect(
+        service.debugAcceptedSessionForTesting('session-payload-room'),
+        isTrue,
+      );
+    });
+
+    test(
+        'runtime get_session_tokens accept skips acceptCall without acceptMode',
+        () async {
+      final navigationCalls = <Map<String, dynamic>>[];
+      final prefetched = Completer<String>();
+      var acceptCallInvoked = false;
+
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+      service.debugNavigateToVideoCallOverride = ({
+        required sessionId,
+        required isTutor,
+        roomUrl,
+        meetingToken,
+        roomName,
+      }) {
+        navigationCalls.add({
+          'sessionId': sessionId,
+          'isTutor': isTutor,
+          'roomUrl': roomUrl,
+          'meetingToken': meetingToken,
+          'roomName': roomName,
+        });
+      };
+      service.debugPrefetchSessionTokensOverride = (sessionId) async {
+        if (!prefetched.isCompleted) {
+          prefetched.complete(sessionId);
+        }
+      };
+      service.debugMarkNavigationTriggeredOverride = ({
+        required sessionId,
+        required isTutor,
+      }) async {};
+
+      await service.debugHandleCallAcceptForTesting({
+        'sessionId': 'session-get-session-tokens',
+        'extra': {
+          'tokenStrategy': 'get_session_tokens',
+        },
+      });
+
+      expect(
+        await prefetched.future.timeout(const Duration(seconds: 1)),
+        'session-get-session-tokens',
+      );
+      expect(acceptCallInvoked, isFalse);
+      expect(navigationCalls, hasLength(1));
+      expect(navigationCalls.single, {
+        'sessionId': 'session-get-session-tokens',
+        'isTutor': false,
+        'roomUrl': null,
+        'meetingToken': null,
+        'roomName': null,
+      });
+      expect(
+        service.debugAcceptedSessionForTesting('session-get-session-tokens'),
+        isTrue,
+      );
+    });
+
+    test('runtime expired accept payload is ignored before acceptCall',
+        () async {
+      final navigationCalls = <Map<String, dynamic>>[];
+      var acceptCallInvoked = false;
+      var permissionsChecked = false;
+      var systemCallEnded = false;
+
+      service.debugEnsureMediaPermissionsOverride = () async {
+        permissionsChecked = true;
+        return true;
+      };
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+      service.debugNavigateToVideoCallOverride = ({
+        required sessionId,
+        required isTutor,
+        roomUrl,
+        meetingToken,
+        roomName,
+      }) {
+        navigationCalls.add({
+          'sessionId': sessionId,
+          'isTutor': isTutor,
+          'roomUrl': roomUrl,
+          'meetingToken': meetingToken,
+          'roomName': roomName,
+        });
+      };
+      service.debugEndCallKitCallOverride = ({
+        required sessionId,
+        required callKitId,
+      }) async {
+        expect(sessionId, 'session-expired');
+        expect(callKitId, '11111111-1111-1111-1111-111111111111');
+        systemCallEnded = true;
+      };
+      service.debugTrackCallKitSessionForTesting(
+        sessionId: 'session-expired',
+        callKitId: '11111111-1111-1111-1111-111111111111',
+      );
+
+      await service.debugHandleCallAcceptForTesting({
+        'id': '11111111-1111-1111-1111-111111111111',
+        'sessionId': 'session-expired',
+        'expiresAt': '2026-06-21T10:00:45.000Z',
+      }, now: DateTime.utc(2026, 6, 21, 10, 1));
+
+      expect(systemCallEnded, isTrue);
+      expect(permissionsChecked, isFalse);
+      expect(acceptCallInvoked, isFalse);
+      expect(navigationCalls, isEmpty);
+      expect(
+          service.debugAcceptedSessionForTesting('session-expired'), isFalse);
+      expect(
+        service.debugAcceptInProgressForTesting('session-expired'),
+        isFalse,
+      );
+    });
+
+    test('runtime expired accept extra is ignored before acceptCall', () async {
+      var acceptCallInvoked = false;
+      var systemCallEnded = false;
+
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+      service.debugEndCallKitCallOverride = ({
+        required sessionId,
+        required callKitId,
+      }) async {
+        expect(sessionId, 'session-expired-extra');
+        expect(callKitId, '22222222-2222-2222-2222-222222222222');
+        systemCallEnded = true;
+      };
+      service.debugTrackCallKitSessionForTesting(
+        sessionId: 'session-expired-extra',
+        callKitId: '22222222-2222-2222-2222-222222222222',
+      );
+
+      await service.debugHandleCallAcceptForTesting({
+        'id': '22222222-2222-2222-2222-222222222222',
+        'sessionId': 'session-expired-extra',
+        'extra': {
+          'expiresAt': '2026-06-21T10:00:45.000Z',
+          'acceptMode': 'open_session',
+        },
+      }, now: DateTime.utc(2026, 6, 21, 10, 1));
+
+      expect(systemCallEnded, isTrue);
+      expect(acceptCallInvoked, isFalse);
+      expect(
+        service.debugAcceptedSessionForTesting('session-expired-extra'),
+        isFalse,
+      );
+      expect(
+        service.debugAcceptInProgressForTesting('session-expired-extra'),
+        isFalse,
+      );
+    });
+
+    test('runtime expired accept reads root callKitId', () async {
+      var acceptCallInvoked = false;
+      var systemCallEnded = false;
+
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+      service.debugEndCallKitCallOverride = ({
+        required sessionId,
+        required callKitId,
+      }) async {
+        expect(sessionId, 'session-expired-root-callkit');
+        expect(callKitId, '77777777-7777-7777-7777-777777777777');
+        systemCallEnded = true;
+      };
+      service.debugTrackCallKitSessionForTesting(
+        sessionId: 'session-expired-root-callkit',
+        callKitId: '77777777-7777-7777-7777-777777777777',
+      );
+
+      await service.debugHandleCallAcceptForTesting({
+        'callKitId': '77777777-7777-7777-7777-777777777777',
+        'sessionId': 'session-expired-root-callkit',
+        'expiresAt': DateTime.utc(2026, 6, 21, 10, 0, 45),
+      }, now: DateTime.utc(2026, 6, 21, 10, 1));
+
+      expect(systemCallEnded, isTrue);
+      expect(acceptCallInvoked, isFalse);
+      expect(
+        service.debugAcceptedSessionForTesting('session-expired-root-callkit'),
+        isFalse,
+      );
+    });
+
+    test('runtime expired accept reads untracked root callKitId', () async {
+      var acceptCallInvoked = false;
+      var systemCallEnded = false;
+      const sessionId = 'session-expired-untracked-root-callkit';
+      const callKitId = 'f9927535-9ed6-39ab-b197-b107131c5e9a';
+
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+      service.debugEndCallKitCallOverride = ({
+        required sessionId,
+        required callKitId,
+      }) async {
+        expect(sessionId, 'session-expired-untracked-root-callkit');
+        expect(callKitId, 'f9927535-9ed6-39ab-b197-b107131c5e9a');
+        systemCallEnded = true;
+      };
+
+      await service.debugHandleCallAcceptForTesting({
+        'callKitId': callKitId,
+        'sessionId': sessionId,
+        'expiresAt': DateTime.utc(2026, 6, 21, 10, 0, 45),
+      }, now: DateTime.utc(2026, 6, 21, 10, 1));
+
+      expect(systemCallEnded, isTrue);
+      expect(acceptCallInvoked, isFalse);
+      expect(service.debugCallKitIdForSessionForTesting(sessionId), isNull);
+    });
+
+    test('runtime duplicate expired accept leaves accepted session alive',
+        () async {
+      var acceptCallInvoked = false;
+      var systemCallEnded = false;
+
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+      service.debugEndCallKitCallOverride = ({
+        required sessionId,
+        required callKitId,
+      }) async {
+        systemCallEnded = true;
+      };
+      service.debugMarkAcceptedSessionForTesting('session-accepted-expired');
+      service.debugTrackHandledCallKitAcceptForTesting(
+        sessionId: 'session-accepted-expired',
+        callKitId: '33333333-3333-3333-3333-333333333333',
+      );
+
+      await service.debugHandleCallAcceptForTesting({
+        'id': '33333333-3333-3333-3333-333333333333',
+        'sessionId': 'session-accepted-expired',
+        'expiresAt': '2026-06-21T10:00:45.000Z',
+      }, now: DateTime.utc(2026, 6, 21, 10, 1));
+
+      expect(systemCallEnded, isFalse);
+      expect(acceptCallInvoked, isFalse);
+      expect(
+        service.debugAcceptedSessionForTesting('session-accepted-expired'),
+        isTrue,
+      );
+      expect(
+        service.debugHandledCallKitAcceptForTesting(
+          '33333333-3333-3333-3333-333333333333',
+        ),
+        isTrue,
+      );
+    });
+
+    test('runtime in-progress expired accept leaves active flow alive',
+        () async {
+      var acceptCallInvoked = false;
+      var systemCallEnded = false;
+
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+      service.debugEndCallKitCallOverride = ({
+        required sessionId,
+        required callKitId,
+      }) async {
+        systemCallEnded = true;
+      };
+      service.debugMarkAcceptInProgressForTesting('session-progress-expired');
+      service.debugTrackCallKitSessionForTesting(
+        sessionId: 'session-progress-expired',
+        callKitId: '44444444-4444-4444-4444-444444444444',
+      );
+
+      await service.debugHandleCallAcceptForTesting({
+        'id': '44444444-4444-4444-4444-444444444444',
+        'sessionId': 'session-progress-expired',
+        'expiresAt': '2026-06-21T10:00:45.000Z',
+      }, now: DateTime.utc(2026, 6, 21, 10, 1));
+
+      expect(systemCallEnded, isFalse);
+      expect(acceptCallInvoked, isFalse);
+      expect(
+        service.debugAcceptInProgressForTesting('session-progress-expired'),
+        isTrue,
+      );
+    });
+
+    test('runtime protected-only expired accept leaves live state intact',
+        () async {
+      var acceptCallInvoked = false;
+      var systemCallEnded = false;
+
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+      service.debugEndCallKitCallOverride = ({
+        required sessionId,
+        required callKitId,
+      }) async {
+        systemCallEnded = true;
+      };
+      service.debugMarkLastAcceptedSessionForTesting('session-protected-only');
+      service.debugTrackCallKitSessionForTesting(
+        sessionId: 'session-protected-only',
+        callKitId: '66666666-6666-6666-6666-666666666666',
+      );
+
+      await service.debugHandleCallAcceptForTesting({
+        'id': '66666666-6666-6666-6666-666666666666',
+        'sessionId': 'session-protected-only',
+        'expiresAt': '2026-06-21T10:00:45.000Z',
+      }, now: DateTime.utc(2026, 6, 21, 10, 1));
+
+      expect(systemCallEnded, isFalse);
+      expect(acceptCallInvoked, isFalse);
+      expect(
+        service.debugAcceptedSessionForTesting('session-protected-only'),
+        isFalse,
+      );
+      expect(
+        service.debugCallKitIdForSessionForTesting('session-protected-only'),
+        '66666666-6666-6666-6666-666666666666',
+      );
+    });
+
+    test(
+        'runtime expired accept with stale callkit id does not end other calls',
+        () async {
+      var acceptCallInvoked = false;
+      var systemCallEnded = false;
+
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+      service.debugEndCallKitCallOverride = ({
+        required sessionId,
+        required callKitId,
+      }) async {
+        systemCallEnded = true;
+      };
+
+      await service.debugHandleCallAcceptForTesting({
+        'id': '00000000-0000-0000-0000-000000000000',
+        'sessionId': 'session-expired-stale',
+        'expiresAt': '2026-06-21T10:00:45.000Z',
+      }, now: DateTime.utc(2026, 6, 21, 10, 1));
+
+      expect(systemCallEnded, isFalse);
+      expect(acceptCallInvoked, isFalse);
+      expect(
+        service.debugAcceptedSessionForTesting('session-expired-stale'),
+        isFalse,
+      );
+      expect(
+        service.debugAcceptInProgressForTesting('session-expired-stale'),
+        isFalse,
+      );
+    });
+
+    test('runtime expired accept without callkit id does not end other calls',
+        () async {
+      var acceptCallInvoked = false;
+      var systemCallEnded = false;
+
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+      service.debugEndCallKitCallOverride = ({
+        required sessionId,
+        required callKitId,
+      }) async {
+        systemCallEnded = true;
+      };
+      service.debugTrackCallKitSessionForTesting(
+        sessionId: 'session-expired-unknown',
+        callKitId: '55555555-5555-5555-5555-555555555555',
+      );
+
+      await service.debugHandleCallAcceptForTesting({
+        'sessionId': 'session-expired-unknown',
+        'expiresAt': '2026-06-21T10:00:45.000Z',
+      }, now: DateTime.utc(2026, 6, 21, 10, 1));
+
+      expect(systemCallEnded, isFalse);
+      expect(acceptCallInvoked, isFalse);
+      expect(
+        service.debugAcceptedSessionForTesting('session-expired-unknown'),
+        isFalse,
+      );
+      expect(
+        service.debugAcceptInProgressForTesting('session-expired-unknown'),
+        isFalse,
+      );
+      expect(
+        service.debugCallKitIdForSessionForTesting('session-expired-unknown'),
+        '55555555-5555-5555-5555-555555555555',
+      );
+    });
+
+    test('runtime expired foreground incoming payload does not track CallKit',
+        () async {
+      await service.showIncomingCall(
+        sessionId: 'session-expired-show',
+        callerName: 'Caller',
+        callerId: 'caller-a',
+        extraData: {
+          'expiresAt': '2026-06-21T10:00:45.000Z',
+        },
+      );
+
+      expect(
+        service.debugCallKitIdForSessionForTesting('session-expired-show'),
+        isNull,
+      );
+    });
+
     test('token prefetch ignores stale result after session swap', () async {
       final firstResponse = Completer<Map<String, dynamic>>();
       final secondResponse = Completer<Map<String, dynamic>>();
@@ -709,4 +1455,12 @@ void main() {
       expect(service.debugAcceptInProgressForTesting('session-a'), isFalse);
     });
   });
+}
+
+class _TimestampLike {
+  const _TimestampLike(this.value);
+
+  final DateTime value;
+
+  DateTime toDate() => value;
 }
