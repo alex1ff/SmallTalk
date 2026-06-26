@@ -431,6 +431,72 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     });
 
+    testWidgets('accept replaces stale video call route with accepted session',
+        (tester) async {
+      const staleSessionId = 'stale-video-session';
+      const acceptedSessionId = 'accepted-video-session';
+      var acceptCallInvoked = false;
+
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+      service.debugPrefetchSessionTokensOverride = (_) async {};
+      service.debugMarkNavigationTriggeredOverride = ({
+        required sessionId,
+        required isTutor,
+      }) async {};
+
+      final router = GoRouter(
+        navigatorKey: appNavigatorKey,
+        initialLocation: '/videoCallPage?videoDocRef=$staleSessionId',
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (context, state) => const SizedBox(key: Key('home-route')),
+          ),
+          GoRoute(
+            path: '/videoCallPage',
+            builder: (context, state) =>
+                const SizedBox(key: Key('video-call-route')),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+
+      expect(
+        Uri.parse(router.getCurrentLocation()).queryParameters['videoDocRef'],
+        staleSessionId,
+      );
+
+      await service.debugHandleCallAcceptForTesting({
+        'sessionId': acceptedSessionId,
+        'extra': {
+          'acceptMode': 'open_session',
+          'tokenStrategy': 'get_session_tokens',
+          'roomUrl': 'https://daily.test/accepted room?token=1&mode=call',
+          'roomName': 'accepted-room',
+        },
+      });
+      await tester.pumpAndSettle();
+
+      final targetUri = Uri.parse(router.getCurrentLocation());
+      expect(targetUri.path, '/videoCallPage');
+      expect(targetUri.queryParameters['videoDocRef'], acceptedSessionId);
+      expect(
+        targetUri.queryParameters['roomUrl'],
+        'https://daily.test/accepted room?token=1&mode=call',
+      );
+      expect(targetUri.queryParameters['roomName'], 'accepted-room');
+      expect(acceptCallInvoked, isFalse);
+      expect(find.byKey(const Key('video-call-route')), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
     test('early accept event waits for auth and service initialization',
         () async {
       final navigationCalls = <Map<String, dynamic>>[];

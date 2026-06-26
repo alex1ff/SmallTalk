@@ -17,6 +17,7 @@ import '/flutter_flow/nav/nav.dart';
 import '/flutter_flow/permissions_util.dart';
 
 const int _incomingCallTimeoutMilliseconds = 45000;
+const String _videoCallRoutePath = '/videoCallPage';
 
 String? _voipNonEmptyString(dynamic value) {
   if (value == null) return null;
@@ -2188,7 +2189,6 @@ class VoIPService {
       return;
     }
 
-    const route = '/videoCallPage';
     final prefetchedToken = _getFreshPrefetchedToken(sessionId);
     final prefetchedRoomUrl = _getPrefetchedRoomUrl(sessionId);
     final prefetchedRoomName = _getPrefetchedRoomName(sessionId);
@@ -2202,23 +2202,24 @@ class VoIPService {
       'videoDocRef': sessionId,
     };
     if (effectiveRoomUrl != null && effectiveRoomUrl.isNotEmpty) {
-      params['roomUrl'] = Uri.encodeComponent(effectiveRoomUrl);
+      params['roomUrl'] = effectiveRoomUrl;
     }
     if (effectiveMeetingToken != null && effectiveMeetingToken.isNotEmpty) {
-      params['meetingToken'] = Uri.encodeComponent(effectiveMeetingToken);
+      params['meetingToken'] = effectiveMeetingToken;
     }
     if (effectiveRoomName != null && effectiveRoomName.isNotEmpty) {
-      params['roomName'] = Uri.encodeComponent(effectiveRoomName);
+      params['roomName'] = effectiveRoomName;
     }
-    final query = params.entries.map((e) => '${e.key}=${e.value}').join('&');
-    final target = '$route?$query';
+    final target =
+        Uri(path: _videoCallRoutePath, queryParameters: params).toString();
 
     final router = GoRouter.of(navContext);
     final currentLocation = router.getCurrentLocation();
-    if (currentLocation.startsWith(route)) {
+    if (_isVideoCallLocationForSession(currentLocation, sessionId)) {
       _lastNavigatedSessionId = sessionId;
       _lastNavigatedIsTutor = isTutor;
-      debugPrint('ℹ️ VoIPService: Already on $route, skip navigation');
+      debugPrint(
+          'ℹ️ VoIPService: Already on $_videoCallRoutePath for $sessionId, skip navigation');
       return;
     }
 
@@ -2226,6 +2227,20 @@ class VoIPService {
     _lastNavigatedIsTutor = isTutor;
     router.go(target);
     debugPrint('🎬 VoIPService: Navigated to VideoCallPage');
+  }
+
+  bool _isVideoCallLocationForSession(String location, String sessionId) {
+    final uri = Uri.tryParse(location);
+    if (uri == null || uri.path != _videoCallRoutePath) {
+      return false;
+    }
+    final currentVideoDocRef = _voipNonEmptyString(
+      uri.queryParameters['videoDocRef'],
+    );
+    if (currentVideoDocRef == null) {
+      return false;
+    }
+    return currentVideoDocRef == sessionId;
   }
 
   void _queueNavigation({
