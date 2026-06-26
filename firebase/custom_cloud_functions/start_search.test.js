@@ -4655,28 +4655,76 @@ if (!hasFirestoreEmulator) {
   });
 
   test("startSearch callable keeps a single active request under concurrency", async () => {
-    const uid = uniqueId("student-concurrent");
-    await deleteDoc(userRef(uid));
-    await deleteDoc(searchRequestRef(uid));
-    await seedStudent(uid);
+    for (let round = 0; round < 3; round += 1) {
+      const uid = uniqueId(`student-concurrent-${round}`);
+      await deleteDoc(userRef(uid));
+      await deleteDoc(searchRequestRef(uid));
+      await seedStudent(uid);
 
-    const responses = await Promise.all(
-      Array.from({length: 5}, (_, index) => wrappedStartSearch({
-        preferredPartnerLevel: index % 2 === 0 ? "B1" : "C2",
-      }, authContext(uid))),
-    );
-    const snapshot = await searchRequestRef(uid).get();
-    const requestIds = new Set(responses.map((response) => response.requestId));
+      try {
+        const results = await Promise.allSettled(
+          Array.from({length: 5}, (_, index) => wrappedStartSearch({
+            preferredPartnerLevel: index % 2 === 0 ? "B1" : "C2",
+          }, authContext(uid))),
+        );
+        const rejectedResult = results.find((result) =>
+          result.status === "rejected",
+        );
+        if (rejectedResult) {
+          throw rejectedResult.reason;
+        }
+        const responses = results.map((result) => result.value);
+        const snapshot = await searchRequestRef(uid).get();
+        const requestIds = new Set(
+          responses.map((response) => response.requestId),
+        );
 
-    assert.equal(snapshot.exists, true);
-    assert.equal(requestIds.size, 1);
-    assert.equal(snapshot.data().requestId, responses[0].requestId);
-    assert.equal(snapshot.ref.id, uid);
-    assert.equal(
-      await db.collection("searchRequests").where("userId", "==", uid).get()
-        .then((query) => query.size),
-      1,
-    );
+        assert.equal(snapshot.exists, true, `round ${round}: request exists`);
+        assert.equal(
+          requestIds.size,
+          1,
+          `round ${round}: one response requestId`,
+        );
+        assert.ok(
+          responses[0].requestId,
+          `round ${round}: response requestId present`,
+        );
+        assert.equal(
+          snapshot.data().status,
+          SEARCH_REQUEST_STATUS.ACTIVE,
+          `round ${round}: stored request stays active`,
+        );
+        assert.equal(
+          snapshot.data().requestId,
+          responses[0].requestId,
+          `round ${round}: stored requestId matches responses`,
+        );
+        assert.equal(snapshot.ref.id, uid, `round ${round}: document id is uid`);
+        assert.equal(
+          responses.filter((response) => response.reused === false).length,
+          1,
+          `round ${round}: exactly one create response`,
+        );
+        assert.equal(
+          responses.filter((response) => response.reused === true).length,
+          4,
+          `round ${round}: remaining responses reuse request`,
+        );
+        assert.equal(
+          await db.collection("searchRequests").where("userId", "==", uid).get()
+            .then((query) => query.size),
+          1,
+          `round ${round}: one stored request by userId`,
+        );
+      } catch (error) {
+        throw new Error(`round ${round}: concurrent start failed`, {
+          cause: error,
+        });
+      } finally {
+        await deleteDoc(searchRequestRef(uid));
+        await deleteDoc(userRef(uid));
+      }
+    }
   });
 
   test("startSearch callable does not reuse request owned by another user", async () => {
