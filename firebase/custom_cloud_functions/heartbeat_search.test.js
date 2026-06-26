@@ -415,22 +415,60 @@ if (!hasFirestoreEmulator) {
   test("heartbeatSearch callable updates active request liveness", async () => {
     const uid = uniqueId("student-heartbeat");
     await deleteDoc(searchRequestRef(uid));
-    await seedRequest(uid);
 
-    const response = await wrappedHeartbeatSearch({
-      requestId: "request-active",
-      appState: "background",
-    }, authContext(uid));
-    const snapshot = await searchRequestRef(uid).get();
-    const requestData = snapshot.data();
+    try {
+      await seedRequest(uid);
+      const beforeSnapshot = await searchRequestRef(uid).get();
+      const beforeData = beforeSnapshot.data();
+      const beforeHeartbeatAt = beforeData.heartbeatAt.toMillis();
+      const beforeUpdatedAt = beforeData.updatedAt.toMillis();
+      const beforeAppStateUpdatedAt = beforeData.appStateUpdatedAt.toMillis();
+      const beforeExpiresAt = beforeData.expiresAt.toMillis();
 
-    assert.equal(response.status, "active");
-    assert.equal(response.heartbeat, true);
-    assert.equal(response.reason, "updated");
-    assert.equal(response.searchRequestId, uid);
-    assert.equal(requestData.appState, "background");
-    assert.notEqual(requestData.backgroundExpiresAt, null);
-    assert.ok(requestData.heartbeatAt.toMillis() > Date.now() - 30 * 1000);
+      const response = await wrappedHeartbeatSearch({
+        requestId: "request-active",
+        appState: "background",
+      }, authContext(uid));
+      const snapshot = await searchRequestRef(uid).get();
+      const requestData = snapshot.data();
+
+      assert.equal(response.status, "active");
+      assert.equal(response.heartbeat, true);
+      assert.equal(response.reason, "updated");
+      assert.equal(response.searchRequestId, uid);
+      assert.equal(response.requestId, "request-active");
+      assert.equal(response.expiresAt, new Date(beforeExpiresAt).toISOString());
+      assert.equal(requestData.status, "active");
+      assert.equal(requestData.requestId, "request-active");
+      assert.equal(requestData.appState, "background");
+      assert.ok(
+        requestData.heartbeatAt.toMillis() > beforeHeartbeatAt,
+        "heartbeatAt should move forward",
+      );
+      assert.ok(
+        requestData.updatedAt.toMillis() > beforeUpdatedAt,
+        "updatedAt should move forward",
+      );
+      assert.ok(
+        requestData.appStateUpdatedAt.toMillis() > beforeAppStateUpdatedAt,
+        "appStateUpdatedAt should move forward",
+      );
+      assert.equal(requestData.expiresAt.toMillis(), beforeExpiresAt);
+      assert.notEqual(requestData.backgroundExpiresAt, null);
+      assert.ok(
+        requestData.backgroundExpiresAt.toMillis() >
+          requestData.heartbeatAt.toMillis(),
+        "background deadline should be after heartbeat",
+      );
+      assert.ok(
+        requestData.backgroundExpiresAt.toMillis() -
+          requestData.heartbeatAt.toMillis() <=
+          SEARCH_REQUEST_TIMING.BACKGROUND_MAX_SEARCH_SECONDS * 1000,
+        "background deadline should stay within max background search time",
+      );
+    } finally {
+      await deleteDoc(searchRequestRef(uid));
+    }
   });
 
   test("heartbeatSearch callable clears background expiry in foreground", async () => {
