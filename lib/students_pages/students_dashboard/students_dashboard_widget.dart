@@ -146,6 +146,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
   Timer? _activeSearchRecoveryRetryTimer;
   String? _activeSearchRequestId;
   String? _matchedSearchSessionId;
+  String? _recoveredConnectionSessionId;
   String? _activeSearchRecoveryAttemptedUserId;
   bool _activeSearchRecoveryInFlight = false;
   bool _searchHeartbeatInFlight = false;
@@ -551,8 +552,32 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       if (!mounted ||
           _currentSearchUserId() != userId ||
           _searchState != StudentDashboardSearchState.idle ||
-          _suppressedActiveSearchUserId == userId ||
-          !state.canResumeUnboundSearch) {
+          _suppressedActiveSearchUserId == userId) {
+        return;
+      }
+
+      if (state.canResumeConnection) {
+        final sessionId = _normalizedSessionId(state.sessionId);
+        if (sessionId == null) {
+          return;
+        }
+
+        _clearActiveSearchRecoveryRetryTimer();
+        _clearSearchTimeoutTimer();
+        _clearSearchHeartbeatTimer();
+        safeSetState(() {
+          _searchState = StudentDashboardSearchState.connecting;
+          _searchErrorReason = null;
+          _matchedSearchSessionId = sessionId;
+          _recoveredConnectionSessionId = sessionId;
+          _suppressedActiveSessionId = null;
+          _suppressedActiveSearchUserId = null;
+          _isStartingSearch = false;
+        });
+        return;
+      }
+
+      if (!state.canResumeUnboundSearch) {
         return;
       }
 
@@ -732,8 +757,13 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       return Stream<VideoSessionsRecord?>.value(null);
     }
 
-    return VideoSessionsRecord.getDocument(
-      VideoSessionsRecord.collection.doc(sessionId),
+    return VideoSessionsRecord.collection.doc(sessionId).snapshots().map(
+      (snapshot) {
+        if (!snapshot.exists) {
+          return null;
+        }
+        return VideoSessionsRecord.fromSnapshot(snapshot);
+      },
     );
   }
 
@@ -769,6 +799,39 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
             StudentDashboardSearchErrorReason.activeSessionUnavailable) {
       _searchState = StudentDashboardSearchState.idle;
       _searchErrorReason = null;
+    }
+  }
+
+  bool _isRecoveredConnectionSession(String? sessionId) {
+    final recoveredSessionId = _normalizedSessionId(
+      _recoveredConnectionSessionId,
+    );
+    final normalizedSessionId = _normalizedSessionId(sessionId);
+    return recoveredSessionId != null &&
+        recoveredSessionId == normalizedSessionId;
+  }
+
+  bool _isTerminalSessionStatus(String? status) {
+    switch (status?.trim()) {
+      case 'cancelled':
+      case 'ended':
+      case 'expired':
+      case 'failed':
+      case 'no_tutors_available':
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  void _clearRecoveredConnectionSession() {
+    final recoveredSessionId = _recoveredConnectionSessionId;
+    _recoveredConnectionSessionId = null;
+    if (_matchedSearchSessionId == recoveredSessionId) {
+      _matchedSearchSessionId = null;
+    }
+    if (_searchState == StudentDashboardSearchState.connecting) {
+      _searchState = StudentDashboardSearchState.idle;
     }
   }
 
@@ -810,18 +873,29 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
   }
 
   StudentDashboardSearchState _effectiveSearchStateFor(
-    VideoSessionsRecord? session,
-  ) {
+    VideoSessionsRecord? session, {
+    bool activeSessionSnapshotSettled = false,
+  }) {
     final sessionSearchState = _searchStateForSession(session);
     final sessionId = session?.reference.id;
     if (_isActiveCallSession(session)) {
       _clearSearchTimeoutTimer();
       _clearSearchHeartbeatTimer();
+      _recoveredConnectionSessionId = null;
       if (_searchState == StudentDashboardSearchState.searching ||
           _searchState == StudentDashboardSearchState.connecting ||
           _searchState == StudentDashboardSearchState.noMatchFound) {
         _searchState = StudentDashboardSearchState.idle;
       }
+      return _searchState;
+    }
+    if (_isRecoveredConnectionSession(_matchedSearchSessionId) &&
+        activeSessionSnapshotSettled &&
+        (session == null ||
+            !session.hasStatus() ||
+            _isTerminalSessionStatus(session.status) ||
+            sessionSearchState == StudentDashboardSearchState.idle)) {
+      _clearRecoveredConnectionSession();
       return _searchState;
     }
 
@@ -845,6 +919,9 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       }
       if (sessionSearchState != StudentDashboardSearchState.searching) {
         _clearSearchHeartbeatTimer();
+      }
+      if (sessionId == _recoveredConnectionSessionId) {
+        _recoveredConnectionSessionId = null;
       }
       return sessionSearchState;
     }
@@ -2749,10 +2826,19 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
                               }
                             });
                           }
+                          final activeSessionSnapshotSettled =
+                              !activeSessionSnapshot.hasError &&
+                                  activeSessionSnapshot.connectionState !=
+                                      ConnectionState.waiting;
                           final effectiveSearchState = cachedSearchState ??
-                              _effectiveSearchStateFor(activeSession);
+                              _effectiveSearchStateFor(
+                                activeSession,
+                                activeSessionSnapshotSettled:
+                                    activeSessionSnapshotSettled,
+                              );
                           final activeSessionId = cachedSearchState == null
-                              ? activeSession?.reference.id
+                              ? activeSession?.reference.id ??
+                                  _matchedSearchSessionId
                               : _lastActiveSessionId;
                           final hasActiveCallSession =
                               _isActiveCallSession(activeSession);

@@ -353,6 +353,9 @@ void main() {
     DateTime? heartbeatAt,
     DateTime? expiresAt,
     String? currentSessionId,
+    String? matchedSessionId,
+    bool exists = true,
+    bool belongsToUser = true,
     bool isExpired = false,
   }) {
     return ActiveSearchRecoveryState(
@@ -366,13 +369,112 @@ void main() {
         'expiresAt':
             expiresAt ?? DateTime.now().add(const Duration(minutes: 5)),
         if (currentSessionId != null) 'currentSessionId': currentSessionId,
+        if (matchedSessionId != null) 'matchedSessionId': matchedSessionId,
       },
-      exists: true,
-      belongsToUser: true,
+      exists: exists,
+      belongsToUser: belongsToUser,
       isLiveStatus: status == 'active' || status == 'matching',
       isExpired: isExpired,
     );
   }
+
+  test('active search recovery connection predicate is narrow', () {
+    const userId = 'student-connection-predicate-test';
+
+    expect(
+      activeSearchRecoveryState(
+        userId: userId,
+        requestId: 'request-pending-predicate-test',
+        status: 'pending_confirmation',
+        currentSessionId: 'session-pending-predicate-test',
+      ).canResumeConnection,
+      isTrue,
+    );
+    expect(
+      activeSearchRecoveryState(
+        userId: userId,
+        requestId: 'request-connecting-predicate-test',
+        status: 'connecting',
+        currentSessionId: 'session-connecting-predicate-test',
+      ).canResumeConnection,
+      isTrue,
+    );
+    expect(
+      activeSearchRecoveryState(
+        userId: userId,
+        requestId: 'request-matched-predicate-test',
+        status: 'matched',
+        matchedSessionId: 'session-matched-predicate-test',
+      ).canResumeConnection,
+      isTrue,
+    );
+    expect(
+      activeSearchRecoveryState(
+        userId: userId,
+        requestId: 'request-matching-predicate-test',
+        status: 'matching',
+        currentSessionId: 'session-matching-predicate-test',
+      ).canResumeConnection,
+      isTrue,
+    );
+
+    for (final status in <String>[
+      'active',
+      'unknown',
+      'expired',
+      'failed',
+      'completed',
+    ]) {
+      expect(
+        activeSearchRecoveryState(
+          userId: userId,
+          requestId: 'request-$status-predicate-test',
+          status: status,
+          currentSessionId: 'session-$status-predicate-test',
+          isExpired: status == 'expired',
+        ).canResumeConnection,
+        isFalse,
+      );
+    }
+    expect(
+      activeSearchRecoveryState(
+        userId: userId,
+        requestId: 'request-no-session-predicate-test',
+        status: 'matched',
+      ).canResumeConnection,
+      isFalse,
+    );
+    expect(
+      activeSearchRecoveryState(
+        userId: userId,
+        requestId: 'request-wrong-owner-predicate-test',
+        status: 'matched',
+        currentSessionId: 'session-wrong-owner-predicate-test',
+        belongsToUser: false,
+      ).canResumeConnection,
+      isFalse,
+    );
+    expect(
+      activeSearchRecoveryState(
+        userId: userId,
+        requestId: 'request-expired-connecting-predicate-test',
+        status: 'connecting',
+        currentSessionId: 'session-expired-connecting-predicate-test',
+        isExpired: true,
+      ).canResumeConnection,
+      isFalse,
+    );
+    expect(
+      activeSearchRecoveryState(
+        userId: userId,
+        requestId: 'request-missing-doc-predicate-test',
+        status: 'connecting',
+        currentSessionId: 'session-missing-doc-predicate-test',
+        exists: false,
+      ).canResumeConnection,
+      isFalse,
+    );
+  });
 
   Future<ActiveSearchRecoveryState?> runStartupSearchRecoveryTest(
     WidgetTester tester, {
@@ -1134,10 +1236,58 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets(
-      'student dashboard does not recover session-bound search as active search',
+  testWidgets('student dashboard restores session-bound search as connecting',
       (tester) async {
     const userId = 'student-recover-session-bound-search-test';
+    const sessionId = 'session-bound-recovery-test';
+    setActiveStudent(userId);
+    final heartbeatPayloads = <Map<String, dynamic>>[];
+    final stoppedSessionIds = <String?>[];
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSearchRecoveryReader: (_) async => activeSearchRecoveryState(
+            userId: userId,
+            requestId: 'request-session-bound-recovery-test',
+            status: 'matched',
+            currentSessionId: sessionId,
+          ),
+          heartbeatSearchRequest: (payload) async {
+            heartbeatPayloads.add(Map<String, dynamic>.from(payload));
+          },
+          stopSearchRequest: (activeSessionId) async {
+            stoppedSessionIds.add(activeSessionId);
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.idle();
+
+    expect(find.text('Соединяем'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsOneWidget);
+    expect(find.text('Начать поиск'), findsNothing);
+    expect(heartbeatPayloads, isEmpty);
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Остановить поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(stoppedSessionIds, [sessionId]);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard restores matching session-bound search',
+      (tester) async {
+    const userId = 'student-recover-matching-session-bound-test';
+    const sessionId = 'session-matching-bound-recovery-test';
     setActiveStudent(userId);
     final heartbeatPayloads = <Map<String, dynamic>>[];
 
@@ -1146,9 +1296,9 @@ void main() {
         StudentsDashboardWidget(
           activeSearchRecoveryReader: (_) async => activeSearchRecoveryState(
             userId: userId,
-            requestId: 'request-session-bound-recovery-test',
+            requestId: 'request-matching-session-bound-test',
             status: 'matching',
-            currentSessionId: 'session-bound-recovery-test',
+            currentSessionId: sessionId,
           ),
           heartbeatSearchRequest: (payload) async {
             heartbeatPayloads.add(Map<String, dynamic>.from(payload));
@@ -1160,12 +1310,248 @@ void main() {
     await tester.pump();
     await tester.idle();
 
-    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Соединяем'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsOneWidget);
     expect(find.text('Ищем собеседника'), findsNothing);
-    expect(find.text('Остановить поиск'), findsNothing);
     expect(heartbeatPayloads, isEmpty);
 
     await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard restores pending confirmation search',
+      (tester) async {
+    const userId = 'student-recover-pending-confirmation-search-test';
+    const sessionId = 'session-pending-confirmation-search-test';
+    setActiveStudent(userId);
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSearchRecoveryReader: (_) async => activeSearchRecoveryState(
+            userId: userId,
+            requestId: 'request-pending-confirmation-search-test',
+            status: 'pending_confirmation',
+            currentSessionId: sessionId,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.idle();
+
+    expect(find.text('Соединяем'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsOneWidget);
+    expect(find.text('Ищем собеседника'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard restores connecting search', (tester) async {
+    const userId = 'student-recover-connecting-search-test';
+    const sessionId = 'session-connecting-search-test';
+    setActiveStudent(userId);
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSearchRecoveryReader: (_) async => activeSearchRecoveryState(
+            userId: userId,
+            requestId: 'request-connecting-search-test',
+            status: 'connecting',
+            currentSessionId: sessionId,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.idle();
+
+    expect(find.text('Соединяем'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsOneWidget);
+    expect(find.text('Начать поиск'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard restores matched session id fallback',
+      (tester) async {
+    const userId = 'student-recover-matched-session-id-test';
+    const sessionId = 'session-matched-id-recovery-test';
+    setActiveStudent(userId);
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSearchRecoveryReader: (_) async => activeSearchRecoveryState(
+            userId: userId,
+            requestId: 'request-matched-session-id-test',
+            status: 'matched',
+            matchedSessionId: sessionId,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.idle();
+
+    expect(find.text('Соединяем'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsOneWidget);
+    expect(find.text('Начать поиск'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard clears recovered connecting terminal session',
+      (tester) async {
+    const userId = 'student-recover-terminal-session-test';
+    const sessionId = 'session-terminal-recovery-test';
+    final activeSessionController = StreamController<VideoSessionsRecord?>();
+    addTearDown(activeSessionController.close);
+    setActiveStudent(userId);
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSessionStream: activeSessionController.stream,
+          activeSearchRecoveryReader: (_) async => activeSearchRecoveryState(
+            userId: userId,
+            requestId: 'request-terminal-session-test',
+            status: 'matched',
+            currentSessionId: sessionId,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.idle();
+
+    expect(find.text('Соединяем'), findsOneWidget);
+
+    activeSessionController.add(sessionFixture(sessionId, 'ended'));
+    await tester.pump();
+
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Соединяем'), findsNothing);
+    expect(find.text('Остановить поиск'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard clears recovered connecting missing session',
+      (tester) async {
+    const userId = 'student-recover-missing-session-test';
+    const sessionId = 'session-missing-recovery-test';
+    final activeSessionController = StreamController<VideoSessionsRecord?>();
+    addTearDown(activeSessionController.close);
+    setActiveStudent(userId);
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSessionStream: activeSessionController.stream,
+          activeSearchRecoveryReader: (_) async => activeSearchRecoveryState(
+            userId: userId,
+            requestId: 'request-missing-session-test',
+            status: 'matched',
+            currentSessionId: sessionId,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.idle();
+
+    expect(find.text('Соединяем'), findsOneWidget);
+
+    activeSessionController.add(null);
+    await tester.pump();
+
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Соединяем'), findsNothing);
+    expect(find.text('Остановить поиск'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard keeps recovered connecting on stream error',
+      (tester) async {
+    const userId = 'student-recover-connection-stream-error-test';
+    const sessionId = 'session-connection-stream-error-test';
+    final activeSessionController = StreamController<VideoSessionsRecord?>();
+    addTearDown(activeSessionController.close);
+    setActiveStudent(userId);
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSessionStream: activeSessionController.stream,
+          activeSearchRecoveryReader: (_) async => activeSearchRecoveryState(
+            userId: userId,
+            requestId: 'request-connection-stream-error-test',
+            status: 'matched',
+            currentSessionId: sessionId,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.idle();
+
+    expect(find.text('Соединяем'), findsOneWidget);
+
+    activeSessionController.addError(
+      StateError('recovered connection stream failed'),
+    );
+    await tester.pump();
+
+    expect(find.text('Соединяем'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard ignores unsupported session-bound statuses',
+      (tester) async {
+    const userId = 'student-recover-unsupported-session-status-test';
+
+    Future<void> verifyStatus(String status) async {
+      setActiveStudent(userId);
+      await tester.pumpWidget(
+        _buildDashboardTestApp(
+          StudentsDashboardWidget(
+            activeSearchRecoveryReader: (_) async => activeSearchRecoveryState(
+              userId: userId,
+              requestId: 'request-unsupported-$status-test',
+              status: status,
+              currentSessionId: 'session-unsupported-$status-test',
+              isExpired: status == 'expired',
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.idle();
+
+      expect(find.text('Начать поиск'), findsOneWidget);
+      expect(find.text('Соединяем'), findsNothing);
+      expect(find.text('Остановить поиск'), findsNothing);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    }
+
+    await verifyStatus('active');
+    await verifyStatus('unknown');
+    await verifyStatus('expired');
+    await verifyStatus('failed');
+    await verifyStatus('completed');
   });
 
   testWidgets('student dashboard uses recovered search expiry for timeout',
@@ -2472,7 +2858,7 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('startup recovery does not complete session-bound active search',
+  testWidgets('startup recovery completes session-bound active search',
       (tester) async {
     const userId = 'student-startup-session-bound-search-test';
     ActiveSearchRecoveryState? observedSearchState;
@@ -2530,9 +2916,10 @@ void main() {
     await tester.pump();
     await tester.idle();
 
-    expect(recovered, isFalse);
+    expect(recovered, isTrue);
     expect(observedSearchState, isNotNull);
     expect(observedSearchState!.canResumeSearch, isTrue);
+    expect(observedSearchState!.canResumeConnection, isTrue);
     expect(observedSearchState!.canResumeUnboundSearch, isFalse);
 
     await tester.pumpWidget(const SizedBox.shrink());

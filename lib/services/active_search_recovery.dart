@@ -29,12 +29,40 @@ class ActiveSearchRecoveryState {
 
   bool get canResumeSearch => hasActiveSearch && requestId != null;
 
+  bool get isTerminalStatus {
+    final normalizedStatus = status;
+    return normalizedStatus == 'stopped' ||
+        normalizedStatus == 'expired' ||
+        normalizedStatus == 'cancelled' ||
+        normalizedStatus == 'error' ||
+        normalizedStatus == 'failed' ||
+        normalizedStatus == 'completed';
+  }
+
+  String? get status => activeSearchNonEmpty(data['status']);
+
   String? get sessionId =>
       activeSearchNonEmpty(data['currentSessionId']) ??
       activeSearchNonEmpty(data['matchedSessionId']) ??
       activeSearchNonEmpty(data['activeSessionId']);
 
   bool get canResumeUnboundSearch => canResumeSearch && sessionId == null;
+
+  bool get canResumeConnection {
+    if (!exists || !belongsToUser || sessionId == null || isExpired) {
+      return false;
+    }
+
+    switch (status) {
+      case 'matched':
+      case 'matching':
+      case 'pending_confirmation':
+      case 'connecting':
+        return true;
+      default:
+        return false;
+    }
+  }
 
   DateTime? get expiresAt => activeSearchDateTime(data['expiresAt']);
 

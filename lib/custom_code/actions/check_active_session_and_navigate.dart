@@ -650,6 +650,16 @@ Future<bool> checkActiveSessionAndNavigate(BuildContext context) async {
         context.goNamed(app.StudentsDashboardWidget.routeName);
         return true;
       }
+      if (activeSearchState?.canResumeConnection == true) {
+        debugPrint(
+          'ActiveSessionRecovery: connection search detected for $userId',
+        );
+        if (!context.mounted) {
+          return false;
+        }
+        context.goNamed(app.StudentsDashboardWidget.routeName);
+        return true;
+      }
       return false;
     }
 
