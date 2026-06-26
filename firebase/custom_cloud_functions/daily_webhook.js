@@ -5,7 +5,8 @@ const {defineSecret} = require("firebase-functions/params");
 const {
   getAcceptedSessionCredentialParticipantIds,
   isAcceptedSessionCredentialParticipant,
-  isCredentialSessionJoinable,
+  isCredentialSessionStatus,
+  isCredentialSessionUnexpired,
   VIDEO_SESSION_STATUS,
 } = require("./video_sessions_shared");
 const {
@@ -174,6 +175,94 @@ function readDailyWebhookParticipantSignals(sessionMetadata = {}) {
   return signals;
 }
 
+function timestampToMillis(value) {
+  if (!value) return null;
+  if (typeof value.toMillis === "function") {
+    const millis = Number(value.toMillis());
+    return Number.isFinite(millis) ? millis : null;
+  }
+  if (value instanceof Date) {
+    const millis = value.getTime();
+    return Number.isFinite(millis) ? millis : null;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  return null;
+}
+
+function pickEarlierTimestamp(left, right) {
+  const leftMillis = timestampToMillis(left);
+  const rightMillis = timestampToMillis(right);
+  if (
+    leftMillis !== null &&
+    (rightMillis === null || leftMillis <= rightMillis)
+  ) {
+    return left;
+  }
+  return right || left || null;
+}
+
+function getDailyWebhookSignalJoinMillis(signal = {}) {
+  return timestampToMillis(signal.joinedAt) ?? timestampToMillis(signal.eventTs);
+}
+
+function buildDailyWebhookParticipantSignal({
+  existingSignal = {},
+  event = {},
+  eventJoinedAt = null,
+  eventTs = null,
+  receivedAt,
+}) {
+  const normalizedExisting =
+    existingSignal && typeof existingSignal === "object" &&
+    !Array.isArray(existingSignal) ?
+      existingSignal :
+      {};
+
+  return {
+    eventId: event.eventId,
+    dailySessionId: event.dailySessionId || null,
+    joinedAt: pickEarlierTimestamp(normalizedExisting.joinedAt, eventJoinedAt),
+    eventTs: pickEarlierTimestamp(normalizedExisting.eventTs, eventTs),
+    owner: event.owner === true,
+    source: "dailyWebhook",
+    receivedAt,
+  };
+}
+
+function areAcceptedDailyWebhookJoinsBeforeDeadline({
+  sessionData = {},
+  participantIds = [],
+  signals = {},
+}) {
+  if (sessionData.status !== VIDEO_SESSION_STATUS.CONNECTING) {
+    return true;
+  }
+  const joinDeadlineMillis = timestampToMillis(sessionData.joinDeadlineAt);
+  if (joinDeadlineMillis === null) {
+    return false;
+  }
+  return participantIds.every((participantId) => {
+    const joinMillis = getDailyWebhookSignalJoinMillis(signals[participantId]);
+    return joinMillis !== null && joinMillis < joinDeadlineMillis;
+  });
+}
+
+function isDailyWebhookSessionCurrentForProcessing(
+  sessionData = {},
+  nowMillis = Date.now(),
+) {
+  if (!isCredentialSessionStatus(sessionData.status) ||
+      !isCredentialSessionUnexpired(sessionData, nowMillis)) {
+    return false;
+  }
+  if (sessionData.status !== VIDEO_SESSION_STATUS.CONNECTING) {
+    return true;
+  }
+  return timestampToMillis(sessionData.joinDeadlineAt) !== null;
+}
+
 function buildDailyWebhookRejectedDecision(reason) {
   return {
     ok: false,
@@ -201,14 +290,14 @@ function buildDailyWebhookSessionUpdate({
     return buildDailyWebhookRejectedDecision("room_mismatch");
   }
 
-  const eventMillis = event.joinedAtMillis || event.eventTsMillis || nowMillis;
   if (!isAcceptedSessionCredentialParticipant(sessionData, event.userId)) {
     return buildDailyWebhookRejectedDecision("not_session_participant");
   }
 
-  if (!isCredentialSessionJoinable(sessionData, eventMillis)) {
+  if (!isDailyWebhookSessionCurrentForProcessing(sessionData, nowMillis)) {
     return buildDailyWebhookRejectedDecision("session_not_joinable");
   }
+  const eventMillis = event.joinedAtMillis || event.eventTsMillis || nowMillis;
 
   const participantIds =
     getAcceptedSessionCredentialParticipantIds(sessionData);
@@ -231,20 +320,26 @@ function buildDailyWebhookSessionUpdate({
       null;
   const nextSignals = {
     ...existingSignals,
-    [event.userId]: {
-      eventId: event.eventId,
-      dailySessionId: event.dailySessionId || null,
-      joinedAt: eventJoinedAt,
+    [event.userId]: buildDailyWebhookParticipantSignal({
+      existingSignal: existingSignals[event.userId],
+      event,
+      eventJoinedAt,
       eventTs,
-      owner: event.owner === true,
-      source: "dailyWebhook",
       receivedAt,
-    },
+    }),
   };
   const hasAllParticipantSignals =
     participantIds.every((participantId) => Boolean(nextSignals[participantId]));
+  const allParticipantJoinsBeforeDeadline =
+    hasAllParticipantSignals &&
+    areAcceptedDailyWebhookJoinsBeforeDeadline({
+      sessionData,
+      participantIds,
+      signals: nextSignals,
+    });
   const hasVerifiedDailyPresence =
     hasAllParticipantSignals &&
+    allParticipantJoinsBeforeDeadline &&
     dailyPresenceHasAcceptedParticipants({
       presenceData,
       roomName: event.roomName,
@@ -318,7 +413,9 @@ function buildDailyWebhookSessionUpdate({
     reason: hasVerifiedDailyPresence ?
       "daily_connected_marked" :
       hasAllParticipantSignals ?
-        "daily_signal_recorded_presence_required" :
+        allParticipantJoinsBeforeDeadline ?
+          "daily_signal_recorded_presence_required" :
+          "daily_signal_recorded_after_join_deadline" :
         "daily_signal_recorded",
     update,
     connectedMarked:
@@ -507,8 +604,11 @@ exports.__private__ = {
   DAILY_WEBHOOK_REPLAY_WINDOW_MS,
   applyDailyWebhookSessionUpdateWritesInTransaction,
   buildDailyWebhookSessionUpdate,
+  areAcceptedDailyWebhookJoinsBeforeDeadline,
   computeDailyWebhookSignature,
   findCandidateSessionDoc,
+  getDailyWebhookSignalJoinMillis,
+  isDailyWebhookSessionCurrentForProcessing,
   isFreshDailyWebhookTimestamp,
   isDailyWebhookVerificationRequest,
   isValidDailyWebhookSignature,

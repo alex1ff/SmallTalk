@@ -418,6 +418,11 @@ test("duplicate Daily join backfills canonical room join from legacy signal", ()
       .eventId,
     "ptcpt-join-event-a-reconnect",
   );
+  assert.equal(
+    decision.update.sessionMetadata.dailyWebhookParticipantSignals["student-a"]
+      .joinedAt,
+    firstJoinedAt,
+  );
 });
 
 test("Daily webhook promotes connecting sessions to active after both join", () => {
@@ -456,6 +461,124 @@ test("Daily webhook promotes connecting sessions to active after both join", () 
   assert.equal(decision.ok, true);
   assert.equal(decision.update.status, "active");
   assert.equal(decision.connectedMarked, true);
+});
+
+test("Daily webhook promotes late delivery when both joined before deadline", () => {
+  const event = parseDailyWebhookEvent(dailyEvent({
+    id: "ptcpt-join-event-b",
+    payload: {
+      user_id: "teacher-b",
+      session_id: "daily-session-b",
+      joined_at: NOW_SECONDS + 8,
+    },
+    event_ts: NOW_SECONDS + 75,
+  }));
+  const decision = buildDailyWebhookSessionUpdate({
+    event,
+    sessionData: activeSession({
+      status: "connecting",
+      joinDeadlineAt: {
+        toMillis: () => NOW_MILLIS + 60 * 1000,
+      },
+      sessionMetadata: {
+        dailyWebhookParticipantSignals: {
+          "student-a": {
+            eventId: "ptcpt-join-event-a",
+            joinedAt: {
+              toMillis: () => (NOW_SECONDS + 1) * 1000,
+            },
+            source: "dailyWebhook",
+          },
+        },
+      },
+    }),
+    presenceData: twoPartyPresence(),
+    nowMillis: NOW_MILLIS + 75 * 1000,
+  });
+
+  assert.equal(decision.ok, true);
+  assert.equal(decision.update.status, "active");
+  assert.equal(decision.connectedMarked, true);
+});
+
+test("Daily webhook does not promote when any join is after deadline", () => {
+  const event = parseDailyWebhookEvent(dailyEvent({
+    id: "ptcpt-join-event-b",
+    payload: {
+      user_id: "teacher-b",
+      session_id: "daily-session-b",
+      joined_at: NOW_SECONDS + 8,
+    },
+    event_ts: NOW_SECONDS + 8,
+  }));
+  const decision = buildDailyWebhookSessionUpdate({
+    event,
+    sessionData: activeSession({
+      status: "connecting",
+      joinDeadlineAt: {
+        toMillis: () => NOW_MILLIS + 10 * 1000,
+      },
+      sessionMetadata: {
+        dailyWebhookParticipantSignals: {
+          "student-a": {
+            eventId: "ptcpt-join-event-a",
+            joinedAt: {
+              toMillis: () => NOW_MILLIS + 11 * 1000,
+            },
+            source: "dailyWebhook",
+          },
+        },
+      },
+    }),
+    presenceData: twoPartyPresence(),
+    nowMillis: NOW_MILLIS,
+  });
+
+  assert.equal(decision.ok, true);
+  assert.equal(decision.reason, "daily_signal_recorded_after_join_deadline");
+  assert.equal(decision.connectedMarked, false);
+  assert.equal(decision.update.status, undefined);
+  assert.equal(decision.update.startedAt, undefined);
+});
+
+test("Daily webhook does not promote when current join is after deadline", () => {
+  const event = parseDailyWebhookEvent(dailyEvent({
+    id: "ptcpt-join-event-b",
+    payload: {
+      user_id: "teacher-b",
+      session_id: "daily-session-b",
+      joined_at: NOW_SECONDS + 11,
+    },
+    event_ts: NOW_SECONDS + 11,
+  }));
+  const decision = buildDailyWebhookSessionUpdate({
+    event,
+    sessionData: activeSession({
+      status: "connecting",
+      joinDeadlineAt: {
+        toMillis: () => NOW_MILLIS + 10 * 1000,
+      },
+      sessionMetadata: {
+        dailyWebhookParticipantSignals: {
+          "student-a": {
+            eventId: "ptcpt-join-event-a",
+            joinedAt: {
+              toMillis: () => NOW_MILLIS + 1 * 1000,
+            },
+            source: "dailyWebhook",
+          },
+        },
+      },
+    }),
+    presenceData: twoPartyPresence(),
+    nowMillis: NOW_MILLIS,
+  });
+
+  assert.equal(decision.ok, true);
+  assert.equal(decision.reason, "daily_signal_recorded_after_join_deadline");
+  assert.equal(decision.connectedMarked, false);
+  assert.equal(decision.update.status, undefined);
+  assert.equal(decision.update.startedAt, undefined);
 });
 
 test("second Daily participant signal stays advisory without current presence", () => {
@@ -584,11 +707,48 @@ test("Daily webhook update rejects nonparticipants and non-joinable sessions", (
       event,
       sessionData: activeSession({
         status: "connecting",
-        joinDeadlineAt: {
-          toMillis: () => NOW_MILLIS,
-        },
       }),
       nowMillis: NOW_MILLIS,
+    }),
+    {
+      ok: false,
+      reason: "session_not_joinable",
+      update: null,
+    },
+  );
+  assert.deepEqual(
+    buildDailyWebhookSessionUpdate({
+      event: parseDailyWebhookEvent(dailyEvent({
+        id: "ptcpt-join-event-b",
+        payload: {
+          user_id: "teacher-b",
+          session_id: "daily-session-b",
+          joined_at: NOW_SECONDS + 8,
+        },
+        event_ts: NOW_SECONDS + 8,
+      })),
+      sessionData: activeSession({
+        status: "connecting",
+        expiresAt: {
+          toMillis: () => NOW_MILLIS + 5 * 60 * 1000,
+        },
+        joinDeadlineAt: {
+          toMillis: () => NOW_MILLIS + 60 * 1000,
+        },
+        sessionMetadata: {
+          dailyWebhookParticipantSignals: {
+            "student-a": {
+              eventId: "ptcpt-join-event-a",
+              joinedAt: {
+                toMillis: () => NOW_MILLIS + 1 * 1000,
+              },
+              source: "dailyWebhook",
+            },
+          },
+        },
+      }),
+      presenceData: twoPartyPresence(),
+      nowMillis: NOW_MILLIS + 10 * 60 * 1000,
     }),
     {
       ok: false,
@@ -615,15 +775,23 @@ test("Daily webhook session lookup requires exactly one matching candidate", () 
   const invalidDoc = makeDoc("session-b", activeSession({status: "ended"}));
 
   assert.equal(
-    findCandidateSessionDoc(makeSnapshot([validDoc, invalidDoc]), event),
+    findCandidateSessionDoc(
+      makeSnapshot([validDoc, invalidDoc]),
+      event,
+      NOW_MILLIS,
+    ),
     validDoc,
   );
   assert.equal(
-    findCandidateSessionDoc(makeSnapshot([validDoc, validDoc]), event),
+    findCandidateSessionDoc(
+      makeSnapshot([validDoc, validDoc]),
+      event,
+      NOW_MILLIS,
+    ),
     null,
   );
   assert.equal(
-    findCandidateSessionDoc(makeSnapshot([invalidDoc]), event),
+    findCandidateSessionDoc(makeSnapshot([invalidDoc]), event, NOW_MILLIS),
     null,
   );
 });
@@ -654,7 +822,9 @@ test("daily webhook receiver keeps a strict private webhook contract", () => {
   assert.match(source, /dailyPresenceHasAcceptedParticipants/);
   assert.match(source, /where\("dailyRoomName",\s*"==",\s*event\.roomName\)/);
   assert.match(source, /isAcceptedSessionCredentialParticipant/);
-  assert.match(source, /isCredentialSessionJoinable/);
+  assert.match(source, /isDailyWebhookSessionCurrentForProcessing/);
+  assert.match(source, /isCredentialSessionUnexpired/);
+  assert.match(source, /areAcceptedDailyWebhookJoinsBeforeDeadline/);
   assert.match(source, /callConnectedAtSource\s*=\s*"dailyWebhookTwoParty"/);
   assert.match(indexSource, /exports\.dailyWebhook\s*=/);
 });
