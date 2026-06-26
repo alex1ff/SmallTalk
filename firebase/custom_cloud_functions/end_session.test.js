@@ -2,8 +2,11 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const admin = require("firebase-admin");
 const {
+  endSession,
   __private__: {
+    buildEndedSessionPairLockReleaseOptions,
     buildPreActiveSessionPairLockReleaseOptions,
     buildStudentCallCharge,
     hasConnectedCallEvidence,
@@ -13,6 +16,250 @@ const {
     shouldProcessExpiredEndReason,
   },
 } = require("./end_session");
+
+const fakeDeleteField = Symbol("deleteField");
+const fakeServerTimestamp = {__fakeFieldValue: "serverTimestamp"};
+
+function timestampFromMillis(millis) {
+  return {
+    toMillis: () => millis,
+    toDate: () => new Date(millis),
+  };
+}
+
+function activeSearchRequest(userId, overrides = {}) {
+  return {
+    requestId: `request-${userId}`,
+    userId,
+    role: "student",
+    language: "en",
+    status: "matched",
+    currentSessionId: null,
+    activeSessionId: null,
+    matchedSessionId: null,
+    matchedUserId: null,
+    matchedResponderId: null,
+    matchedRole: null,
+    pairAttemptId: null,
+    lockOwner: null,
+    lockExpiresAt: null,
+    ...overrides,
+  };
+}
+
+function studentUser(overrides = {}) {
+  return {
+    role: "student",
+    currentSessionId: "",
+    isInCall: false,
+    isAvailable: true,
+    giftMinutes: {
+      minutes: 10,
+      expiresAt: timestampFromMillis(Date.now() + 60 * 60 * 1000),
+    },
+    ...overrides,
+  };
+}
+
+function applyFieldValue(target, key, value) {
+  const segments = key.split(".");
+  let cursor = target;
+  for (let index = 0; index < segments.length - 1; index += 1) {
+    const segment = segments[index];
+    if (!cursor[segment] || typeof cursor[segment] !== "object") {
+      cursor[segment] = {};
+    }
+    cursor = cursor[segment];
+  }
+
+  const leaf = segments[segments.length - 1];
+  if (value === fakeDeleteField) {
+    delete cursor[leaf];
+    return;
+  }
+  if (value && typeof value === "object" && value.__fakeIncrement !== undefined) {
+    cursor[leaf] = Number(cursor[leaf] || 0) + value.__fakeIncrement;
+    return;
+  }
+  if (value && typeof value === "object" && value.__fakeArrayUnion) {
+    const currentValues = Array.isArray(cursor[leaf]) ? cursor[leaf] : [];
+    cursor[leaf] = Array.from(new Set([
+      ...currentValues,
+      ...value.__fakeArrayUnion,
+    ]));
+    return;
+  }
+  cursor[leaf] = value;
+}
+
+function createFakeFirestore(seed = {}) {
+  const store = new Map(Object.entries(seed));
+  const writes = [];
+  let autoId = 0;
+
+  const makeSnapshot = (ref) => {
+    const data = store.get(ref.path);
+    return {
+      exists: data !== undefined,
+      ref,
+      id: ref.id,
+      data: () => data,
+    };
+  };
+
+  const applySet = (ref, data, options = {}) => {
+    const current = options.merge ? {...(store.get(ref.path) || {})} : {};
+    for (const [key, value] of Object.entries(data || {})) {
+      applyFieldValue(current, key, value);
+    }
+    store.set(ref.path, current);
+    writes.push({type: "set", path: ref.path, data, options});
+  };
+
+  const applyUpdate = (ref, data) => {
+    const current = {...(store.get(ref.path) || {})};
+    for (const [key, value] of Object.entries(data || {})) {
+      applyFieldValue(current, key, value);
+    }
+    store.set(ref.path, current);
+    writes.push({type: "update", path: ref.path, data});
+  };
+
+  const makeRef = (pathValue) => ({
+    path: pathValue,
+    id: pathValue.split("/").pop(),
+    collection(collectionId) {
+      return makeCollection(`${pathValue}/${collectionId}`);
+    },
+    async get() {
+      return makeSnapshot(this);
+    },
+    async set(data, options = {}) {
+      applySet(this, data, options);
+    },
+    async update(data) {
+      applyUpdate(this, data);
+    },
+    async delete() {
+      store.delete(this.path);
+      writes.push({type: "delete", path: this.path});
+    },
+  });
+
+  const makeQuery = (collectionPath, filters = []) => ({
+    where(field, operator, expectedValue) {
+      return makeQuery(collectionPath, [
+        ...filters,
+        {field, operator, expectedValue},
+      ]);
+    },
+    async get() {
+      const baseDepth = collectionPath.split("/").length;
+      const docs = Array.from(store.entries())
+        .filter(([entryPath]) =>
+          entryPath.startsWith(`${collectionPath}/`) &&
+          entryPath.split("/").length === baseDepth + 1)
+        .map(([entryPath, data]) => ({
+          ref: makeRef(entryPath),
+          id: entryPath.split("/").pop(),
+          data: () => data,
+        }))
+        .filter((doc) => filters.every((filter) => {
+          if (filter.operator !== "==") {
+            return false;
+          }
+          return doc.data()?.[filter.field] === filter.expectedValue;
+        }));
+      return {
+        empty: docs.length === 0,
+        size: docs.length,
+        docs,
+        forEach(callback) {
+          docs.forEach(callback);
+        },
+      };
+    },
+  });
+
+  const makeCollection = (collectionPath) => ({
+    doc(docId) {
+      const resolvedId = docId || `auto-${autoId += 1}`;
+      return makeRef(`${collectionPath}/${resolvedId}`);
+    },
+    async add(data) {
+      const ref = this.doc();
+      applySet(ref, data);
+      return ref;
+    },
+    where(field, operator, expectedValue) {
+      return makeQuery(collectionPath, [{field, operator, expectedValue}]);
+    },
+  });
+
+  const db = {
+    collection(collectionId) {
+      return makeCollection(collectionId);
+    },
+    batch() {
+      const operations = [];
+      return {
+        update(ref, data) {
+          operations.push(() => applyUpdate(ref, data));
+        },
+        async commit() {
+          operations.forEach((operation) => operation());
+        },
+      };
+    },
+    async runTransaction(callback) {
+      const transaction = {
+        async get(ref) {
+          return makeSnapshot(ref);
+        },
+        update(ref, data) {
+          applyUpdate(ref, data);
+        },
+        set(ref, data, options = {}) {
+          applySet(ref, data, options);
+        },
+        delete(ref) {
+          store.delete(ref.path);
+          writes.push({type: "delete", path: ref.path});
+        },
+      };
+      return callback(transaction);
+    },
+  };
+
+  const firestore = () => db;
+  firestore.FieldValue = {
+    arrayUnion: (...values) => ({__fakeArrayUnion: values}),
+    delete: () => fakeDeleteField,
+    increment: (value) => ({__fakeIncrement: value}),
+    serverTimestamp: () => fakeServerTimestamp,
+  };
+  firestore.Timestamp = {
+    fromMillis: timestampFromMillis,
+  };
+
+  return {db, firestore, store, writes};
+}
+
+async function withFakeFirestore(fakeFirestore, callback) {
+  const originalFirestore = admin.firestore;
+  Object.defineProperty(admin, "firestore", {
+    value: fakeFirestore,
+    configurable: true,
+  });
+  try {
+    return await callback();
+  } finally {
+    Object.defineProperty(admin, "firestore", {
+      value: originalFirestore,
+      configurable: true,
+    });
+  }
+}
 
 test("expired end reasons are ignored when policy expiry moved into the future", () => {
   const shouldProcess = shouldProcessExpiredEndReason({
@@ -109,6 +356,209 @@ test("pre-active end closes search without restoring participants", () => {
     options.restoreSearchExcludedCandidateIdsByParticipantId,
     undefined,
   );
+});
+
+test("ended session closes search without restoring participants", () => {
+  const db = Symbol("db");
+  const transaction = Symbol("transaction");
+  const sessionData = {status: "active"};
+  const serverTimestamp = Symbol("serverTimestamp");
+  const fieldDelete = Symbol("fieldDelete");
+
+  const options = buildEndedSessionPairLockReleaseOptions({
+    db,
+    transaction,
+    sessionId: "session-ended-test",
+    sessionData,
+    serverTimestamp,
+    fieldDelete,
+  });
+
+  assert.equal(options.db, db);
+  assert.equal(options.transaction, transaction);
+  assert.equal(options.sessionId, "session-ended-test");
+  assert.equal(options.sessionData, sessionData);
+  assert.equal(options.serverTimestamp, serverTimestamp);
+  assert.equal(options.fieldDelete, fieldDelete);
+  assert.equal(options.searchRequestStatus, "stopped");
+  assert.equal(options.stopReason, "session_ended");
+  assert.equal(options.releaseCallState, true);
+  assert.equal(options.restoreLegacyAvailability, true);
+  assert.equal(options.restoreSearchParticipantIds, undefined);
+  assert.equal(
+    options.restoreSearchExcludedCandidateIdsByParticipantId,
+    undefined,
+  );
+});
+
+test("endSession callable stops both active search participants", async () => {
+  const startedAtMillis = Date.now() - 120_000;
+  const sessionId = "session-active-ended-search";
+  const firstStudentId = "student-callable-a";
+  const secondStudentId = "student-callable-b";
+  const pairAttemptId = `pair-${sessionId}-${firstStudentId}-${secondStudentId}`;
+  const {firestore, store} = createFakeFirestore({
+    [`users/${firstStudentId}`]: studentUser({
+      currentSessionId: sessionId,
+      isInCall: true,
+      isAvailable: false,
+    }),
+    [`users/${secondStudentId}`]: studentUser({
+      currentSessionId: sessionId,
+      isInCall: true,
+      isAvailable: false,
+    }),
+    [`searchRequests/${firstStudentId}`]: activeSearchRequest(firstStudentId, {
+      currentSessionId: sessionId,
+      activeSessionId: sessionId,
+      matchedSessionId: sessionId,
+      matchedUserId: secondStudentId,
+      matchedResponderId: secondStudentId,
+      matchedRole: "student",
+      pairAttemptId,
+      lockOwner: pairAttemptId,
+      lockExpiresAt: timestampFromMillis(Date.now() + 45_000),
+    }),
+    [`searchRequests/${secondStudentId}`]: activeSearchRequest(secondStudentId, {
+      currentSessionId: sessionId,
+      activeSessionId: sessionId,
+      matchedSessionId: sessionId,
+      matchedUserId: firstStudentId,
+      matchedResponderId: secondStudentId,
+      matchedRole: "student",
+      pairAttemptId,
+      lockOwner: pairAttemptId,
+      lockExpiresAt: timestampFromMillis(Date.now() + 45_000),
+    }),
+    [`videoSessions/${sessionId}`]: {
+      status: "active",
+      language: "en",
+      studentId: firstStudentId,
+      tutorId: secondStudentId,
+      requesterId: firstStudentId,
+      requesterRole: "student",
+      responderId: secondStudentId,
+      responderRole: "student",
+      currentTutorId: secondStudentId,
+      currentResponderId: secondStudentId,
+      currentResponderRole: "student",
+      participantIds: [firstStudentId, secondStudentId],
+      participantRoles: {
+        [firstStudentId]: "student",
+        [secondStudentId]: "student",
+      },
+      searchRequestIds: {
+        requester: `request-${firstStudentId}`,
+        responder: `request-${secondStudentId}`,
+      },
+      matchContext: {
+        requesterRole: "student",
+        acceptedResponderId: secondStudentId,
+        acceptedResponderRole: "student",
+      },
+      createdAt: timestampFromMillis(startedAtMillis - 60_000),
+      sessionMetadata: {
+        callConnectedAtTimestamp: startedAtMillis,
+      },
+    },
+  });
+
+  const response = await withFakeFirestore(firestore, () =>
+    endSession.run(
+      {sessionId, endReason: "user_ended"},
+      {auth: {uid: firstStudentId}},
+    ));
+
+  assert.equal(response.status, "ended");
+  assert.equal(store.get(`videoSessions/${sessionId}`).status, "ended");
+  assert.equal(
+    store.get(`searchRequests/${firstStudentId}`).status,
+    "stopped",
+  );
+  assert.equal(
+    store.get(`searchRequests/${secondStudentId}`).status,
+    "stopped",
+  );
+  assert.equal(
+    store.get(`searchRequests/${firstStudentId}`).stopReason,
+    "session_ended",
+  );
+  assert.equal(
+    store.get(`searchRequests/${secondStudentId}`).stopReason,
+    "session_ended",
+  );
+  assert.equal(
+    store.get(`searchRequests/${firstStudentId}`).currentSessionId,
+    null,
+  );
+  assert.equal(
+    store.get(`searchRequests/${secondStudentId}`).currentSessionId,
+    null,
+  );
+  assert.equal(
+    store.get(`searchRequests/${firstStudentId}`).matchedSessionId,
+    undefined,
+  );
+  assert.equal(
+    store.get(`searchRequests/${secondStudentId}`).matchedSessionId,
+    undefined,
+  );
+  assert.equal(
+    store.get(`searchRequests/${firstStudentId}`).activeSessionId,
+    undefined,
+  );
+  assert.equal(
+    store.get(`searchRequests/${secondStudentId}`).activeSessionId,
+    undefined,
+  );
+  assert.equal(
+    store.get(`searchRequests/${firstStudentId}`).matchedUserId,
+    null,
+  );
+  assert.equal(
+    store.get(`searchRequests/${secondStudentId}`).matchedUserId,
+    null,
+  );
+  assert.equal(
+    store.get(`searchRequests/${firstStudentId}`).matchedResponderId,
+    undefined,
+  );
+  assert.equal(
+    store.get(`searchRequests/${secondStudentId}`).matchedResponderId,
+    undefined,
+  );
+  assert.equal(
+    store.get(`searchRequests/${firstStudentId}`).matchedRole,
+    null,
+  );
+  assert.equal(
+    store.get(`searchRequests/${secondStudentId}`).matchedRole,
+    null,
+  );
+  assert.equal(
+    store.get(`searchRequests/${firstStudentId}`).pairAttemptId,
+    null,
+  );
+  assert.equal(
+    store.get(`searchRequests/${secondStudentId}`).pairAttemptId,
+    null,
+  );
+  assert.equal(store.get(`searchRequests/${firstStudentId}`).lockOwner, null);
+  assert.equal(store.get(`searchRequests/${secondStudentId}`).lockOwner, null);
+  assert.equal(
+    store.get(`searchRequests/${firstStudentId}`).lockExpiresAt,
+    null,
+  );
+  assert.equal(
+    store.get(`searchRequests/${secondStudentId}`).lockExpiresAt,
+    null,
+  );
+  assert.equal(store.get(`users/${firstStudentId}`).currentSessionId, undefined);
+  assert.equal(store.get(`users/${secondStudentId}`).currentSessionId, undefined);
+  assert.equal(store.get(`users/${firstStudentId}`).isInCall, false);
+  assert.equal(store.get(`users/${secondStudentId}`).isInCall, false);
+  assert.equal(store.get(`users/${firstStudentId}`).isAvailable, true);
+  assert.equal(store.get(`users/${secondStudentId}`).isAvailable, true);
 });
 
 test("buildStudentCallCharge debits gift minutes for non-subscribers", () => {

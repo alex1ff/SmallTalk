@@ -10,6 +10,7 @@ const {
 } = require("./cancel_call");
 const {
   __private__: {
+    buildEndedSessionPairLockReleaseOptions,
     buildPreActiveSessionPairLockReleaseOptions,
   },
 } = require("./end_session");
@@ -2324,6 +2325,98 @@ test("pre-active end release options stop all participant searches", async () =>
     store.get("searchRequests/student-b").stopReason,
     "pre_active_expired",
   );
+});
+
+test("ended session release options stop all participant searches", async () => {
+  const {db, store} = createFakeFirestore({
+    ...seedExistingStudentSession(),
+    "users/student-a": studentUser({
+      currentSessionId: "session-ab",
+      isInCall: true,
+      isAvailable: false,
+      availableAfter: timestampFromMillis(fixedNowMillis + 60_000),
+    }),
+    "users/student-b": studentUser({
+      currentSessionId: "session-ab",
+      isInCall: true,
+      isAvailable: false,
+      availableAfter: timestampFromMillis(fixedNowMillis + 60_000),
+    }),
+    "videoSessions/session-ab": existingSearchingSession({
+      status: "active",
+    }),
+  });
+
+  await db.runTransaction((transaction) =>
+    releaseSessionPairLocksInTransaction(
+      buildEndedSessionPairLockReleaseOptions({
+        db,
+        transaction,
+        sessionId: "session-ab",
+        sessionData: store.get("videoSessions/session-ab"),
+        serverTimestamp,
+        fieldDelete,
+      }),
+    ));
+
+  assert.equal(
+    store.get("searchRequests/student-a").status,
+    SEARCH_REQUEST_STATUS.STOPPED,
+  );
+  assert.equal(
+    store.get("searchRequests/student-a").stopReason,
+    "session_ended",
+  );
+  assert.equal(
+    store.get("searchRequests/student-b").status,
+    SEARCH_REQUEST_STATUS.STOPPED,
+  );
+  assert.equal(
+    store.get("searchRequests/student-b").stopReason,
+    "session_ended",
+  );
+  assert.equal(store.get("searchRequests/student-a").currentSessionId, null);
+  assert.equal(store.get("searchRequests/student-b").currentSessionId, null);
+  assert.equal(
+    store.get("searchRequests/student-a").activeSessionId,
+    fieldDelete,
+  );
+  assert.equal(
+    store.get("searchRequests/student-b").activeSessionId,
+    fieldDelete,
+  );
+  assert.equal(
+    store.get("searchRequests/student-a").matchedSessionId,
+    fieldDelete,
+  );
+  assert.equal(
+    store.get("searchRequests/student-b").matchedSessionId,
+    fieldDelete,
+  );
+  assert.equal(store.get("searchRequests/student-a").matchedUserId, null);
+  assert.equal(store.get("searchRequests/student-b").matchedUserId, null);
+  assert.equal(
+    store.get("searchRequests/student-a").matchedResponderId,
+    fieldDelete,
+  );
+  assert.equal(
+    store.get("searchRequests/student-b").matchedResponderId,
+    fieldDelete,
+  );
+  assert.equal(store.get("searchRequests/student-a").matchedRole, null);
+  assert.equal(store.get("searchRequests/student-b").matchedRole, null);
+  assert.equal(store.get("searchRequests/student-a").pairAttemptId, null);
+  assert.equal(store.get("searchRequests/student-b").pairAttemptId, null);
+  assert.equal(store.get("searchRequests/student-a").lockOwner, null);
+  assert.equal(store.get("searchRequests/student-b").lockOwner, null);
+  assert.equal(store.get("searchRequests/student-a").lockExpiresAt, null);
+  assert.equal(store.get("searchRequests/student-b").lockExpiresAt, null);
+  assert.equal(store.get("users/student-a").currentSessionId, fieldDelete);
+  assert.equal(store.get("users/student-b").currentSessionId, fieldDelete);
+  assert.equal(store.get("users/student-a").isInCall, false);
+  assert.equal(store.get("users/student-b").isInCall, false);
+  assert.equal(store.get("users/student-a").isAvailable, true);
+  assert.equal(store.get("users/student-b").isAvailable, true);
 });
 
 test("releaseSessionPairLocks restores selected search participant", async () => {

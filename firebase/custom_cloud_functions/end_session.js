@@ -113,6 +113,28 @@ function buildPreActiveSessionPairLockReleaseOptions({
   };
 }
 
+function buildEndedSessionPairLockReleaseOptions({
+  db,
+  transaction,
+  sessionId,
+  sessionData = {},
+  serverTimestamp,
+  fieldDelete,
+}) {
+  return {
+    db,
+    transaction,
+    sessionId,
+    sessionData,
+    serverTimestamp,
+    fieldDelete,
+    searchRequestStatus: SEARCH_REQUEST_STATUS.STOPPED,
+    stopReason: "session_ended",
+    releaseCallState: true,
+    restoreLegacyAvailability: true,
+  };
+}
+
 // Returns true if the user has a flat-rate subscription that is still active
 // at `nowMillis`. Subscribers are not debited from balanceST — billing flips
 // from per-minute to flat-rate for the duration of the subscription.
@@ -516,18 +538,16 @@ exports.endSession = functions
           pairHistoryWrite.ref;
       }
 
-      await releaseSessionPairLocksInTransaction({
-        db,
-        transaction,
-        sessionId,
-        sessionData,
-        serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
-        fieldDelete: admin.firestore.FieldValue.delete(),
-        searchRequestStatus: SEARCH_REQUEST_STATUS.STOPPED,
-        stopReason: "session_ended",
-        releaseCallState: true,
-        restoreLegacyAvailability: true,
-      });
+      await releaseSessionPairLocksInTransaction(
+        buildEndedSessionPairLockReleaseOptions({
+          db,
+          transaction,
+          sessionId,
+          sessionData,
+          serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+          fieldDelete: admin.firestore.FieldValue.delete(),
+        }),
+      );
 
       transaction.update(sessionRef, sessionUpdates);
       if (pairHistoryWrite) {
@@ -923,6 +943,7 @@ async function cancelAllSessionNotifications(sessionId) {
 }
 
 exports.__private__ = {
+  buildEndedSessionPairLockReleaseOptions,
   buildPreActiveSessionPairLockReleaseOptions,
   buildStudentCallCharge,
   hasConnectedCallEvidence,
