@@ -192,6 +192,9 @@ void main() {
     debugActiveSessionUserSnapshot = null;
     debugActiveNavigationSessionSnapshots = null;
     debugActiveCurrentSessionSnapshot = null;
+    debugActiveSearchRequestSnapshot = (_) async => null;
+    debugActiveSearchRecoveryObserver = null;
+    debugActiveSearchRecoveryNow = null;
     debugActiveSessionTokenRequest = null;
     debugActiveSessionNavigator = null;
     debugStudentSessionSnapshots = null;
@@ -248,6 +251,9 @@ void main() {
     debugActiveSessionUserSnapshot = null;
     debugActiveNavigationSessionSnapshots = null;
     debugActiveCurrentSessionSnapshot = null;
+    debugActiveSearchRequestSnapshot = null;
+    debugActiveSearchRecoveryObserver = null;
+    debugActiveSearchRecoveryNow = null;
     debugActiveSessionTokenRequest = null;
     debugActiveSessionNavigator = null;
     debugStudentSessionSnapshots = null;
@@ -334,6 +340,59 @@ void main() {
       },
       UsersRecord.collection.doc(userId),
     );
+  }
+
+  Future<ActiveSearchRecoveryState?> runStartupSearchRecoveryTest(
+    WidgetTester tester, {
+    required String userId,
+    required Map<String, dynamic> searchData,
+    String? searchDocId,
+  }) async {
+    ActiveSearchRecoveryState? observedSearchState;
+    debugActiveSessionUserSnapshot = (_) async => _FakeSessionSnapshot(
+          userId,
+          const <String, dynamic>{
+            'isInCall': false,
+          },
+          FirebaseFirestore.instance.collection('users').doc(userId),
+        );
+    debugActiveSearchRequestSnapshot = (requestedUserId) async {
+      return _FakeSessionSnapshot(
+        searchDocId ?? requestedUserId,
+        searchData,
+        FirebaseFirestore.instance
+            .collection('searchRequests')
+            .doc(searchDocId ?? requestedUserId),
+      );
+    };
+    debugActiveSearchRecoveryObserver = (state) {
+      observedSearchState = state;
+    };
+    setActiveStudent(userId, isInCall: false);
+    final router = GoRouter(
+      initialLocation: StudentsDashboardWidget.routePath,
+      routes: [
+        GoRoute(
+          name: StudentsDashboardWidget.routeName,
+          path: StudentsDashboardWidget.routePath,
+          builder: (context, state) => TextButton(
+            key: const Key('recover-startup-search-request'),
+            onPressed: () async {
+              await checkActiveSessionAndNavigate(context);
+            },
+            child: const Text('Recover startup search request'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildDashboardRouterTestApp(router));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('recover-startup-search-request')));
+    await tester.pump();
+    await tester.idle();
+    await tester.pumpWidget(const SizedBox.shrink());
+    return observedSearchState;
   }
 
   testWidgets('student dashboard renders and handles the start search CTA',
@@ -2050,6 +2109,258 @@ void main() {
     expect(openedSessions, isEmpty);
 
     await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('startup recovery checks active search request', (tester) async {
+    const userId = 'student-startup-active-search-test';
+    final searchRequestReads = <String>[];
+    ActiveSearchRecoveryState? observedSearchState;
+    var currentSessionRead = false;
+    debugActiveSessionUserSnapshot = (_) async => _FakeSessionSnapshot(
+          userId,
+          const <String, dynamic>{
+            'isInCall': false,
+          },
+          FirebaseFirestore.instance.collection('users').doc(userId),
+        );
+    debugActiveSearchRequestSnapshot = (requestedUserId) async {
+      searchRequestReads.add(requestedUserId);
+      return _FakeSessionSnapshot(
+        requestedUserId,
+        <String, dynamic>{
+          'requestId': 'request-startup-active-search-test',
+          'userId': userId,
+          'status': 'active',
+          'heartbeatAt': DateTime.now(),
+          'expiresAt': DateTime.now().add(const Duration(minutes: 5)),
+        },
+        FirebaseFirestore.instance
+            .collection('searchRequests')
+            .doc(requestedUserId),
+      );
+    };
+    debugActiveSearchRecoveryObserver = (state) {
+      observedSearchState = state;
+    };
+    debugActiveCurrentSessionSnapshot = (_) async {
+      currentSessionRead = true;
+      return null;
+    };
+    setActiveStudent(userId, isInCall: false);
+    bool? recovered;
+    final router = GoRouter(
+      initialLocation: StudentsDashboardWidget.routePath,
+      routes: [
+        GoRoute(
+          name: StudentsDashboardWidget.routeName,
+          path: StudentsDashboardWidget.routePath,
+          builder: (context, state) => TextButton(
+            key: const Key('recover-active-search-request'),
+            onPressed: () async {
+              recovered = await checkActiveSessionAndNavigate(context);
+            },
+            child: const Text('Recover active search request'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildDashboardRouterTestApp(router));
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('recover-active-search-request')));
+    await tester.pump();
+    await tester.idle();
+
+    expect(recovered, isFalse);
+    expect(searchRequestReads, [userId]);
+    expect(currentSessionRead, isFalse);
+    expect(observedSearchState, isNotNull);
+    expect(observedSearchState!.exists, isTrue);
+    expect(observedSearchState!.belongsToUser, isTrue);
+    expect(observedSearchState!.isLiveStatus, isTrue);
+    expect(observedSearchState!.isExpired, isFalse);
+    expect(observedSearchState!.hasActiveSearch, isTrue);
+    expect(
+      observedSearchState!.requestId,
+      'request-startup-active-search-test',
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('startup recovery treats matching search as active',
+      (tester) async {
+    const userId = 'student-startup-matching-search-test';
+    final observedSearchState = await runStartupSearchRecoveryTest(
+      tester,
+      userId: userId,
+      searchData: <String, dynamic>{
+        'requestId': 'request-startup-matching-search-test',
+        'userId': userId,
+        'status': 'matching',
+        'heartbeatAt': DateTime.now(),
+        'expiresAt': DateTime.now().add(const Duration(minutes: 5)),
+      },
+    );
+
+    expect(observedSearchState, isNotNull);
+    expect(observedSearchState!.isLiveStatus, isTrue);
+    expect(observedSearchState.isExpired, isFalse);
+    expect(observedSearchState.hasActiveSearch, isTrue);
+  });
+
+  testWidgets('startup recovery does not treat matched search as active',
+      (tester) async {
+    const userId = 'student-startup-matched-search-test';
+    final observedSearchState = await runStartupSearchRecoveryTest(
+      tester,
+      userId: userId,
+      searchData: <String, dynamic>{
+        'requestId': 'request-startup-matched-search-test',
+        'userId': userId,
+        'status': 'matched',
+        'heartbeatAt': DateTime.now(),
+        'expiresAt': DateTime.now().add(const Duration(minutes: 5)),
+        'currentSessionId': 'session-startup-matched-search-test',
+      },
+    );
+
+    expect(observedSearchState, isNotNull);
+    expect(observedSearchState!.isLiveStatus, isFalse);
+    expect(observedSearchState.hasActiveSearch, isFalse);
+  });
+
+  testWidgets('startup recovery treats stale active search as expired',
+      (tester) async {
+    const userId = 'student-startup-stale-search-test';
+    final observedSearchState = await runStartupSearchRecoveryTest(
+      tester,
+      userId: userId,
+      searchData: <String, dynamic>{
+        'requestId': 'request-startup-stale-search-test',
+        'userId': userId,
+        'status': 'active',
+        'heartbeatAt': DateTime.now().subtract(const Duration(minutes: 2)),
+        'expiresAt': DateTime.now().add(const Duration(minutes: 5)),
+      },
+    );
+
+    expect(observedSearchState, isNotNull);
+    expect(observedSearchState!.exists, isTrue);
+    expect(observedSearchState.belongsToUser, isTrue);
+    expect(observedSearchState.isLiveStatus, isTrue);
+    expect(observedSearchState.isExpired, isTrue);
+    expect(observedSearchState.hasActiveSearch, isFalse);
+  });
+
+  testWidgets('startup recovery treats missing heartbeat as expired',
+      (tester) async {
+    const userId = 'student-startup-missing-heartbeat-search-test';
+    final observedSearchState = await runStartupSearchRecoveryTest(
+      tester,
+      userId: userId,
+      searchData: <String, dynamic>{
+        'requestId': 'request-startup-missing-heartbeat-search-test',
+        'userId': userId,
+        'status': 'active',
+        'expiresAt': DateTime.now().add(const Duration(minutes: 5)),
+      },
+    );
+
+    expect(observedSearchState, isNotNull);
+    expect(observedSearchState!.isLiveStatus, isTrue);
+    expect(observedSearchState.isExpired, isTrue);
+    expect(observedSearchState.hasActiveSearch, isFalse);
+  });
+
+  testWidgets('startup recovery treats missing expiresAt as expired',
+      (tester) async {
+    const userId = 'student-startup-missing-expires-search-test';
+    final observedSearchState = await runStartupSearchRecoveryTest(
+      tester,
+      userId: userId,
+      searchData: <String, dynamic>{
+        'requestId': 'request-startup-missing-expires-search-test',
+        'userId': userId,
+        'status': 'active',
+        'heartbeatAt': DateTime.now(),
+      },
+    );
+
+    expect(observedSearchState, isNotNull);
+    expect(observedSearchState!.isLiveStatus, isTrue);
+    expect(observedSearchState.isExpired, isTrue);
+    expect(observedSearchState.hasActiveSearch, isFalse);
+  });
+
+  testWidgets('startup recovery keeps heartbeat at stale cutoff active',
+      (tester) async {
+    const userId = 'student-startup-cutoff-search-test';
+    final now = DateTime(2026, 1, 1, 12);
+    debugActiveSearchRecoveryNow = () => now;
+    final observedSearchState = await runStartupSearchRecoveryTest(
+      tester,
+      userId: userId,
+      searchData: <String, dynamic>{
+        'requestId': 'request-startup-cutoff-search-test',
+        'userId': userId,
+        'status': 'active',
+        'heartbeatAt': now.subtract(const Duration(seconds: 90)),
+        'expiresAt': now.add(const Duration(minutes: 5)),
+      },
+    );
+
+    expect(observedSearchState, isNotNull);
+    expect(observedSearchState!.isLiveStatus, isTrue);
+    expect(observedSearchState.isExpired, isFalse);
+    expect(observedSearchState.hasActiveSearch, isTrue);
+  });
+
+  testWidgets('startup recovery keeps background search during grace window',
+      (tester) async {
+    const userId = 'student-startup-background-search-test';
+    final observedSearchState = await runStartupSearchRecoveryTest(
+      tester,
+      userId: userId,
+      searchData: <String, dynamic>{
+        'requestId': 'request-startup-background-search-test',
+        'userId': userId,
+        'status': 'active',
+        'appState': 'background',
+        'heartbeatAt': DateTime.now().subtract(const Duration(minutes: 5)),
+        'backgroundExpiresAt': DateTime.now().add(const Duration(minutes: 5)),
+        'expiresAt': DateTime.now().add(const Duration(minutes: 5)),
+      },
+    );
+
+    expect(observedSearchState, isNotNull);
+    expect(observedSearchState!.exists, isTrue);
+    expect(observedSearchState.belongsToUser, isTrue);
+    expect(observedSearchState.isLiveStatus, isTrue);
+    expect(observedSearchState.isExpired, isFalse);
+    expect(observedSearchState.hasActiveSearch, isTrue);
+  });
+
+  testWidgets('startup recovery rejects mismatched search owner',
+      (tester) async {
+    const userId = 'student-startup-owner-search-test';
+    final observedSearchState = await runStartupSearchRecoveryTest(
+      tester,
+      userId: userId,
+      searchData: <String, dynamic>{
+        'requestId': 'request-startup-owner-search-test',
+        'userId': 'other-student-startup-owner-search-test',
+        'status': 'active',
+        'heartbeatAt': DateTime.now(),
+        'expiresAt': DateTime.now().add(const Duration(minutes: 5)),
+      },
+    );
+
+    expect(observedSearchState, isNotNull);
+    expect(observedSearchState!.exists, isTrue);
+    expect(observedSearchState.belongsToUser, isFalse);
+    expect(observedSearchState.hasActiveSearch, isFalse);
   });
 
   testWidgets('accepted recovery uses token room url before session room write',
