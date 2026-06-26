@@ -513,7 +513,14 @@ void main() {
           contains('await FlutterCallkitIncoming.showCallkitIncoming'));
       expect(showIncomingCallSource, contains('AndroidParams('));
       expect(showIncomingCallSource, contains('IOSParams('));
-      expect(showIncomingCallSource, contains('duration: 45000'));
+      expect(
+        voipSource,
+        contains('const int _incomingCallTimeoutMilliseconds = 45000;'),
+      );
+      expect(
+        showIncomingCallSource,
+        contains('duration: _incomingCallTimeoutMilliseconds'),
+      );
       expect(
         showIncomingCallSource,
         contains('voipIncomingCallPayloadHasExpired(extraData)'),
@@ -558,6 +565,14 @@ void main() {
       expect(
         pushKitReceiveSource,
         contains('let extraDict = incomingCallExtraData(from: payloadDict)'),
+      );
+      expect(
+        appDelegateSource,
+        contains('private let incomingCallTimeoutMilliseconds = 45000'),
+      );
+      expect(
+        pushKitReceiveSource,
+        contains('data.duration = incomingCallTimeoutMilliseconds'),
       );
       expect(
         pushKitReceiveSource,

@@ -16,6 +16,8 @@ import '/backend/schema/enums/enums.dart';
 import '/flutter_flow/nav/nav.dart';
 import '/flutter_flow/permissions_util.dart';
 
+const int _incomingCallTimeoutMilliseconds = 45000;
+
 String? _voipNonEmptyString(dynamic value) {
   if (value == null) return null;
   final trimmed = value.toString().trim();
@@ -749,6 +751,20 @@ class VoIPService {
   ) {
     return _handleCallKitEvent(
       CallEvent(data, Event.actionCallDecline),
+    );
+  }
+
+  @visibleForTesting
+  Future<void> debugHandleCallTimeoutForTesting(Map<String, dynamic> data) {
+    return _handleCallTimeout(data);
+  }
+
+  @visibleForTesting
+  Future<void> debugHandleCallKitTimeoutEventForTesting(
+    Map<String, dynamic> data,
+  ) {
+    return _handleCallKitEvent(
+      CallEvent(data, Event.actionCallTimeout),
     );
   }
 
@@ -1547,7 +1563,7 @@ class VoIPService {
         type: 1,
         textAccept: 'Accept',
         textDecline: 'Decline',
-        duration: 45000,
+        duration: _incomingCallTimeoutMilliseconds,
         extra: voipBuildCallKitExtraData(
           sessionId: sessionId,
           callerId: callerId,
@@ -1639,6 +1655,12 @@ class VoIPService {
           await _handleCallEnded(event.body);
           break;
         case Event.actionCallTimeout:
+          if (_shouldDropCallKitActionForAnotherKnownUser(
+            actionName: 'timeout',
+            data: event.body,
+          )) {
+            return;
+          }
           await _handleCallTimeout(event.body);
           break;
         case Event.actionCallToggleAudioSession:
@@ -1802,6 +1824,29 @@ class VoIPService {
         _voipStringFromPayload(normalizedData, 'sessionId') ?? 'unknown';
     debugPrint(
       '⚠️ VoIPService: Dropping CallKit ${type.name} for another user: $sessionId',
+    );
+    return true;
+  }
+
+  bool _shouldDropCallKitActionForAnotherKnownUser({
+    required String actionName,
+    required Map<String, dynamic>? data,
+  }) {
+    if (data == null) {
+      return false;
+    }
+    final normalizedData = _voipMapFrom(data);
+    final targetUserId = _voipStringFromPayload(normalizedData, 'recipientId');
+    final currentUserId = _currentUserIdOrNull();
+    if (targetUserId == null ||
+        currentUserId == null ||
+        targetUserId == currentUserId) {
+      return false;
+    }
+    final sessionId =
+        _voipStringFromPayload(normalizedData, 'sessionId') ?? 'unknown';
+    debugPrint(
+      '⚠️ VoIPService: Dropping CallKit $actionName for another user: $sessionId',
     );
     return true;
   }
@@ -2377,17 +2422,14 @@ class VoIPService {
   Future<void> _handleCallTimeout(Map<String, dynamic>? data) async {
     if (data == null) return;
 
-    final extra = data['extra'] is Map
-        ? Map<String, dynamic>.from(data['extra'] as Map)
-        : <String, dynamic>{};
-    final sessionId =
-        extra['sessionId'] as String? ?? data['sessionId'] as String?;
-    if (sessionId == null) {
+    final sessionId = _voipStringFromPayload(data, 'sessionId');
+    if (sessionId == null || sessionId.isEmpty) {
       debugPrint('❌ VoIPService: No sessionId in timeout event');
       return;
     }
     final callKitId = _normalizeCallKitId(
-      data['id'] as String? ?? extra['callKitId'] as String?,
+      _voipNonEmptyString(data['id']) ??
+          _voipStringFromPayload(data, 'callKitId'),
     );
     if (_hasMismatchedTrackedCallKitId(sessionId, callKitId)) {
       debugPrint(

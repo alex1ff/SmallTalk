@@ -4,6 +4,8 @@ import PushKit
 import CryptoKit
 import flutter_callkit_incoming
 
+private let incomingCallTimeoutMilliseconds = 45000
+
 private let incomingCallExtraKeys: Set<String> = [
   "type",
   "sessionId",
@@ -147,6 +149,7 @@ private func deterministicCallKitId(for rawValue: String?) -> String {
       type: isVideo ? 1 : 0
     )
     let extraDict = incomingCallExtraData(from: payloadDict)
+    data.duration = incomingCallTimeoutMilliseconds
     data.extra = NSDictionary(dictionary: extraDict)
 
     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
