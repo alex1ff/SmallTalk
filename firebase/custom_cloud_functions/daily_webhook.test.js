@@ -209,6 +209,40 @@ test("first Daily participant signal does not mark connected billing state", () 
       receivedAt,
     },
   );
+  assert.deepEqual(
+    decision.update.sessionMetadata.roomJoinedParticipantIds,
+    ["student-a"],
+  );
+  assert.equal(
+    decision.update.sessionMetadata.roomJoinSignalsComplete,
+    false,
+  );
+  assert.deepEqual(
+    decision.update.sessionMetadata.roomJoinParticipantSignals["student-a"],
+    {
+      eventId: "ptcpt-join-event-a",
+      dailySessionId: "daily-session-a",
+      joinedAt: decision
+        .update
+        .sessionMetadata
+        .dailyWebhookParticipantSignals["student-a"]
+        .joinedAt,
+      eventTs: decision
+        .update
+        .sessionMetadata
+        .dailyWebhookParticipantSignals["student-a"]
+        .eventTs,
+      dailyJoinedAt: decision
+        .update
+        .sessionMetadata
+        .dailyWebhookParticipantSignals["student-a"]
+        .joinedAt,
+      owner: true,
+      source: "dailyWebhook",
+      receivedAt,
+      lastSeenAt: receivedAt,
+    },
+  );
 });
 
 test("second Daily participant signal marks server-verified connected state", () => {
@@ -265,6 +299,124 @@ test("second Daily participant signal marks server-verified connected state", ()
   assert.deepEqual(
     decision.update.sessionMetadata.dailyWebhookConnectedEventIds,
     ["ptcpt-join-event-a", "ptcpt-join-event-b"],
+  );
+  assert.deepEqual(
+    decision.update.sessionMetadata.roomJoinedParticipantIds,
+    ["student-a", "teacher-b"],
+  );
+  assert.equal(
+    decision.update.sessionMetadata.roomJoinSignalsComplete,
+    true,
+  );
+});
+
+test("duplicate Daily join keeps first room join and updates last seen", () => {
+  const firstJoinedAt = {
+    toMillis: () => (NOW_SECONDS + 1) * 1000,
+  };
+  const duplicateEvent = parseDailyWebhookEvent(dailyEvent({
+    id: "ptcpt-join-event-a-reconnect",
+    payload: {
+      user_id: "student-a",
+      user_name: "Student A",
+      session_id: "daily-session-a-reconnect",
+      joined_at: NOW_SECONDS + 20,
+      owner: true,
+    },
+    event_ts: NOW_SECONDS + 20,
+  }));
+  const receivedAt = Symbol("receivedAt");
+  const decision = buildDailyWebhookSessionUpdate({
+    event: duplicateEvent,
+    sessionData: activeSession({
+      sessionMetadata: {
+        dailyWebhookParticipantSignals: {
+          "student-a": {
+            eventId: "ptcpt-join-event-a",
+            dailySessionId: "daily-session-a",
+            joinedAt: firstJoinedAt,
+            source: "dailyWebhook",
+          },
+        },
+        roomJoinParticipantSignals: {
+          "student-a": {
+            eventId: "ptcpt-join-event-a",
+            dailySessionId: "daily-session-a",
+            joinedAt: firstJoinedAt,
+            dailyJoinedAt: firstJoinedAt,
+            source: "dailyWebhook",
+          },
+        },
+        roomJoinedParticipantIds: ["student-a"],
+      },
+    }),
+    nowMillis: NOW_MILLIS,
+    receivedAt,
+  });
+
+  assert.equal(decision.ok, true);
+  assert.equal(decision.reason, "daily_signal_recorded");
+  assert.equal(decision.update.sessionMetadata.callConnectedAt, undefined);
+  assert.equal(Object.hasOwn(decision.update, "startedAt"), false);
+  const roomJoinSignal =
+    decision.update.sessionMetadata.roomJoinParticipantSignals["student-a"];
+  assert.equal(roomJoinSignal.joinedAt, firstJoinedAt);
+  assert.equal(roomJoinSignal.dailyJoinedAt, firstJoinedAt);
+  assert.equal(roomJoinSignal.eventId, "ptcpt-join-event-a-reconnect");
+  assert.equal(roomJoinSignal.lastSeenAt, receivedAt);
+  assert.deepEqual(
+    decision.update.sessionMetadata.roomJoinedParticipantIds,
+    ["student-a"],
+  );
+});
+
+test("duplicate Daily join backfills canonical room join from legacy signal", () => {
+  const firstJoinedAt = {
+    toMillis: () => (NOW_SECONDS + 1) * 1000,
+  };
+  const duplicateEvent = parseDailyWebhookEvent(dailyEvent({
+    id: "ptcpt-join-event-a-reconnect",
+    payload: {
+      user_id: "student-a",
+      user_name: "Student A",
+      session_id: "daily-session-a-reconnect",
+      joined_at: NOW_SECONDS + 20,
+      owner: true,
+    },
+    event_ts: NOW_SECONDS + 20,
+  }));
+  const receivedAt = Symbol("receivedAt");
+  const decision = buildDailyWebhookSessionUpdate({
+    event: duplicateEvent,
+    sessionData: activeSession({
+      sessionMetadata: {
+        dailyWebhookParticipantSignals: {
+          "student-a": {
+            eventId: "ptcpt-join-event-a",
+            dailySessionId: "daily-session-a",
+            joinedAt: firstJoinedAt,
+            source: "dailyWebhook",
+          },
+        },
+      },
+    }),
+    nowMillis: NOW_MILLIS,
+    receivedAt,
+  });
+
+  assert.equal(decision.ok, true);
+  assert.equal(decision.update.sessionMetadata.callConnectedAt, undefined);
+  assert.equal(Object.hasOwn(decision.update, "startedAt"), false);
+  const roomJoinSignal =
+    decision.update.sessionMetadata.roomJoinParticipantSignals["student-a"];
+  assert.equal(roomJoinSignal.joinedAt, firstJoinedAt);
+  assert.equal(roomJoinSignal.dailyJoinedAt, firstJoinedAt);
+  assert.equal(roomJoinSignal.eventId, "ptcpt-join-event-a-reconnect");
+  assert.equal(roomJoinSignal.lastSeenAt, receivedAt);
+  assert.equal(
+    decision.update.sessionMetadata.dailyWebhookParticipantSignals["student-a"]
+      .eventId,
+    "ptcpt-join-event-a-reconnect",
   );
 });
 

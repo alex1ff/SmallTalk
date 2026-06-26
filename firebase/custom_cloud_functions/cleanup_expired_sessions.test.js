@@ -200,6 +200,27 @@ test("cleanup restore targets include Daily webhook join signals", () => {
   );
 });
 
+test("cleanup restore targets include room join signals", () => {
+  const sessionData = {
+    status: "connecting",
+    participantIds: ["student-a", "student-b"],
+    studentId: "student-a",
+    currentTutorId: "student-b",
+    sessionMetadata: {
+      roomJoinParticipantSignals: {
+        "student-a": {source: "markSessionConnected"},
+        "unknown-user": {source: "markSessionConnected"},
+      },
+    },
+  };
+
+  const restoreParticipantIds = getCleanupRestoreSearchParticipantIds(
+    sessionData,
+  );
+
+  assert.deepEqual(restoreParticipantIds, ["student-a"]);
+});
+
 test("cleanup restore is skipped after connected call evidence", () => {
   const sessionData = {
     status: "connecting",

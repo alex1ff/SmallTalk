@@ -630,6 +630,8 @@ void main() {
 
       expect(source, contains("httpsCallable('markSessionConnected')"));
       expect(source, contains("'sessionId': sessionId"));
+      expect(source, contains('case CallState.joined:'));
+      expect(source, contains('unawaited(_markRoomJoined());'));
       expect(
         source,
         isNot(contains("'sessionMetadata.callConnectedAt': "
@@ -835,11 +837,16 @@ void main() {
     test('connected billing marker requires Daily verification backend', () {
       final markConnectedSource =
           _source('firebase/custom_cloud_functions/mark_session_connected.js');
+      final roomJoinSource =
+          _source('firebase/custom_cloud_functions/room_join_signals.js');
       final dailyWebhookSource =
           _source('firebase/custom_cloud_functions/daily_webhook.js');
       final indexSource = _source('firebase/custom_cloud_functions/index.js');
 
       expect(markConnectedSource, contains('connectedParticipantSignals'));
+      expect(markConnectedSource, contains('buildRoomJoinParticipantMetadata'));
+      expect(roomJoinSource, contains('roomJoinParticipantSignals'));
+      expect(roomJoinSource, contains('roomJoinedParticipantIds'));
       expect(
         markConnectedSource,
         contains('dailyPresenceVerificationRequired'),

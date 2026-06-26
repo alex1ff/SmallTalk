@@ -597,6 +597,14 @@ if (!hasRequiredEmulators) {
       sessionData.sessionMetadata.connectedParticipantSignals[studentId].source,
       "markSessionConnected",
     );
+    assert.equal(
+      sessionData.sessionMetadata.roomJoinParticipantSignals[studentId].source,
+      "markSessionConnected",
+    );
+    assert.deepEqual(
+      sessionData.sessionMetadata.roomJoinedParticipantIds,
+      [studentId],
+    );
   });
 
   test(
@@ -645,6 +653,20 @@ if (!hasRequiredEmulators) {
         sessionData.sessionMetadata.connectedParticipantSignals[teacherId]
           .source,
         "markSessionConnected",
+      );
+      assert.equal(
+        sessionData.sessionMetadata.roomJoinParticipantSignals[studentId]
+          .source,
+        "markSessionConnected",
+      );
+      assert.equal(
+        sessionData.sessionMetadata.roomJoinParticipantSignals[teacherId]
+          .source,
+        "markSessionConnected",
+      );
+      assert.deepEqual(
+        sessionData.sessionMetadata.roomJoinedParticipantIds,
+        [studentId, teacherId],
       );
     },
   );

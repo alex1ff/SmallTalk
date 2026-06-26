@@ -16,6 +16,10 @@ const {
 const {
   stopSessionSearchRequestsInTransaction,
 } = require("./match_pair_lock");
+const {
+  buildRoomJoinParticipantMetadata,
+  readRoomJoinSignals,
+} = require("./room_join_signals");
 
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 const MAX_SESSION_ID_LENGTH = 128;
@@ -56,6 +60,21 @@ function readConnectedSignals(sessionMetadata = {}) {
   return signals;
 }
 
+function hasRoomJoinSignalForParticipant(sessionMetadata = {}, userId) {
+  const normalizedUserId = typeof userId === "string" ? userId.trim() : "";
+  if (!normalizedUserId) {
+    return false;
+  }
+
+  const roomJoinSignals = readRoomJoinSignals(sessionMetadata);
+  const roomJoinedParticipantIds =
+    Array.isArray(sessionMetadata.roomJoinedParticipantIds) ?
+      sessionMetadata.roomJoinedParticipantIds :
+      [];
+  return Boolean(roomJoinSignals[normalizedUserId]) &&
+    roomJoinedParticipantIds.includes(normalizedUserId);
+}
+
 function buildRejectedDecision(code, message) {
   return {
     ok: false,
@@ -85,22 +104,39 @@ function buildMarkSessionConnectedDecision({
   }
 
   const sessionMetadata = readSessionMetadata(sessionData);
+  const participantIds =
+    getAcceptedSessionCredentialParticipantIds(sessionData);
   if (sessionMetadata.callConnectedAt) {
-    const update = sessionData.status === VIDEO_SESSION_STATUS.ACTIVE ?
-      null :
-      {status: VIDEO_SESSION_STATUS.ACTIVE};
+    const update = {};
+    if (sessionData.status !== VIDEO_SESSION_STATUS.ACTIVE) {
+      update.status = VIDEO_SESSION_STATUS.ACTIVE;
+    }
+    if (!hasRoomJoinSignalForParticipant(sessionMetadata, userId)) {
+      update.sessionMetadata = {
+        ...sessionMetadata,
+        ...buildRoomJoinParticipantMetadata({
+          sessionMetadata,
+          participantIds,
+          userId,
+          signal: {
+            joinedAt: serverTimestamp,
+            lastSeenAt: serverTimestamp,
+            source: "markSessionConnected",
+          },
+        }),
+      };
+    }
+    const hasUpdate = Object.keys(update).length > 0;
     return {
       ok: true,
-      update,
+      update: hasUpdate ? update : null,
       response: {
         status: "already_marked",
-        updated: Boolean(update),
+        updated: hasUpdate,
       },
     };
   }
 
-  const participantIds =
-    getAcceptedSessionCredentialParticipantIds(sessionData);
   if (participantIds.length < 2) {
     return buildRejectedDecision(
       "failed-precondition",
@@ -119,9 +155,20 @@ function buildMarkSessionConnectedDecision({
   const hasAllParticipantSignals = participantIds.every((participantId) =>
     Boolean(nextConnectedSignals[participantId]),
   );
+  const roomJoinMetadata = buildRoomJoinParticipantMetadata({
+    sessionMetadata,
+    participantIds,
+    userId,
+    signal: {
+      joinedAt: serverTimestamp,
+      lastSeenAt: serverTimestamp,
+      source: "markSessionConnected",
+    },
+  });
   const update = {
     sessionMetadata: {
       ...sessionMetadata,
+      ...roomJoinMetadata,
       connectedParticipantSignals: nextConnectedSignals,
       callConnectedSignalParticipantIds: participantIds,
       connectedParticipantSignalsComplete: hasAllParticipantSignals,
@@ -393,7 +440,9 @@ exports.__private__ = {
   buildDailyPresenceConnectedDecision,
   buildMarkSessionConnectedDecision,
   dailyPresenceHasAcceptedParticipants,
+  hasRoomJoinSignalForParticipant,
   normalizeSessionId,
   readConnectedSignals,
+  readRoomJoinSignals,
   readSessionMetadata,
 };

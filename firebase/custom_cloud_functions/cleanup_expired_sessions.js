@@ -64,6 +64,7 @@ function readSessionParticipantIds(sessionData = {}) {
 function readConnectedSignalParticipantIds(sessionData = {}) {
   const metadata = sessionData.sessionMetadata || {};
   const signalMaps = [
+    metadata.roomJoinParticipantSignals,
     metadata.connectedParticipantSignals,
     metadata.dailyWebhookParticipantSignals,
   ].filter((signals) =>

@@ -416,7 +416,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   bool _resumeMicrophoneEnabled = true;
   bool _isInitializing = false;
   bool _systemCallMarkedConnected = false;
-  bool _sessionStartedMarked = false;
+  bool _roomJoinMarked = false;
   String? _dynamicMeetingToken;
   String? _dynamicRoomUrl;
   bool _tokenRefreshInProgress = false;
@@ -996,6 +996,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         ));
         _tokenRefreshAttempts = 0;
         unawaited(_updateLocalVideoTrack());
+        unawaited(_markRoomJoined());
         unawaited(_promoteToActiveCallIfReady());
         break;
 
@@ -1827,7 +1828,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     if (!_hasRemoteParticipantPresent()) return;
 
     _startDurationTimer();
-    await _markSessionStarted();
+    await _markRoomJoined();
     await _markSystemCallConnected();
     await _syncDeepgramWithMicrophoneState(forceRefresh: true);
   }
@@ -3438,7 +3439,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     }
     if (oldWidget.sessionId != widget.sessionId) {
       unawaited(_stopDeepgramStreaming());
-      _sessionStartedMarked = false;
+      _roomJoinMarked = false;
       _dynamicMeetingToken = null;
       _dynamicRoomUrl = null;
       _ownSentChatMessages.clear();
@@ -3826,13 +3827,13 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     }
   }
 
-  Future<void> _markSessionStarted() async {
+  Future<void> _markRoomJoined() async {
     final sessionId = widget.sessionId?.trim();
-    if (_sessionStartedMarked || sessionId == null || sessionId.isEmpty) {
+    if (_roomJoinMarked || sessionId == null || sessionId.isEmpty) {
       return;
     }
 
-    _sessionStartedMarked = true;
+    _roomJoinMarked = true;
 
     try {
       await FirebaseFunctions.instance
@@ -3841,8 +3842,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         'sessionId': sessionId,
       });
     } catch (e) {
-      _sessionStartedMarked = false;
-      if (kDebugMode) print('Failed to mark session started: $e');
+      _roomJoinMarked = false;
+      if (kDebugMode) print('Failed to mark room joined: $e');
     }
   }
 

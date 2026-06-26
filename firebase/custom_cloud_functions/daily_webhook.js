@@ -17,6 +17,9 @@ const {
 const {
   stopSessionSearchRequestsInTransaction,
 } = require("./match_pair_lock");
+const {
+  buildRoomJoinParticipantMetadata,
+} = require("./room_join_signals");
 
 const dailyWebhookSecret = defineSecret("DAILY_WEBHOOK_SECRET");
 const dailyApiSecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -218,19 +221,21 @@ function buildDailyWebhookSessionUpdate({
   const sessionMetadata = readSessionMetadata(sessionData);
   const existingSignals =
     readDailyWebhookParticipantSignals(sessionMetadata);
+  const eventJoinedAt =
+    event.joinedAtMillis ?
+      admin.firestore.Timestamp.fromMillis(event.joinedAtMillis) :
+      null;
+  const eventTs =
+    event.eventTsMillis ?
+      admin.firestore.Timestamp.fromMillis(event.eventTsMillis) :
+      null;
   const nextSignals = {
     ...existingSignals,
     [event.userId]: {
       eventId: event.eventId,
       dailySessionId: event.dailySessionId || null,
-      joinedAt:
-        event.joinedAtMillis ?
-          admin.firestore.Timestamp.fromMillis(event.joinedAtMillis) :
-          null,
-      eventTs:
-        event.eventTsMillis ?
-          admin.firestore.Timestamp.fromMillis(event.eventTsMillis) :
-          null,
+      joinedAt: eventJoinedAt,
+      eventTs,
       owner: event.owner === true,
       source: "dailyWebhook",
       receivedAt,
@@ -258,8 +263,24 @@ function buildDailyWebhookSessionUpdate({
   );
   const connectedAt =
     admin.firestore.Timestamp.fromMillis(connectedAtMillis);
+  const roomJoinMetadata = buildRoomJoinParticipantMetadata({
+    sessionMetadata,
+    participantIds,
+    userId: event.userId,
+    signal: {
+      eventId: event.eventId,
+      dailySessionId: event.dailySessionId || null,
+      joinedAt: eventJoinedAt || eventTs || connectedAt,
+      eventTs,
+      owner: event.owner === true,
+      source: "dailyWebhook",
+      receivedAt,
+      lastSeenAt: receivedAt,
+    },
+  });
   const nextMetadata = {
     ...sessionMetadata,
+    ...roomJoinMetadata,
     dailyWebhookParticipantSignals: nextSignals,
     dailyWebhookLastEventId: event.eventId,
     dailyWebhookLastEventType: event.type,

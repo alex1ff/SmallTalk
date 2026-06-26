@@ -11,6 +11,8 @@ const {
     normalizeSessionId,
     readSessionMetadata,
     readConnectedSignals,
+    readRoomJoinSignals,
+    hasRoomJoinSignalForParticipant,
   },
 } = require("./mark_session_connected");
 
@@ -65,6 +67,40 @@ test("readConnectedSignals only returns map-like signal metadata", () => {
   );
 });
 
+test("readRoomJoinSignals only returns map-like room join metadata", () => {
+  assert.deepEqual(
+    readRoomJoinSignals({
+      roomJoinParticipantSignals: {"student-a": {source: "test"}},
+    }),
+    {"student-a": {source: "test"}},
+  );
+  assert.deepEqual(
+    readRoomJoinSignals({roomJoinParticipantSignals: ["bad"]}),
+    {},
+  );
+  assert.deepEqual(
+    readRoomJoinSignals({roomJoinParticipantSignals: "bad"}),
+    {},
+  );
+});
+
+test("hasRoomJoinSignalForParticipant requires signal and joined id", () => {
+  assert.equal(
+    hasRoomJoinSignalForParticipant({
+      roomJoinParticipantSignals: {"student-a": {source: "test"}},
+      roomJoinedParticipantIds: ["student-a"],
+    }, "student-a"),
+    true,
+  );
+  assert.equal(
+    hasRoomJoinSignalForParticipant({
+      roomJoinParticipantSignals: {"student-a": {source: "test"}},
+      roomJoinedParticipantIds: [],
+    }, "student-a"),
+    false,
+  );
+});
+
 test("first accepted participant records a signal without starting billing", () => {
   const serverTimestamp = Symbol("serverTimestamp");
   const decision = buildMarkSessionConnectedDecision({
@@ -88,6 +124,15 @@ test("first accepted participant records a signal without starting billing", () 
   assert.equal(Object.hasOwn(decision.update, "startedAt"), false);
   assert.deepEqual(decision.update.sessionMetadata, {
     dailyRoomName: "room-a",
+    roomJoinParticipantSignals: {
+      "teacher-b": {
+        joinedAt: serverTimestamp,
+        lastSeenAt: serverTimestamp,
+        source: "markSessionConnected",
+      },
+    },
+    roomJoinedParticipantIds: ["teacher-b"],
+    roomJoinSignalsComplete: false,
     connectedParticipantSignals: {
       "teacher-b": {
         markedAt: serverTimestamp,
@@ -129,6 +174,21 @@ test("second accepted participant waits for Daily verified connected update", ()
   assert.equal(Object.hasOwn(decision.update, "startedAt"), false);
   assert.deepEqual(decision.update.sessionMetadata, {
     dailyRoomName: "room-a",
+    roomJoinParticipantSignals: {
+      "teacher-b": {
+        markedAt: existingTeacherSignal.markedAt,
+        joinedAt: existingTeacherSignal.markedAt,
+        lastSeenAt: existingTeacherSignal.markedAt,
+        source: "markSessionConnected",
+      },
+      "student-a": {
+        joinedAt: serverTimestamp,
+        lastSeenAt: serverTimestamp,
+        source: "markSessionConnected",
+      },
+    },
+    roomJoinedParticipantIds: ["student-a", "teacher-b"],
+    roomJoinSignalsComplete: true,
     connectedParticipantSignals: {
       "teacher-b": existingTeacherSignal,
       "student-a": {
@@ -141,14 +201,53 @@ test("second accepted participant waits for Daily verified connected update", ()
   });
 });
 
-test("existing connected marker is idempotent and not overwritten", () => {
+test("existing connected marker records missing room join only", () => {
   const existingConnectedAt = {
     toMillis: () => Date.parse("2026-05-26T10:01:00Z"),
+  };
+  const serverTimestamp = Symbol("serverTimestamp");
+  const decision = buildMarkSessionConnectedDecision({
+    sessionData: acceptedSession({
+      sessionMetadata: {
+        callConnectedAt: existingConnectedAt,
+      },
+    }),
+    userId: "student-a",
+    nowMillis,
+    serverTimestamp,
+  });
+
+  assert.equal(decision.ok, true);
+  assert.deepEqual(decision.response, {
+    status: "already_marked",
+    updated: true,
+  });
+  assert.equal(decision.update.sessionMetadata.callConnectedAt,
+    existingConnectedAt);
+  assert.equal(decision.update.sessionMetadata.roomJoinParticipantSignals[
+    "student-a"
+  ].joinedAt, serverTimestamp);
+  assert.equal(Object.hasOwn(decision.update, "startedAt"), false);
+});
+
+test("existing connected marker is idempotent when room join exists", () => {
+  const existingConnectedAt = {
+    toMillis: () => Date.parse("2026-05-26T10:01:00Z"),
+  };
+  const existingJoinedAt = {
+    toMillis: () => Date.parse("2026-05-26T10:00:50Z"),
   };
   const decision = buildMarkSessionConnectedDecision({
     sessionData: acceptedSession({
       sessionMetadata: {
         callConnectedAt: existingConnectedAt,
+        roomJoinParticipantSignals: {
+          "student-a": {
+            joinedAt: existingJoinedAt,
+            source: "dailyWebhook",
+          },
+        },
+        roomJoinedParticipantIds: ["student-a"],
       },
     }),
     userId: "student-a",
@@ -162,6 +261,83 @@ test("existing connected marker is idempotent and not overwritten", () => {
     status: "already_marked",
     updated: false,
   });
+});
+
+test("webhook join remains canonical when callable signals later", () => {
+  const dailyJoinedAt = {
+    toMillis: () => nowMillis - 2000,
+  };
+  const serverTimestamp = Symbol("serverTimestamp");
+  const firstDecision = buildMarkSessionConnectedDecision({
+    sessionData: acceptedSession({
+      sessionMetadata: {
+        dailyWebhookParticipantSignals: {
+          "student-a": {
+            eventId: "daily-event-a",
+            joinedAt: dailyJoinedAt,
+            source: "dailyWebhook",
+          },
+        },
+        roomJoinParticipantSignals: {
+          "student-a": {
+            eventId: "daily-event-a",
+            joinedAt: dailyJoinedAt,
+            dailyJoinedAt,
+            source: "dailyWebhook",
+          },
+        },
+        roomJoinedParticipantIds: ["student-a"],
+      },
+    }),
+    userId: "student-a",
+    nowMillis,
+    serverTimestamp,
+  });
+
+  assert.equal(firstDecision.ok, true);
+  assert.equal(firstDecision.update.sessionMetadata.callConnectedAt, undefined);
+  assert.equal(Object.hasOwn(firstDecision.update, "startedAt"), false);
+  assert.equal(
+    firstDecision.update.sessionMetadata.roomJoinParticipantSignals[
+      "student-a"
+    ].joinedAt,
+    dailyJoinedAt,
+  );
+  assert.equal(
+    firstDecision.update.sessionMetadata.roomJoinParticipantSignals[
+      "student-a"
+    ].source,
+    "dailyWebhook",
+  );
+
+  const secondDecision = buildMarkSessionConnectedDecision({
+    sessionData: acceptedSession({
+      sessionMetadata: firstDecision.update.sessionMetadata,
+    }),
+    userId: "teacher-b",
+    nowMillis,
+    serverTimestamp,
+  });
+
+  assert.equal(secondDecision.ok, true);
+  assert.equal(secondDecision.update.sessionMetadata.callConnectedAt, undefined);
+  assert.equal(Object.hasOwn(secondDecision.update, "startedAt"), false);
+  assert.deepEqual(
+    secondDecision.update.sessionMetadata.roomJoinedParticipantIds,
+    ["student-a", "teacher-b"],
+  );
+  assert.equal(
+    secondDecision.update.sessionMetadata.roomJoinParticipantSignals[
+      "student-a"
+    ].joinedAt,
+    dailyJoinedAt,
+  );
+  assert.equal(
+    secondDecision.update.sessionMetadata.roomJoinParticipantSignals[
+      "teacher-b"
+    ].source,
+    "markSessionConnected",
+  );
 });
 
 test("client signals never promote startedAt to connected state", () => {
@@ -353,6 +529,10 @@ test("markSessionConnected source keeps strict callable contract", () => {
     path.join(__dirname, "mark_session_connected.js"),
     "utf8",
   );
+  const roomJoinSource = fs.readFileSync(
+    path.join(__dirname, "room_join_signals.js"),
+    "utf8",
+  );
 
   assert.match(source, /\.runWith\(\{\s*secrets:\s*dailySecrets\s*\}\)/);
   assert.match(source, /\.https\s*\.onCall/);
@@ -369,6 +549,9 @@ test("markSessionConnected source keeps strict callable contract", () => {
   );
   assert.match(source, /connectedParticipantSignals/);
   assert.match(source, /connectedParticipantSignalsComplete/);
+  assert.match(source, /buildRoomJoinParticipantMetadata/);
+  assert.match(roomJoinSource, /roomJoinParticipantSignals/);
+  assert.match(roomJoinSource, /roomJoinedParticipantIds/);
   assert.doesNotMatch(source, /isSessionParticipant\(sessionData,\s*userId\)/);
   assert.doesNotMatch(source, /HttpsError\("not-found",\s*"Session not found"/);
 });
