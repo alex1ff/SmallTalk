@@ -6,7 +6,9 @@ const {
   buildUniversalSessionPolicy,
   getAcceptedSessionCredentialParticipantIds,
   getAssignedResponderId,
+  getCredentialDeadlineMillis,
   getCredentialTtlSeconds,
+  getSessionExpiryTtlSeconds,
   getSessionParticipantIds,
   getSessionPolicyEffectiveLimitSeconds,
   getSessionPolicyExpiresAt,
@@ -261,6 +263,12 @@ test("credential session joinability requires an unexpired live session", () => 
   const pastExpiry = {
     toMillis: () => Date.parse("2026-05-25T09:59:59Z"),
   };
+  const futureJoinDeadline = {
+    toMillis: () => Date.parse("2026-05-25T10:00:01Z"),
+  };
+  const pastJoinDeadline = {
+    toMillis: () => Date.parse("2026-05-25T10:00:00Z"),
+  };
 
   assert.equal(
     isCredentialSessionJoinable(
@@ -290,6 +298,46 @@ test("credential session joinability requires an unexpired live session", () => 
     ),
     false,
   );
+  assert.equal(
+    isCredentialSessionJoinable(
+      {
+        status: "connecting",
+        expiresAt: futureExpiry,
+        joinDeadlineAt: futureJoinDeadline,
+      },
+      nowMillis,
+    ),
+    true,
+  );
+  assert.equal(
+    isCredentialSessionJoinable(
+      {
+        status: "connecting",
+        expiresAt: futureExpiry,
+        joinDeadlineAt: pastJoinDeadline,
+      },
+      nowMillis,
+    ),
+    false,
+  );
+  assert.equal(
+    isCredentialSessionJoinable(
+      {
+        status: "active",
+        expiresAt: futureExpiry,
+        joinDeadlineAt: pastJoinDeadline,
+      },
+      nowMillis,
+    ),
+    true,
+  );
+  assert.equal(
+    isCredentialSessionJoinable(
+      {status: "connecting", expiresAt: futureExpiry},
+      nowMillis,
+    ),
+    false,
+  );
 });
 
 test("credential TTL is capped by remaining session time", () => {
@@ -299,6 +347,9 @@ test("credential TTL is capped by remaining session time", () => {
   };
   const expiresInTwoHours = {
     toMillis: () => Date.parse("2026-05-25T12:00:00Z"),
+  };
+  const joinDeadlineInThirtySeconds = {
+    toMillis: () => Date.parse("2026-05-25T10:00:30Z"),
   };
 
   assert.equal(
@@ -320,6 +371,49 @@ test("credential TTL is capped by remaining session time", () => {
   assert.equal(
     getCredentialTtlSeconds(
       {expiresAt: {toMillis: () => nowMillis + 500}},
+      60 * 60,
+      nowMillis,
+    ),
+    0,
+  );
+  assert.equal(
+    getCredentialDeadlineMillis({
+      status: "connecting",
+      expiresAt: expiresInFiveMinutes,
+      joinDeadlineAt: joinDeadlineInThirtySeconds,
+    }),
+    joinDeadlineInThirtySeconds.toMillis(),
+  );
+  assert.equal(
+    getCredentialTtlSeconds(
+      {
+        status: "connecting",
+        expiresAt: expiresInFiveMinutes,
+        joinDeadlineAt: joinDeadlineInThirtySeconds,
+      },
+      60 * 60,
+      nowMillis,
+    ),
+    30,
+  );
+  assert.equal(
+    getSessionExpiryTtlSeconds(
+      {
+        status: "connecting",
+        expiresAt: expiresInFiveMinutes,
+        joinDeadlineAt: joinDeadlineInThirtySeconds,
+      },
+      60 * 60,
+      nowMillis,
+    ),
+    5 * 60,
+  );
+  assert.equal(
+    getCredentialTtlSeconds(
+      {
+        status: "connecting",
+        expiresAt: expiresInFiveMinutes,
+      },
       60 * 60,
       nowMillis,
     ),

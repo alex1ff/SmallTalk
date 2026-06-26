@@ -106,6 +106,33 @@ function hasConnectedCallEvidence(sessionData = {}) {
   );
 }
 
+function timestampToMillis(value) {
+  if (!value) return 0;
+  if (typeof value.toMillis === "function") {
+    const millis = Number(value.toMillis());
+    return Number.isFinite(millis) ? millis : 0;
+  }
+  if (value instanceof Date) {
+    const millis = value.getTime();
+    return Number.isFinite(millis) ? millis : 0;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+  return 0;
+}
+
+function getSessionCleanupDeadlineMillis(sessionData = {}) {
+  if (sessionData.status === VIDEO_SESSION_STATUS.CONNECTING) {
+    return timestampToMillis(sessionData.joinDeadlineAt) ||
+      timestampToMillis(sessionData.expiresAt);
+  }
+  if (sessionData.status === VIDEO_SESSION_STATUS.ACTIVE) {
+    return timestampToMillis(sessionData.expiresAt);
+  }
+  return 0;
+}
+
 function getCleanupRestoreSearchParticipantIds(sessionData = {}) {
   if (
     sessionData.status !== VIDEO_SESSION_STATUS.CONNECTING ||
@@ -231,28 +258,45 @@ exports.cleanupExpiredSessions = functions
 
     try {
       const now = admin.firestore.Timestamp.now();
+      const db = admin.firestore();
+      const videoSessions = db.collection("videoSessions");
+      const [
+        expiredActiveSessionsQuery,
+        expiredConnectingSessionsQuery,
+        expiredLegacyConnectingSessionsQuery,
+      ] = await Promise.all([
+        videoSessions
+          .where("status", "==", VIDEO_SESSION_STATUS.ACTIVE)
+          .where("expiresAt", "<=", now)
+          .get(),
+        videoSessions
+          .where("status", "==", VIDEO_SESSION_STATUS.CONNECTING)
+          .where("joinDeadlineAt", "<=", now)
+          .get(),
+        videoSessions
+          .where("status", "==", VIDEO_SESSION_STATUS.CONNECTING)
+          .where("expiresAt", "<=", now)
+          .get(),
+      ]);
+      const expiredSessionDocsById = new Map();
+      [
+        ...expiredActiveSessionsQuery.docs,
+        ...expiredConnectingSessionsQuery.docs,
+        ...expiredLegacyConnectingSessionsQuery.docs,
+      ].forEach((doc) => {
+        expiredSessionDocsById.set(doc.id, doc);
+      });
+      const expiredSessionDocs = Array.from(expiredSessionDocsById.values());
 
-      // Находим истекшие активные сессии
-      const expiredSessionsQuery = await admin
-        .firestore()
-        .collection("videoSessions")
-        .where("status", "in", [
-          VIDEO_SESSION_STATUS.ACTIVE,
-          VIDEO_SESSION_STATUS.CONNECTING,
-        ])
-        .where("expiresAt", "<=", now)
-        .get();
-
-      if (expiredSessionsQuery.empty) {
+      if (expiredSessionDocs.length === 0) {
         console.log("📭 No expired sessions found");
         return null;
       }
 
-      console.log(`⏰ Found ${expiredSessionsQuery.size} expired sessions`);
-      const db = admin.firestore();
+      console.log(`⏰ Found ${expiredSessionDocs.length} expired sessions`);
       let cleanedCount = 0;
 
-      for (const doc of expiredSessionsQuery.docs) {
+      for (const doc of expiredSessionDocs) {
         const cleanupResult = await db.runTransaction(async (transaction) => {
           const freshSnap = await transaction.get(doc.ref);
           if (!freshSnap.exists) {
@@ -267,9 +311,9 @@ exports.cleanupExpiredSessions = functions
             return { cleaned: false, dailyRoomName: null, sessionData: null };
           }
 
-          const expiresAtMillis =
-            freshData.expiresAt?.toMillis?.() || 0;
-          if (expiresAtMillis > now.toMillis()) {
+          const cleanupDeadlineMillis =
+            getSessionCleanupDeadlineMillis(freshData);
+          if (!cleanupDeadlineMillis || cleanupDeadlineMillis > now.toMillis()) {
             return { cleaned: false, dailyRoomName: null, sessionData: null };
           }
 
@@ -302,7 +346,7 @@ exports.cleanupExpiredSessions = functions
               ref: doc.ref,
               data: () => freshData,
             },
-            endedAtMillis: expiresAtMillis || now.toMillis(),
+            endedAtMillis: cleanupDeadlineMillis || now.toMillis(),
             skipLegacyUserRelease: true,
           });
 
@@ -313,7 +357,7 @@ exports.cleanupExpiredSessions = functions
               ...freshData,
               ...cleanupPayload.sessionUpdate,
             },
-            endedAtMillis: expiresAtMillis || now.toMillis(),
+            endedAtMillis: cleanupDeadlineMillis || now.toMillis(),
           };
         });
 
@@ -357,7 +401,9 @@ exports.__private__ = {
   buildRestoreSearchExcludedCandidateIdsByParticipantId,
   buildExpiredSessionCleanupPayload,
   getCleanupRestoreSearchParticipantIds,
+  getSessionCleanupDeadlineMillis,
   hasConnectedCallEvidence,
   queueExpiredSessionCleanup,
   readConnectedSignalParticipantIds,
+  timestampToMillis,
 };

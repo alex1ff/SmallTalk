@@ -38,6 +38,7 @@ const {
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 const PRECREATED_ROOM_VALIDATION_WINDOW_MS = 60 * 1000;
+const ROOM_JOIN_TIMEOUT_MS = 60 * 1000;
 const ACCEPTABLE_PENDING_SESSION_STATUSES = new Set([
   VIDEO_SESSION_STATUS.SEARCHING,
   VIDEO_SESSION_STATUS.PENDING_CONFIRMATION,
@@ -61,6 +62,24 @@ function buildAcceptCallPolicyUpdateFields(
   return {
     policyState,
     sessionUpdateFields,
+  };
+}
+
+function buildAcceptedRoomJoinTimeoutFields({
+  nowMillis = Date.now(),
+  serverTimestamp,
+} = {}) {
+  const normalizedNowMillis = Number.isFinite(Number(nowMillis)) ?
+    Number(nowMillis) :
+    Date.now();
+  const startedAt =
+    serverTimestamp || admin.firestore.Timestamp.fromMillis(normalizedNowMillis);
+  return {
+    joinDeadlineAt: admin.firestore.Timestamp.fromMillis(
+      normalizedNowMillis + ROOM_JOIN_TIMEOUT_MS,
+    ),
+    "sessionMetadata.joinTimeoutStartedAt": startedAt,
+    "sessionMetadata.joinTimeoutMs": ROOM_JOIN_TIMEOUT_MS,
   };
 }
 
@@ -536,12 +555,12 @@ exports.acceptCall = functions
       console.log("🏠 Resolving Daily.co room...");
       const activePolicyUpdate =
         buildAcceptCallPolicyUpdateFields(sessionData);
-      const acceptedSessionCredentialData = {
-        status: VIDEO_SESSION_STATUS.CONNECTING,
+      const acceptedSessionRoomData = {
+        status: VIDEO_SESSION_STATUS.ACTIVE,
         expiresAt: activePolicyUpdate.sessionUpdateFields.expiresAt,
       };
-      const readAcceptedCredentialTtlSeconds = () =>
-        getDailyCredentialTtlOrThrow(acceptedSessionCredentialData);
+      const readAcceptedRoomTtlSeconds = () =>
+        getDailyCredentialTtlOrThrow(acceptedSessionRoomData);
 
       let roomUrl = sessionData.dailyRoomUrl || null;
       let roomName =
@@ -601,34 +620,8 @@ exports.acceptCall = functions
         }
       }
 
-      if (roomUrl && roomName) {
-        const tokenExpSeconds = readAcceptedCredentialTtlSeconds();
-        try {
-          meetingToken = await createMeetingToken({
-            roomName,
-            expSeconds: tokenExpSeconds,
-            isOwner: false,
-            userId: tutorId,
-            userName: tutorData.display_name || "Partner",
-          });
-        } catch (tokenError) {
-          console.error(
-            "❌ Failed to create tutor meeting token for precreated room:",
-            tokenError.message,
-          );
-        }
-        if (!meetingToken) {
-          console.error(
-            "⚠️ Precreated room has no valid meeting token, recreating room",
-          );
-          roomUrl = null;
-          roomName = null;
-          roomCreatedAt = null;
-        }
-      }
-
       if (!roomUrl) {
-        const roomExpSeconds = readAcceptedCredentialTtlSeconds();
+        const roomExpSeconds = readAcceptedRoomTtlSeconds();
         try {
           const studentName =
             sessionData.studentInfo?.name ||
@@ -646,14 +639,6 @@ exports.acceptCall = functions
           roomName = dailyRoom.name;
           transientDailyRoomName = dailyRoom.name;
           roomCreatedAt = Date.now();
-
-          meetingToken = await createMeetingToken({
-            roomName,
-            expSeconds: readAcceptedCredentialTtlSeconds(),
-            isOwner: false,
-            userId: tutorId,
-            userName: tutorData.display_name || "Partner",
-          });
         } catch (roomError) {
           console.error("❌ Failed to create Daily room:", roomError);
           throw new functions.https.HttpsError(
@@ -661,14 +646,6 @@ exports.acceptCall = functions
             "Failed to create video room",
           );
         }
-      }
-
-      if (!meetingToken) {
-        console.error("❌ Daily meeting token creation failed");
-        throw new functions.https.HttpsError(
-          "internal",
-          "Failed to create meeting token",
-        );
       }
 
       // === 6. ОБНОВЛЕНИЕ СЕССИИ В ТРАНЗАКЦИИ ===
@@ -732,6 +709,7 @@ exports.acceptCall = functions
             tutorId,
             sessionId,
           );
+          const roomJoinTimeoutFields = buildAcceptedRoomJoinTimeoutFields();
 
           // Обновляем сессию - добавляем данные для активной сессии
           const sessionUpdate = {
@@ -739,6 +717,7 @@ exports.acceptCall = functions
             tutorId: tutorId,
             status: VIDEO_SESSION_STATUS.CONNECTING,
             acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
+            ...roomJoinTimeoutFields,
 
             // Добавляем данные Daily.co
             dailyRoomUrl: roomUrl,
@@ -849,6 +828,33 @@ exports.acceptCall = functions
           requesterId,
           responderId: tutorId,
         });
+      roomUrl = acceptedLiveSession.dailyRoomUrl || roomUrl;
+      roomName =
+        acceptedLiveSession.dailyRoomName ||
+        getRoomNameFromUrl(roomUrl) ||
+        roomName;
+      if (!roomUrl || !roomName) {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "Accepted room is not ready",
+        );
+      }
+      const acceptedCredentialTtlSeconds =
+        getDailyCredentialTtlOrThrow(acceptedLiveSession);
+      try {
+        meetingToken = await createMeetingToken({
+          roomName,
+          expSeconds: acceptedCredentialTtlSeconds,
+          isOwner: false,
+          userId: tutorId,
+          userName: tutorData.display_name || "Partner",
+        });
+      } catch (tokenError) {
+        console.error(
+          "⚠️ Failed to create meeting token for accepted room:",
+          tokenError.message,
+        );
+      }
 
       // 🔔 === ОТПРАВКА PUSH + ОБНОВЛЕНИЕ УВЕДОМЛЕНИЙ (ПАРАЛЛЕЛЬНО) ===
       console.log("📲 Sending push + updating notifications in parallel...");
@@ -1219,6 +1225,7 @@ exports.__private__ = {
   buildAcceptedParticipantUserUpdate,
   buildAcceptCallPolicyUpdateFields,
   buildAcceptCallResponseSessionData,
+  buildAcceptedRoomJoinTimeoutFields,
   getPendingAssignedResponderId,
   isPendingSessionAssignedToResponder,
   normalizeSessionId,

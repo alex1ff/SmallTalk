@@ -798,11 +798,64 @@ function isCredentialSessionUnexpired(
 }
 
 function isCredentialSessionJoinable(sessionData = {}, nowMillis = Date.now()) {
-  return isCredentialSessionStatus(sessionData.status) &&
-    isCredentialSessionUnexpired(sessionData, nowMillis);
+  if (!isCredentialSessionStatus(sessionData.status) ||
+      !isCredentialSessionUnexpired(sessionData, nowMillis)) {
+    return false;
+  }
+  if (normalizeCode(sessionData.status) !== VIDEO_SESSION_STATUS.CONNECTING) {
+    return true;
+  }
+
+  const joinDeadlineMillis = readTimestampMillis(sessionData.joinDeadlineAt);
+  if (joinDeadlineMillis === null) {
+    return false;
+  }
+  const safeNowMillis = Number.isFinite(Number(nowMillis))
+    ? Number(nowMillis)
+    : Date.now();
+  return joinDeadlineMillis > safeNowMillis;
+}
+
+function getCredentialDeadlineMillis(sessionData = {}) {
+  const expiresAtMillis = readTimestampMillis(sessionData.expiresAt);
+  if (expiresAtMillis === null) {
+    return null;
+  }
+  if (normalizeCode(sessionData.status) !== VIDEO_SESSION_STATUS.CONNECTING) {
+    return expiresAtMillis;
+  }
+  const joinDeadlineMillis = readTimestampMillis(sessionData.joinDeadlineAt);
+  if (joinDeadlineMillis === null) {
+    return null;
+  }
+  return Math.min(expiresAtMillis, joinDeadlineMillis);
 }
 
 function getCredentialTtlSeconds(
+  sessionData = {},
+  maxSeconds = 60 * 60,
+  nowMillis = Date.now(),
+) {
+  const credentialDeadlineMillis = getCredentialDeadlineMillis(sessionData);
+  if (credentialDeadlineMillis === null) {
+    return 0;
+  }
+  const safeNowMillis = Number.isFinite(Number(nowMillis))
+    ? Number(nowMillis)
+    : Date.now();
+  const remainingSeconds = Math.floor(
+    (credentialDeadlineMillis - safeNowMillis) / 1000,
+  );
+  if (remainingSeconds < 1) {
+    return 0;
+  }
+  return Math.min(
+    readPositiveInteger(maxSeconds, 60 * 60),
+    remainingSeconds,
+  );
+}
+
+function getSessionExpiryTtlSeconds(
   sessionData = {},
   maxSeconds = 60 * 60,
   nowMillis = Date.now(),
@@ -814,9 +867,7 @@ function getCredentialTtlSeconds(
   const safeNowMillis = Number.isFinite(Number(nowMillis))
     ? Number(nowMillis)
     : Date.now();
-  const remainingSeconds = Math.floor(
-    (expiresAtMillis - safeNowMillis) / 1000,
-  );
+  const remainingSeconds = Math.floor((expiresAtMillis - safeNowMillis) / 1000);
   if (remainingSeconds < 1) {
     return 0;
   }
@@ -850,7 +901,9 @@ module.exports = {
   extractBlockedIds,
   getAssignedResponderId,
   getAcceptedSessionCredentialParticipantIds,
+  getCredentialDeadlineMillis,
   getCredentialTtlSeconds,
+  getSessionExpiryTtlSeconds,
   getLegacyPriorityScore,
   hasLegacyMatchProfileSource,
   getRequesterId,

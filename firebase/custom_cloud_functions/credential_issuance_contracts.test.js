@@ -13,11 +13,14 @@ test("getSessionTokens uses strict accepted-session credential eligibility", () 
   assert.match(source, /isAcceptedSessionCredentialParticipant/);
   assert.match(source, /isCredentialSessionJoinable/);
   assert.match(source, /getCredentialTtlSeconds/);
+  assert.match(source, /getSessionExpiryTtlSeconds/);
   assert.match(source, /runTransaction\(async \(transaction\) => \{/);
   assert.match(source, /await deleteDailyRoom\(replacementRoomName\)/);
   assert.match(source, /freshHasCurrentReplacement/);
   assert.match(source, /usedExistingReplacement/);
   assert.match(source, /sessionDoc = await sessionDoc\.ref\.get\(\)/);
+  assert.match(source, /expSeconds:\s*readRoomTtlSeconds\(\)/);
+  assert.doesNotMatch(source, /expSeconds:\s*Math\.min\(15 \* 60, readCredentialTtlSeconds\(\)\)/);
   assert.doesNotMatch(source, /isSessionParticipant\(sessionData,\s*userId\)/);
 });
 

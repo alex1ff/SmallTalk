@@ -11,9 +11,11 @@ const {
     buildRestoreSearchExcludedCandidateIdsByParticipantId,
     buildExpiredSessionCleanupPayload,
     getCleanupRestoreSearchParticipantIds,
+    getSessionCleanupDeadlineMillis,
     hasConnectedCallEvidence,
     queueExpiredSessionCleanup,
     readConnectedSignalParticipantIds,
+    timestampToMillis,
   },
 } = require("./cleanup_expired_sessions");
 
@@ -140,6 +142,55 @@ test("never-connected connecting sessions expire instead of ending", () => {
   assert.equal(payload.sessionUpdate.expireReason, "join_timeout");
   assert.equal(payload.sessionUpdate.sessionMetadata.endReason, "join_timeout");
   assert.equal(payload.pairHistoryWrite, null);
+});
+
+test("cleanup deadline uses join deadline for connecting sessions", () => {
+  const nowMillis = Date.parse("2026-04-14T11:05:00Z");
+  const joinDeadlineAt = admin.firestore.Timestamp.fromMillis(nowMillis - 1);
+  const expiresAt = admin.firestore.Timestamp.fromMillis(
+    nowMillis + 5 * 60 * 1000,
+  );
+
+  assert.equal(
+    getSessionCleanupDeadlineMillis({
+      status: "connecting",
+      joinDeadlineAt,
+      expiresAt,
+    }),
+    joinDeadlineAt.toMillis(),
+  );
+});
+
+test("cleanup deadline keeps active sessions on session expiry", () => {
+  const nowMillis = Date.parse("2026-04-14T11:05:00Z");
+  const joinDeadlineAt = admin.firestore.Timestamp.fromMillis(nowMillis - 1);
+  const expiresAt = admin.firestore.Timestamp.fromMillis(
+    nowMillis + 5 * 60 * 1000,
+  );
+
+  assert.equal(
+    getSessionCleanupDeadlineMillis({
+      status: "active",
+      joinDeadlineAt,
+      expiresAt,
+    }),
+    expiresAt.toMillis(),
+  );
+});
+
+test("cleanup deadline falls back for legacy connecting sessions", () => {
+  const expiresAt = admin.firestore.Timestamp.fromMillis(
+    Date.parse("2026-04-14T11:05:00Z"),
+  );
+
+  assert.equal(
+    getSessionCleanupDeadlineMillis({
+      status: "connecting",
+      expiresAt,
+    }),
+    expiresAt.toMillis(),
+  );
+  assert.equal(timestampToMillis("bad"), 0);
 });
 
 test("cleanup restore targets only participants with pre-active join signals", () => {
@@ -434,6 +485,20 @@ test("cleanupExpiredSessions runs every minute as an expiry backstop", () => {
   );
 
   assert.match(source, /\.schedule\("every 1 minutes"\)/);
+  assert.match(
+    source,
+    /\.where\("status", "==", VIDEO_SESSION_STATUS\.ACTIVE\)[\s\S]*\.where\("expiresAt", "<=", now\)/,
+  );
+  assert.match(
+    source,
+    /\.where\("status", "==", VIDEO_SESSION_STATUS\.CONNECTING\)[\s\S]*\.where\("joinDeadlineAt", "<=", now\)/,
+  );
+  assert.match(source, /expiredLegacyConnectingSessionsQuery/);
+  assert.match(
+    source,
+    /\.where\("status", "==", VIDEO_SESSION_STATUS\.CONNECTING\)[\s\S]*\.where\("expiresAt", "<=", now\)/,
+  );
+  assert.match(source, /getSessionCleanupDeadlineMillis\(freshData\)/);
   assert.match(source, /dailyRoomName:\s*resolveDailyRoomName\(freshData\)/);
   assert.match(source, /await deleteDailyRoomForSession\(\{/);
   assert.match(source, /source:\s*"cleanupExpiredSessions"/);

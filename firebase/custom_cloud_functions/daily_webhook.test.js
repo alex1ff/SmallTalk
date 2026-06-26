@@ -434,6 +434,9 @@ test("Daily webhook promotes connecting sessions to active after both join", () 
     event,
     sessionData: activeSession({
       status: "connecting",
+      joinDeadlineAt: {
+        toMillis: () => NOW_MILLIS + 60 * 1000,
+      },
       sessionMetadata: {
         dailyWebhookParticipantSignals: {
           "student-a": {
@@ -568,6 +571,23 @@ test("Daily webhook update rejects nonparticipants and non-joinable sessions", (
     buildDailyWebhookSessionUpdate({
       event,
       sessionData: activeSession({status: "ended"}),
+      nowMillis: NOW_MILLIS,
+    }),
+    {
+      ok: false,
+      reason: "session_not_joinable",
+      update: null,
+    },
+  );
+  assert.deepEqual(
+    buildDailyWebhookSessionUpdate({
+      event,
+      sessionData: activeSession({
+        status: "connecting",
+        joinDeadlineAt: {
+          toMillis: () => NOW_MILLIS,
+        },
+      }),
       nowMillis: NOW_MILLIS,
     }),
     {

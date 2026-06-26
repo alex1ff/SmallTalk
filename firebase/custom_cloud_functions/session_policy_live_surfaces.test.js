@@ -15,6 +15,7 @@ const {
     assertUserCanJoinAcceptedSessionOrThrow,
     assertUserIsInAcceptedSessionOrThrow,
     assertAcceptWindowOpenOrThrow,
+    buildAcceptedRoomJoinTimeoutFields,
     buildAcceptedParticipantUserUpdate,
     buildAcceptCallPolicyUpdateFields,
     buildAcceptCallResponseSessionData,
@@ -72,6 +73,36 @@ test("acceptCall policy update derives active expiry from stored policy", () => 
   );
   assert.equal(update.sessionUpdateFields.sessionPolicy.effectiveLimitSeconds, 600);
   assert.equal(update.policyState.maxDurationMs, 600000);
+});
+
+test("acceptCall room join timeout starts a 60 second deadline", () => {
+  const serverTimestamp = Symbol("serverTimestamp");
+  const fields = buildAcceptedRoomJoinTimeoutFields({
+    nowMillis: Date.parse("2026-04-14T10:00:00Z"),
+    serverTimestamp,
+  });
+
+  assert.equal(
+    fields.joinDeadlineAt.toDate().toISOString(),
+    "2026-04-14T10:01:00.000Z",
+  );
+  assert.equal(fields["sessionMetadata.joinTimeoutStartedAt"], serverTimestamp);
+  assert.equal(fields["sessionMetadata.joinTimeoutMs"], 60_000);
+});
+
+test("acceptCall room join timeout metadata uses the same start moment", () => {
+  const fields = buildAcceptedRoomJoinTimeoutFields({
+    nowMillis: Date.parse("2026-04-14T10:00:00Z"),
+  });
+
+  assert.equal(
+    fields["sessionMetadata.joinTimeoutStartedAt"].toDate().toISOString(),
+    "2026-04-14T10:00:00.000Z",
+  );
+  assert.equal(
+    fields.joinDeadlineAt.toDate().toISOString(),
+    "2026-04-14T10:01:00.000Z",
+  );
 });
 
 test("acceptCall response data uses policy maxDuration when policy exists", () => {
@@ -390,12 +421,24 @@ test("acceptCall live response paths use policy-backed response builder", () => 
 
 test("acceptCall marks requester and responder in-call after confirmation", () => {
   const source = readFunctionSource("accept_call.js");
-  const tokenGuardIndex = source.indexOf(
-    'console.error("❌ Daily meeting token creation failed");',
+  const roomTtlDataIndex = source.indexOf(
+    "const acceptedSessionRoomData = {",
+  );
+  const roomTtlReaderIndex = source.indexOf(
+    "const readAcceptedRoomTtlSeconds = () =>",
+    roomTtlDataIndex,
+  );
+  const roomExpSecondsIndex = source.indexOf(
+    "const roomExpSeconds = readAcceptedRoomTtlSeconds();",
+    roomTtlReaderIndex,
   );
   const finalTransactionIndex = source.indexOf(
     "const txnResult = await admin",
-    tokenGuardIndex,
+    roomExpSecondsIndex,
+  );
+  const joinTimeoutBuildIndex = source.indexOf(
+    "const roomJoinTimeoutFields = buildAcceptedRoomJoinTimeoutFields();",
+    finalTransactionIndex,
   );
   const connectingStatusIndex = source.indexOf(
     "status: VIDEO_SESSION_STATUS.CONNECTING",
@@ -403,6 +446,10 @@ test("acceptCall marks requester and responder in-call after confirmation", () =
   );
   const sessionUpdateIndex = source.indexOf(
     "transaction.update(sessionRef, sessionUpdate);",
+    connectingStatusIndex,
+  );
+  const joinDeadlineSpreadIndex = source.indexOf(
+    "...roomJoinTimeoutFields,",
     connectingStatusIndex,
   );
   const participantUpdateIndex = source.indexOf(
@@ -429,12 +476,37 @@ test("acceptCall marks requester and responder in-call after confirmation", () =
     "return { alreadyAccepted: false };",
     participantUpdateIndex,
   );
+  const acceptedLiveSessionReadIndex = source.indexOf(
+    "const acceptedLiveSession =",
+    transactionSuccessIndex,
+  );
+  const acceptedCredentialTtlIndex = source.indexOf(
+    "const acceptedCredentialTtlSeconds =",
+    acceptedLiveSessionReadIndex,
+  );
+  const meetingTokenCreateIndex = source.indexOf(
+    "meetingToken = await createMeetingToken({",
+    acceptedCredentialTtlIndex,
+  );
 
-  assert.notEqual(tokenGuardIndex, -1);
+  assert.ok(
+    roomTtlDataIndex > -1 && roomTtlDataIndex < finalTransactionIndex,
+    "acceptCall must keep Daily room expiry separate from join credentials",
+  );
+  assert.ok(
+    roomTtlReaderIndex > roomTtlDataIndex &&
+      roomExpSecondsIndex > roomTtlReaderIndex,
+    "acceptCall must create Daily rooms with the session expiry TTL",
+  );
   assert.notEqual(finalTransactionIndex, -1);
   assert.ok(
-    finalTransactionIndex > tokenGuardIndex,
-    "acceptCall must start the final transaction only after Daily token exists",
+    finalTransactionIndex > roomExpSecondsIndex,
+    "acceptCall must prepare Daily room before the final transaction",
+  );
+  assert.ok(
+    joinTimeoutBuildIndex > finalTransactionIndex &&
+      joinTimeoutBuildIndex < sessionUpdateIndex,
+    "acceptCall must start the join timeout inside the final transaction",
   );
   assert.notEqual(connectingStatusIndex, -1);
   assert.ok(
@@ -442,6 +514,11 @@ test("acceptCall marks requester and responder in-call after confirmation", () =
     "acceptCall must mark the session connecting in the final transaction",
   );
   assert.notEqual(sessionUpdateIndex, -1);
+  assert.ok(
+    joinDeadlineSpreadIndex > connectingStatusIndex &&
+      joinDeadlineSpreadIndex < sessionUpdateIndex,
+    "acceptCall must persist the join timeout with the connecting update",
+  );
   assert.ok(
     currentResponderDeleteIndex > connectingStatusIndex &&
       currentResponderDeleteIndex < sessionUpdateIndex,
@@ -466,6 +543,12 @@ test("acceptCall marks requester and responder in-call after confirmation", () =
     responderUpdateIndex > participantUpdateIndex &&
       responderUpdateIndex < transactionSuccessIndex,
     "acceptCall must mark responder in-call after confirmation",
+  );
+  assert.ok(
+    acceptedLiveSessionReadIndex > transactionSuccessIndex &&
+      acceptedCredentialTtlIndex > acceptedLiveSessionReadIndex &&
+      meetingTokenCreateIndex > acceptedCredentialTtlIndex,
+    "acceptCall must create responder credentials from the stored accepted session",
   );
 });
 

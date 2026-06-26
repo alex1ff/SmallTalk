@@ -12,6 +12,7 @@ const {
 const {
   getCredentialTtlSeconds,
   getRequesterId,
+  getSessionExpiryTtlSeconds,
   isAcceptedSessionCredentialParticipant,
   isCredentialSessionJoinable,
 } = require("./video_sessions_shared");
@@ -77,6 +78,19 @@ exports.getSessionTokens = functions
     }
     return credentialTtlSeconds;
   };
+  const readRoomTtlSeconds = (currentSessionData = sessionData) => {
+    const roomTtlSeconds = getSessionExpiryTtlSeconds(
+      currentSessionData,
+      15 * 60,
+    );
+    if (roomTtlSeconds < 1) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "Session room window has expired",
+      );
+    }
+    return roomTtlSeconds;
+  };
 
   let roomUrl = sessionData.dailyRoomUrl || null;
   if (!roomUrl) {
@@ -136,7 +150,7 @@ exports.getSessionTokens = functions
       tutorId: sessionData.tutorId,
       studentName: sessionData.studentInfo?.name || "Caller",
       tutorName: sessionData.tutorInfo?.name || "Partner",
-      expSeconds: Math.min(15 * 60, readCredentialTtlSeconds()),
+      expSeconds: readRoomTtlSeconds(),
     });
     roomUrl = dailyRoom.url;
     roomName = dailyRoom.name;

@@ -440,6 +440,9 @@ test("Daily verified presence promotes connecting sessions to active", () => {
     sessionData: acceptedSession({
       status: "connecting",
       dailyRoomName: "room-a",
+      joinDeadlineAt: {
+        toMillis: () => nowMillis + 60 * 1000,
+      },
     }),
     presenceData: {
       "room-a": [
@@ -502,11 +505,23 @@ test("non-joinable sessions cannot be marked connected", () => {
     userId: "student-a",
     nowMillis,
   });
+  const joinDeadlineDecision = buildMarkSessionConnectedDecision({
+    sessionData: acceptedSession({
+      status: "connecting",
+      joinDeadlineAt: {
+        toMillis: () => nowMillis,
+      },
+    }),
+    userId: "student-a",
+    nowMillis,
+  });
 
   assert.equal(endedDecision.ok, false);
   assert.equal(endedDecision.code, "failed-precondition");
   assert.equal(expiredDecision.ok, false);
   assert.equal(expiredDecision.code, "failed-precondition");
+  assert.equal(joinDeadlineDecision.ok, false);
+  assert.equal(joinDeadlineDecision.code, "failed-precondition");
 });
 
 test("sessions without two accepted participants cannot be marked connected", () => {
