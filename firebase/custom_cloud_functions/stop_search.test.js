@@ -636,40 +636,73 @@ if (!hasFirestoreEmulator) {
     await deleteDoc(userRef(uid));
     await deleteDoc(searchRequestRef(uid));
     await seedUser(uid);
-    await seedActiveRequest(uid, {
-      currentSessionId: "session-a",
-      matchedUserId: "teacher-a",
-      matchedRole: "native_speaker",
-      pairAttemptId: "pair-a",
-      expiresAt: futureTimestamp(10),
-    });
 
-    const response = await wrappedStopSearch({
-      requestId: "request-active",
-    }, authContext(uid));
-    const snapshot = await searchRequestRef(uid).get();
-    const requestData = snapshot.data();
+    try {
+      await seedActiveRequest(uid, {
+        activeSessionId: "session-a",
+        currentSessionId: "session-a",
+        matchedSessionId: "session-a",
+        matchedResponderId: "teacher-a",
+        matchedTeacherId: "teacher-a",
+        matchedUserId: "teacher-a",
+        matchedRole: "native_speaker",
+        pairAttemptId: "pair-a",
+        candidateLockOwner: "candidate-lock-a",
+        candidateLockExpiresAt: futureTimestamp(1),
+        expiresAt: futureTimestamp(10),
+        errorCode: "old_error",
+        errorMessage: "old message",
+      });
 
-    assert.equal(response.status, "stopped");
-    assert.equal(response.stopped, true);
-    assert.equal(response.searchRequestId, uid);
-    assert.equal(response.requestId, "request-active");
-    assert.equal(response.sessionId, "session-a");
-    assert.equal(response.pairAttemptId, null);
-    assert.equal(response.expiresAt, null);
-    assert.equal(response.errorCode, null);
-    assert.equal(requestData.status, "stopped");
-    assert.equal(requestData.stopReason, "manual");
-    assert.equal(requestData.stoppedBy, uid);
-    assert.equal(requestData.currentSessionId, null);
-    assert.equal(requestData.matchedUserId, null);
-    assert.equal(requestData.matchedRole, null);
-    assert.equal(requestData.pairAttemptId, null);
-    assert.deepEqual(requestData.excludedCandidateIds, []);
-    assert.deepEqual(requestData.attemptExcludedCandidateIds, []);
-    assert.equal(requestData.lockOwner, null);
-    assert.equal(requestData.lockExpiresAt, null);
-    assert.equal(requestData.lastError, null);
+      const response = await wrappedStopSearch({
+        requestId: "request-active",
+      }, authContext(uid));
+      const snapshot = await searchRequestRef(uid).get();
+      const requestData = snapshot.data();
+
+      assert.equal(snapshot.exists, true);
+      assert.equal(response.status, "stopped");
+      assert.equal(response.stopped, true);
+      assert.equal(response.reason, "manual");
+      assert.equal(response.searchRequestId, uid);
+      assert.equal(response.requestId, "request-active");
+      assert.equal(response.sessionId, "session-a");
+      assert.equal(response.pairAttemptId, null);
+      assert.equal(response.expiresAt, null);
+      assert.equal(response.errorCode, null);
+      assert.equal(response.cancelledSessionId, null);
+      assert.equal(response.notificationCleanupStatus, "skipped");
+      assert.equal(response.dailyRoomCleanupStatus, "skipped");
+      assert.equal(response.searchRequest.status, "stopped");
+      assert.equal(response.searchRequest.stopped, true);
+      assert.equal(response.searchRequest.reason, "manual");
+      assert.equal(response.videoSession.status, "noop");
+      assert.equal(requestData.status, "stopped");
+      assert.equal(requestData.stopReason, "manual");
+      assert.equal(requestData.stoppedBy, uid);
+      assert.ok(requestData.stoppedAt);
+      assert.ok(requestData.updatedAt);
+      assert.equal(requestData.activeSessionId, undefined);
+      assert.equal(requestData.currentSessionId, null);
+      assert.equal(requestData.matchedSessionId, undefined);
+      assert.equal(requestData.matchedResponderId, undefined);
+      assert.equal(requestData.matchedTeacherId, undefined);
+      assert.equal(requestData.matchedUserId, null);
+      assert.equal(requestData.matchedRole, null);
+      assert.equal(requestData.pairAttemptId, null);
+      assert.deepEqual(requestData.excludedCandidateIds, []);
+      assert.deepEqual(requestData.attemptExcludedCandidateIds, []);
+      assert.equal(requestData.candidateLockOwner, undefined);
+      assert.equal(requestData.candidateLockExpiresAt, undefined);
+      assert.equal(requestData.lockOwner, null);
+      assert.equal(requestData.lockExpiresAt, null);
+      assert.equal(requestData.lastError, null);
+      assert.equal(requestData.errorCode, undefined);
+      assert.equal(requestData.errorMessage, undefined);
+    } finally {
+      await deleteDoc(searchRequestRef(uid));
+      await deleteDoc(userRef(uid));
+    }
   });
 
   test("stopSearch callable ignores stale requestId", async () => {
