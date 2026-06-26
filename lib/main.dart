@@ -225,6 +225,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       unawaited(_refreshAuthUserOnResume());
       unawaited(UserPresenceService.instance.markSeen(force: true));
+      unawaited(VoIPService().recoverBackgroundAcceptedCalls());
       unawaited(_recoverActiveSessionOnResume());
     }
   }

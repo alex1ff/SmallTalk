@@ -1390,6 +1390,31 @@ void main() {
       expect(appDelegateSource, contains('"expiresAt"'));
     });
 
+    test('background accepted calls replay through VoIP accept flow', () {
+      final mainSource = _source('lib/main.dart');
+      final voipSource = _source('lib/services/voip_service.dart');
+      final initializeSource = _curlyBlockSource(
+        voipSource,
+        'Future<void> initialize() async {',
+      );
+      final recoverSource = _curlyBlockSource(
+        voipSource,
+        'Future<void> recoverBackgroundAcceptedCalls() async {',
+      );
+
+      expect(mainSource,
+          contains('VoIPService().recoverBackgroundAcceptedCalls()'));
+      expect(initializeSource, contains('FlutterCallkitIncoming.onEvent'));
+      expect(
+          initializeSource, contains('await recoverBackgroundAcceptedCalls()'));
+      expect(recoverSource, contains('_callActiveCalls()'));
+      expect(recoverSource, contains('voipAcceptDataFromActiveCalls'));
+      expect(recoverSource, contains('await _handleCallAccept(acceptData)'));
+      expect(voipSource, contains('FlutterCallkitIncoming.activeCalls()'));
+      expect(voipSource, contains('voipAcceptDataFromActiveCall'));
+      expect(voipSource, contains("'isAccepted'"));
+    });
+
     test('Daily token refresh keeps room URL and token paired', () {
       final videoCallSource = _source(
           'lib/shared_pages/video_call_page/video_call_page_widget.dart');

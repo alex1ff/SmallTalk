@@ -306,7 +306,7 @@
 - [x] Передавать в payload `sessionId`, имя собеседника, `scenario`, `requesterId`, `responderId`, `requesterRole`, `responderRole`, `navRole`, `acceptMode`, `callKitId`, `notificationId` или `searchRequestId`, `expiresAt`, `roomUrl`, `roomName` и `tokenStrategy`.
 - [x] Синхронизировать payload parity между foreground FCM, background FCM, iOS PushKit и Android: backend `roomName` не должен теряться в background handler.
 - [x] Обработать accept из foreground.
-- [ ] Обработать accept из background.
+- [x] Обработать accept из background.
 - [ ] Обработать accept из закрытого приложения.
 - [ ] Обработать accept/decline, если CallKit event пришел до готовности auth, router или `VoIPService.initialize()`.
 - [ ] Обработать decline.

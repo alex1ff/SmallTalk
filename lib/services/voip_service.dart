@@ -190,6 +190,72 @@ bool voipIncomingCallPayloadHasExpired(
   return !parsedExpiresAt.isAfter(now ?? DateTime.now());
 }
 
+Iterable<dynamic> _voipActiveCallEntries(dynamic activeCalls) {
+  if (activeCalls is Iterable) {
+    return activeCalls;
+  }
+  if (activeCalls is Map) {
+    return <dynamic>[activeCalls];
+  }
+  if (activeCalls is String) {
+    final trimmed = activeCalls.trim();
+    if (trimmed.isEmpty) return const <dynamic>[];
+    try {
+      return _voipActiveCallEntries(jsonDecode(trimmed));
+    } catch (_) {
+      return const <dynamic>[];
+    }
+  }
+  return const <dynamic>[];
+}
+
+bool _voipIsAcceptedActiveCall(Map<String, dynamic> callData) {
+  final accepted = callData['isAccepted'];
+  if (accepted is bool) return accepted;
+  if (accepted is String) {
+    return accepted.trim().toLowerCase() == 'true';
+  }
+  return false;
+}
+
+@visibleForTesting
+Map<String, dynamic>? voipAcceptDataFromActiveCall(dynamic activeCall) {
+  final callData = _voipMapFrom(activeCall);
+  if (callData.isEmpty || !_voipIsAcceptedActiveCall(callData)) {
+    return null;
+  }
+
+  final extra = _voipMapFrom(callData['extra']);
+  final sessionId = _voipNonEmptyString(extra['sessionId']) ??
+      _voipNonEmptyString(callData['sessionId']);
+  if (sessionId == null) return null;
+
+  final callKitId = _voipNonEmptyString(callData['id']) ??
+      _voipNonEmptyString(callData['uuid']) ??
+      _voipNonEmptyString(extra['callKitId']) ??
+      _voipNonEmptyString(callData['callKitId']);
+  final normalizedExtra = <String, dynamic>{
+    ...extra,
+    'sessionId': sessionId,
+    if (callKitId != null) 'callKitId': callKitId,
+  };
+
+  return <String, dynamic>{
+    ...callData,
+    'sessionId': sessionId,
+    if (callKitId != null) 'id': callKitId,
+    'extra': normalizedExtra,
+  };
+}
+
+@visibleForTesting
+List<Map<String, dynamic>> voipAcceptDataFromActiveCalls(dynamic activeCalls) {
+  return _voipActiveCallEntries(activeCalls)
+      .map(voipAcceptDataFromActiveCall)
+      .whereType<Map<String, dynamic>>()
+      .toList(growable: false);
+}
+
 @visibleForTesting
 String? voipAssignedResponderIdForSession(Map<String, dynamic> sessionData) {
   return _voipNonEmptyString(sessionData['currentResponderId']) ??
@@ -349,6 +415,8 @@ class VoIPService {
   Future<Map<String, dynamic>> Function(String sessionId)?
       debugAcceptCallOverride;
   @visibleForTesting
+  Future<dynamic> Function()? debugActiveCallsOverride;
+  @visibleForTesting
   Future<void> Function(String sessionId)? debugDeclineCallOverride;
   @visibleForTesting
   Future<bool> Function(String sessionId)? debugRecoverActiveSessionOverride;
@@ -384,6 +452,24 @@ class VoIPService {
   /// Whether a VoIP call is pending navigation (accepted but not yet navigated).
   bool hasPendingNavigation() =>
       _pendingSessionId != null || _lastAcceptedSessionId != null;
+
+  Future<void> recoverBackgroundAcceptedCalls() async {
+    if (kIsWeb) return;
+    try {
+      final activeCalls = await _callActiveCalls();
+      final acceptedCalls = voipAcceptDataFromActiveCalls(activeCalls);
+      for (final acceptData in acceptedCalls) {
+        final sessionId = _voipStringFromPayload(acceptData, 'sessionId') ??
+            _voipNonEmptyString(acceptData['sessionId']);
+        debugPrint(
+          '📞 VoIPService: Replaying background accepted call: $sessionId',
+        );
+        await _handleCallAccept(acceptData);
+      }
+    } catch (e) {
+      debugPrint('⚠️ VoIPService: Failed to replay background accept: $e');
+    }
+  }
 
   @visibleForTesting
   void debugResetInMemoryStateForTesting() {
@@ -518,6 +604,7 @@ class VoIPService {
   void _resetTestingOverrides() {
     debugEnsureMediaPermissionsOverride = null;
     debugAcceptCallOverride = null;
+    debugActiveCallsOverride = null;
     debugDeclineCallOverride = null;
     debugRecoverActiveSessionOverride = null;
     debugPrefetchSessionTokensOverride = null;
@@ -557,6 +644,14 @@ class VoIPService {
         .httpsCallable('getSessionTokens')
         .call({'sessionId': sessionId});
     return _voipMapFrom(result.data);
+  }
+
+  Future<dynamic> _callActiveCalls() {
+    final override = debugActiveCallsOverride;
+    if (override != null) {
+      return override();
+    }
+    return FlutterCallkitIncoming.activeCalls();
   }
 
   Future<void> _callDeclineCallFunction(String sessionId) async {
@@ -812,6 +907,7 @@ class VoIPService {
       _callKitSubscription?.cancel();
       _callKitSubscription =
           FlutterCallkitIncoming.onEvent.listen(_handleCallKitEvent);
+      await recoverBackgroundAcceptedCalls();
       _startSessionPruneTimer();
 
       // 5. Пытаемся получить PushKit токен (iOS) если доступен

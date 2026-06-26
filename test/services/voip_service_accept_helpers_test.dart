@@ -256,6 +256,43 @@ void main() {
       );
     });
 
+    test('active call replay data keeps accepted call metadata', () {
+      final acceptedCalls = voipAcceptDataFromActiveCalls([
+        {
+          'id': '99999999-9999-9999-9999-999999999999',
+          'isAccepted': true,
+          'extra': {
+            'sessionId': 'session-bg',
+            'roomName': 'bg-room',
+            'tokenStrategy': 'get_session_tokens',
+          },
+        },
+        {
+          'id': 'ignored-call',
+          'isAccepted': false,
+          'extra': {'sessionId': 'session-ignored'},
+        },
+      ]);
+
+      expect(acceptedCalls, hasLength(1));
+      expect(
+          acceptedCalls.single['id'], '99999999-9999-9999-9999-999999999999');
+      expect(acceptedCalls.single['sessionId'], 'session-bg');
+      expect(acceptedCalls.single['extra'], {
+        'sessionId': 'session-bg',
+        'roomName': 'bg-room',
+        'tokenStrategy': 'get_session_tokens',
+        'callKitId': '99999999-9999-9999-9999-999999999999',
+      });
+
+      expect(
+        voipAcceptDataFromActiveCalls(
+          '[{"id":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","isAccepted":"true","extra":{"sessionId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}}]',
+        ).single['id'],
+        'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+      );
+    });
+
     test('accept payload requires roomUrl for already accepted room branch',
         () {
       final credentials = voipRoomCredentialsFromAcceptedPayload({
@@ -1277,6 +1314,229 @@ void main() {
         service.debugCallKitIdForSessionForTesting('session-expired-show'),
         isNull,
       );
+    });
+
+    test('runtime background replay opens accepted open_session call',
+        () async {
+      final navigationCalls = <Map<String, dynamic>>[];
+      final prefetched = Completer<String>();
+      var acceptCallInvoked = false;
+      const sessionId = '99999999-9999-9999-9999-999999999999';
+
+      service.debugActiveCallsOverride = () async => [
+            {
+              'id': sessionId,
+              'isAccepted': true,
+              'extra': {
+                'sessionId': sessionId,
+                'tokenStrategy': 'get_session_tokens',
+                'roomName': 'background-room',
+              },
+            },
+          ];
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+      service.debugNavigateToVideoCallOverride = ({
+        required sessionId,
+        required isTutor,
+        roomUrl,
+        meetingToken,
+        roomName,
+      }) {
+        navigationCalls.add({
+          'sessionId': sessionId,
+          'isTutor': isTutor,
+          'roomUrl': roomUrl,
+          'meetingToken': meetingToken,
+          'roomName': roomName,
+        });
+      };
+      service.debugPrefetchSessionTokensOverride = (sessionId) async {
+        if (!prefetched.isCompleted) {
+          prefetched.complete(sessionId);
+        }
+      };
+      service.debugMarkNavigationTriggeredOverride = ({
+        required sessionId,
+        required isTutor,
+      }) async {};
+
+      await service.recoverBackgroundAcceptedCalls();
+
+      expect(await prefetched.future.timeout(const Duration(seconds: 1)),
+          sessionId);
+      expect(acceptCallInvoked, isFalse);
+      expect(navigationCalls, hasLength(1));
+      expect(navigationCalls.single, {
+        'sessionId': sessionId,
+        'isTutor': false,
+        'roomUrl': null,
+        'meetingToken': null,
+        'roomName': 'background-room',
+      });
+    });
+
+    test('runtime background replay calls acceptCall for responder', () async {
+      final navigationCalls = <Map<String, dynamic>>[];
+      final navigationMarked = Completer<bool>();
+      const sessionId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+
+      service.debugActiveCallsOverride = () async => [
+            {
+              'id': sessionId,
+              'isAccepted': true,
+              'extra': {'sessionId': sessionId},
+            },
+          ];
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugAcceptCallOverride = (acceptedSessionId) async {
+        expect(acceptedSessionId, sessionId);
+        return {
+          'status': 'connected',
+          'roomUrl': 'https://daily.test/background-responder',
+          'meetingToken': 'background-token',
+          'roomName': 'background-responder',
+        };
+      };
+      service.debugNavigateToVideoCallOverride = ({
+        required sessionId,
+        required isTutor,
+        roomUrl,
+        meetingToken,
+        roomName,
+      }) {
+        navigationCalls.add({
+          'sessionId': sessionId,
+          'isTutor': isTutor,
+          'roomUrl': roomUrl,
+          'meetingToken': meetingToken,
+          'roomName': roomName,
+        });
+      };
+      service.debugPrefetchSessionTokensOverride = (_) async {};
+      service.debugMarkNavigationTriggeredOverride = ({
+        required sessionId,
+        required isTutor,
+      }) async {
+        if (!navigationMarked.isCompleted) {
+          navigationMarked.complete(isTutor);
+        }
+      };
+
+      await service.recoverBackgroundAcceptedCalls();
+
+      expect(
+        await navigationMarked.future.timeout(const Duration(seconds: 1)),
+        isTrue,
+      );
+      expect(navigationCalls, hasLength(1));
+      expect(navigationCalls.single, {
+        'sessionId': sessionId,
+        'isTutor': true,
+        'roomUrl': 'https://daily.test/background-responder',
+        'meetingToken': 'background-token',
+        'roomName': 'background-responder',
+      });
+    });
+
+    test('runtime background replay ignores duplicate live accept', () async {
+      final navigationCalls = <Map<String, dynamic>>[];
+      var acceptCallInvoked = false;
+      const sessionId = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+      service.debugNavigateToVideoCallOverride = ({
+        required sessionId,
+        required isTutor,
+        roomUrl,
+        meetingToken,
+        roomName,
+      }) {
+        navigationCalls.add({
+          'sessionId': sessionId,
+          'isTutor': isTutor,
+          'roomUrl': roomUrl,
+          'meetingToken': meetingToken,
+          'roomName': roomName,
+        });
+      };
+      service.debugPrefetchSessionTokensOverride = (_) async {};
+      service.debugMarkNavigationTriggeredOverride = ({
+        required sessionId,
+        required isTutor,
+      }) async {};
+
+      await service.debugHandleCallAcceptForTesting({
+        'id': sessionId,
+        'sessionId': sessionId,
+        'extra': {
+          'tokenStrategy': 'get_session_tokens',
+        },
+      });
+
+      service.debugActiveCallsOverride = () async => [
+            {
+              'id': sessionId,
+              'isAccepted': true,
+              'extra': {
+                'sessionId': sessionId,
+                'tokenStrategy': 'get_session_tokens',
+              },
+            },
+          ];
+
+      await service.recoverBackgroundAcceptedCalls();
+
+      expect(acceptCallInvoked, isFalse);
+      expect(navigationCalls, hasLength(1));
+    });
+
+    test('runtime background replay ignores stale active call id', () async {
+      final navigationCalls = <Map<String, dynamic>>[];
+      var acceptCallInvoked = false;
+
+      service.debugActiveCallsOverride = () async => [
+            {
+              'id': '00000000-0000-0000-0000-000000000000',
+              'isAccepted': true,
+              'extra': {
+                'sessionId': 'session-background-stale',
+                'tokenStrategy': 'get_session_tokens',
+              },
+            },
+          ];
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+      service.debugNavigateToVideoCallOverride = ({
+        required sessionId,
+        required isTutor,
+        roomUrl,
+        meetingToken,
+        roomName,
+      }) {
+        navigationCalls.add({
+          'sessionId': sessionId,
+          'isTutor': isTutor,
+          'roomUrl': roomUrl,
+          'meetingToken': meetingToken,
+          'roomName': roomName,
+        });
+      };
+
+      await service.recoverBackgroundAcceptedCalls();
+
+      expect(acceptCallInvoked, isFalse);
+      expect(navigationCalls, isEmpty);
     });
 
     test('token prefetch ignores stale result after session swap', () async {
