@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:small_talk/services/voip_service.dart';
+
+import 'voip_test_helpers.dart';
 
 void main() {
   late VoIPService service;
@@ -11,7 +14,142 @@ void main() {
     service.debugResetInMemoryStateForTesting();
   });
 
+  Future<void> markCallActionsReady({DateTime? now}) async {
+    service.debugSetInitializedForTesting(true);
+    await service.debugSetCallActionHandlingReadyForTesting(true, now: now);
+  }
+
   group('VoIP decline helpers', () {
+    test('targeted CallKit decline waits for auth and service readiness',
+        () async {
+      final declinedSessions = <String>[];
+      const sessionId = 'auth-late-decline-session';
+
+      service.debugCurrentUserIdOverride = null;
+      service.debugDeclineCallOverride = (sessionId) async {
+        declinedSessions.add(sessionId);
+      };
+
+      await service.debugHandleCallKitDeclineEventForTesting({
+        'sessionId': sessionId,
+        'recipientId': 'current-user',
+      });
+
+      expect(service.debugPendingCallKitActionCountForTesting, 1);
+      expect(declinedSessions, isEmpty);
+
+      service.debugCurrentUserIdOverride = 'current-user';
+      await markCallActionsReady();
+
+      expect(service.debugPendingCallKitActionCountForTesting, 0);
+      expect(declinedSessions, [sessionId]);
+      expect(service.debugRecentlyDeclinedSessionForTesting(sessionId), isTrue);
+    });
+
+    test('serialized CallKit decline waits for auth and service readiness',
+        () async {
+      final declinedSessions = <String>[];
+      const sessionId = 'serialized-auth-late-decline-session';
+
+      service.debugCurrentUserIdOverride = null;
+      service.debugDeclineCallOverride = (sessionId) async {
+        declinedSessions.add(sessionId);
+      };
+
+      await service.debugHandleCallKitDeclineEventForTesting({
+        'id': deterministicCallKitIdForTest(sessionId),
+        'extra': jsonEncode({
+          'sessionId': sessionId,
+          'recipientId': 'current-user',
+          'notificationId': 'serialized-decline-notification',
+        }),
+      });
+
+      expect(service.debugPendingCallKitActionCountForTesting, 1);
+      expect(declinedSessions, isEmpty);
+
+      service.debugCurrentUserIdOverride = 'current-user';
+      await markCallActionsReady();
+
+      expect(service.debugPendingCallKitActionCountForTesting, 0);
+      expect(declinedSessions, [sessionId]);
+      expect(service.debugRecentlyDeclinedSessionForTesting(sessionId), isTrue);
+    });
+
+    test(
+        'queued CallKit decline is dropped after auth resolves to another user',
+        () async {
+      final declinedSessions = <String>[];
+
+      service.debugCurrentUserIdOverride = null;
+      service.debugDeclineCallOverride = (sessionId) async {
+        declinedSessions.add(sessionId);
+      };
+
+      await service.debugHandleCallKitDeclineEventForTesting({
+        'sessionId': 'wrong-user-decline-session',
+        'recipientId': 'other-user',
+      });
+
+      expect(service.debugPendingCallKitActionCountForTesting, 1);
+
+      service.debugCurrentUserIdOverride = 'current-user';
+      await markCallActionsReady();
+
+      expect(service.debugPendingCallKitActionCountForTesting, 0);
+      expect(declinedSessions, isEmpty);
+    });
+
+    test('queued CallKit decline past ttl is dropped before backend call',
+        () async {
+      final declinedSessions = <String>[];
+
+      service.debugCurrentUserIdOverride = 'current-user';
+      service.debugDeclineCallOverride = (sessionId) async {
+        declinedSessions.add(sessionId);
+      };
+
+      await service.debugHandleCallKitDeclineEventForTesting({
+        'sessionId': 'ttl-decline-session',
+        'recipientId': 'current-user',
+      });
+
+      expect(service.debugPendingCallKitActionCountForTesting, 1);
+
+      await markCallActionsReady(
+        now: DateTime.now().add(const Duration(minutes: 3)),
+      );
+
+      expect(service.debugPendingCallKitActionCountForTesting, 0);
+      expect(declinedSessions, isEmpty);
+    });
+
+    test('duplicate queued CallKit decline calls backend once', () async {
+      final declinedSessions = <String>[];
+      const sessionId = 'duplicate-queued-decline-session';
+
+      service.debugCurrentUserIdOverride = 'current-user';
+      service.debugDeclineCallOverride = (sessionId) async {
+        declinedSessions.add(sessionId);
+      };
+
+      await service.debugHandleCallKitDeclineEventForTesting({
+        'sessionId': sessionId,
+        'recipientId': 'current-user',
+      });
+      await service.debugHandleCallKitDeclineEventForTesting({
+        'sessionId': sessionId,
+        'recipientId': 'current-user',
+      });
+
+      expect(service.debugPendingCallKitActionCountForTesting, 1);
+
+      await markCallActionsReady();
+
+      expect(service.debugPendingCallKitActionCountForTesting, 0);
+      expect(declinedSessions, [sessionId]);
+    });
+
     test('runtime decline calls backend for cold-start session events',
         () async {
       final declinedSessions = <String>[];

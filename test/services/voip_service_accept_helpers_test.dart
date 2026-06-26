@@ -1,11 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:small_talk/flutter_flow/nav/nav.dart';
 import 'package:small_talk/services/voip_service.dart';
+
+import 'voip_test_helpers.dart';
 
 void main() {
   late VoIPService service;
@@ -431,6 +432,166 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     });
 
+    testWidgets(
+        'targeted CallKit accept waits for auth and later navigator recovery',
+        (tester) async {
+      const sessionId = 'auth-late-accept-session';
+      var acceptCallInvoked = false;
+      final prefetched = Completer<String>();
+
+      service.debugCurrentUserIdOverride = null;
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+      service.debugPrefetchSessionTokensOverride = (sessionId) async {
+        if (!prefetched.isCompleted) {
+          prefetched.complete(sessionId);
+        }
+      };
+      service.debugMarkNavigationTriggeredOverride = ({
+        required sessionId,
+        required isTutor,
+      }) async {};
+
+      await service.debugHandleCallKitAcceptEventForTesting({
+        'sessionId': sessionId,
+        'recipientId': 'current-user',
+        'extra': {
+          'acceptMode': 'open_session',
+          'tokenStrategy': 'get_session_tokens',
+          'roomName': 'auth-late-room',
+        },
+      });
+
+      expect(service.debugPendingCallKitActionCountForTesting, 1);
+      expect(acceptCallInvoked, isFalse);
+      expect(service.hasPendingNavigation(), isFalse);
+
+      service.debugCurrentUserIdOverride = 'current-user';
+      service.debugSetInitializedForTesting(true);
+      await service.debugSetCallActionHandlingReadyForTesting(true);
+
+      expect(service.debugPendingCallKitActionCountForTesting, 0);
+      expect(
+        await prefetched.future.timeout(const Duration(seconds: 1)),
+        sessionId,
+      );
+      expect(acceptCallInvoked, isFalse);
+      expect(service.hasPendingNavigation(), isTrue);
+
+      final router = GoRouter(
+        navigatorKey: appNavigatorKey,
+        initialLocation: '/',
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (context, state) => const SizedBox(key: Key('home-route')),
+          ),
+          GoRoute(
+            path: '/videoCallPage',
+            builder: (context, state) =>
+                const SizedBox(key: Key('video-call-route')),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pump(service.debugPendingNavigationRetryDelayForTesting);
+      await tester.pumpAndSettle();
+
+      final targetUri = Uri.parse(router.getCurrentLocation());
+      expect(targetUri.path, '/videoCallPage');
+      expect(targetUri.queryParameters['videoDocRef'], sessionId);
+      expect(targetUri.queryParameters['roomName'], 'auth-late-room');
+      expect(find.byKey(const Key('video-call-route')), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets(
+        'closed app accepted replay waits for auth and later navigator recovery',
+        (tester) async {
+      const sessionId = 'closed-auth-late-accept-session';
+      var acceptCallInvoked = false;
+      final prefetched = Completer<String>();
+
+      service.debugCurrentUserIdOverride = null;
+      service.debugActiveCallsOverride = () async => jsonEncode([
+            {
+              'id': deterministicCallKitIdForTest(sessionId),
+              'accepted': 1,
+              'extra': jsonEncode({
+                'sessionId': sessionId,
+                'recipientId': 'current-user',
+                'tokenStrategy': 'get_session_tokens',
+                'roomName': 'closed-auth-room',
+              }),
+            },
+          ]);
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+      service.debugPrefetchSessionTokensOverride = (sessionId) async {
+        if (!prefetched.isCompleted) {
+          prefetched.complete(sessionId);
+        }
+      };
+      service.debugMarkNavigationTriggeredOverride = ({
+        required sessionId,
+        required isTutor,
+      }) async {};
+
+      await service.recoverBackgroundAcceptedCalls();
+
+      expect(service.debugPendingCallKitActionCountForTesting, 1);
+      expect(acceptCallInvoked, isFalse);
+      expect(service.hasPendingNavigation(), isFalse);
+
+      service.debugCurrentUserIdOverride = 'current-user';
+      service.debugSetInitializedForTesting(true);
+      await service.debugSetCallActionHandlingReadyForTesting(true);
+
+      expect(service.debugPendingCallKitActionCountForTesting, 0);
+      expect(
+        await prefetched.future.timeout(const Duration(seconds: 1)),
+        sessionId,
+      );
+      expect(acceptCallInvoked, isFalse);
+      expect(service.hasPendingNavigation(), isTrue);
+
+      final router = GoRouter(
+        navigatorKey: appNavigatorKey,
+        initialLocation: '/',
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (context, state) => const SizedBox(key: Key('home-route')),
+          ),
+          GoRoute(
+            path: '/videoCallPage',
+            builder: (context, state) =>
+                const SizedBox(key: Key('video-call-route')),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pump(service.debugPendingNavigationRetryDelayForTesting);
+      await tester.pumpAndSettle();
+
+      final targetUri = Uri.parse(router.getCurrentLocation());
+      expect(targetUri.path, '/videoCallPage');
+      expect(targetUri.queryParameters['videoDocRef'], sessionId);
+      expect(targetUri.queryParameters['roomName'], 'closed-auth-room');
+      expect(find.byKey(const Key('video-call-route')), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
     testWidgets('accept replaces stale video call route with accepted session',
         (tester) async {
       const staleSessionId = 'stale-video-session';
@@ -582,7 +743,7 @@ void main() {
 
       service.debugActiveCallsOverride = () async => [
             {
-              'id': _deterministicCallKitIdForTest(sessionId),
+              'id': deterministicCallKitIdForTest(sessionId),
               'accepted': true,
               'extra': {
                 'sessionId': sessionId,
@@ -641,7 +802,7 @@ void main() {
 
       service.debugActiveCallsOverride = () async => [
             {
-              'id': _deterministicCallKitIdForTest(sessionId),
+              'id': deterministicCallKitIdForTest(sessionId),
               'accepted': true,
               'extra': {
                 'sessionId': sessionId,
@@ -685,7 +846,7 @@ void main() {
       };
 
       await service.debugHandleCallKitDeclineEventForTesting({
-        'id': _deterministicCallKitIdForTest(sessionId),
+        'id': deterministicCallKitIdForTest(sessionId),
         'extra': '{"sessionId":"$sessionId"}',
       });
 
@@ -787,11 +948,11 @@ void main() {
       };
 
       await service.debugHandleCallKitAcceptEventForTesting({
-        'id': _deterministicCallKitIdForTest(sessionId),
+        'id': deterministicCallKitIdForTest(sessionId),
         'sessionId': sessionId,
       });
       await service.debugHandleCallKitDeclineEventForTesting({
-        'id': _deterministicCallKitIdForTest(sessionId),
+        'id': deterministicCallKitIdForTest(sessionId),
         'sessionId': sessionId,
       });
 
@@ -1017,6 +1178,46 @@ void main() {
 
       expect(service.debugPendingCallKitActionCountForTesting, 0);
       expect(service.debugCallActionHandlingReadyForTesting, isFalse);
+    });
+
+    test('logout clear drops queued accept and decline actions', () async {
+      final navigationCalls = <String>[];
+      final declinedSessions = <String>[];
+
+      service.debugCurrentUserIdOverride = 'current-user';
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugNavigateToVideoCallOverride = ({
+        required sessionId,
+        required isTutor,
+        roomUrl,
+        meetingToken,
+        roomName,
+      }) {
+        navigationCalls.add(sessionId);
+      };
+      service.debugDeclineCallOverride = (sessionId) async {
+        declinedSessions.add(sessionId);
+      };
+
+      await service.debugHandleCallKitAcceptEventForTesting({
+        'sessionId': 'logout-queued-accept',
+        'recipientId': 'current-user',
+        'extra': {'tokenStrategy': 'get_session_tokens'},
+      });
+      await service.debugHandleCallKitDeclineEventForTesting({
+        'sessionId': 'logout-queued-decline',
+        'recipientId': 'current-user',
+      });
+
+      expect(service.debugPendingCallKitActionCountForTesting, 2);
+
+      await service.debugSetCallActionHandlingReadyForTesting(false);
+      service.debugSetInitializedForTesting(true);
+      await service.debugSetCallActionHandlingReadyForTesting(true);
+
+      expect(service.debugPendingCallKitActionCountForTesting, 0);
+      expect(navigationCalls, isEmpty);
+      expect(declinedSessions, isEmpty);
     });
 
     test('accept payload requires roomUrl for already accepted room branch',
@@ -1380,7 +1581,7 @@ void main() {
       final prefetched = Completer<String>();
       var acceptCallInvoked = false;
       const sessionId = 'live-session-non-uuid';
-      final callKitId = _deterministicCallKitIdForTest(sessionId);
+      final callKitId = deterministicCallKitIdForTest(sessionId);
 
       service.debugEnsureMediaPermissionsOverride = () async => true;
       service.debugAcceptCallOverride = (_) async {
@@ -2340,7 +2541,7 @@ void main() {
       final prefetched = Completer<String>();
       var acceptCallInvoked = false;
       const sessionId = 'video-session-non-uuid';
-      final callKitId = _deterministicCallKitIdForTest(sessionId);
+      final callKitId = deterministicCallKitIdForTest(sessionId);
 
       service.debugActiveCallsOverride = () async =>
           '[{"id":"$callKitId","accepted":1,"extra":"{\\"sessionId\\":\\"$sessionId\\",\\"tokenStrategy\\":\\"get_session_tokens\\",\\"roomName\\":\\"non-uuid-room\\"}"}]';
@@ -2737,19 +2938,4 @@ class _TimestampLike {
   final DateTime value;
 
   DateTime toDate() => value;
-}
-
-String _deterministicCallKitIdForTest(String sessionId) {
-  final digestBytes =
-      md5.convert(utf8.encode('smalltalk-call:$sessionId')).bytes.toList();
-  digestBytes[6] = (digestBytes[6] & 0x0F) | 0x30;
-  digestBytes[8] = (digestBytes[8] & 0x3F) | 0x80;
-  final hex =
-      digestBytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
-
-  return '${hex.substring(0, 8)}-'
-      '${hex.substring(8, 12)}-'
-      '${hex.substring(12, 16)}-'
-      '${hex.substring(16, 20)}-'
-      '${hex.substring(20, 32)}';
 }

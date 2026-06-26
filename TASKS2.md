@@ -313,7 +313,7 @@
 - [x] Обработать timeout 45 секунд.
 - [x] Проверить, что после accept приложение открывает страницу звонка.
 - [x] Проверить, что после decline/timeout backend отменяет пару или продолжает подбор.
-- [ ] Добавить тесты на closed-state/auth/router recovery для accept и decline.
+- [x] Добавить тесты на closed-state/auth/router recovery для accept и decline.
 
 Критерий завершения: входящий звонок работает в foreground, background, locked screen и closed-state сценариях.
 
