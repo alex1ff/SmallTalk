@@ -2259,6 +2259,53 @@ test("releaseSessionPairLocks clears users and search requests for session", asy
   assert.equal(store.get("searchRequests/student-b").matchedUserId, null);
 });
 
+test("releaseSessionPairLocks keeps user call state for a newer session", async () => {
+  const newerSessionAvailableAfter =
+    timestampFromMillis(fixedNowMillis + 60_000);
+  const {db, store} = createFakeFirestore({
+    ...seedExistingStudentSession(),
+    "users/student-a": studentUser({
+      currentSessionId: "session-new",
+      isInCall: true,
+      isAvailable: false,
+      availableAfter: newerSessionAvailableAfter,
+    }),
+    "users/student-b": studentUser({
+      currentSessionId: "session-ab",
+      isInCall: true,
+      isAvailable: false,
+      availableAfter: timestampFromMillis(fixedNowMillis + 60_000),
+    }),
+  });
+
+  const result = await db.runTransaction((transaction) =>
+    releaseSessionPairLocksInTransaction({
+      db,
+      transaction,
+      sessionId: "session-ab",
+      sessionData: store.get("videoSessions/session-ab"),
+      serverTimestamp,
+      fieldDelete,
+      searchRequestStatus: SEARCH_REQUEST_STATUS.STOPPED,
+      stopReason: "session_ended",
+      releaseCallState: true,
+      restoreLegacyAvailability: true,
+    }));
+
+  assert.equal(result.released, true);
+  assert.equal(store.get("users/student-a").currentSessionId, "session-new");
+  assert.equal(store.get("users/student-a").isInCall, true);
+  assert.equal(store.get("users/student-a").isAvailable, false);
+  assert.equal(
+    store.get("users/student-a").availableAfter,
+    newerSessionAvailableAfter,
+  );
+  assert.equal(store.get("users/student-a").lastCallEndedAt, undefined);
+  assert.equal(store.get("users/student-b").currentSessionId, fieldDelete);
+  assert.equal(store.get("users/student-b").isInCall, false);
+  assert.equal(store.get("users/student-b").isAvailable, true);
+});
+
 test("cancel call release options stop all participant searches", async () => {
   const {db, store} = createFakeFirestore(seedExistingStudentSession());
 
