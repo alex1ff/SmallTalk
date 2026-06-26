@@ -25,6 +25,11 @@ const int _activeSessionFallbackTokenMaxAttempts = 2;
 const int _activeSessionCurrentTokenMaxAttempts = 5;
 const int _activeSessionNavigationQueryLimit = 20;
 const int _activeSessionLegacyFallbackLimit = 100;
+const List<String> _activeSessionNeutralRecoveryStatuses = [
+  'connecting',
+  'active',
+  'connected',
+];
 const Duration _activeSessionFallbackTokenRetryDelay =
     Duration(milliseconds: 400);
 const Duration _activeSessionCurrentTokenRetryDelay =
@@ -160,6 +165,29 @@ bool _activeSessionIsJoinableParticipant(
       _activeSessionHasParticipant(data, userId);
 }
 
+bool _activeSessionHasNeutralParticipant(
+  Map<String, dynamic> data,
+  String userId,
+) {
+  if (_activeSessionListContains(data['participantIds'], userId)) {
+    return true;
+  }
+
+  return <dynamic>[
+    data['requesterId'],
+    data['currentResponderId'],
+    data['responderId'],
+  ].any((value) => _activeSessionNonEmpty(value) == userId);
+}
+
+bool _activeSessionCanUseNeutralRecovery(
+  Map<String, dynamic> data,
+  String userId,
+) {
+  return _activeSessionIsJoinableParticipant(data, userId) &&
+      _activeSessionHasNeutralParticipant(data, userId);
+}
+
 bool _activeSessionHasRequesterNavigationRole(
   Map<String, dynamic> data,
   String userId,
@@ -220,6 +248,13 @@ String? _activeSessionNavigationFlagForUser(
   }
 
   return null;
+}
+
+void _addActiveSessionRecoverySnapshot(
+  Map<String, DocumentSnapshot<Map<String, dynamic>>> snapshotsByPath,
+  DocumentSnapshot<Map<String, dynamic>> doc,
+) {
+  snapshotsByPath[doc.reference.path] = doc;
 }
 
 List<int> _activeSessionRecoverySortValues(
@@ -344,6 +379,27 @@ Future<ActiveSearchRecoveryState> _readActiveSearchRecoveryState(
   );
 }
 
+Future<void> _readNeutralActiveSessionSnapshots({
+  required String userId,
+  required String label,
+  required Query<Map<String, dynamic>> query,
+  required Map<String, DocumentSnapshot<Map<String, dynamic>>> snapshotsByPath,
+}) async {
+  try {
+    final snapshots = await query.get();
+    for (final doc in snapshots.docs) {
+      final data = doc.data();
+      if (_activeSessionCanUseNeutralRecovery(data, userId)) {
+        _addActiveSessionRecoverySnapshot(snapshotsByPath, doc);
+      }
+    }
+  } catch (error) {
+    debugPrint(
+      'ActiveSessionRecovery: failed to read $label neutral sessions for $userId: $error',
+    );
+  }
+}
+
 Future<List<DocumentSnapshot<Map<String, dynamic>>>>
     _readActiveNavigationSessionSnapshots(String userId) async {
   final debugReader = debugActiveNavigationSessionSnapshots;
@@ -352,6 +408,47 @@ Future<List<DocumentSnapshot<Map<String, dynamic>>>>
   }
 
   final snapshotsByPath = <String, DocumentSnapshot<Map<String, dynamic>>>{};
+  final videoSessions = FirebaseFirestore.instance.collection('videoSessions');
+  await _readNeutralActiveSessionSnapshots(
+    userId: userId,
+    label: 'participant',
+    query: videoSessions
+        .where('participantIds', arrayContains: userId)
+        .where('status', whereIn: _activeSessionNeutralRecoveryStatuses)
+        .orderBy('createdAt', descending: true)
+        .limit(_activeSessionNavigationQueryLimit),
+    snapshotsByPath: snapshotsByPath,
+  );
+  await _readNeutralActiveSessionSnapshots(
+    userId: userId,
+    label: 'requester',
+    query: videoSessions
+        .where('requesterId', isEqualTo: userId)
+        .where('status', whereIn: _activeSessionNeutralRecoveryStatuses)
+        .orderBy('createdAt', descending: true)
+        .limit(_activeSessionNavigationQueryLimit),
+    snapshotsByPath: snapshotsByPath,
+  );
+  await _readNeutralActiveSessionSnapshots(
+    userId: userId,
+    label: 'current responder',
+    query: videoSessions
+        .where('currentResponderId', isEqualTo: userId)
+        .where('status', whereIn: _activeSessionNeutralRecoveryStatuses)
+        .orderBy('createdAt', descending: true)
+        .limit(_activeSessionNavigationQueryLimit),
+    snapshotsByPath: snapshotsByPath,
+  );
+  await _readNeutralActiveSessionSnapshots(
+    userId: userId,
+    label: 'responder',
+    query: videoSessions
+        .where('responderId', isEqualTo: userId)
+        .where('status', whereIn: _activeSessionNeutralRecoveryStatuses)
+        .orderBy('createdAt', descending: true)
+        .limit(_activeSessionNavigationQueryLimit),
+    snapshotsByPath: snapshotsByPath,
+  );
   try {
     final studentSessions = await FirebaseFirestore.instance
         .collection('videoSessions')
@@ -361,7 +458,7 @@ Future<List<DocumentSnapshot<Map<String, dynamic>>>>
         .limit(_activeSessionNavigationQueryLimit)
         .get();
     for (final doc in studentSessions.docs) {
-      snapshotsByPath[doc.reference.path] = doc;
+      _addActiveSessionRecoverySnapshot(snapshotsByPath, doc);
     }
   } catch (error) {
     debugPrint(
@@ -392,7 +489,7 @@ Future<List<DocumentSnapshot<Map<String, dynamic>>>>
         .limit(_activeSessionNavigationQueryLimit)
         .get();
     for (final doc in tutorSessions.docs) {
-      snapshotsByPath[doc.reference.path] = doc;
+      _addActiveSessionRecoverySnapshot(snapshotsByPath, doc);
     }
   } catch (error) {
     debugPrint(
@@ -423,7 +520,7 @@ Future<List<DocumentSnapshot<Map<String, dynamic>>>>
         .limit(_activeSessionNavigationQueryLimit)
         .get();
     for (final doc in currentTutorSessions.docs) {
-      snapshotsByPath[doc.reference.path] = doc;
+      _addActiveSessionRecoverySnapshot(snapshotsByPath, doc);
     }
   } catch (error) {
     debugPrint(
@@ -456,7 +553,7 @@ Future<List<DocumentSnapshot<Map<String, dynamic>>>>
     for (final doc in currentResponderSessions.docs) {
       final data = doc.data();
       if (_activeSessionCanUseTutorNavigationFlag(data, userId)) {
-        snapshotsByPath[doc.reference.path] = doc;
+        _addActiveSessionRecoverySnapshot(snapshotsByPath, doc);
       }
     }
   } catch (error) {
@@ -493,7 +590,7 @@ Future<List<DocumentSnapshot<Map<String, dynamic>>>>
     for (final doc in responderSessions.docs) {
       final data = doc.data();
       if (_activeSessionCanUseTutorNavigationFlag(data, userId)) {
-        snapshotsByPath[doc.reference.path] = doc;
+        _addActiveSessionRecoverySnapshot(snapshotsByPath, doc);
       }
     }
   } catch (error) {
@@ -530,7 +627,7 @@ Future<List<DocumentSnapshot<Map<String, dynamic>>>>
     for (final doc in participantSessions.docs) {
       final data = doc.data();
       if (_activeSessionCanUseTutorNavigationFlag(data, userId)) {
-        snapshotsByPath[doc.reference.path] = doc;
+        _addActiveSessionRecoverySnapshot(snapshotsByPath, doc);
       }
     }
   } catch (error) {
@@ -801,7 +898,8 @@ Future<bool> checkActiveSessionAndNavigate(BuildContext context) async {
             final data = doc.data();
             return doc.reference.path != currentPath &&
                 data != null &&
-                _activeSessionNavigationTriggerMatchesUser(data, userId);
+                (_activeSessionNavigationTriggerMatchesUser(data, userId) ||
+                    _activeSessionCanUseNeutralRecovery(data, userId));
           },
         ),
         userId: userId,

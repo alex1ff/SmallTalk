@@ -4157,7 +4157,129 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('accepted recovery skips requester participant tutor trigger',
+  testWidgets('accepted recovery uses neutral fallback without legacy flags',
+      (tester) async {
+    Future<void> verifyNeutralFallback({
+      required String label,
+      required String userId,
+      required Map<String, dynamic> neutralFields,
+      bool includeParticipantIds = true,
+    }) async {
+      final sessionId = 'session-neutral-fallback-$label-test';
+      final tokenSessionIds = <String>[];
+      final openedSessions = <String>[];
+      debugActiveSessionUserSnapshot = (_) async => _FakeSessionSnapshot(
+            userId,
+            const <String, dynamic>{
+              'isInCall': true,
+            },
+            FirebaseFirestore.instance.collection('users').doc(userId),
+          );
+      debugActiveCurrentSessionSnapshot = (_) async => null;
+      debugActiveNavigationSessionSnapshots = (_) async => [
+            _FakeSessionSnapshot(
+              sessionId,
+              <String, dynamic>{
+                'status': 'connecting',
+                if (includeParticipantIds)
+                  'participantIds': [
+                    userId,
+                    'peer-neutral-fallback-$label-test',
+                  ],
+                'createdAt': DateTime(2026, 1, 1, 12),
+                'dailyRoomUrl': 'https://daily.test/$sessionId',
+                ...neutralFields,
+              },
+              FirebaseFirestore.instance
+                  .collection('videoSessions')
+                  .doc(sessionId),
+            ),
+          ];
+      debugActiveSessionTokenRequest = (sessionId) async {
+        tokenSessionIds.add(sessionId);
+        return <String, dynamic>{
+          'roomUrl': 'https://daily.test/$sessionId',
+          'roomName': 'room-$sessionId',
+          'meetingToken': 'token-$sessionId',
+        };
+      };
+      debugActiveSessionNavigator = (
+        videoDocRef, {
+        roomUrl,
+        roomName,
+        meetingToken,
+      }) {
+        openedSessions.add(videoDocRef.id);
+      };
+      setActiveStudent(userId, isInCall: true);
+      bool? recovered;
+      final router = GoRouter(
+        initialLocation: StudentsDashboardWidget.routePath,
+        routes: [
+          GoRoute(
+            name: StudentsDashboardWidget.routeName,
+            path: StudentsDashboardWidget.routePath,
+            builder: (context, state) => TextButton(
+              key: Key('recover-neutral-fallback-$label'),
+              onPressed: () async {
+                recovered = await checkActiveSessionAndNavigate(context);
+              },
+              child: Text('Recover neutral fallback $label'),
+            ),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(_buildDashboardRouterTestApp(router));
+      await tester.pump();
+
+      await tester.tap(find.byKey(Key('recover-neutral-fallback-$label')));
+      await tester.pump();
+      await tester.idle();
+
+      expect(recovered, isTrue);
+      expect(tokenSessionIds, [sessionId]);
+      expect(openedSessions, [sessionId]);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    }
+
+    await verifyNeutralFallback(
+      label: 'requester',
+      userId: 'student-neutral-requester-fallback-test',
+      neutralFields: const <String, dynamic>{
+        'requesterId': 'student-neutral-requester-fallback-test',
+        'responderId': 'student-neutral-requester-peer-test',
+      },
+      includeParticipantIds: false,
+    );
+    await verifyNeutralFallback(
+      label: 'current-responder',
+      userId: 'student-neutral-current-responder-fallback-test',
+      neutralFields: const <String, dynamic>{
+        'requesterId': 'student-neutral-current-responder-peer-test',
+        'currentResponderId': 'student-neutral-current-responder-fallback-test',
+      },
+      includeParticipantIds: false,
+    );
+    await verifyNeutralFallback(
+      label: 'responder',
+      userId: 'student-neutral-responder-fallback-test',
+      neutralFields: const <String, dynamic>{
+        'requesterId': 'student-neutral-responder-peer-test',
+        'responderId': 'student-neutral-responder-fallback-test',
+      },
+      includeParticipantIds: false,
+    );
+    await verifyNeutralFallback(
+      label: 'participant-only',
+      userId: 'student-neutral-participant-fallback-test',
+      neutralFields: const <String, dynamic>{},
+    );
+  });
+
+  testWidgets('accepted recovery restores requester neutral trigger',
       (tester) async {
     const userId = 'student-accepted-requester-participant-trigger-test';
     const sessionId = 'session-accepted-requester-participant-trigger-test';
@@ -4185,6 +4307,7 @@ void main() {
                 'teacher-requester-participant-trigger-test',
               ],
               'tutorNavigationTriggered': true,
+              'createdAt': DateTime(2026, 1, 1, 12),
               'dailyRoomUrl': 'https://daily.test/$sessionId',
             },
             FirebaseFirestore.instance
@@ -4200,6 +4323,7 @@ void main() {
                 'teacher-ambiguous-participant-trigger-test',
               ],
               'tutorNavigationTriggered': true,
+              'createdAt': DateTime(2026, 1, 1, 11),
               'dailyRoomUrl': 'https://daily.test/$ambiguousSessionId',
             },
             FirebaseFirestore.instance
@@ -4251,9 +4375,9 @@ void main() {
     await tester.pump();
     await tester.idle();
 
-    expect(recovered, isFalse);
-    expect(tokenSessionIds, isEmpty);
-    expect(openedSessions, isEmpty);
+    expect(recovered, isTrue);
+    expect(tokenSessionIds, [sessionId]);
+    expect(openedSessions, [sessionId]);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });

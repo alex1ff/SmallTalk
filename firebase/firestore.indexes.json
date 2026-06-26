@@ -599,6 +599,78 @@
       ]
     },
     {
+      "collectionGroup": "videoSessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "participantIds",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "videoSessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "requesterId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "videoSessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "currentResponderId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "videoSessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "responderId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "words",
       "queryScope": "COLLECTION",
       "fields": [

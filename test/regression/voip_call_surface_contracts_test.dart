@@ -1141,7 +1141,7 @@ void main() {
         userDataIndex,
       );
       final readCurrentSessionIndex = recoverySource.indexOf(
-        'await _readCurrentSessionSnapshot',
+        'DocumentSnapshot<Map<String, dynamic>>? currentSession;',
         inCallGateIndex,
       );
       expect(userDataIndex, greaterThanOrEqualTo(0));
@@ -1188,6 +1188,45 @@ void main() {
       );
       expect(fallbackQueryIndex, greaterThan(currentReturnFalseIndex));
       expect(fallbackTriggerFilterIndex, greaterThan(fallbackQueryIndex));
+      expect(
+        recoverySource,
+        contains(
+          "const List<String> _activeSessionNeutralRecoveryStatuses = [",
+        ),
+      );
+      expect(recoverySource, contains("'connecting',"));
+      expect(recoverySource, contains("'active',"));
+      expect(recoverySource, contains("'connected',"));
+      expect(
+        recoverySource,
+        contains(
+          ".where('requesterId', isEqualTo: userId)",
+        ),
+      );
+      expect(
+        recoverySource,
+        contains(
+          ".where('status', whereIn: _activeSessionNeutralRecoveryStatuses)",
+        ),
+      );
+      expect(
+        recoverySource,
+        contains(
+          ".where('currentResponderId', isEqualTo: userId)",
+        ),
+      );
+      expect(
+        recoverySource,
+        contains(
+          ".where('responderId', isEqualTo: userId)",
+        ),
+      );
+      expect(
+        recoverySource,
+        contains(
+          ".where('participantIds', arrayContains: userId)",
+        ),
+      );
     });
 
     test('active session legacy fallback indexes navigation timestamp', () {
@@ -1279,6 +1318,50 @@ void main() {
             'navigationTimestamp',
           ],
           ['CONTAINS', 'ASCENDING', 'DESCENDING'],
+        ),
+        isTrue,
+      );
+      expect(
+        hasVideoSessionIndex(
+          [
+            'participantIds',
+            'status',
+            'createdAt',
+          ],
+          ['CONTAINS', 'ASCENDING', 'DESCENDING'],
+        ),
+        isTrue,
+      );
+      expect(
+        hasVideoSessionIndex(
+          [
+            'requesterId',
+            'status',
+            'createdAt',
+          ],
+          ['ASCENDING', 'ASCENDING', 'DESCENDING'],
+        ),
+        isTrue,
+      );
+      expect(
+        hasVideoSessionIndex(
+          [
+            'currentResponderId',
+            'status',
+            'createdAt',
+          ],
+          ['ASCENDING', 'ASCENDING', 'DESCENDING'],
+        ),
+        isTrue,
+      );
+      expect(
+        hasVideoSessionIndex(
+          [
+            'responderId',
+            'status',
+            'createdAt',
+          ],
+          ['ASCENDING', 'ASCENDING', 'DESCENDING'],
         ),
         isTrue,
       );

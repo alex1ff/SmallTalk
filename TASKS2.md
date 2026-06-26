@@ -338,7 +338,7 @@
 - [x] При активном поиске открывать состояние поиска.
 - [x] При `pending_confirmation` или `connecting` открывать экран соединения.
 - [x] При `active` открывать страницу звонка.
-- [ ] Восстанавливать звонок по `participantIds` и нейтральным полям `requesterId` / `responderId` / `currentResponderId`, а не только по legacy `studentId` / `tutorId` и `studentNavigationTriggered` / `tutorNavigationTriggered`.
+- [x] Восстанавливать звонок по `participantIds` и нейтральным полям `requesterId` / `responderId` / `currentResponderId`, а не только по legacy `studentId` / `tutorId` и `studentNavigationTriggered` / `tutorNavigationTriggered`.
 - [ ] При истекшем поиске показывать обычное состояние без активного поиска.
 - [ ] При завершенном или отмененном звонке не возвращать пользователя в очередь автоматически.
 
