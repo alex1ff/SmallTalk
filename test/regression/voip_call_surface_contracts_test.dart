@@ -1413,6 +1413,7 @@ void main() {
       expect(voipSource, contains('FlutterCallkitIncoming.activeCalls()'));
       expect(voipSource, contains('voipAcceptDataFromActiveCall'));
       expect(voipSource, contains("'isAccepted'"));
+      expect(voipSource, contains("'accepted'"));
     });
 
     test('Daily token refresh keeps room URL and token paired', () {

@@ -1,12 +1,17 @@
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:small_talk/flutter_flow/nav/nav.dart';
 import 'package:small_talk/services/voip_service.dart';
 
 void main() {
   late VoIPService service;
 
   setUp(() {
+    appNavigatorKey = GlobalKey<NavigatorState>();
     service = VoIPService();
     service.debugResetInMemoryStateForTesting();
   });
@@ -285,12 +290,139 @@ void main() {
         'callKitId': '99999999-9999-9999-9999-999999999999',
       });
 
+      final singleMapAcceptedCall = voipAcceptDataFromActiveCalls({
+        'id': 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+        'isAccepted': true,
+        'extra': {'sessionId': 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'},
+      }).single;
+      expect(singleMapAcceptedCall['sessionId'],
+          'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+
       expect(
         voipAcceptDataFromActiveCalls(
           '[{"id":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","isAccepted":"true","extra":{"sessionId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}}]',
         ).single['id'],
         'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
       );
+
+      final serializedAcceptedCall = voipAcceptDataFromActiveCalls(
+        '[{"id":"cccccccc-cccc-cccc-cccc-cccccccccccc","accepted":1,"extra":"{\\"sessionId\\":\\"cccccccc-cccc-cccc-cccc-cccccccccccc\\",\\"roomName\\":\\"closed-room\\",\\"tokenStrategy\\":\\"get_session_tokens\\"}"}]',
+      ).single;
+      expect(serializedAcceptedCall['sessionId'],
+          'cccccccc-cccc-cccc-cccc-cccccccccccc');
+      expect(serializedAcceptedCall['extra'], {
+        'sessionId': 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+        'roomName': 'closed-room',
+        'tokenStrategy': 'get_session_tokens',
+        'callKitId': 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+      });
+
+      final conflictingAcceptedCall = voipAcceptDataFromActiveCalls([
+        {
+          'id': 'dddddddd-dddd-dddd-dddd-dddddddddddd',
+          'isAccepted': false,
+          'accepted': 1,
+          'extra': {'sessionId': 'dddddddd-dddd-dddd-dddd-dddddddddddd'},
+        },
+      ]).single;
+      expect(conflictingAcceptedCall['sessionId'],
+          'dddddddd-dddd-dddd-dddd-dddddddddddd');
+
+      final stringAcceptedCalls = voipAcceptDataFromActiveCalls([
+        {
+          'id': 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
+          'accepted': '1',
+          'extra': {'sessionId': 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee'},
+        },
+        {
+          'id': 'ffffffff-ffff-ffff-ffff-ffffffffffff',
+          'accepted': 'yes',
+          'extra': {'sessionId': 'ffffffff-ffff-ffff-ffff-ffffffffffff'},
+        },
+      ]);
+      expect(
+        stringAcceptedCalls.map((call) => call['sessionId']),
+        containsAll([
+          'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
+          'ffffffff-ffff-ffff-ffff-ffffffffffff',
+        ]),
+      );
+      expect(voipAcceptDataFromActiveCalls('not-json'), isEmpty);
+      expect(
+        voipAcceptDataFromActiveCalls([
+          {
+            'id': '11111111-1111-1111-1111-111111111111',
+            'isAccepted': true,
+            'extra': '{not-json',
+          },
+        ]),
+        isEmpty,
+      );
+    });
+
+    test('closed app navigation retry window covers cold startup', () {
+      final retryWindow = Duration(
+        milliseconds:
+            service.debugPendingNavigationRetryDelayForTesting.inMilliseconds *
+                service.debugPendingNavigationMaxAttemptsForTesting,
+      );
+
+      expect(service.debugPendingNavigationRetryDelayForTesting,
+          const Duration(milliseconds: 100));
+      expect(retryWindow, greaterThanOrEqualTo(const Duration(minutes: 1)));
+    });
+
+    testWidgets('closed app accept navigates when navigator appears later',
+        (tester) async {
+      const sessionId = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee';
+      var acceptCallInvoked = false;
+
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+      service.debugPrefetchSessionTokensOverride = (_) async {};
+      service.debugMarkNavigationTriggeredOverride = ({
+        required sessionId,
+        required isTutor,
+      }) async {};
+
+      await service.debugHandleCallAcceptForTesting({
+        'sessionId': sessionId,
+        'extra':
+            '{"acceptMode":"open_session","tokenStrategy":"get_session_tokens","roomName":"closed-room"}',
+      });
+
+      expect(acceptCallInvoked, isFalse);
+      expect(service.hasPendingNavigation(), isTrue);
+
+      final router = GoRouter(
+        navigatorKey: appNavigatorKey,
+        initialLocation: '/',
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (context, state) => const SizedBox(key: Key('home-route')),
+          ),
+          GoRoute(
+            path: '/videoCallPage',
+            builder: (context, state) =>
+                const SizedBox(key: Key('video-call-route')),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pump(service.debugPendingNavigationRetryDelayForTesting);
+      await tester.pumpAndSettle();
+
+      expect(router.getCurrentLocation(), startsWith('/videoCallPage'));
+      expect(router.getCurrentLocation(), contains('videoDocRef=$sessionId'));
+      expect(router.getCurrentLocation(), contains('roomName=closed-room'));
+      expect(find.byKey(const Key('video-call-route')), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
     });
 
     test('accept payload requires roomUrl for already accepted room branch',
@@ -590,6 +722,119 @@ void main() {
       });
       expect(service.debugAcceptedSessionForTesting('session-a'), isTrue);
       expect(service.debugAcceptInProgressForTesting('session-a'), isFalse);
+    });
+
+    test('runtime live accept reads sessionId from serialized CallKit extra',
+        () async {
+      final navigationCalls = <Map<String, dynamic>>[];
+      final prefetched = Completer<String>();
+      var acceptCallInvoked = false;
+      const sessionId = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
+
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+      service.debugNavigateToVideoCallOverride = ({
+        required sessionId,
+        required isTutor,
+        roomUrl,
+        meetingToken,
+        roomName,
+      }) {
+        navigationCalls.add({
+          'sessionId': sessionId,
+          'isTutor': isTutor,
+          'roomUrl': roomUrl,
+          'meetingToken': meetingToken,
+          'roomName': roomName,
+        });
+      };
+      service.debugPrefetchSessionTokensOverride = (sessionId) async {
+        if (!prefetched.isCompleted) {
+          prefetched.complete(sessionId);
+        }
+      };
+      service.debugMarkNavigationTriggeredOverride = ({
+        required sessionId,
+        required isTutor,
+      }) async {};
+
+      await service.debugHandleCallAcceptForTesting({
+        'id': sessionId,
+        'extra':
+            '{"sessionId":"$sessionId","acceptMode":"open_session","tokenStrategy":"get_session_tokens","roomName":"live-extra-room"}',
+      });
+
+      expect(await prefetched.future.timeout(const Duration(seconds: 1)),
+          sessionId);
+      expect(acceptCallInvoked, isFalse);
+      expect(navigationCalls, hasLength(1));
+      expect(navigationCalls.single, {
+        'sessionId': sessionId,
+        'isTutor': false,
+        'roomUrl': null,
+        'meetingToken': null,
+        'roomName': 'live-extra-room',
+      });
+    });
+
+    test('runtime live accept handles non uuid serialized CallKit extra',
+        () async {
+      final navigationCalls = <Map<String, dynamic>>[];
+      final prefetched = Completer<String>();
+      var acceptCallInvoked = false;
+      const sessionId = 'live-session-non-uuid';
+      final callKitId = _deterministicCallKitIdForTest(sessionId);
+
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+      service.debugNavigateToVideoCallOverride = ({
+        required sessionId,
+        required isTutor,
+        roomUrl,
+        meetingToken,
+        roomName,
+      }) {
+        navigationCalls.add({
+          'sessionId': sessionId,
+          'isTutor': isTutor,
+          'roomUrl': roomUrl,
+          'meetingToken': meetingToken,
+          'roomName': roomName,
+        });
+      };
+      service.debugPrefetchSessionTokensOverride = (sessionId) async {
+        if (!prefetched.isCompleted) {
+          prefetched.complete(sessionId);
+        }
+      };
+      service.debugMarkNavigationTriggeredOverride = ({
+        required sessionId,
+        required isTutor,
+      }) async {};
+
+      await service.debugHandleCallAcceptForTesting({
+        'id': callKitId,
+        'extra':
+            '{"sessionId":"$sessionId","acceptMode":"open_session","tokenStrategy":"get_session_tokens","roomName":"live-non-uuid-room"}',
+      });
+
+      expect(await prefetched.future.timeout(const Duration(seconds: 1)),
+          sessionId);
+      expect(acceptCallInvoked, isFalse);
+      expect(navigationCalls, hasLength(1));
+      expect(navigationCalls.single, {
+        'sessionId': sessionId,
+        'isTutor': false,
+        'roomUrl': null,
+        'meetingToken': null,
+        'roomName': 'live-non-uuid-room',
+      });
     });
 
     test('runtime accepted student payload opens video and fetches fresh token',
@@ -1379,6 +1624,174 @@ void main() {
       });
     });
 
+    test('runtime closed app replay opens serialized accepted active call',
+        () async {
+      final navigationCalls = <Map<String, dynamic>>[];
+      final prefetched = Completer<String>();
+      var acceptCallInvoked = false;
+      const sessionId = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+
+      service.debugActiveCallsOverride = () async =>
+          '[{"id":"$sessionId","accepted":1,"extra":"{\\"sessionId\\":\\"$sessionId\\",\\"tokenStrategy\\":\\"get_session_tokens\\",\\"roomName\\":\\"closed-room\\"}"}]';
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+      service.debugNavigateToVideoCallOverride = ({
+        required sessionId,
+        required isTutor,
+        roomUrl,
+        meetingToken,
+        roomName,
+      }) {
+        navigationCalls.add({
+          'sessionId': sessionId,
+          'isTutor': isTutor,
+          'roomUrl': roomUrl,
+          'meetingToken': meetingToken,
+          'roomName': roomName,
+        });
+      };
+      service.debugPrefetchSessionTokensOverride = (sessionId) async {
+        if (!prefetched.isCompleted) {
+          prefetched.complete(sessionId);
+        }
+      };
+      service.debugMarkNavigationTriggeredOverride = ({
+        required sessionId,
+        required isTutor,
+      }) async {};
+
+      await service.recoverBackgroundAcceptedCalls();
+
+      expect(await prefetched.future.timeout(const Duration(seconds: 1)),
+          sessionId);
+      expect(acceptCallInvoked, isFalse);
+      expect(navigationCalls, hasLength(1));
+      expect(navigationCalls.single, {
+        'sessionId': sessionId,
+        'isTutor': false,
+        'roomUrl': null,
+        'meetingToken': null,
+        'roomName': 'closed-room',
+      });
+    });
+
+    test('runtime closed app replay calls acceptCall for serialized responder',
+        () async {
+      final navigationCalls = <Map<String, dynamic>>[];
+      final navigationMarked = Completer<bool>();
+      const sessionId = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
+
+      service.debugActiveCallsOverride = () async =>
+          '[{"id":"$sessionId","isAccepted":false,"accepted":1,"extra":"{\\"sessionId\\":\\"$sessionId\\"}"}]';
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugAcceptCallOverride = (acceptedSessionId) async {
+        expect(acceptedSessionId, sessionId);
+        return {
+          'status': 'connected',
+          'roomUrl': 'https://daily.test/closed-responder',
+          'meetingToken': 'closed-token',
+          'roomName': 'closed-responder',
+        };
+      };
+      service.debugNavigateToVideoCallOverride = ({
+        required sessionId,
+        required isTutor,
+        roomUrl,
+        meetingToken,
+        roomName,
+      }) {
+        navigationCalls.add({
+          'sessionId': sessionId,
+          'isTutor': isTutor,
+          'roomUrl': roomUrl,
+          'meetingToken': meetingToken,
+          'roomName': roomName,
+        });
+      };
+      service.debugPrefetchSessionTokensOverride = (_) async {};
+      service.debugMarkNavigationTriggeredOverride = ({
+        required sessionId,
+        required isTutor,
+      }) async {
+        if (!navigationMarked.isCompleted) {
+          navigationMarked.complete(isTutor);
+        }
+      };
+
+      await service.recoverBackgroundAcceptedCalls();
+
+      expect(
+        await navigationMarked.future.timeout(const Duration(seconds: 1)),
+        isTrue,
+      );
+      expect(navigationCalls, hasLength(1));
+      expect(navigationCalls.single, {
+        'sessionId': sessionId,
+        'isTutor': true,
+        'roomUrl': 'https://daily.test/closed-responder',
+        'meetingToken': 'closed-token',
+        'roomName': 'closed-responder',
+      });
+    });
+
+    test('runtime closed app replay accepts serialized non uuid call',
+        () async {
+      final navigationCalls = <Map<String, dynamic>>[];
+      final prefetched = Completer<String>();
+      var acceptCallInvoked = false;
+      const sessionId = 'video-session-non-uuid';
+      final callKitId = _deterministicCallKitIdForTest(sessionId);
+
+      service.debugActiveCallsOverride = () async =>
+          '[{"id":"$callKitId","accepted":1,"extra":"{\\"sessionId\\":\\"$sessionId\\",\\"tokenStrategy\\":\\"get_session_tokens\\",\\"roomName\\":\\"non-uuid-room\\"}"}]';
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{};
+      };
+      service.debugNavigateToVideoCallOverride = ({
+        required sessionId,
+        required isTutor,
+        roomUrl,
+        meetingToken,
+        roomName,
+      }) {
+        navigationCalls.add({
+          'sessionId': sessionId,
+          'isTutor': isTutor,
+          'roomUrl': roomUrl,
+          'meetingToken': meetingToken,
+          'roomName': roomName,
+        });
+      };
+      service.debugPrefetchSessionTokensOverride = (sessionId) async {
+        if (!prefetched.isCompleted) {
+          prefetched.complete(sessionId);
+        }
+      };
+      service.debugMarkNavigationTriggeredOverride = ({
+        required sessionId,
+        required isTutor,
+      }) async {};
+
+      await service.recoverBackgroundAcceptedCalls();
+
+      expect(await prefetched.future.timeout(const Duration(seconds: 1)),
+          sessionId);
+      expect(acceptCallInvoked, isFalse);
+      expect(navigationCalls, hasLength(1));
+      expect(navigationCalls.single, {
+        'sessionId': sessionId,
+        'isTutor': false,
+        'roomUrl': null,
+        'meetingToken': null,
+        'roomName': 'non-uuid-room',
+      });
+    });
+
     test('runtime background replay calls acceptCall for responder', () async {
       final navigationCalls = <Map<String, dynamic>>[];
       final navigationMarked = Completer<bool>();
@@ -1723,4 +2136,19 @@ class _TimestampLike {
   final DateTime value;
 
   DateTime toDate() => value;
+}
+
+String _deterministicCallKitIdForTest(String sessionId) {
+  final digestBytes =
+      md5.convert(utf8.encode('smalltalk-call:$sessionId')).bytes.toList();
+  digestBytes[6] = (digestBytes[6] & 0x0F) | 0x30;
+  digestBytes[8] = (digestBytes[8] & 0x3F) | 0x80;
+  final hex =
+      digestBytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+
+  return '${hex.substring(0, 8)}-'
+      '${hex.substring(8, 12)}-'
+      '${hex.substring(12, 16)}-'
+      '${hex.substring(16, 20)}-'
+      '${hex.substring(20, 32)}';
 }

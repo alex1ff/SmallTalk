@@ -27,6 +27,15 @@ Map<String, dynamic> _voipMapFrom(dynamic value) {
   if (value is Map) {
     return value.map((key, value) => MapEntry(key.toString(), value));
   }
+  if (value is String) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return <String, dynamic>{};
+    try {
+      return _voipMapFrom(jsonDecode(trimmed));
+    } catch (_) {
+      return <String, dynamic>{};
+    }
+  }
   return <String, dynamic>{};
 }
 
@@ -209,13 +218,19 @@ Iterable<dynamic> _voipActiveCallEntries(dynamic activeCalls) {
   return const <dynamic>[];
 }
 
-bool _voipIsAcceptedActiveCall(Map<String, dynamic> callData) {
-  final accepted = callData['isAccepted'];
-  if (accepted is bool) return accepted;
-  if (accepted is String) {
-    return accepted.trim().toLowerCase() == 'true';
+bool _voipBoolFrom(dynamic value) {
+  if (value is bool) return value;
+  if (value is num) return value != 0;
+  if (value is String) {
+    final normalized = value.trim().toLowerCase();
+    return normalized == 'true' || normalized == '1' || normalized == 'yes';
   }
   return false;
+}
+
+bool _voipIsAcceptedActiveCall(Map<String, dynamic> callData) {
+  return _voipBoolFrom(callData['isAccepted']) ||
+      _voipBoolFrom(callData['accepted']);
 }
 
 @visibleForTesting
@@ -363,6 +378,9 @@ class VoIPService {
   );
   static final Map<String, DateTime> _processAcceptClaimedAtBySession = {};
   static const Duration _processAcceptDedupeWindow = Duration(minutes: 2);
+  static const Duration _pendingNavigationRetryDelay =
+      Duration(milliseconds: 100);
+  static const int _pendingNavigationMaxAttempts = 600;
   factory VoIPService() => _instance;
   VoIPService._internal();
 
@@ -452,6 +470,14 @@ class VoIPService {
   /// Whether a VoIP call is pending navigation (accepted but not yet navigated).
   bool hasPendingNavigation() =>
       _pendingSessionId != null || _lastAcceptedSessionId != null;
+
+  @visibleForTesting
+  Duration get debugPendingNavigationRetryDelayForTesting =>
+      _pendingNavigationRetryDelay;
+
+  @visibleForTesting
+  int get debugPendingNavigationMaxAttemptsForTesting =>
+      _pendingNavigationMaxAttempts;
 
   Future<void> recoverBackgroundAcceptedCalls() async {
     if (kIsWeb) return;
@@ -1494,12 +1520,7 @@ class VoIPService {
   }) async {
     if (data == null) return;
 
-    final extra = data['extra'] is Map
-        ? Map<String, dynamic>.from(data['extra'] as Map)
-        : <String, dynamic>{};
-    final rawSessionId =
-        extra['sessionId'] as String? ?? data['sessionId'] as String?;
-    final sessionId = rawSessionId?.trim();
+    final sessionId = _voipStringFromPayload(data, 'sessionId');
     final callKitId = _normalizeCallKitId(
       _voipNonEmptyString(data['id']) ??
           _voipStringFromPayload(data, 'callKitId'),
@@ -1855,7 +1876,8 @@ class VoIPService {
 
   Future<void> _retryPendingNavigation() async {
     int attempts = 0;
-    while (_pendingSessionId != null && attempts < 10) {
+    while (
+        _pendingSessionId != null && attempts < _pendingNavigationMaxAttempts) {
       final navContext = appNavigatorKey.currentContext;
       if (navContext != null) {
         final sessionId = _pendingSessionId!;
@@ -1874,11 +1896,13 @@ class VoIPService {
         );
         return;
       }
-      await Future.delayed(const Duration(milliseconds: 100));
+      await Future.delayed(_pendingNavigationRetryDelay);
       attempts++;
     }
     if (_pendingSessionId != null) {
-      debugPrint('⚠️ VoIPService: Navigation context not ready after retries');
+      debugPrint(
+        '⚠️ VoIPService: Navigation context not ready after extended retries',
+      );
     }
     _pendingSessionId = null;
     _navRetryInProgress = false;

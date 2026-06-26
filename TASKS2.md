@@ -307,7 +307,7 @@
 - [x] Синхронизировать payload parity между foreground FCM, background FCM, iOS PushKit и Android: backend `roomName` не должен теряться в background handler.
 - [x] Обработать accept из foreground.
 - [x] Обработать accept из background.
-- [ ] Обработать accept из закрытого приложения.
+- [x] Обработать accept из закрытого приложения.
 - [ ] Обработать accept/decline, если CallKit event пришел до готовности auth, router или `VoIPService.initialize()`.
 - [ ] Обработать decline.
 - [ ] Обработать timeout 45 секунд.
