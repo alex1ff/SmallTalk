@@ -424,6 +424,11 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
 
     final errorCode = _normalizedResponseString(data, 'errorCode');
     final reason = _normalizedResponseString(data, 'reason');
+    final expiredReasons = <String>{
+      'background_expired',
+      'expired',
+      'stale',
+    };
     final inactiveReasons = <String>{
       'background_expired',
       'expired',
@@ -445,7 +450,10 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     }
 
     safeSetState(() {
-      _searchState = StudentDashboardSearchState.noMatchFound;
+      _searchState =
+          expiredReasons.contains(errorCode) || expiredReasons.contains(reason)
+              ? StudentDashboardSearchState.idle
+              : StudentDashboardSearchState.noMatchFound;
       _matchedSearchSessionId = null;
     });
   }

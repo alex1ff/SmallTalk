@@ -1735,6 +1735,117 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('student dashboard returns to idle on expired heartbeat',
+      (tester) async {
+    Future<void> verifyExpiredHeartbeat(String reason) async {
+      setActiveStudent('student-heartbeat-$reason-idle-test');
+      final heartbeatPayloads = <Map<String, dynamic>>[];
+
+      await tester.pumpWidget(
+        _buildDashboardTestApp(
+          StudentsDashboardWidget(
+            startSearchRequest: (_) async {
+              return <String, dynamic>{
+                'requestId': 'request-heartbeat-$reason-idle-test',
+              };
+            },
+            heartbeatSearchRequest: (payload) async {
+              heartbeatPayloads.add(Map<String, dynamic>.from(payload));
+              return <String, dynamic>{
+                'errorCode': reason,
+                'reason': reason,
+              };
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(
+        find.ancestor(
+          of: find.text('Начать поиск'),
+          matching: find.byType(InkWell),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(StudentsDashboardWidget.heartbeatSearchInterval);
+      await tester.pump();
+
+      expect(heartbeatPayloads, hasLength(1));
+      expect(find.text('Начать поиск'), findsOneWidget);
+      expect(find.text('Пока никого не нашли'), findsNothing);
+      expect(find.text('Ищем собеседника'), findsNothing);
+      expect(find.text('Остановить поиск'), findsNothing);
+
+      await tester.pump(StudentsDashboardWidget.heartbeatSearchInterval);
+      await tester.pump();
+      expect(heartbeatPayloads, hasLength(1));
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    }
+
+    await verifyExpiredHeartbeat('expired');
+    await verifyExpiredHeartbeat('stale');
+    await verifyExpiredHeartbeat('background_expired');
+  });
+
+  testWidgets('student dashboard keeps no match for inactive heartbeat',
+      (tester) async {
+    Future<void> verifyInactiveHeartbeat(String reason) async {
+      setActiveStudent('student-heartbeat-$reason-no-match-test');
+      final heartbeatPayloads = <Map<String, dynamic>>[];
+
+      await tester.pumpWidget(
+        _buildDashboardTestApp(
+          StudentsDashboardWidget(
+            startSearchRequest: (_) async {
+              return <String, dynamic>{
+                'requestId': 'request-heartbeat-$reason-no-match-test',
+              };
+            },
+            heartbeatSearchRequest: (payload) async {
+              heartbeatPayloads.add(Map<String, dynamic>.from(payload));
+              return <String, dynamic>{
+                'errorCode': reason,
+                'reason': reason,
+              };
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(
+        find.ancestor(
+          of: find.text('Начать поиск'),
+          matching: find.byType(InkWell),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(StudentsDashboardWidget.heartbeatSearchInterval);
+      await tester.pump();
+
+      expect(heartbeatPayloads, hasLength(1));
+      expect(find.text('Пока никого не нашли'), findsOneWidget);
+      expect(find.text('Начать поиск'), findsOneWidget);
+      expect(find.text('Ищем собеседника'), findsNothing);
+      expect(find.text('Остановить поиск'), findsNothing);
+
+      await tester.pump(StudentsDashboardWidget.heartbeatSearchInterval);
+      await tester.pump();
+      expect(heartbeatPayloads, hasLength(1));
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    }
+
+    await verifyInactiveHeartbeat('inactive');
+    await verifyInactiveHeartbeat('not_found');
+    await verifyInactiveHeartbeat('request_id_required');
+    await verifyInactiveHeartbeat('request_mismatch');
+  });
+
   testWidgets(
       'student dashboard handles start search response without request id',
       (tester) async {
