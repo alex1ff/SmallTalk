@@ -144,6 +144,19 @@ function getCleanupRestoreSearchParticipantIds(sessionData = {}) {
   return readConnectedSignalParticipantIds(sessionData);
 }
 
+function buildJoinTimeoutParticipantState(sessionData = {}) {
+  const participantIds = readSessionParticipantIds(sessionData);
+  const joinedParticipantIds = readConnectedSignalParticipantIds(sessionData);
+  const joinedParticipantIdSet = new Set(joinedParticipantIds);
+  return {
+    participantIds,
+    joinedParticipantIds,
+    missingParticipantIds: participantIds.filter(
+      (participantId) => !joinedParticipantIdSet.has(participantId),
+    ),
+  };
+}
+
 function buildExpiredSessionCleanupPayload({
   db,
   sessionId,
@@ -156,6 +169,10 @@ function buildExpiredSessionCleanupPayload({
     sessionData.status === VIDEO_SESSION_STATUS.CONNECTING && !wasConnected ?
       VIDEO_SESSION_STATUS.EXPIRED :
       VIDEO_SESSION_STATUS.ENDED;
+  const joinTimeoutParticipantState =
+    terminalStatus === VIDEO_SESSION_STATUS.EXPIRED ?
+      buildJoinTimeoutParticipantState(sessionData) :
+      null;
   const startTime =
     sessionData.startedAt?.toMillis?.() ||
     sessionData.createdAt?.toMillis?.() ||
@@ -193,6 +210,12 @@ function buildExpiredSessionCleanupPayload({
   if (terminalStatus === VIDEO_SESSION_STATUS.EXPIRED) {
     sessionUpdate.expiredAt = admin.firestore.FieldValue.serverTimestamp();
     sessionUpdate.expireReason = "join_timeout";
+    sessionUpdate.sessionMetadata.joinTimeoutParticipantIds =
+      joinTimeoutParticipantState.participantIds;
+    sessionUpdate.sessionMetadata.joinTimeoutJoinedParticipantIds =
+      joinTimeoutParticipantState.joinedParticipantIds;
+    sessionUpdate.sessionMetadata.joinTimeoutMissingParticipantIds =
+      joinTimeoutParticipantState.missingParticipantIds;
   }
 
   if (pairHistoryWrite) {
@@ -398,6 +421,7 @@ exports.cleanupExpiredSessions = functions
   });
 
 exports.__private__ = {
+  buildJoinTimeoutParticipantState,
   buildRestoreSearchExcludedCandidateIdsByParticipantId,
   buildExpiredSessionCleanupPayload,
   getCleanupRestoreSearchParticipantIds,

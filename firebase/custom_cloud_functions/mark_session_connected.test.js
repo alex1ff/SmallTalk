@@ -496,6 +496,11 @@ test("non-joinable sessions cannot be marked connected", () => {
     userId: "student-a",
     nowMillis,
   });
+  const terminalExpiredDecision = buildMarkSessionConnectedDecision({
+    sessionData: acceptedSession({ status: "expired" }),
+    userId: "student-a",
+    nowMillis,
+  });
   const expiredDecision = buildMarkSessionConnectedDecision({
     sessionData: acceptedSession({
       expiresAt: {
@@ -518,6 +523,8 @@ test("non-joinable sessions cannot be marked connected", () => {
 
   assert.equal(endedDecision.ok, false);
   assert.equal(endedDecision.code, "failed-precondition");
+  assert.equal(terminalExpiredDecision.ok, false);
+  assert.equal(terminalExpiredDecision.code, "failed-precondition");
   assert.equal(expiredDecision.ok, false);
   assert.equal(expiredDecision.code, "failed-precondition");
   assert.equal(joinDeadlineDecision.ok, false);

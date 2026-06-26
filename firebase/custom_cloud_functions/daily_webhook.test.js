@@ -705,6 +705,18 @@ test("Daily webhook update rejects nonparticipants and non-joinable sessions", (
   assert.deepEqual(
     buildDailyWebhookSessionUpdate({
       event,
+      sessionData: activeSession({status: "expired"}),
+      nowMillis: NOW_MILLIS,
+    }),
+    {
+      ok: false,
+      reason: "session_not_joinable",
+      update: null,
+    },
+  );
+  assert.deepEqual(
+    buildDailyWebhookSessionUpdate({
+      event,
       sessionData: activeSession({
         status: "connecting",
       }),

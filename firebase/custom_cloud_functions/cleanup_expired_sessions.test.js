@@ -8,6 +8,7 @@ const {
 } = require("./match_repeat_prevention");
 const {
   __private__: {
+    buildJoinTimeoutParticipantState,
     buildRestoreSearchExcludedCandidateIdsByParticipantId,
     buildExpiredSessionCleanupPayload,
     getCleanupRestoreSearchParticipantIds,
@@ -141,7 +142,92 @@ test("never-connected connecting sessions expire instead of ending", () => {
   assert.notEqual(payload.sessionUpdate.acceptAttemptId, undefined);
   assert.equal(payload.sessionUpdate.expireReason, "join_timeout");
   assert.equal(payload.sessionUpdate.sessionMetadata.endReason, "join_timeout");
+  assert.deepEqual(
+    payload.sessionUpdate.sessionMetadata.joinTimeoutParticipantIds,
+    ["student-a", "teacher-b"],
+  );
+  assert.deepEqual(
+    payload.sessionUpdate.sessionMetadata.joinTimeoutJoinedParticipantIds,
+    [],
+  );
+  assert.deepEqual(
+    payload.sessionUpdate.sessionMetadata.joinTimeoutMissingParticipantIds,
+    ["student-a", "teacher-b"],
+  );
   assert.equal(payload.pairHistoryWrite, null);
+});
+
+test("one-sided room join timeout expires the pair without repeat history", () => {
+  const db = admin.firestore();
+  const endedAtMillis = Date.parse("2026-04-14T11:05:00Z");
+  const sessionRef = db.collection("videoSessions").doc("one-sided-timeout");
+  const sessionData = {
+    status: "connecting",
+    requesterId: "student-a",
+    responderId: "student-b",
+    participantIds: ["student-a", "student-b"],
+    createdAt: admin.firestore.Timestamp.fromMillis(
+      endedAtMillis - 60 * 1000,
+    ),
+    sessionMetadata: {
+      roomJoinParticipantSignals: {
+        "student-a": {
+          source: "dailyWebhook",
+          joinedAt: admin.firestore.Timestamp.fromMillis(
+            endedAtMillis - 30 * 1000,
+          ),
+        },
+      },
+      roomJoinedParticipantIds: ["student-a"],
+      roomJoinSignalsComplete: false,
+    },
+  };
+
+  const payload = buildExpiredSessionCleanupPayload({
+    db,
+    sessionId: sessionRef.id,
+    sessionRef,
+    sessionData,
+    endedAtMillis,
+  });
+
+  assert.equal(payload.sessionUpdate.status, "expired");
+  assert.equal(payload.sessionUpdate.expireReason, "join_timeout");
+  assert.equal(payload.sessionUpdate.sessionMetadata.endReason, "join_timeout");
+  assert.deepEqual(
+    payload.sessionUpdate.sessionMetadata.joinTimeoutParticipantIds,
+    ["student-a", "student-b"],
+  );
+  assert.deepEqual(
+    payload.sessionUpdate.sessionMetadata.joinTimeoutJoinedParticipantIds,
+    ["student-a"],
+  );
+  assert.deepEqual(
+    payload.sessionUpdate.sessionMetadata.joinTimeoutMissingParticipantIds,
+    ["student-b"],
+  );
+  assert.equal(payload.pairHistoryWrite, null);
+});
+
+test("join timeout participant state ignores nonparticipants", () => {
+  const state = buildJoinTimeoutParticipantState({
+    status: "connecting",
+    requesterId: "student-a",
+    responderId: "student-b",
+    participantIds: ["student-a", "student-b"],
+    sessionMetadata: {
+      roomJoinParticipantSignals: {
+        "student-a": {source: "markSessionConnected"},
+        "unknown-user": {source: "dailyWebhook"},
+      },
+    },
+  });
+
+  assert.deepEqual(state, {
+    participantIds: ["student-a", "student-b"],
+    joinedParticipantIds: ["student-a"],
+    missingParticipantIds: ["student-b"],
+  });
 });
 
 test("cleanup deadline uses join deadline for connecting sessions", () => {
