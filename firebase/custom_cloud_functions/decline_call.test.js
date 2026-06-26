@@ -303,6 +303,58 @@ test("declineCall clears pending responder fields on terminal decline", () => {
   assert.ok(responderRoleDeleteIndex > responderDeleteIndex);
 });
 
+test("declineCall backend either hands off or cancels terminal pair", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "decline_call.js"),
+    "utf8",
+  );
+
+  const notificationIndex = source.indexOf(
+    "const notification = nextTutor",
+  );
+  const pairLockIndex = source.indexOf(
+    "if (preparedPairLock) {",
+    notificationIndex,
+  );
+  const applyPairLockIndex = source.indexOf(
+    "applyPreparedPairLockWrites(transaction, preparedPairLock)",
+    pairLockIndex,
+  );
+  const terminalReleaseIndex = source.indexOf(
+    "await releaseSessionPairLocksInTransaction({",
+    applyPairLockIndex,
+  );
+  const terminalUpdateIndex = source.indexOf(
+    "transaction.update(sessionRef, sessionUpdate)",
+    terminalReleaseIndex,
+  );
+  const cancelledStatusIndex = source.indexOf(
+    "sessionUpdate.status = VIDEO_SESSION_STATUS.CANCELLED",
+  );
+  const cancelReasonIndex = source.indexOf(
+    "sessionUpdate.cancelReason = terminalStopReason",
+    cancelledStatusIndex,
+  );
+  const nextPushIndex = source.indexOf(
+    "await sendNotificationToNextTutor(",
+    terminalUpdateIndex,
+  );
+  const dailyCleanupIndex = source.indexOf(
+    "await deleteDailyRoomForSession({",
+    terminalUpdateIndex,
+  );
+
+  assert.ok(notificationIndex > 0);
+  assert.ok(pairLockIndex > notificationIndex);
+  assert.ok(applyPairLockIndex > pairLockIndex);
+  assert.ok(terminalReleaseIndex > applyPairLockIndex);
+  assert.ok(terminalUpdateIndex > terminalReleaseIndex);
+  assert.ok(cancelledStatusIndex > 0);
+  assert.ok(cancelReasonIndex > cancelledStatusIndex);
+  assert.ok(dailyCleanupIndex > terminalUpdateIndex);
+  assert.ok(nextPushIndex > terminalUpdateIndex);
+});
+
 test("declineCall excludes declined responder during teacher handoff", () => {
   const lockInput = buildDeclineNextResponderPairLockInput({
     db: "db",

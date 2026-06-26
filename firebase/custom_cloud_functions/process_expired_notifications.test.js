@@ -431,6 +431,62 @@ test("notification timeout clears pending responder fields on terminal expiry", 
   assert.ok(expiredStatusIndex > responderRoleDeleteIndex);
 });
 
+test("notification timeout backend either hands off or expires terminal pair", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "process_expired_notifications.js"),
+    "utf8",
+  );
+
+  const terminalBranchIndex = source.indexOf("if (!nextTutor) {");
+  const terminalReleaseIndex = source.indexOf(
+    "await releaseSessionPairLocksInTransaction({",
+    terminalBranchIndex,
+  );
+  const terminalSessionUpdateIndex = source.indexOf(
+    "transaction.update(sessionRef, {",
+    terminalReleaseIndex,
+  );
+  const expiredStatusIndex = source.indexOf(
+    "status: VIDEO_SESSION_STATUS.EXPIRED",
+    terminalSessionUpdateIndex,
+  );
+  const expireReasonIndex = source.indexOf(
+    "expireReason: terminalStopReason",
+    expiredStatusIndex,
+  );
+  const handoffNotificationIndex = source.indexOf(
+    "const notification = createIncomingCallNotificationInTransaction({",
+    terminalSessionUpdateIndex,
+  );
+  const handoffPairLockIndex = source.indexOf(
+    "applyPreparedPairLockWrites(transaction, preparedPairLock)",
+    handoffNotificationIndex,
+  );
+  const pushValidationIndex = source.indexOf(
+    "const validationReads = [sessionRef.get()]",
+    handoffPairLockIndex,
+  );
+  const sendPushIndex = source.indexOf(
+    "await sendVoipPushToTutor(transition.nextTutor",
+    pushValidationIndex,
+  );
+  const dailyCleanupIndex = source.indexOf(
+    "await deleteDailyRoomForSession({",
+    terminalSessionUpdateIndex,
+  );
+
+  assert.ok(terminalBranchIndex > 0);
+  assert.ok(terminalReleaseIndex > terminalBranchIndex);
+  assert.ok(terminalSessionUpdateIndex > terminalReleaseIndex);
+  assert.ok(expiredStatusIndex > terminalSessionUpdateIndex);
+  assert.ok(expireReasonIndex > expiredStatusIndex);
+  assert.ok(handoffNotificationIndex > terminalSessionUpdateIndex);
+  assert.ok(handoffPairLockIndex > handoffNotificationIndex);
+  assert.ok(pushValidationIndex > handoffPairLockIndex);
+  assert.ok(sendPushIndex > pushValidationIndex);
+  assert.ok(dailyCleanupIndex > terminalSessionUpdateIndex);
+});
+
 test("notification timeout excludes timed-out responder during teacher handoff", () => {
   const lockInput = buildTimeoutNextResponderPairLockInput({
     db: "db",
