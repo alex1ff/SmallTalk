@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:small_talk/auth/firebase_auth/auth_util.dart';
 import 'package:small_talk/backend/backend.dart';
@@ -26,6 +27,7 @@ const int _permissionDenied = 0;
 const int _permissionGranted = 1;
 
 int _permissionStatus = _permissionGranted;
+Map<int, int> _permissionStatusByPermission = <int, int>{};
 int _checkPermissionStatusCallCount = 0;
 int _requestPermissionsCallCount = 0;
 Future<Map<int, int>> Function(List<int> permissions)?
@@ -168,6 +170,7 @@ void main() {
 
   setUp(() {
     _permissionStatus = _permissionGranted;
+    _permissionStatusByPermission = <int, int>{};
     _checkPermissionStatusCallCount = 0;
     _requestPermissionsCallCount = 0;
     _requestPermissionsHandler = null;
@@ -216,13 +219,20 @@ void main() {
             return handler(permissions);
           }
           return <int, int>{
-            for (final permission in permissions) permission: _permissionStatus,
+            for (final permission in permissions)
+              permission: _permissionStatusByPermission[permission] ??
+                  _permissionStatus,
           };
         case 'checkPermissionStatus':
           _checkPermissionStatusCallCount += 1;
           final error = _checkPermissionStatusError;
           if (error != null) {
             throw error;
+          }
+          final permission = call.arguments;
+          if (permission is int) {
+            return _permissionStatusByPermission[permission] ??
+                _permissionStatus;
           }
           return _permissionStatus;
         case 'checkServiceStatus':
@@ -7550,40 +7560,61 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('student dashboard does not start search when permissions denied',
-      (tester) async {
-    _permissionStatus = _permissionDenied;
-    setActiveStudent('student-permission-denied-test');
+  for (final deniedPermissionScenario in <String, int>{
+    'camera permission denied': Permission.camera.value,
+    'microphone permission denied': Permission.microphone.value,
+  }.entries) {
+    testWidgets(
+        'student dashboard does not start search when '
+        '${deniedPermissionScenario.key}', (tester) async {
+      final startPayloads = <Map<String, dynamic>>[];
+      _permissionStatusByPermission[deniedPermissionScenario.value] =
+          _permissionDenied;
+      setActiveStudent(
+        'student-${deniedPermissionScenario.value}-permission-denied-test',
+      );
 
-    await tester.pumpWidget(
-      _buildDashboardTestApp(const StudentsDashboardWidget()),
-    );
-    await tester.pump();
+      await tester.pumpWidget(
+        _buildDashboardTestApp(
+          StudentsDashboardWidget(
+            startSearchRequest: (payload) async {
+              startPayloads.add(Map<String, dynamic>.from(payload));
+              return <String, dynamic>{
+                'requestId': 'request-unexpected-start',
+              };
+            },
+          ),
+        ),
+      );
+      await tester.pump();
 
-    final startSearchText = find.text('Начать поиск');
-    expect(startSearchText, findsOneWidget);
+      final startSearchButton =
+          find.widgetWithText(StudentStartSearchButton, 'Начать поиск');
+      expect(startSearchButton, findsOneWidget);
 
-    await tester.tap(
-      find.ancestor(
-        of: startSearchText,
-        matching: find.byType(InkWell),
-      ),
-    );
-    await tester.pump();
+      await tester.tap(startSearchButton);
+      await tester.pump();
 
-    expect(find.text('Начать поиск'), findsOneWidget);
-    expect(find.text('Остановить поиск'), findsNothing);
-    expect(find.text('Ищем собеседника'), findsNothing);
-    expect(find.text('Соединяем'), findsNothing);
-    expect(find.text('Разрешите камеру и микрофон'), findsOneWidget);
+      expect(find.text('Разрешите камеру и микрофон'), findsOneWidget);
+      expect(startPayloads, isEmpty);
+      expect(startSearchButton, findsOneWidget);
+      expect(
+        tester.widget<StudentStartSearchButton>(startSearchButton).isActive,
+        isFalse,
+      );
+      expect(find.text('Остановить поиск'), findsNothing);
+      expect(find.text('Ищем собеседника'), findsNothing);
+      expect(find.text('Соединяем'), findsNothing);
+      expect(_checkPermissionStatusCallCount, greaterThan(0));
 
-    await tester.pump(const Duration(minutes: 10));
-    await tester.pump();
+      await tester.pump(const Duration(minutes: 10));
+      await tester.pump();
 
-    expect(find.text('Пока никого не нашли'), findsNothing);
+      expect(find.text('Пока никого не нашли'), findsNothing);
 
-    await tester.pumpWidget(const SizedBox.shrink());
-  });
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
 
   testWidgets('student dashboard handles permission plugin errors and retries',
       (tester) async {
