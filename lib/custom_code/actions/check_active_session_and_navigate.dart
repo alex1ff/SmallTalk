@@ -746,6 +746,24 @@ bool _activeSessionSnapshotIsJoinableParticipant(
   return _activeSessionIsJoinableParticipant(data, userId);
 }
 
+bool _activeSessionSnapshotCanResumeConnection(
+  DocumentSnapshot<Map<String, dynamic>>? snapshot,
+  String userId,
+) {
+  if (snapshot == null || !snapshot.exists) {
+    return true;
+  }
+  final data = snapshot.data();
+  if (data == null ||
+      _activeSessionIsTerminalStatus(data['status'] as String?)) {
+    return false;
+  }
+  if ((data['status'] as String?) == 'pending_confirmation') {
+    return _activeSessionHasParticipant(data, userId);
+  }
+  return _activeSessionIsJoinableParticipant(data, userId);
+}
+
 Future<_ActiveSessionRecoveryCandidate?> _resolveActiveSessionCandidate({
   required Iterable<DocumentSnapshot<Map<String, dynamic>>> candidates,
   required String userId,
@@ -932,7 +950,7 @@ Future<bool> checkActiveSessionAndNavigate(BuildContext context) async {
           if (activeSearchLinkedSessionTerminal) {
             return false;
           }
-          if (!_activeSessionSnapshotIsJoinableParticipant(
+          if (!_activeSessionSnapshotCanResumeConnection(
             activeSearchSession,
             userId,
           )) {

@@ -34,6 +34,9 @@ Future<Map<int, int>> Function(List<int> permissions)?
     _requestPermissionsHandler;
 Object? _checkPermissionStatusError;
 
+DateTime _futureJoinDeadline() =>
+    DateTime.now().add(const Duration(minutes: 5));
+
 Widget _buildDashboardTestApp(
   Widget child, {
   double textScaleFactor = 1.0,
@@ -776,7 +779,8 @@ void main() {
         find.widgetWithText(StudentStartSearchButton, 'Начать поиск');
     expect(blockedStartSearchButton, findsOneWidget);
     expect(
-      tester.widget<StudentStartSearchButton>(blockedStartSearchButton)
+      tester
+          .widget<StudentStartSearchButton>(blockedStartSearchButton)
           .isActive,
       isFalse,
     );
@@ -3318,6 +3322,7 @@ void main() {
           'status': 'connecting',
           'studentId': userId,
           'tutorId': teacherId,
+          'joinDeadlineAt': _futureJoinDeadline(),
           'dailyRoomUrl': 'https://stale-daily.test/$sessionId',
           'dailyRoomName': 'stale-room-$sessionId',
           'studentNavigationTriggered': false,
@@ -4810,6 +4815,7 @@ void main() {
             'status': 'connecting',
             'studentId': userId,
             'tutorId': 'teacher-token-room-url-test',
+            'joinDeadlineAt': _futureJoinDeadline(),
           },
           FirebaseFirestore.instance.collection('videoSessions').doc(sessionId),
         );
@@ -4891,6 +4897,7 @@ void main() {
               'status': 'connecting',
               'studentId': userId,
               'tutorId': 'teacher-stale-trigger-test',
+              'joinDeadlineAt': _futureJoinDeadline(),
               'dailyRoomUrl': 'https://daily.test/$staleSessionId',
             },
             FirebaseFirestore.instance
@@ -4904,6 +4911,7 @@ void main() {
             'status': 'connecting',
             'studentId': userId,
             'tutorId': 'teacher-current-trigger-test',
+            'joinDeadlineAt': _futureJoinDeadline(),
             'dailyRoomUrl': 'https://daily.test/$currentSessionId',
           },
           FirebaseFirestore.instance
@@ -4980,6 +4988,7 @@ void main() {
             'status': 'connecting',
             'studentId': userId,
             'tutorId': 'teacher-current-lacks-token-test',
+            'joinDeadlineAt': _futureJoinDeadline(),
           },
           FirebaseFirestore.instance
               .collection('videoSessions')
@@ -4992,6 +5001,7 @@ void main() {
               'status': 'connecting',
               'studentId': userId,
               'tutorId': 'teacher-trigger-has-token-test',
+              'joinDeadlineAt': _futureJoinDeadline(),
               'dailyRoomUrl': 'https://daily.test/$triggerSessionId',
             },
             FirebaseFirestore.instance
@@ -5074,6 +5084,7 @@ void main() {
             'status': 'connecting',
             'studentId': userId,
             'tutorId': 'teacher-current-token-retry-test',
+            'joinDeadlineAt': _futureJoinDeadline(),
           },
           FirebaseFirestore.instance
               .collection('videoSessions')
@@ -5086,6 +5097,7 @@ void main() {
               'status': 'connecting',
               'studentId': userId,
               'studentNavigationTriggered': true,
+              'joinDeadlineAt': _futureJoinDeadline(),
               'dailyRoomUrl': 'https://daily.test/$triggerSessionId',
             },
             FirebaseFirestore.instance
@@ -5171,6 +5183,7 @@ void main() {
                 'studentId': userId,
                 'tutorId': 'teacher-older-trigger-$i-test',
                 'studentNavigationTriggered': true,
+                'joinDeadlineAt': _futureJoinDeadline(),
                 'dailyRoomUrl':
                     'https://daily.test/session-accepted-older-trigger-$i-test',
                 'navigationTimestamp': DateTime(2026, 1, 1, 10, i),
@@ -5186,6 +5199,7 @@ void main() {
               'studentId': userId,
               'tutorId': 'teacher-legacy-trigger-test',
               'studentNavigationTriggered': true,
+              'joinDeadlineAt': _futureJoinDeadline(),
               'dailyRoomUrl': 'https://daily.test/$legacySessionId',
               'acceptedAt': DateTime(2026, 1, 1, 12),
             },
@@ -5200,6 +5214,7 @@ void main() {
               'studentId': userId,
               'tutorId': 'teacher-newer-trigger-test',
               'studentNavigationTriggered': true,
+              'joinDeadlineAt': _futureJoinDeadline(),
               'dailyRoomUrl': 'https://daily.test/$newerSessionId',
               'navigationTimestamp': DateTime(2026, 1, 1, 11),
             },
@@ -5359,6 +5374,7 @@ void main() {
             'status': 'connecting',
             'studentId': userId,
             'tutorId': 'teacher-current-query-fails-test',
+            'joinDeadlineAt': _futureJoinDeadline(),
             'dailyRoomUrl': 'https://daily.test/$currentSessionId',
           },
           FirebaseFirestore.instance
@@ -5456,6 +5472,7 @@ void main() {
               'responderId': userId,
               'participantIds': [userId, 'teacher-participant-trigger-test'],
               'tutorNavigationTriggered': true,
+              'joinDeadlineAt': _futureJoinDeadline(),
               'dailyRoomUrl': 'https://daily.test/$triggerSessionId',
             },
             FirebaseFirestore.instance
@@ -5543,6 +5560,7 @@ void main() {
                     userId,
                     'peer-neutral-fallback-$label-test',
                   ],
+                'joinDeadlineAt': _futureJoinDeadline(),
                 'createdAt': DateTime(2026, 1, 1, 12),
                 'dailyRoomUrl': 'https://daily.test/$sessionId',
                 ...neutralFields,
@@ -5659,6 +5677,7 @@ void main() {
               'status': 'connecting',
               'requesterId': userId,
               'responderId': 'teacher-requester-participant-trigger-test',
+              'joinDeadlineAt': _futureJoinDeadline(),
               'participantIds': [
                 userId,
                 'teacher-requester-participant-trigger-test',
@@ -5679,6 +5698,7 @@ void main() {
                 userId,
                 'teacher-ambiguous-participant-trigger-test',
               ],
+              'joinDeadlineAt': _futureJoinDeadline(),
               'tutorNavigationTriggered': true,
               'createdAt': DateTime(2026, 1, 1, 11),
               'dailyRoomUrl': 'https://daily.test/$ambiguousSessionId',
@@ -5759,6 +5779,7 @@ void main() {
             'status': 'connecting',
             'studentId': userId,
             'tutorId': 'teacher-foreign-triggered-flag-test',
+            'joinDeadlineAt': _futureJoinDeadline(),
             'tutorNavigationTriggered': true,
             'studentNavigationTriggered': false,
           },
@@ -5834,6 +5855,7 @@ void main() {
             'requesterId': 'student-neutral-flag-test',
             'responderId': userId,
             'participantIds': ['student-neutral-flag-test', userId],
+            'joinDeadlineAt': _futureJoinDeadline(),
             'tutorNavigationTriggered': false,
             'studentNavigationTriggered': false,
           },
