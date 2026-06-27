@@ -4850,6 +4850,108 @@ if (!hasFirestoreEmulator) {
     }
   });
 
+  test("startSearch callable accepts only one-step adjacent level", async () => {
+    const requesterUid = uniqueId("one-step-requester");
+    const adjacentStudentUid = uniqueId("one-step-adjacent-student");
+    const farStudentUid = uniqueId("one-step-far-student");
+    const cityKey = cityKeyForUid(
+      `${requesterUid}-${adjacentStudentUid}-${farStudentUid}`,
+    );
+    const refsToDelete = [
+      userRef(requesterUid),
+      userRef(adjacentStudentUid),
+      userRef(farStudentUid),
+      searchRequestRef(requesterUid),
+      searchRequestRef(adjacentStudentUid),
+      searchRequestRef(farStudentUid),
+    ];
+    let sessionId = "";
+
+    try {
+      await Promise.all(refsToDelete.map(deleteDoc));
+      await seedStudent(farStudentUid, {
+        display_name: "Far Student",
+        level: "A1",
+        profileCity: {key: cityKey},
+      });
+      await seedStudent(adjacentStudentUid, {
+        display_name: "Adjacent Student",
+        level: "B2",
+        profileCity: {key: cityKey},
+      });
+      await seedStudent(requesterUid, {
+        display_name: "Requester Student",
+        level: "B1",
+        profileCity: {key: cityKey},
+      });
+
+      const farResponse = await wrappedStartSearch({
+        preferredPartnerLevel: "B1",
+        appState: "foreground",
+      }, authContext(farStudentUid));
+      await searchRequestRef(farStudentUid).update({
+        createdAt: admin.firestore.Timestamp.fromMillis(
+          Date.now() - 10 * 60 * 1000,
+        ),
+        updatedAt: admin.firestore.Timestamp.now(),
+        heartbeatAt: admin.firestore.Timestamp.now(),
+      });
+      const adjacentResponse = await wrappedStartSearch({
+        preferredPartnerLevel: "B1",
+        appState: "foreground",
+      }, authContext(adjacentStudentUid));
+      await searchRequestRef(adjacentStudentUid).update({
+        createdAt: admin.firestore.Timestamp.fromMillis(
+          Date.now() - 2 * 60 * 1000,
+        ),
+        updatedAt: admin.firestore.Timestamp.now(),
+        heartbeatAt: admin.firestore.Timestamp.now(),
+      });
+
+      const response = await wrappedStartSearch({
+        preferredPartnerLevel: "B1",
+        appState: "foreground",
+      }, authContext(requesterUid));
+      sessionId = response.sessionId;
+      const sessionSnapshot = await db
+        .collection("videoSessions")
+        .doc(response.sessionId)
+        .get();
+      const sessionData = sessionSnapshot.data();
+      const farRequest = (await searchRequestRef(farStudentUid).get()).data();
+      const adjacentRequest =
+        (await searchRequestRef(adjacentStudentUid).get()).data();
+
+      assert.equal(farResponse.status, "active");
+      assert.equal(adjacentResponse.status, "active");
+      assert.equal(response.status, "matched");
+      assert.equal(response.matchedUserId, adjacentStudentUid);
+      assert.equal(response.matchedRole, "student");
+      assert.equal(response.scenario, "student_student");
+      assert.equal(sessionSnapshot.exists, true);
+      assert.deepEqual(sessionData.availableTutors, [adjacentStudentUid]);
+      assert.deepEqual(
+        sessionData.matchContext.candidateIds,
+        [adjacentStudentUid],
+      );
+      assert.equal(
+        sessionData.matchContext.selectedResponderId,
+        adjacentStudentUid,
+      );
+      assert.equal(sessionData.currentResponderId, adjacentStudentUid);
+      assert.equal(sessionData.currentResponderRole, "student");
+      assert.equal(adjacentRequest.status, SEARCH_REQUEST_STATUS.MATCHED);
+      assert.equal(adjacentRequest.currentSessionId, response.sessionId);
+      assert.equal(farRequest.status, SEARCH_REQUEST_STATUS.ACTIVE);
+      assert.equal(farRequest.currentSessionId, null);
+    } finally {
+      if (sessionId) {
+        await deleteDoc(db.collection("videoSessions").doc(sessionId));
+      }
+      await Promise.all(refsToDelete.map(deleteDoc));
+    }
+  });
+
   test("startSearch callable creates one session under concurrent starts", async () => {
     const firstUid = uniqueId("student-concurrent-a");
     const secondUid = uniqueId("student-concurrent-b");
