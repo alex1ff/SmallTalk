@@ -234,6 +234,92 @@ test("expired unmatched search request cleanup uses expiresAt cutoff", () => {
   );
 });
 
+test("10 minutes without pair expires active search request", () => {
+  const writerOperations = [];
+  const writer = {
+    update(ref, data) {
+      writerOperations.push({type: "update", ref, data});
+    },
+  };
+  const searchStartedAtMillis =
+    fixedNowMillis - SEARCH_REQUEST_TIMING.MAX_SEARCH_SECONDS * 1000;
+  const searchExpiresAtMillis =
+    searchStartedAtMillis + SEARCH_REQUEST_TIMING.MAX_SEARCH_SECONDS * 1000;
+
+  const freshBeforeTimeoutResult = queueExpiredSearchRequestCleanup({
+    writer,
+    doc: {
+      id: "student-search-fresh",
+      ref: {path: "searchRequests/student-search-fresh"},
+      data: () => activeRequest({
+        appState: SEARCH_REQUEST_APP_STATE.FOREGROUND,
+        currentSessionId: null,
+        activeSessionId: null,
+        matchedSessionId: null,
+        matchedUserId: null,
+        matchedRole: null,
+        pairAttemptId: null,
+        heartbeatAt: timestampFromMillis(fixedNowMillis - 30 * 1000),
+        createdAt: timestampFromMillis(searchStartedAtMillis),
+        expiresAt: timestampFromMillis(fixedNowMillis + 1),
+      }),
+    },
+    nowMillis: fixedNowMillis,
+    serverTimestamp,
+    fieldDelete,
+  });
+  const expiredWithoutPairResult = queueExpiredSearchRequestCleanup({
+    writer,
+    doc: {
+      id: "student-search-timeout",
+      ref: {path: "searchRequests/student-search-timeout"},
+      data: () => activeRequest({
+        appState: SEARCH_REQUEST_APP_STATE.FOREGROUND,
+        currentSessionId: null,
+        activeSessionId: null,
+        matchedSessionId: null,
+        matchedUserId: null,
+        matchedRole: null,
+        pairAttemptId: null,
+        heartbeatAt: timestampFromMillis(fixedNowMillis - 30 * 1000),
+        createdAt: timestampFromMillis(searchStartedAtMillis),
+        expiresAt: timestampFromMillis(searchExpiresAtMillis),
+      }),
+    },
+    nowMillis: fixedNowMillis,
+    serverTimestamp,
+    fieldDelete,
+  });
+
+  assert.equal(searchExpiresAtMillis, fixedNowMillis);
+  assert.equal(freshBeforeTimeoutResult.cleaned, false);
+  assert.equal(expiredWithoutPairResult.cleaned, true);
+  assert.equal(expiredWithoutPairResult.requestId, "request-a");
+  assert.equal(writerOperations.length, 1);
+  assert.equal(
+    writerOperations[0].ref.path,
+    "searchRequests/student-search-timeout",
+  );
+  assert.equal(writerOperations[0].data.status, "expired");
+  assert.equal(writerOperations[0].data.stopReason, "search_timeout");
+  assert.equal(writerOperations[0].data.stoppedAt, serverTimestamp);
+  assert.equal(writerOperations[0].data.updatedAt, serverTimestamp);
+  assert.equal(writerOperations[0].data.currentSessionId, null);
+  assert.equal(writerOperations[0].data.activeSessionId, fieldDelete);
+  assert.equal(writerOperations[0].data.matchedSessionId, fieldDelete);
+  assert.equal(writerOperations[0].data.matchedResponderId, fieldDelete);
+  assert.equal(writerOperations[0].data.matchedUserId, null);
+  assert.equal(writerOperations[0].data.matchedRole, null);
+  assert.equal(writerOperations[0].data.pairAttemptId, null);
+  assert.deepEqual(writerOperations[0].data.attemptExcludedCandidateIds, []);
+  assert.equal(writerOperations[0].data.lockOwner, null);
+  assert.equal(writerOperations[0].data.lockExpiresAt, null);
+  assert.deepEqual(writerOperations[0].data.lastError, {
+    code: "search_timeout",
+    message: "Search request expired without a match",
+  });
+});
+
 test("expired unmatched cleanup marks request expired and clears locks", () => {
   const update = buildExpiredSearchRequestCleanupUpdate({
     requestData: activeRequest({status: "matching"}),
