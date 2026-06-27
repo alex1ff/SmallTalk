@@ -5615,6 +5615,9 @@ if (!hasFirestoreEmulator) {
         assert.equal(dailyCalls.length, 1);
         assert.equal(dailyCalls[0].method, "post");
         assert.equal(dailyCalls[0].url, "https://api.daily.co/v1/rooms");
+        const createdRoomName = dailyCalls[0].body?.name;
+        assert.equal(typeof createdRoomName, "string");
+        assert.notEqual(createdRoomName, "");
         assert.equal(pendingSessionSnapshot.exists, true);
         assert.equal(pendingSessionData.status, "pending_confirmation");
         assert.equal(pendingSessionData.pairStatus, "pending_confirmation");
@@ -5622,6 +5625,11 @@ if (!hasFirestoreEmulator) {
         assert.equal(pendingSessionData.requesterId, studentUid);
         assert.equal(pendingSessionData.responderId, teacherUid);
         assert.equal(pendingSessionData.responderRole, "native_speaker");
+        assert.equal(pendingSessionData.dailyRoomName, createdRoomName);
+        assert.equal(
+          pendingSessionData.dailyRoomUrl,
+          `https://smalltalk.daily.co/${createdRoomName}`,
+        );
         assert.equal(pendingSessionData.currentResponderId, teacherUid);
         assert.equal(pendingSessionData.currentTutorId, teacherUid);
         assert.equal(
@@ -5674,7 +5682,7 @@ if (!hasFirestoreEmulator) {
         assert.equal(
           dailyCalls[1].url,
           `https://api.daily.co/v1/rooms/${
-            encodeURIComponent(pendingSessionData.dailyRoomName)
+            encodeURIComponent(createdRoomName)
           }`,
         );
       });
@@ -5750,6 +5758,245 @@ if (!hasFirestoreEmulator) {
     assert.equal(teacherNotifications.docs[0].data().status, "declined");
     assert.equal(
       typeof teacherNotifications.docs[0].data().declinedAt.toMillis,
+      "function",
+    );
+    assert.equal(sentPushes.length, 1);
+  });
+
+  test("direct teacher call timeout expires without search restore", async () => {
+    const studentUid = uniqueId("student-direct-timeout");
+    const teacherUid = uniqueId("teacher-direct-timeout");
+    const otherTeacherUid = uniqueId("teacher-direct-timeout-other");
+    const cityKey = cityKeyForUid(
+      `${studentUid}-${teacherUid}-${otherTeacherUid}`,
+    );
+    await deleteDoc(userRef(studentUid));
+    await deleteDoc(userRef(teacherUid));
+    await deleteDoc(userRef(otherTeacherUid));
+    await deleteDoc(searchRequestRef(studentUid));
+    await deleteDoc(searchRequestRef(teacherUid));
+    await deleteDoc(searchRequestRef(otherTeacherUid));
+    await deleteDoc(db.collection("userPrivateTokens").doc(studentUid));
+    await deleteDoc(db.collection("userPrivateTokens").doc(teacherUid));
+    await deleteDoc(db.collection("userPrivateTokens").doc(otherTeacherUid));
+    await seedStudent(studentUid, {
+      display_name: "Student",
+      photo_url: "student-photo",
+      profileCity: {key: cityKey},
+    });
+    await seedTeacher(teacherUid, {
+      display_name: "Teacher",
+      photo_url: "teacher-photo",
+      profileCity: {key: cityKey},
+    });
+    await seedTeacher(otherTeacherUid, {
+      display_name: "Other Teacher",
+      photo_url: "other-teacher-photo",
+      profileCity: {key: cityKey},
+      availableSince: admin.firestore.Timestamp.fromMillis(Date.now() - 1000),
+    });
+    await db.collection("userPrivateTokens").doc(studentUid).set({
+      voipToken: `fcm-${studentUid}`,
+    });
+    await db.collection("userPrivateTokens").doc(teacherUid).set({
+      voipToken: `fcm-${teacherUid}`,
+    });
+    await db.collection("userPrivateTokens").doc(otherTeacherUid).set({
+      voipToken: `fcm-${otherTeacherUid}`,
+    });
+
+    const sentPushes = [];
+    const messaging = admin.messaging();
+    const originalMessagingSend = messaging.send;
+    messaging.send = async (message) => {
+      sentPushes.push(message);
+      return `mock-message-${sentPushes.length}`;
+    };
+
+    let createResponse = null;
+    let pendingSessionData = null;
+    let createdRoomName = null;
+    try {
+      await withMockDailyApi(async (dailyCalls) => {
+        createResponse = await wrappedCreateVideoSession({
+          directUserId: teacherUid,
+        }, authContext(studentUid));
+        const teacherNotifications = await db
+          .collection("notifications")
+          .where("recipientId", "==", teacherUid)
+          .where("sessionId", "==", createResponse.sessionId)
+          .get();
+        assert.equal(teacherNotifications.size, 1);
+        const teacherNotificationRef = teacherNotifications.docs[0].ref;
+        const pendingNotificationData = teacherNotifications.docs[0].data();
+        const pendingSessionSnapshot = await db
+          .collection("videoSessions")
+          .doc(createResponse.sessionId)
+          .get();
+        pendingSessionData = pendingSessionSnapshot.data();
+        const pendingStudentUser = (await userRef(studentUid).get()).data();
+        const pendingTeacherUser = (await userRef(teacherUid).get()).data();
+
+        assert.equal(createResponse.status, "calling");
+        assert.equal(createResponse.matchedTutors, 1);
+        assert.equal(dailyCalls.length, 1);
+        assert.equal(dailyCalls[0].method, "post");
+        assert.equal(dailyCalls[0].url, "https://api.daily.co/v1/rooms");
+        createdRoomName = dailyCalls[0].body?.name;
+        assert.equal(typeof createdRoomName, "string");
+        assert.notEqual(createdRoomName, "");
+        assert.equal(pendingSessionSnapshot.exists, true);
+        assert.equal(pendingSessionData.status, "pending_confirmation");
+        assert.equal(pendingSessionData.pairStatus, "pending_confirmation");
+        assert.equal(pendingSessionData.scenario, "student_teacher");
+        assert.equal(pendingSessionData.requesterId, studentUid);
+        assert.equal(pendingSessionData.responderId, teacherUid);
+        assert.equal(pendingSessionData.responderRole, "native_speaker");
+        assert.equal(pendingSessionData.dailyRoomName, createdRoomName);
+        assert.equal(
+          pendingSessionData.dailyRoomUrl,
+          `https://smalltalk.daily.co/${createdRoomName}`,
+        );
+        assert.equal(pendingSessionData.currentResponderId, teacherUid);
+        assert.equal(pendingSessionData.currentTutorId, teacherUid);
+        assert.equal(
+          pendingSessionData.currentResponderRole,
+          "native_speaker",
+        );
+        assert.equal(pendingSessionData.matchContext.matchMode, "direct");
+        assert.equal(pendingSessionData.matchContext.matcher, "directCall");
+        assert.deepEqual(pendingSessionData.searchRequestIds, {
+          requester: null,
+          responder: null,
+        });
+        assert.equal(
+          typeof pendingSessionData.responseExpiresAt.toMillis,
+          "function",
+        );
+        assert.equal(
+          pendingSessionData.responseExpiresAt.toMillis(),
+          pendingSessionData.confirmationExpiresAt.toMillis(),
+        );
+        assert.ok(
+          Math.abs(
+            pendingNotificationData.expiresAt.toMillis() -
+              pendingSessionData.responseExpiresAt.toMillis(),
+          ) < 1000,
+        );
+        assert.equal(
+          pendingStudentUser.currentSessionId,
+          createResponse.sessionId,
+        );
+        assert.equal(pendingStudentUser.isInCall, false);
+        assert.equal(
+          pendingTeacherUser.currentSessionId,
+          createResponse.sessionId,
+        );
+        assert.equal(pendingTeacherUser.isInCall, false);
+        await assertNoSearchRequestForUser(studentUid);
+        await assertNoSearchRequestForUser(teacherUid);
+        await assertNoSearchRequestForUser(otherTeacherUid);
+        assert.equal(pendingNotificationData.status, "sent");
+        assert.equal(
+          pendingNotificationData.acceptMode,
+          "responder_accepts",
+        );
+        assert.equal(
+          pendingNotificationData.tokenStrategy,
+          "accept_call",
+        );
+        assert.equal(sentPushes.length, 1);
+        const teacherPush = sentPushes[0];
+        assert.equal(teacherPush.token, `fcm-${teacherUid}`);
+        assert.equal(teacherPush.data.sessionId, createResponse.sessionId);
+        assert.equal(teacherPush.data.recipientId, teacherUid);
+        assert.equal(teacherPush.data.callerId, studentUid);
+        assert.equal(teacherPush.data.acceptMode, "responder_accepts");
+        assert.equal(teacherPush.data.tokenStrategy, "accept_call");
+
+        await teacherNotificationRef.update({
+          expiresAt: admin.firestore.Timestamp.fromMillis(Date.now() - 1000),
+        });
+        await wrappedProcessExpiredNotifications();
+        assert.equal(dailyCalls.length, 2);
+        assert.equal(dailyCalls[1].method, "delete");
+        assert.equal(
+          dailyCalls[1].url,
+          `https://api.daily.co/v1/rooms/${
+            encodeURIComponent(createdRoomName)
+          }`,
+        );
+      });
+    } finally {
+      messaging.send = originalMessagingSend;
+    }
+
+    const sessionSnapshot = await db
+      .collection("videoSessions")
+      .doc(createResponse.sessionId)
+      .get();
+    const sessionData = sessionSnapshot.data();
+    const studentUser = (await userRef(studentUid).get()).data();
+    const teacherUser = (await userRef(teacherUid).get()).data();
+    const otherTeacherUser = (await userRef(otherTeacherUid).get()).data();
+    const teacherNotifications = await db
+      .collection("notifications")
+      .where("recipientId", "==", teacherUid)
+      .where("sessionId", "==", createResponse.sessionId)
+      .get();
+    const sessionNotifications = await db
+      .collection("notifications")
+      .where("sessionId", "==", createResponse.sessionId)
+      .get();
+    const otherTeacherNotifications = await db
+      .collection("notifications")
+      .where("recipientId", "==", otherTeacherUid)
+      .where("sessionId", "==", createResponse.sessionId)
+      .get();
+
+    assert.equal(sessionSnapshot.exists, true);
+    assert.equal(sessionData.status, "expired");
+    assert.equal(sessionData.pairStatus, "expired");
+    assert.equal(sessionData.expireReason, "direct_call_timeout");
+    assert.equal(typeof sessionData.expiredAt.toMillis, "function");
+    assert.equal(typeof sessionData.endedAt.toMillis, "function");
+    assert.equal(Object.hasOwn(sessionData, "currentResponderId"), false);
+    assert.equal(Object.hasOwn(sessionData, "currentTutorId"), false);
+    assert.equal(Object.hasOwn(sessionData, "currentResponderRole"), false);
+    assert.deepEqual(sessionData.triedTutors, [teacherUid]);
+    assert.deepEqual(sessionData.searchRequestIds, {
+      requester: null,
+      responder: null,
+    });
+    assert.equal(sessionData.matchContext.matchMode, "direct");
+    assert.equal(sessionData.matchContext.directTutorId, teacherUid);
+    assert.equal(
+      sessionData.sessionMetadata.dailyRoomDeleteSource,
+      "processExpiredNotifications",
+    );
+    assert.equal(
+      sessionData.sessionMetadata.dailyRoomDeleteRoomName,
+      createdRoomName,
+    );
+    assert.equal(
+      typeof sessionData.sessionMetadata.dailyRoomDeletedAt.toMillis,
+      "function",
+    );
+    assert.equal(Object.hasOwn(studentUser, "currentSessionId"), false);
+    assert.equal(Object.hasOwn(teacherUser, "currentSessionId"), false);
+    assert.equal(studentUser.isInCall, false);
+    assert.equal(teacherUser.isInCall, false);
+    assert.equal(otherTeacherUser.currentSessionId, "");
+    assert.equal(otherTeacherUser.isInCall, false);
+    await assertNoSearchRequestForUser(studentUid);
+    await assertNoSearchRequestForUser(teacherUid);
+    await assertNoSearchRequestForUser(otherTeacherUid);
+    assert.equal(sessionNotifications.size, 1);
+    assert.equal(teacherNotifications.size, 1);
+    assert.equal(otherTeacherNotifications.size, 0);
+    assert.equal(teacherNotifications.docs[0].data().status, "expired");
+    assert.equal(
+      typeof teacherNotifications.docs[0].data().expiredAt.toMillis,
       "function",
     );
     assert.equal(sentPushes.length, 1);
