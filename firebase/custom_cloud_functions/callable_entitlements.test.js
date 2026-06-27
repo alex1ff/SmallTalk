@@ -127,6 +127,7 @@ if (!hasRequiredEmulators) {
       blockedUsers: [],
       availabilityToday: {enabled: true},
       isInCall: false,
+      voipToken: "teacher-fcm-token",
     };
   }
 
