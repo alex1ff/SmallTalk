@@ -5262,6 +5262,164 @@ if (!hasFirestoreEmulator) {
       }
     });
 
+  test("startSearch callable excludes teachers without active call token",
+    async () => {
+      const requesterUid = uniqueId("teacher-token-requester");
+      const tokenlessTeacherUid = uniqueId("teacher-tokenless");
+      const validTeacherUid = uniqueId("teacher-token-valid");
+      const cityKey = cityKeyForUid([
+        requesterUid,
+        tokenlessTeacherUid,
+        validTeacherUid,
+      ].join("-"));
+      const tokenlessTeacherAvailableMinutesAgo = 9;
+      const validTeacherAvailableMinutesAgo = 7;
+      const refsToDelete = [
+        userRef(requesterUid),
+        userRef(tokenlessTeacherUid),
+        userRef(validTeacherUid),
+        searchRequestRef(requesterUid),
+        searchRequestRef(tokenlessTeacherUid),
+        searchRequestRef(validTeacherUid),
+        db.collection("userPrivateTokens").doc(tokenlessTeacherUid),
+        db.collection("userPrivateTokens").doc(validTeacherUid),
+      ];
+      let sessionId = "";
+      let notificationRefsToDelete = [];
+
+      try {
+        await Promise.all(refsToDelete.map(deleteDoc));
+        await seedStudent(requesterUid, {
+          display_name: "Requester Student",
+          profileCity: {key: cityKey},
+        });
+        await seedTeacher(tokenlessTeacherUid, {
+          display_name: "Tokenless Teacher",
+          profileCity: {key: cityKey},
+          availableSince: admin.firestore.Timestamp.fromMillis(
+            Date.now() -
+              tokenlessTeacherAvailableMinutesAgo * 60 * 1000,
+          ),
+        });
+        await seedTeacher(validTeacherUid, {
+          display_name: "Valid Teacher",
+          profileCity: {key: cityKey},
+          availableSince: admin.firestore.Timestamp.fromMillis(
+            Date.now() -
+              validTeacherAvailableMinutesAgo * 60 * 1000,
+          ),
+        });
+        await db
+          .collection("userPrivateTokens")
+          .doc(tokenlessTeacherUid)
+          .delete();
+        await db.collection("userPrivateTokens").doc(validTeacherUid).set({
+          voipPushToken: `push-${validTeacherUid}`,
+        });
+        const tokenlessPrivateToken = await db
+          .collection("userPrivateTokens")
+          .doc(tokenlessTeacherUid)
+          .get();
+        assert.equal(tokenlessPrivateToken.exists, false);
+
+        const teacherResponderIds = [];
+        const response = await startSearchCallable({
+          preferredPartnerLevel: "B1",
+          appState: "foreground",
+        }, authContext(requesterUid), {
+          teacherResponderPushSender: async (responderId, callData) => {
+            teacherResponderIds.push(responderId);
+            assert.equal(callData.callerId, requesterUid);
+            return {sent: true, channel: "test"};
+          },
+        });
+        sessionId = response.sessionId;
+        assert.equal(typeof response.sessionId, "string");
+        const sessionSnapshot = await db
+          .collection("videoSessions")
+          .doc(response.sessionId)
+          .get();
+        const sessionData = sessionSnapshot.data();
+        const requesterRequest = (await searchRequestRef(requesterUid).get())
+          .data();
+        const tokenlessTeacher =
+          (await userRef(tokenlessTeacherUid).get()).data();
+        const notificationQuery = await db
+          .collection("notifications")
+          .where("recipientId", "in", [
+            tokenlessTeacherUid,
+            validTeacherUid,
+          ])
+          .get();
+        notificationRefsToDelete = notificationQuery.docs
+          .map((doc) => doc.ref);
+        const matchingNotifications = notificationQuery.docs
+          .map((doc) => doc.data())
+          .filter((item) => item.sessionId === response.sessionId);
+        const tokenlessNotifications = notificationQuery.docs
+          .map((doc) => doc.data())
+          .filter((item) => item.recipientId === tokenlessTeacherUid);
+        const notificationRecipients = Array.from(new Set(
+          matchingNotifications.map((item) => item.recipientId),
+        ));
+        const tokenlessParticipantSessions = await db
+          .collection("videoSessions")
+          .where("participantIds", "array-contains", tokenlessTeacherUid)
+          .get();
+        const tokenlessResponderSessions = await db
+          .collection("videoSessions")
+          .where("currentResponderId", "==", tokenlessTeacherUid)
+          .get();
+        const tokenlessTutorSessions = await db
+          .collection("videoSessions")
+          .where("currentTutorId", "==", tokenlessTeacherUid)
+          .get();
+        const tokenlessLegacyTutorSessions = await db
+          .collection("videoSessions")
+          .where("tutorId", "==", tokenlessTeacherUid)
+          .get();
+        const tokenlessSessionIds = new Set([
+          ...tokenlessParticipantSessions.docs,
+          ...tokenlessResponderSessions.docs,
+          ...tokenlessTutorSessions.docs,
+          ...tokenlessLegacyTutorSessions.docs,
+        ].map((doc) => doc.id));
+
+        assert.equal(response.status, "matched");
+        assert.equal(response.matchedUserId, validTeacherUid);
+        assert.equal(response.matchedRole, "native_speaker");
+        assert.equal(response.scenario, "student_teacher");
+        assert.equal(sessionSnapshot.exists, true);
+        assert.deepEqual(sessionData.availableTutors, [validTeacherUid]);
+        assert.deepEqual(
+          sessionData.matchContext.candidateIds,
+          [validTeacherUid],
+        );
+        assert.equal(
+          sessionData.matchContext.selectedResponderId,
+          validTeacherUid,
+        );
+        assert.equal(sessionData.currentResponderId, validTeacherUid);
+        assert.equal(sessionData.currentTutorId, validTeacherUid);
+        assert.equal(sessionData.tutorId, validTeacherUid);
+        assert.equal(requesterRequest.status, SEARCH_REQUEST_STATUS.MATCHED);
+        assert.equal(requesterRequest.currentSessionId, response.sessionId);
+        assert.notEqual(tokenlessTeacher.currentSessionId, response.sessionId);
+        assert.equal(tokenlessTeacher.isInCall, false);
+        assert.equal(tokenlessNotifications.length, 0);
+        assert.equal(tokenlessSessionIds.size, 0);
+        assert.equal(matchingNotifications.length, 1);
+        assert.deepEqual(notificationRecipients, [validTeacherUid]);
+        assert.deepEqual(teacherResponderIds, [validTeacherUid]);
+      } finally {
+        if (sessionId) {
+          await deleteDoc(db.collection("videoSessions").doc(sessionId));
+        }
+        await Promise.all(notificationRefsToDelete.map(deleteDoc));
+        await Promise.all(refsToDelete.map(deleteDoc));
+      }
+    });
+
   test("startSearch callable creates one session under concurrent starts", async () => {
     const firstUid = uniqueId("student-concurrent-a");
     const secondUid = uniqueId("student-concurrent-b");
