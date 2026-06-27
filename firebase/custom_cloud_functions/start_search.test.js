@@ -4913,6 +4913,7 @@ if (!hasFirestoreEmulator) {
         appState: "foreground",
       }, authContext(requesterUid));
       sessionId = response.sessionId;
+      assert.equal(typeof response.sessionId, "string");
       const sessionSnapshot = await db
         .collection("videoSessions")
         .doc(response.sessionId)
@@ -4951,6 +4952,315 @@ if (!hasFirestoreEmulator) {
       await Promise.all(refsToDelete.map(deleteDoc));
     }
   });
+
+  test("startSearch callable filters blocklists in both directions", async () => {
+    const requesterUid = uniqueId("blocklist-requester");
+    const requesterBlockedUid = uniqueId("blocklist-requester-blocked");
+    const candidateBlockedUid = uniqueId("blocklist-candidate-blocked");
+    const validUid = uniqueId("blocklist-valid");
+    const cityKey = cityKeyForUid([
+      requesterUid,
+      requesterBlockedUid,
+      candidateBlockedUid,
+      validUid,
+    ].join("-"));
+    const refsToDelete = [
+      userRef(requesterUid),
+      userRef(requesterBlockedUid),
+      userRef(candidateBlockedUid),
+      userRef(validUid),
+      searchRequestRef(requesterUid),
+      searchRequestRef(requesterBlockedUid),
+      searchRequestRef(candidateBlockedUid),
+      searchRequestRef(validUid),
+    ];
+    const now = admin.firestore.Timestamp.now();
+    let sessionId = "";
+
+    async function seedActiveStudentSearchRequest(uid, createdMinutesAgo) {
+      await searchRequestRef(uid).set({
+        requestId: `request-${uid}`,
+        userId: uid,
+        userRef: userRef(uid),
+        role: "student",
+        language: "en",
+        filters: {
+          preferredLevel: "B1",
+          levelRank: 3,
+          countryCode: "US",
+          cityKey,
+        },
+        status: SEARCH_REQUEST_STATUS.ACTIVE,
+        appState: SEARCH_REQUEST_APP_STATE.FOREGROUND,
+        appStateUpdatedAt: now,
+        platform: "test",
+        createdAt: admin.firestore.Timestamp.fromMillis(
+          Date.now() - createdMinutesAgo * 60 * 1000,
+        ),
+        updatedAt: now,
+        heartbeatAt: now,
+        expiresAt: emulatorFutureTimestamp(10),
+        backgroundExpiresAt: null,
+        activeSessionId: null,
+        currentSessionId: null,
+        matchedSessionId: null,
+        matchedUserId: null,
+        matchedResponderId: null,
+        matchedRole: null,
+        pairAttemptId: null,
+        excludedCandidateIds: [],
+        attemptExcludedCandidateIds: [],
+        lockOwner: null,
+        lockExpiresAt: null,
+        version: 1,
+        stopReason: null,
+        stoppedAt: null,
+        stoppedBy: null,
+        lastError: null,
+        errorCode: null,
+        errorMessage: null,
+      });
+    }
+
+    try {
+      await Promise.all(refsToDelete.map(deleteDoc));
+      await seedStudent(requesterUid, {
+        display_name: "Requester Student",
+        profileCity: {key: cityKey},
+        blockedUsers: [`users/${requesterBlockedUid}`],
+      });
+      await seedStudent(requesterBlockedUid, {
+        display_name: "Blocked By Requester",
+        profileCity: {key: cityKey},
+      });
+      await seedStudent(candidateBlockedUid, {
+        display_name: "Candidate Blocked Requester",
+        profileCity: {key: cityKey},
+        blockedUsers: [{id: requesterUid}],
+      });
+      await seedStudent(validUid, {
+        display_name: "Valid Student",
+        profileCity: {key: cityKey},
+      });
+      await seedActiveStudentSearchRequest(requesterBlockedUid, 9);
+      await seedActiveStudentSearchRequest(candidateBlockedUid, 8);
+      await seedActiveStudentSearchRequest(validUid, 7);
+
+      const response = await wrappedStartSearch({
+        preferredPartnerLevel: "B1",
+        appState: "foreground",
+      }, authContext(requesterUid));
+      sessionId = response.sessionId;
+      assert.equal(typeof response.sessionId, "string");
+      const sessionSnapshot = await db
+        .collection("videoSessions")
+        .doc(response.sessionId)
+        .get();
+      const sessionData = sessionSnapshot.data();
+      const requesterBlockedRequest =
+        (await searchRequestRef(requesterBlockedUid).get()).data();
+      const candidateBlockedRequest =
+        (await searchRequestRef(candidateBlockedUid).get()).data();
+      const validRequest = (await searchRequestRef(validUid).get()).data();
+      const requesterRequest = (await searchRequestRef(requesterUid).get())
+        .data();
+
+      assert.equal(response.status, "matched");
+      assert.equal(response.matchedUserId, validUid);
+      assert.equal(response.matchedRole, "student");
+      assert.equal(response.scenario, "student_student");
+      assert.equal(sessionSnapshot.exists, true);
+      assert.deepEqual(sessionData.availableTutors, [validUid]);
+      assert.deepEqual(sessionData.matchContext.candidateIds, [validUid]);
+      assert.equal(sessionData.matchContext.selectedResponderId, validUid);
+      assert.equal(sessionData.currentResponderId, validUid);
+      assert.equal(sessionData.currentResponderRole, "student");
+      assert.equal(requesterRequest.status, SEARCH_REQUEST_STATUS.MATCHED);
+      assert.equal(requesterRequest.currentSessionId, response.sessionId);
+      assert.equal(validRequest.status, SEARCH_REQUEST_STATUS.MATCHED);
+      assert.equal(validRequest.currentSessionId, response.sessionId);
+      assert.equal(
+        requesterBlockedRequest.status,
+        SEARCH_REQUEST_STATUS.ACTIVE,
+      );
+      assert.equal(requesterBlockedRequest.currentSessionId, null);
+      assert.equal(requesterBlockedRequest.activeSessionId, null);
+      assert.equal(requesterBlockedRequest.matchedSessionId, null);
+      assert.equal(
+        candidateBlockedRequest.status,
+        SEARCH_REQUEST_STATUS.ACTIVE,
+      );
+      assert.equal(candidateBlockedRequest.currentSessionId, null);
+      assert.equal(candidateBlockedRequest.activeSessionId, null);
+      assert.equal(candidateBlockedRequest.matchedSessionId, null);
+    } finally {
+      if (sessionId) {
+        await deleteDoc(db.collection("videoSessions").doc(sessionId));
+      }
+      await Promise.all(refsToDelete.map(deleteDoc));
+    }
+  });
+
+  test("startSearch callable filters teacher blocklists in both directions",
+    async () => {
+      const requesterUid = uniqueId("teacher-blocklist-requester");
+      const requesterBlockedUid =
+        uniqueId("teacher-blocklist-requester-blocked");
+      const teacherBlockedUid =
+        uniqueId("teacher-blocklist-teacher-blocked");
+      const validUid = uniqueId("teacher-blocklist-valid");
+      const cityKey = cityKeyForUid([
+        requesterUid,
+        requesterBlockedUid,
+        teacherBlockedUid,
+        validUid,
+      ].join("-"));
+      const refsToDelete = [
+        userRef(requesterUid),
+        userRef(requesterBlockedUid),
+        userRef(teacherBlockedUid),
+        userRef(validUid),
+        searchRequestRef(requesterUid),
+        searchRequestRef(requesterBlockedUid),
+        searchRequestRef(teacherBlockedUid),
+        searchRequestRef(validUid),
+        db.collection("userPrivateTokens").doc(requesterBlockedUid),
+        db.collection("userPrivateTokens").doc(teacherBlockedUid),
+        db.collection("userPrivateTokens").doc(validUid),
+      ];
+      let sessionId = "";
+
+      async function setTeacherPushToken(uid) {
+        await db.collection("userPrivateTokens").doc(uid).set({
+          voipPushToken: `push-${uid}`,
+        });
+      }
+
+      try {
+        await Promise.all(refsToDelete.map(deleteDoc));
+        await seedStudent(requesterUid, {
+          display_name: "Requester Student",
+          profileCity: {key: cityKey},
+          blockedUsers: [`users/${requesterBlockedUid}`],
+        });
+        await seedTeacher(requesterBlockedUid, {
+          display_name: "Blocked By Requester",
+          profileCity: {key: cityKey},
+          availableSince: admin.firestore.Timestamp.fromMillis(
+            Date.now() - 9 * 60 * 1000,
+          ),
+        });
+        await seedTeacher(teacherBlockedUid, {
+          display_name: "Teacher Blocked Requester",
+          profileCity: {key: cityKey},
+          blockedUsers: [`users/${requesterUid}`],
+          availableSince: admin.firestore.Timestamp.fromMillis(
+            Date.now() - 8 * 60 * 1000,
+          ),
+        });
+        await seedTeacher(validUid, {
+          display_name: "Valid Teacher",
+          profileCity: {key: cityKey},
+          availableSince: admin.firestore.Timestamp.fromMillis(
+            Date.now() - 7 * 60 * 1000,
+          ),
+        });
+        await Promise.all([
+          setTeacherPushToken(requesterBlockedUid),
+          setTeacherPushToken(teacherBlockedUid),
+          setTeacherPushToken(validUid),
+        ]);
+
+        const teacherResponderIds = [];
+        const response = await startSearchCallable({
+          preferredPartnerLevel: "B1",
+          appState: "foreground",
+        }, authContext(requesterUid), {
+          teacherResponderPushSender: async (responderId, callData) => {
+            teacherResponderIds.push(responderId);
+            assert.equal(callData.callerId, requesterUid);
+            return {sent: true, channel: "test"};
+          },
+        });
+        sessionId = response.sessionId;
+        assert.equal(typeof response.sessionId, "string");
+        const sessionSnapshot = await db
+          .collection("videoSessions")
+          .doc(response.sessionId)
+          .get();
+        const sessionData = sessionSnapshot.data();
+        const requesterRequest = (await searchRequestRef(requesterUid).get())
+          .data();
+        const requesterBlockedTeacher =
+          (await userRef(requesterBlockedUid).get()).data();
+        const teacherBlockedRequester =
+          (await userRef(teacherBlockedUid).get()).data();
+        const notificationQuery = await db
+          .collection("notifications")
+          .where("recipientId", "in", [
+            requesterBlockedUid,
+            teacherBlockedUid,
+            validUid,
+          ])
+          .get();
+        const matchingNotifications = notificationQuery.docs
+          .map((doc) => doc.data())
+          .filter((item) => item.sessionId === response.sessionId);
+        const blockedTeacherNotifications = notificationQuery.docs
+          .map((doc) => doc.data())
+          .filter((item) =>
+            item.sessionId === response.sessionId &&
+              [
+                requesterBlockedUid,
+                teacherBlockedUid,
+              ].includes(item.recipientId),
+          );
+        const notificationRecipients = Array.from(new Set(
+          matchingNotifications.map((item) => item.recipientId),
+        ));
+
+        assert.equal(response.status, "matched");
+        assert.equal(response.matchedUserId, validUid);
+        assert.equal(response.matchedRole, "native_speaker");
+        assert.equal(response.scenario, "student_teacher");
+        assert.equal(sessionSnapshot.exists, true);
+        assert.deepEqual(sessionData.availableTutors, [validUid]);
+        assert.deepEqual(sessionData.matchContext.candidateIds, [validUid]);
+        assert.equal(sessionData.matchContext.selectedResponderId, validUid);
+        assert.equal(
+          sessionData.matchContext.selectedResponderRole,
+          "native_speaker",
+        );
+        assert.equal(sessionData.currentResponderId, validUid);
+        assert.equal(sessionData.currentResponderRole, "native_speaker");
+        assert.equal(requesterRequest.status, SEARCH_REQUEST_STATUS.MATCHED);
+        assert.equal(requesterRequest.currentSessionId, response.sessionId);
+        assert.notEqual(
+          requesterBlockedTeacher.currentSessionId,
+          response.sessionId,
+        );
+        assert.notEqual(
+          teacherBlockedRequester.currentSessionId,
+          response.sessionId,
+        );
+        assert.equal(requesterBlockedTeacher.isInCall, false);
+        assert.equal(teacherBlockedRequester.isInCall, false);
+        assert.equal(blockedTeacherNotifications.length, 0);
+        assert.equal(matchingNotifications.length, 1);
+        assert.deepEqual(notificationRecipients, [validUid]);
+        assert.equal(
+          matchingNotifications.some((item) =>
+            item.recipientId === validUid && item.type === "incoming_call"),
+          true,
+        );
+        assert.deepEqual(teacherResponderIds, [validUid]);
+      } finally {
+        if (sessionId) {
+          await deleteDoc(db.collection("videoSessions").doc(sessionId));
+        }
+        await Promise.all(refsToDelete.map(deleteDoc));
+      }
+    });
 
   test("startSearch callable creates one session under concurrent starts", async () => {
     const firstUid = uniqueId("student-concurrent-a");
