@@ -4098,6 +4098,7 @@ if (!hasFirestoreEmulator) {
   const axios = require("axios");
   const functionsTest = require("firebase-functions-test");
   const {acceptCall} = require("./accept_call");
+  const {createVideoSession} = require("./create_video_session");
   const {declineCall} = require("./decline_call");
   const {
     processExpiredNotifications,
@@ -4118,6 +4119,7 @@ if (!hasFirestoreEmulator) {
   const testEnv = functionsTest({projectId});
   const db = admin.firestore();
   const wrappedAcceptCall = testEnv.wrap(acceptCall);
+  const wrappedCreateVideoSession = testEnv.wrap(createVideoSession);
   const wrappedDeclineCall = testEnv.wrap(declineCall);
   const wrappedProcessExpiredNotifications =
     testEnv.wrap(processExpiredNotifications);
@@ -5278,6 +5280,257 @@ if (!hasFirestoreEmulator) {
     assert.equal(requestData.currentSessionId, response.sessionId);
     assert.equal(teacherNotifications.size, 1);
     assert.equal(teacherNotifications.docs[0].data().status, "accepted");
+  });
+
+  test("direct teacher call accepts into connecting session", async () => {
+    const studentUid = uniqueId("student-direct-accept");
+    const teacherUid = uniqueId("teacher-direct-accept");
+    const cityKey = cityKeyForUid(`${studentUid}-${teacherUid}`);
+    await deleteDoc(userRef(studentUid));
+    await deleteDoc(userRef(teacherUid));
+    await deleteDoc(searchRequestRef(studentUid));
+    await deleteDoc(searchRequestRef(teacherUid));
+    await deleteDoc(db.collection("userPrivateTokens").doc(studentUid));
+    await deleteDoc(db.collection("userPrivateTokens").doc(teacherUid));
+    await seedStudent(studentUid, {
+      display_name: "Student",
+      photo_url: "student-photo",
+      profileCity: {key: cityKey},
+    });
+    await seedTeacher(teacherUid, {
+      display_name: "Teacher",
+      photo_url: "teacher-photo",
+      profileCity: {key: cityKey},
+    });
+    await db.collection("userPrivateTokens").doc(studentUid).set({
+      voipToken: `fcm-${studentUid}`,
+    });
+    await db.collection("userPrivateTokens").doc(teacherUid).set({
+      voipToken: `fcm-${teacherUid}`,
+    });
+
+    const assertNoSearchRequest = async (uid) => {
+      assert.equal((await searchRequestRef(uid).get()).exists, false);
+      assert.equal(
+        await db.collection("searchRequests").where("userId", "==", uid).get()
+          .then((query) => query.size),
+        0,
+      );
+    };
+
+    const sentPushes = [];
+    const messaging = admin.messaging();
+    const originalMessagingSend = messaging.send;
+    messaging.send = async (message) => {
+      sentPushes.push(message);
+      return `mock-message-${sentPushes.length}`;
+    };
+
+    let createResponse = null;
+    let acceptResponse = null;
+    let pendingSessionData = null;
+    try {
+      await withMockDailyApi(async (dailyCalls) => {
+        createResponse = await wrappedCreateVideoSession({
+          directUserId: teacherUid,
+        }, authContext(studentUid));
+        const pendingSessionSnapshot = await db
+          .collection("videoSessions")
+          .doc(createResponse.sessionId)
+          .get();
+        pendingSessionData = pendingSessionSnapshot.data();
+        const pendingStudentUser = (await userRef(studentUid).get()).data();
+        const pendingTeacherUser = (await userRef(teacherUid).get()).data();
+        const teacherNotifications = await db
+          .collection("notifications")
+          .where("recipientId", "==", teacherUid)
+          .where("sessionId", "==", createResponse.sessionId)
+          .get();
+
+        assert.equal(createResponse.status, "calling");
+        assert.equal(createResponse.matchedTutors, 1);
+        assert.equal(typeof createResponse.sessionId, "string");
+        assert.equal(dailyCalls.length, 1);
+        assert.equal(dailyCalls[0].url, "https://api.daily.co/v1/rooms");
+        assert.equal(pendingSessionSnapshot.exists, true);
+        assert.equal(pendingSessionData.status, "pending_confirmation");
+        assert.equal(pendingSessionData.pairStatus, "pending_confirmation");
+        assert.equal(pendingSessionData.scenario, "student_teacher");
+        assert.equal(pendingSessionData.requesterId, studentUid);
+        assert.equal(pendingSessionData.responderId, teacherUid);
+        assert.equal(pendingSessionData.responderRole, "native_speaker");
+        assert.equal(pendingSessionData.currentResponderId, teacherUid);
+        assert.equal(pendingSessionData.currentTutorId, teacherUid);
+        assert.equal(
+          pendingSessionData.currentResponderRole,
+          "native_speaker",
+        );
+        assert.equal(pendingSessionData.matchContext.matchMode, "direct");
+        assert.equal(pendingSessionData.matchContext.matcher, "directCall");
+        assert.equal(pendingSessionData.matchContext.directTutorId, teacherUid);
+        assert.equal(
+          pendingSessionData.matchContext.directCandidateId,
+          teacherUid,
+        );
+        assert.deepEqual(pendingSessionData.searchRequestIds, {
+          requester: null,
+          responder: null,
+        });
+        assert.equal(
+          typeof pendingSessionData.responseExpiresAt.toMillis,
+          "function",
+        );
+        assert.equal(
+          typeof pendingSessionData.confirmationExpiresAt.toMillis,
+          "function",
+        );
+        assert.equal(
+          pendingStudentUser.currentSessionId,
+          createResponse.sessionId,
+        );
+        assert.equal(pendingStudentUser.isInCall, false);
+        assert.equal(
+          pendingTeacherUser.currentSessionId,
+          createResponse.sessionId,
+        );
+        assert.equal(pendingTeacherUser.isInCall, false);
+        await assertNoSearchRequest(studentUid);
+        await assertNoSearchRequest(teacherUid);
+        assert.equal(teacherNotifications.size, 1);
+        const teacherNotificationData = teacherNotifications.docs[0].data();
+        assert.equal(teacherNotificationData.status, "sent");
+        assert.equal(
+          teacherNotificationData.acceptMode,
+          "responder_accepts",
+        );
+        assert.equal(
+          teacherNotificationData.tokenStrategy,
+          "accept_call",
+        );
+        assert.equal(teacherNotificationData.searchRequestId, "");
+        assert.equal(sentPushes.length, 1);
+        const teacherPush = sentPushes[0];
+        assert.equal(teacherPush.token, `fcm-${teacherUid}`);
+        assert.equal(teacherPush.data.type, "incoming_call");
+        assert.equal(teacherPush.data.sessionId, createResponse.sessionId);
+        assert.equal(teacherPush.data.recipientId, teacherUid);
+        assert.equal(teacherPush.data.callerId, studentUid);
+        assert.equal(teacherPush.data.requesterId, studentUid);
+        assert.equal(teacherPush.data.responderId, teacherUid);
+        assert.equal(teacherPush.data.requesterRole, "student");
+        assert.equal(teacherPush.data.responderRole, "native_speaker");
+        assert.equal(teacherPush.data.navRole, "tutor");
+        assert.equal(teacherPush.data.acceptMode, "responder_accepts");
+        assert.equal(teacherPush.data.tokenStrategy, "accept_call");
+        assert.equal(
+          teacherPush.data.callKitId,
+          buildCallKitIdForSession(createResponse.sessionId),
+        );
+        assert.equal(
+          teacherPush.data.notificationId,
+          teacherNotifications.docs[0].id,
+        );
+        assert.equal(teacherPush.data.searchRequestId, "");
+        assert.equal(teacherPush.data.roomUrl, "");
+
+        acceptResponse = await wrappedAcceptCall({
+          sessionId: createResponse.sessionId,
+        }, authContext(teacherUid));
+        assert.equal(dailyCalls.length, 2);
+        assert.equal(
+          dailyCalls[1].url,
+          "https://api.daily.co/v1/meeting-tokens",
+        );
+      });
+    } finally {
+      messaging.send = originalMessagingSend;
+    }
+
+    const sessionSnapshot = await db
+      .collection("videoSessions")
+      .doc(createResponse.sessionId)
+      .get();
+    const sessionData = sessionSnapshot.data();
+    const studentUser = (await userRef(studentUid).get()).data();
+    const teacherUser = (await userRef(teacherUid).get()).data();
+    const teacherNotifications = await db
+      .collection("notifications")
+      .where("recipientId", "==", teacherUid)
+      .where("sessionId", "==", createResponse.sessionId)
+      .get();
+
+    assert.equal(acceptResponse.status, "connected");
+    assert.equal(acceptResponse.sessionId, createResponse.sessionId);
+    assert.equal(acceptResponse.roomUrl, pendingSessionData.dailyRoomUrl);
+    assert.equal(acceptResponse.roomName, pendingSessionData.dailyRoomName);
+    assert.equal(
+      acceptResponse.meetingToken,
+      `token-${acceptResponse.roomName}-${teacherUid}`,
+    );
+    assert.equal(sessionSnapshot.exists, true);
+    assert.equal(sessionData.status, "connecting");
+    assert.equal(sessionData.tutorId, teacherUid);
+    assert.equal(sessionData.responderId, teacherUid);
+    assert.equal(sessionData.responderRole, "native_speaker");
+    assert.equal(Object.hasOwn(sessionData, "currentResponderId"), false);
+    assert.equal(Object.hasOwn(sessionData, "currentTutorId"), false);
+    assert.equal(Object.hasOwn(sessionData, "currentResponderRole"), false);
+    assert.equal(typeof sessionData.joinDeadlineAt.toMillis, "function");
+    assert.equal(sessionData.dailyRoomUrl, acceptResponse.roomUrl);
+    assert.equal(sessionData.dailyRoomName, acceptResponse.roomName);
+    assert.deepEqual(
+      sessionData.participantIds.slice().sort(),
+      [studentUid, teacherUid].sort(),
+    );
+    assert.deepEqual(sessionData.searchRequestIds, {
+      requester: null,
+      responder: null,
+    });
+    assert.equal(sessionData.matchContext.matchMode, "direct");
+    assert.equal(sessionData.matchContext.acceptedResponderId, teacherUid);
+    assert.equal(
+      sessionData.matchContext.acceptedResponderRole,
+      "native_speaker",
+    );
+    assert.deepEqual(sessionData.matchContext.acceptedResponderInfo, {
+      name: "Teacher",
+      photo: "teacher-photo",
+    });
+    assert.equal(studentUser.isInCall, true);
+    assert.equal(studentUser.currentSessionId, createResponse.sessionId);
+    assert.equal(teacherUser.isInCall, true);
+    assert.equal(teacherUser.currentSessionId, createResponse.sessionId);
+    assert.equal(teacherNotifications.size, 1);
+    assert.equal(teacherNotifications.docs[0].data().status, "accepted");
+    assert.equal(
+      typeof teacherNotifications.docs[0].data().acceptedAt.toMillis,
+      "function",
+    );
+    await assertNoSearchRequest(studentUid);
+    await assertNoSearchRequest(teacherUid);
+    assert.equal(sentPushes.length, 2);
+    const studentPush = sentPushes[1];
+    assert.equal(studentPush.token, `fcm-${studentUid}`);
+    assert.equal(studentPush.data.type, "incoming_call");
+    assert.equal(studentPush.data.sessionId, createResponse.sessionId);
+    assert.equal(studentPush.data.recipientId, studentUid);
+    assert.equal(studentPush.data.callerId, teacherUid);
+    assert.equal(studentPush.data.scenario, "student_teacher");
+    assert.equal(studentPush.data.requesterId, studentUid);
+    assert.equal(studentPush.data.responderId, teacherUid);
+    assert.equal(studentPush.data.requesterRole, "student");
+    assert.equal(studentPush.data.responderRole, "native_speaker");
+    assert.equal(studentPush.data.navRole, "student");
+    assert.equal(studentPush.data.acceptMode, "open_session");
+    assert.equal(
+      studentPush.data.callKitId,
+      buildCallKitIdForSession(createResponse.sessionId),
+    );
+    assert.equal(studentPush.data.searchRequestId, "");
+    assert.equal(studentPush.data.roomUrl, acceptResponse.roomUrl);
+    assert.equal(studentPush.data.roomName, acceptResponse.roomName);
+    assert.equal(studentPush.data.meetingToken, "");
+    assert.equal(studentPush.data.tokenStrategy, "payload_room");
   });
 
   test("teacher responder decline restores student search", async () => {

@@ -406,7 +406,7 @@
 - [x] Student-teacher: учитель принимает звонок.
 - [x] Student-teacher: учитель отклоняет звонок.
 - [x] Student-teacher: учитель не отвечает 45 секунд.
-- [ ] Direct-call учителю: accept.
+- [x] Direct-call учителю: accept.
 - [ ] Direct-call учителю: decline.
 - [ ] Direct-call учителю: timeout.
 - [ ] Закрытое приложение: входящий звонок до истечения 90 секунд.
