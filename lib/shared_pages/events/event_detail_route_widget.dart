@@ -28,6 +28,21 @@ const ValueKey<String> eventDetailLeaveErrorSnackBarKey =
     ValueKey<String>('event_detail_leave_error_snack_bar');
 const ValueKey<String> eventDetailChatParticipantRequiredSnackBarKey =
     ValueKey<String>('event_detail_chat_participant_required_snack_bar');
+const ValueKey<String> eventDetailReportSuccessSnackBarKey =
+    ValueKey<String>('event_detail_report_success_snack_bar');
+const ValueKey<String> eventDetailReportErrorSnackBarKey =
+    ValueKey<String>('event_detail_report_error_snack_bar');
+const ValueKey<String> eventDetailReportDialogKey =
+    ValueKey<String>('event_detail_report_dialog');
+const ValueKey<String> eventDetailReportDetailsFieldKey =
+    ValueKey<String>('event_detail_report_details_field');
+const ValueKey<String> eventDetailReportDismissButtonKey =
+    ValueKey<String>('event_detail_report_dismiss_button');
+const ValueKey<String> eventDetailReportSubmitButtonKey =
+    ValueKey<String>('event_detail_report_submit_button');
+
+ValueKey<String> eventDetailReportReasonKey(String reasonCode) =>
+    ValueKey<String>('event_detail_report_reason_$reasonCode');
 
 class EventDetailRouteWidget extends StatefulWidget {
   const EventDetailRouteWidget({
@@ -37,6 +52,7 @@ class EventDetailRouteWidget extends StatefulWidget {
     this.cancelEventInvoker,
     this.joinEventInvoker,
     this.leaveEventInvoker,
+    this.reportEventInvoker,
     this.participantSnapshotStream,
     this.analyticsTracker,
   });
@@ -46,6 +62,7 @@ class EventDetailRouteWidget extends StatefulWidget {
   final EventCallableInvoker? cancelEventInvoker;
   final EventCallableInvoker? joinEventInvoker;
   final EventCallableInvoker? leaveEventInvoker;
+  final EventCallableInvoker? reportEventInvoker;
   final EventParticipantSnapshotStream? participantSnapshotStream;
   final EventsAnalyticsTracker? analyticsTracker;
 
@@ -63,11 +80,13 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
   bool _isCanceling = false;
   bool _isJoining = false;
   bool _isLeaving = false;
+  bool _isReportingEvent = false;
   String? _locallyCanceledEventId;
   String? _locallyJoinedEventId;
   int? _locallyJoinedParticipantsCount;
   String? _locallyLeftEventId;
   int? _locallyLeftParticipantsCount;
+  String? _currentDetailEventId;
   int _participantActionGeneration = 0;
   String? _lastTrackedEventDetailOpenKey;
   String? _lastTrackedCanceledEventId;
@@ -94,6 +113,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       _locallyJoinedParticipantsCount = null;
       _locallyLeftEventId = null;
       _locallyLeftParticipantsCount = null;
+      _currentDetailEventId = null;
       _lastTrackedEventDetailOpenKey = null;
       _lastTrackedCanceledEventId = null;
       _lastTrackedJoinedEventId = null;
@@ -101,6 +121,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       _participantActionGeneration += 1;
       _isLeaving = false;
       _isJoining = false;
+      _isReportingEvent = false;
     }
   }
 
@@ -288,6 +309,80 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
     }
   }
 
+  Future<void> _showReportEventDialog(EventsRecord event) async {
+    if (_isReportingEvent) {
+      return;
+    }
+
+    final eventId = event.reference.id;
+    final reportRequest = await showDialog<_EventReportDialogResult>(
+      context: context,
+      builder: (context) => const _EventReportDialog(),
+    );
+    if (reportRequest == null ||
+        !mounted ||
+        _currentDetailEventId != eventId ||
+        widget.eventId.trim() != eventId) {
+      return;
+    }
+    await _handleReportEvent(eventId, reportRequest);
+  }
+
+  Future<void> _handleReportEvent(
+    String eventId,
+    _EventReportDialogResult reportRequest,
+  ) async {
+    if (_isReportingEvent) {
+      return;
+    }
+
+    setState(() {
+      _isReportingEvent = true;
+    });
+    try {
+      final result = await EventActionsRepository.reportEvent(
+        eventId: eventId,
+        reasonCode: reportRequest.reasonCode,
+        details: reportRequest.details,
+        invoker: widget.reportEventInvoker,
+      );
+      if (!mounted) {
+        return;
+      }
+      final message = result.alreadySubmitted
+          ? FFLocalizations.of(context).getVariableText(
+              ruText: 'Жалоба уже отправлена.',
+              enText: 'Report already submitted.',
+            )
+          : FFLocalizations.of(context).getVariableText(
+              ruText: 'Жалоба отправлена.',
+              enText: 'Report submitted.',
+            );
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          key: eventDetailReportSuccessSnackBarKey,
+          content: Text(message),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          key: eventDetailReportErrorSnackBarKey,
+          content: Text(eventActionFailureMessage(context, error)),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isReportingEvent = false;
+        });
+      }
+    }
+  }
+
   void _showChatParticipantRequiredSnackBar() {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -308,6 +403,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       stream: _eventStream,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
+          _currentDetailEventId = null;
           return const _EventDetailRouteStateScaffold(
             stateKey: eventDetailRouteErrorKey,
             titleRu: 'Не удалось загрузить событие',
@@ -318,6 +414,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         }
 
         if (snapshot.connectionState == ConnectionState.waiting) {
+          _currentDetailEventId = null;
           return const _EventDetailRouteStateScaffold(
             stateKey: eventDetailRouteLoadingKey,
             titleRu: 'Загрузка события...',
@@ -330,6 +427,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
 
         final event = snapshot.data;
         if (event == null) {
+          _currentDetailEventId = null;
           return const _EventDetailRouteStateScaffold(
             stateKey: eventDetailRouteMissingKey,
             titleRu: 'Событие не найдено',
@@ -340,6 +438,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         }
 
         final eventId = event.reference.id;
+        _currentDetailEventId = eventId;
         _trackEventDetailOpenedIfNeeded(event);
         final isLocallyCanceled = _locallyCanceledEventId == eventId;
         final isLocallyJoined = _locallyJoinedEventId == eventId;
@@ -411,9 +510,17 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
             final canOpenChat = eventId.trim().isNotEmpty &&
                 !isLocallyLeft &&
                 (isLocallyJoined || isActiveParticipant || canManage);
+            final canAttemptReport = currentUserUid.trim().isNotEmpty &&
+                isActive &&
+                !isCanceled &&
+                event.organizerId.trim() != currentUserUid.trim();
 
             return EventDetailWidget(
               eventId: eventId,
+              showReportAction: canAttemptReport,
+              onReportPressed: canAttemptReport && !_isReportingEvent
+                  ? () => _showReportEventDialog(event)
+                  : null,
               levelMin: event.levelMin,
               levelMax: event.levelMax,
               languageCode: event.languageCode,
@@ -652,6 +759,172 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       ),
     );
   }
+}
+
+class _EventReportDialogResult {
+  const _EventReportDialogResult({
+    required this.reasonCode,
+    this.details,
+  });
+
+  final String reasonCode;
+  final String? details;
+}
+
+class _EventReportReasonOption {
+  const _EventReportReasonOption({
+    required this.code,
+    required this.label,
+  });
+
+  final String code;
+  final String label;
+}
+
+class _EventReportDialog extends StatefulWidget {
+  const _EventReportDialog();
+
+  @override
+  State<_EventReportDialog> createState() => _EventReportDialogState();
+}
+
+class _EventReportDialogState extends State<_EventReportDialog> {
+  final TextEditingController _detailsController = TextEditingController();
+  String? _selectedReasonCode;
+
+  @override
+  void dispose() {
+    _detailsController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final localizations = FFLocalizations.of(context);
+    final options = _eventReportReasonOptions(context);
+
+    return AlertDialog(
+      key: eventDetailReportDialogKey,
+      title: Text(
+        localizations.getVariableText(
+          ruText: 'Пожаловаться на событие',
+          enText: 'Report event',
+        ),
+      ),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final option in options)
+                  ChoiceChip(
+                    key: eventDetailReportReasonKey(option.code),
+                    label: Text(option.label),
+                    selected: _selectedReasonCode == option.code,
+                    onSelected: (_) {
+                      setState(() {
+                        _selectedReasonCode = option.code;
+                      });
+                    },
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              key: eventDetailReportDetailsFieldKey,
+              controller: _detailsController,
+              maxLines: 3,
+              maxLength: eventReportDetailsMaxLength,
+              textInputAction: TextInputAction.newline,
+              decoration: InputDecoration(
+                labelText: localizations.getVariableText(
+                  ruText: 'Комментарий',
+                  enText: 'Comment',
+                ),
+                hintText: localizations.getVariableText(
+                  ruText: 'Можно оставить пустым',
+                  enText: 'Optional',
+                ),
+                border: const OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          key: eventDetailReportDismissButtonKey,
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(
+            localizations.getVariableText(
+              ruText: 'Отмена',
+              enText: 'Cancel',
+            ),
+          ),
+        ),
+        FilledButton(
+          key: eventDetailReportSubmitButtonKey,
+          onPressed: _selectedReasonCode == null
+              ? null
+              : () {
+                  Navigator.of(context).pop(
+                    _EventReportDialogResult(
+                      reasonCode: _selectedReasonCode!,
+                      details: _detailsController.text,
+                    ),
+                  );
+                },
+          child: Text(
+            localizations.getVariableText(
+              ruText: 'Отправить',
+              enText: 'Submit',
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+List<_EventReportReasonOption> _eventReportReasonOptions(
+  BuildContext context,
+) {
+  final localizations = FFLocalizations.of(context);
+  return [
+    _EventReportReasonOption(
+      code: 'spam',
+      label: localizations.getVariableText(
+        ruText: 'Спам',
+        enText: 'Spam',
+      ),
+    ),
+    _EventReportReasonOption(
+      code: 'offensive',
+      label: localizations.getVariableText(
+        ruText: 'Оскорбления',
+        enText: 'Offensive',
+      ),
+    ),
+    _EventReportReasonOption(
+      code: 'unsafe',
+      label: localizations.getVariableText(
+        ruText: 'Небезопасно',
+        enText: 'Unsafe',
+      ),
+    ),
+    _EventReportReasonOption(
+      code: 'other',
+      label: localizations.getVariableText(
+        ruText: 'Другое',
+        enText: 'Other',
+      ),
+    ),
+  ];
 }
 
 class _EventDetailRouteStateScaffold extends StatelessWidget {

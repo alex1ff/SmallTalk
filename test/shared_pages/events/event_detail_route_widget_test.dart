@@ -124,6 +124,7 @@ void main() {
     expect(streamCalls, 1);
     expect(find.text('Conversation club'), findsOneWidget);
     expect(find.byKey(eventDetailOrganizerControlsKey), findsOneWidget);
+    expect(find.byKey(eventDetailReportButtonKey), findsNothing);
     expect(find.text('Вы участвуете'), findsOneWidget);
     expect(find.text('Покинуть'), findsNothing);
 
@@ -154,6 +155,186 @@ void main() {
     expect(find.byKey(eventDetailCanceledBannerKey), findsOneWidget);
     expect(find.text('Событие отменено'), findsOneWidget);
     expect(find.byKey(eventDetailOrganizerControlsKey), findsNothing);
+  });
+
+  testWidgets('non-organizer reports event through callable', (tester) async {
+    currentUser = _TestAuthUser('student-1');
+    String? functionName;
+    Map<String, dynamic>? payload;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(organizerId: 'organizer-1'),
+            ),
+          ),
+          participantSnapshotStream: (participantRef) =>
+              Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: participantRef,
+              data: _participantData(
+                userId: 'student-1',
+                status: 'active',
+              ),
+            ),
+          ),
+          reportEventInvoker: (calledFunctionName, calledPayload) async {
+            functionName = calledFunctionName;
+            payload = calledPayload;
+            return <String, dynamic>{
+              'eventId': 'event-1',
+              'reportId': 'report-1',
+              'status': 'submitted',
+              'reportedAt': '2026-06-16T10:00:00.000Z',
+            };
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailReportButtonKey), findsOneWidget);
+
+    await tester.tap(find.byKey(eventDetailReportButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailReportDialogKey), findsOneWidget);
+    expect(find.byKey(eventDetailReportSubmitButtonKey), findsOneWidget);
+
+    await tester.tap(find.byKey(eventDetailReportReasonKey('unsafe')));
+    await tester.enterText(
+      find.byKey(eventDetailReportDetailsFieldKey),
+      '  Venue looks unsafe  ',
+    );
+    await tester.tap(find.byKey(eventDetailReportSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(functionName, reportEventFunctionName);
+    expect(payload, <String, dynamic>{
+      'eventId': 'event-1',
+      'reasonCode': 'unsafe',
+      'details': 'Venue looks unsafe',
+    });
+    expect(find.byKey(eventDetailReportSuccessSnackBarKey), findsOneWidget);
+  });
+
+  testWidgets('report event failure shows mapped error snackbar',
+      (tester) async {
+    currentUser = _TestAuthUser('student-1');
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(organizerId: 'organizer-1'),
+            ),
+          ),
+          participantSnapshotStream: (participantRef) =>
+              Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: participantRef,
+              data: _participantData(
+                userId: 'student-1',
+                status: 'active',
+              ),
+            ),
+          ),
+          reportEventInvoker: (_, __) async {
+            throw _TestFirebaseFunctionsException(
+              code: 'failed-precondition',
+              message: 'Raw backend message',
+              details: <String, dynamic>{
+                'domainCode': 'event_report_self',
+              },
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailReportButtonKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventDetailReportReasonKey('spam')));
+    await tester.pump();
+    await tester.tap(find.byKey(eventDetailReportSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailReportErrorSnackBarKey), findsOneWidget);
+    expect(find.text('Нельзя пожаловаться на своё событие.'), findsOneWidget);
+  });
+
+  testWidgets('report dialog ignores submit after route event changes',
+      (tester) async {
+    currentUser = _TestAuthUser('student-1');
+    final streamController = StreamController<DocumentSnapshot>();
+    addTearDown(streamController.close);
+    var reportCalls = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          snapshotStream: (eventRef) => streamController.stream,
+          participantSnapshotStream: (participantRef) =>
+              Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: participantRef,
+              data: _participantData(
+                userId: 'student-1',
+                status: 'active',
+              ),
+            ),
+          ),
+          reportEventInvoker: (_, __) async {
+            reportCalls += 1;
+            return <String, dynamic>{
+              'eventId': 'event-1',
+              'reportId': 'report-1',
+              'status': 'submitted',
+              'reportedAt': '2026-06-16T10:00:00.000Z',
+            };
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    streamController.add(
+      _FakeEventDocumentSnapshot(
+        reference: EventsRecord.collection.doc('event-1'),
+        data: _eventData(organizerId: 'organizer-1'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailReportButtonKey));
+    await tester.pumpAndSettle();
+    expect(find.byKey(eventDetailReportDialogKey), findsOneWidget);
+
+    streamController.add(
+      _FakeEventDocumentSnapshot(
+        reference: EventsRecord.collection.doc('event-2'),
+        data: _eventData(title: 'Updated event', organizerId: 'organizer-1'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailReportReasonKey('spam')));
+    await tester.pump();
+    await tester.tap(find.byKey(eventDetailReportSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(reportCalls, 0);
+    expect(find.byKey(eventDetailReportSuccessSnackBarKey), findsNothing);
+    expect(find.byKey(eventDetailReportErrorSnackBarKey), findsNothing);
   });
 
   testWidgets('non-organizer cannot see cancel action or call backend',

@@ -19,6 +19,14 @@ const joinEventFunctionName = 'joinEvent';
 const leaveEventFunctionName = 'leaveEvent';
 const sendEventChatMessageFunctionName = 'sendEventChatMessage';
 const getEventChatAccessStateFunctionName = 'getEventChatAccessState';
+const reportEventFunctionName = 'reportEvent';
+const eventReportDetailsMaxLength = 500;
+const eventReportReasonCodes = <String>{
+  'spam',
+  'offensive',
+  'unsafe',
+  'other',
+};
 
 final RegExp _uuidV4Pattern = RegExp(
   r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
@@ -176,6 +184,22 @@ class EventChatAccessStateResult {
   final bool readOnly;
 }
 
+class EventReportResult {
+  const EventReportResult({
+    required this.eventId,
+    required this.reportId,
+    required this.status,
+    required this.reportedAt,
+  });
+
+  final String eventId;
+  final String reportId;
+  final String status;
+  final DateTime reportedAt;
+
+  bool get alreadySubmitted => status == 'already_submitted';
+}
+
 class EventActionsRepository {
   const EventActionsRepository._();
 
@@ -297,6 +321,37 @@ class EventActionsRepository {
       readOnly: _requiredBool(data, 'readOnly'),
     );
   }
+
+  static Future<EventReportResult> reportEvent({
+    required String eventId,
+    required String reasonCode,
+    String? details,
+    EventCallableInvoker? invoker,
+  }) async {
+    final normalizedDetails = normalizeEventReportDetails(details);
+    final responseData = await _callEventFunction(
+      reportEventFunctionName,
+      <String, dynamic>{
+        'eventId': normalizeEventActionId(eventId),
+        'reasonCode': normalizeEventReportReasonCode(reasonCode),
+        if (normalizedDetails != null) 'details': normalizedDetails,
+      },
+      invoker: invoker,
+    );
+    final data = _responseMap(responseData);
+    final status = _requiredString(data, 'status');
+    if (status != 'submitted' && status != 'already_submitted') {
+      throw const FormatException(
+        'Expected submitted or already_submitted event report status.',
+      );
+    }
+    return EventReportResult(
+      eventId: _requiredString(data, 'eventId'),
+      reportId: _requiredString(data, 'reportId'),
+      status: status,
+      reportedAt: _requiredIsoDateTime(data, 'reportedAt'),
+    );
+  }
 }
 
 String newEventCreateRequestId() => const Uuid().v4();
@@ -352,6 +407,36 @@ String normalizeEventActionId(String eventId) {
   }
 
   return normalizedEventId;
+}
+
+String normalizeEventReportReasonCode(String reasonCode) {
+  final normalizedReasonCode = reasonCode.trim().toLowerCase();
+  if (!eventReportReasonCodes.contains(normalizedReasonCode)) {
+    throw ArgumentError.value(
+      reasonCode,
+      'reasonCode',
+      'Expected a supported event report reason code.',
+    );
+  }
+  return normalizedReasonCode;
+}
+
+String? normalizeEventReportDetails(String? details) {
+  if (details == null) {
+    return null;
+  }
+  final normalizedDetails = details.trim();
+  if (normalizedDetails.isEmpty) {
+    return null;
+  }
+  if (normalizedDetails.runes.length > eventReportDetailsMaxLength) {
+    throw ArgumentError.value(
+      details,
+      'details',
+      'Expected details no longer than 500 characters.',
+    );
+  }
+  return normalizedDetails;
 }
 
 String formatUtcIsoMillis(DateTime value) {

@@ -88,6 +88,7 @@ const REQUIRED_FUNCTIONS = [
   {id: "leaveEvent", trigger: "callable"},
   {id: "sendEventChatMessage", trigger: "callable"},
   {id: "getEventChatAccessState", trigger: "callable"},
+  {id: "reportEvent", trigger: "callable"},
   {id: "requestWithdrawal", trigger: "callable"},
   {id: "syncUserPublicProfile", trigger: "firestore"},
   {

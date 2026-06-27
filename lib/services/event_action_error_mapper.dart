@@ -20,6 +20,8 @@ enum EventActionFailureKind {
   alreadyJoined,
   organizerCannotLeave,
   notActiveParticipant,
+  eventReportSelf,
+  eventNotReportable,
   profileRequired,
   capacityBelowParticipants,
   chatUnavailable,
@@ -219,6 +221,16 @@ String eventActionFailureMessageForLocalizations(
         ruText: 'Это действие доступно только участникам события.',
         enText: 'Only event participants can do this.',
       );
+    case EventActionFailureKind.eventReportSelf:
+      return localizations.getVariableText(
+        ruText: 'Нельзя пожаловаться на своё событие.',
+        enText: 'You cannot report your own event.',
+      );
+    case EventActionFailureKind.eventNotReportable:
+      return localizations.getVariableText(
+        ruText: 'На это событие больше нельзя пожаловаться.',
+        enText: 'This event can no longer be reported.',
+      );
     case EventActionFailureKind.profileRequired:
       return localizations.getVariableText(
         ruText: 'Заполните имя и фото профиля, чтобы продолжить с событиями.',
@@ -273,6 +285,7 @@ EventActionFailure? _failureFromDomainCode({
     case 'invalid_join_request':
     case 'invalid_leave_request':
     case 'invalid_event_chat_message_request':
+    case 'invalid_report_event_request':
     case 'invalid_city_catalog':
       return _failure(
         kind: EventActionFailureKind.validation,
@@ -338,6 +351,13 @@ EventActionFailure? _failureFromDomainCode({
         domainCode: domainCode,
         reason: reason,
       );
+    case 'event_not_reportable':
+      return _failure(
+        kind: EventActionFailureKind.eventNotReportable,
+        firebaseCode: firebaseCode,
+        domainCode: domainCode,
+        reason: reason,
+      );
     case 'event_full':
       return _failure(
         kind: EventActionFailureKind.eventFull,
@@ -362,6 +382,13 @@ EventActionFailure? _failureFromDomainCode({
     case 'not_active_participant':
       return _failure(
         kind: EventActionFailureKind.notActiveParticipant,
+        firebaseCode: firebaseCode,
+        domainCode: domainCode,
+        reason: reason,
+      );
+    case 'event_report_self':
+      return _failure(
+        kind: EventActionFailureKind.eventReportSelf,
         firebaseCode: firebaseCode,
         domainCode: domainCode,
         reason: reason,
@@ -396,6 +423,7 @@ EventActionFailure? _failureFromDomainCode({
     case 'event_creation_counter_inconsistent':
     case 'event_cancellation_inconsistent':
     case 'event_participant_state_inconsistent':
+    case 'event_report_state_inconsistent':
     case 'participant_membership_inconsistent':
       return _failure(
         kind: EventActionFailureKind.staleEventState,

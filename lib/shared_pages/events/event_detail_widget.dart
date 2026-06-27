@@ -17,6 +17,8 @@ const ValueKey<String> eventDetailBackButtonKey =
     ValueKey<String>('event_detail_back_button');
 const ValueKey<String> eventDetailShareButtonKey =
     ValueKey<String>('event_detail_share_button');
+const ValueKey<String> eventDetailReportButtonKey =
+    ValueKey<String>('event_detail_report_button');
 const ValueKey<String> eventDetailLevelRangeBadgeKey =
     ValueKey<String>('event_detail_level_range_badge');
 const ValueKey<String> eventDetailLanguageBadgeKey =
@@ -108,6 +110,8 @@ class EventDetailWidget extends StatelessWidget {
     super.key,
     required this.eventId,
     this.onSharePressed,
+    this.showReportAction = false,
+    this.onReportPressed,
     this.levelMin,
     this.levelMax,
     this.languageCode,
@@ -136,6 +140,8 @@ class EventDetailWidget extends StatelessWidget {
 
   final String eventId;
   final VoidCallback? onSharePressed;
+  final bool showReportAction;
+  final VoidCallback? onReportPressed;
   final String? levelMin;
   final String? levelMax;
   final String? languageCode;
@@ -204,7 +210,11 @@ class EventDetailWidget extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _EventDetailTopBar(onSharePressed: onSharePressed),
+            _EventDetailTopBar(
+              onSharePressed: onSharePressed,
+              showReportAction: showReportAction,
+              onReportPressed: onReportPressed,
+            ),
             Expanded(
               child: ListView(
                 padding: const EdgeInsetsDirectional.fromSTEB(
@@ -1746,9 +1756,13 @@ class _EventDetailOrganizerAvatar extends StatelessWidget {
 class _EventDetailTopBar extends StatelessWidget {
   const _EventDetailTopBar({
     required this.onSharePressed,
+    required this.showReportAction,
+    required this.onReportPressed,
   });
 
   final VoidCallback? onSharePressed;
+  final bool showReportAction;
+  final VoidCallback? onReportPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -1760,36 +1774,47 @@ class _EventDetailTopBar extends StatelessWidget {
       ruText: 'Поделиться событием',
       enText: 'Share event',
     );
+    final reportLabel = FFLocalizations.of(context).getVariableText(
+      ruText: 'Пожаловаться на событие',
+      enText: 'Report event',
+    );
     void handleBackPressed() => context.safePop();
 
     return SizedBox(
       key: eventDetailTopBarKey,
       height: ExpatlioDesign.pageHeaderHeight,
-      child: Row(
+      child: Stack(
+        alignment: AlignmentDirectional.center,
         children: [
-          Tooltip(
-            message: backLabel,
-            child: Semantics(
-              key: eventDetailBackButtonKey,
-              button: true,
-              label: backLabel,
-              onTap: handleBackPressed,
-              child: ExcludeSemantics(
-                child: FlutterFlowIconButton(
-                  borderColor: Colors.transparent,
-                  borderRadius: 24,
-                  buttonSize: 48,
-                  icon: Icon(
-                    FFIcons.kchevronLeft,
-                    color: ExpatlioDesign.text,
-                    size: 24,
+          PositionedDirectional(
+            start: 0,
+            child: Tooltip(
+              message: backLabel,
+              child: Semantics(
+                key: eventDetailBackButtonKey,
+                button: true,
+                label: backLabel,
+                onTap: handleBackPressed,
+                child: ExcludeSemantics(
+                  child: FlutterFlowIconButton(
+                    borderColor: Colors.transparent,
+                    borderRadius: 24,
+                    buttonSize: 48,
+                    icon: Icon(
+                      FFIcons.kchevronLeft,
+                      color: ExpatlioDesign.text,
+                      size: 24,
+                    ),
+                    onPressed: handleBackPressed,
                   ),
-                  onPressed: handleBackPressed,
                 ),
               ),
             ),
           ),
-          Expanded(
+          Padding(
+            padding: EdgeInsetsDirectional.symmetric(
+              horizontal: showReportAction ? 112 : 64,
+            ),
             child: Text(
               FFLocalizations.of(context).getVariableText(
                 ruText: 'Событие',
@@ -1801,28 +1826,61 @@ class _EventDetailTopBar extends StatelessWidget {
               style: ExpatlioDesign.pageHeaderTitleStyle(context),
             ),
           ),
-          Tooltip(
-            message: shareLabel,
-            child: Semantics(
-              key: eventDetailShareButtonKey,
-              button: true,
-              enabled: onSharePressed != null,
-              label: shareLabel,
-              onTap: onSharePressed,
-              child: ExcludeSemantics(
-                child: FlutterFlowIconButton(
-                  borderColor: Colors.transparent,
-                  borderRadius: 24,
-                  buttonSize: 48,
-                  disabledIconColor: ExpatlioDesign.disabled,
-                  icon: Icon(
-                    Icons.ios_share,
-                    color: ExpatlioDesign.text,
-                    size: 24,
+          PositionedDirectional(
+            end: 0,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Tooltip(
+                  message: shareLabel,
+                  child: Semantics(
+                    key: eventDetailShareButtonKey,
+                    button: true,
+                    enabled: onSharePressed != null,
+                    label: shareLabel,
+                    onTap: onSharePressed,
+                    child: ExcludeSemantics(
+                      child: FlutterFlowIconButton(
+                        borderColor: Colors.transparent,
+                        borderRadius: 24,
+                        buttonSize: 48,
+                        disabledIconColor: ExpatlioDesign.disabled,
+                        icon: Icon(
+                          Icons.ios_share,
+                          color: ExpatlioDesign.text,
+                          size: 24,
+                        ),
+                        onPressed: onSharePressed,
+                      ),
+                    ),
                   ),
-                  onPressed: onSharePressed,
                 ),
-              ),
+                if (showReportAction)
+                  Tooltip(
+                    message: reportLabel,
+                    child: Semantics(
+                      key: eventDetailReportButtonKey,
+                      button: true,
+                      enabled: onReportPressed != null,
+                      label: reportLabel,
+                      onTap: onReportPressed,
+                      child: ExcludeSemantics(
+                        child: FlutterFlowIconButton(
+                          borderColor: Colors.transparent,
+                          borderRadius: 24,
+                          buttonSize: 48,
+                          disabledIconColor: ExpatlioDesign.disabled,
+                          icon: Icon(
+                            Icons.flag_outlined,
+                            color: ExpatlioDesign.text,
+                            size: 24,
+                          ),
+                          onPressed: onReportPressed,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         ],

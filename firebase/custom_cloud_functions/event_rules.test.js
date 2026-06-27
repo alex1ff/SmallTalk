@@ -2165,6 +2165,56 @@ test("event bookkeeping exclusions preserve unrelated admin fallback reads", asy
   );
 });
 
+test("event reports are private and server-owned", async () => {
+  const reportPath = "eventReports/report-1";
+  const contexts = [
+    testEnv.unauthenticatedContext(),
+    testEnv.authenticatedContext("user-a"),
+    testEnv.authenticatedContext("other-user"),
+  ];
+  const adminClient = testEnv.authenticatedContext("admin-user", {admin: true});
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc(reportPath).set({
+      eventId: "editable-event",
+      reporterId: "user-a",
+      organizerId: "organizer",
+      reasonCode: "unsafe",
+      status: "open",
+      createdAt: new Date("2026-06-16T10:00:00.000Z"),
+      updatedAt: new Date("2026-06-16T10:00:00.000Z"),
+    });
+  });
+
+  for (const context of contexts) {
+    const db = context.firestore();
+    await assertFails(db.doc(reportPath).get());
+    await assertFails(db.collection("eventReports").get());
+    await assertFails(
+      db.doc("eventReports/direct-client-report").set({
+        eventId: "editable-event",
+        reporterId: "user-a",
+        reasonCode: "spam",
+      }),
+    );
+    await assertFails(db.doc(reportPath).update({status: "closed"}));
+    await assertFails(db.doc(reportPath).delete());
+  }
+
+  const adminDb = adminClient.firestore();
+  await assertSucceeds(adminDb.doc(reportPath).get());
+  await assertSucceeds(adminDb.collection("eventReports").get());
+  await assertFails(
+    adminDb.doc("eventReports/direct-admin-report").set({
+      eventId: "editable-event",
+      reporterId: "admin-user",
+      reasonCode: "spam",
+    }),
+  );
+  await assertFails(adminDb.doc(reportPath).update({status: "closed"}));
+  await assertFails(adminDb.doc(reportPath).delete());
+});
+
 test("clients cannot directly create event documents", async () => {
   const guest = testEnv.unauthenticatedContext();
   const user = testEnv.authenticatedContext("user-a");

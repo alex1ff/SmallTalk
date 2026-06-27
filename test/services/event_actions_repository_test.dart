@@ -296,6 +296,68 @@ void main() {
       expect(canceledResult.readOnly, true);
     });
 
+    test('reports an event through the trusted callable', () async {
+      String? functionName;
+      Map<String, dynamic>? payload;
+
+      final result = await EventActionsRepository.reportEvent(
+        eventId: ' event-1 ',
+        reasonCode: ' UNSAFE ',
+        details: '  Небезопасное место встречи  ',
+        invoker: (calledFunctionName, calledPayload) async {
+          functionName = calledFunctionName;
+          payload = calledPayload;
+          return <String, dynamic>{
+            'eventId': 'event-1',
+            'reportId': 'report-1',
+            'status': 'submitted',
+            'reportedAt': '2026-06-16T10:00:00.000Z',
+          };
+        },
+      );
+
+      expect(functionName, reportEventFunctionName);
+      expect(payload, <String, dynamic>{
+        'eventId': 'event-1',
+        'reasonCode': 'unsafe',
+        'details': 'Небезопасное место встречи',
+      });
+      expect(result.eventId, 'event-1');
+      expect(result.reportId, 'report-1');
+      expect(result.status, 'submitted');
+      expect(result.alreadySubmitted, isFalse);
+      expect(result.reportedAt, DateTime.parse('2026-06-16T10:00:00Z'));
+    });
+
+    test('reports duplicate events idempotently without empty details',
+        () async {
+      String? functionName;
+      Map<String, dynamic>? payload;
+
+      final result = await EventActionsRepository.reportEvent(
+        eventId: 'event-1',
+        reasonCode: 'spam',
+        details: '   ',
+        invoker: (calledFunctionName, calledPayload) async {
+          functionName = calledFunctionName;
+          payload = calledPayload;
+          return <String, dynamic>{
+            'eventId': 'event-1',
+            'reportId': 'report-1',
+            'status': 'already_submitted',
+            'reportedAt': '2026-06-16T10:00:00.000Z',
+          };
+        },
+      );
+
+      expect(functionName, reportEventFunctionName);
+      expect(payload, <String, dynamic>{
+        'eventId': 'event-1',
+        'reasonCode': 'spam',
+      });
+      expect(result.alreadySubmitted, isTrue);
+    });
+
     test('rejects invalid ids and create request ids before calling functions',
         () async {
       var calls = 0;
@@ -329,6 +391,25 @@ void main() {
           throwsA(isA<ArgumentError>()),
         );
       }
+      for (final reasonCode in <String>['', 'harassment', 'unsafe/event']) {
+        await expectLater(
+          EventActionsRepository.reportEvent(
+            eventId: 'event-1',
+            reasonCode: reasonCode,
+            invoker: invoker,
+          ),
+          throwsA(isA<ArgumentError>()),
+        );
+      }
+      await expectLater(
+        EventActionsRepository.reportEvent(
+          eventId: 'event-1',
+          reasonCode: 'spam',
+          details: 'a' * 501,
+          invoker: invoker,
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
       expect(calls, 0);
     });
 
@@ -566,6 +647,32 @@ void main() {
             'eventId': 'event-1',
             'status': 'canceled',
             'readOnly': 'yes',
+          },
+        ),
+        throwsA(isA<FormatException>()),
+      );
+      await expectLater(
+        EventActionsRepository.reportEvent(
+          eventId: 'event-1',
+          reasonCode: 'spam',
+          invoker: (_, __) async => <String, dynamic>{
+            'eventId': 'event-1',
+            'reportId': 'report-1',
+            'status': 'open',
+            'reportedAt': '2026-06-16T10:00:00.000Z',
+          },
+        ),
+        throwsA(isA<FormatException>()),
+      );
+      await expectLater(
+        EventActionsRepository.reportEvent(
+          eventId: 'event-1',
+          reasonCode: 'spam',
+          invoker: (_, __) async => <String, dynamic>{
+            'eventId': 'event-1',
+            'reportId': 'report-1',
+            'status': 'submitted',
+            'reportedAt': '2026-06-16T10:00:00Z',
           },
         ),
         throwsA(isA<FormatException>()),

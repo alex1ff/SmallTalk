@@ -148,6 +148,23 @@ test("deployment readiness exposes no event chat message mutation callables", ()
   }
 });
 
+test("deployment readiness exposes event report callable", () => {
+  const functionIds = new Set(REQUIRED_FUNCTIONS.map((item) => item.id));
+  const indexSource = fs.readFileSync(
+      path.join(__dirname, "index.js"),
+      "utf8",
+  );
+  const packageJson = JSON.parse(fs.readFileSync(
+      path.join(__dirname, "package.json"),
+      "utf8",
+  ));
+  const deployScript = packageJson.scripts["deploy:readiness-functions"];
+
+  assert.ok(functionIds.has("reportEvent"));
+  assert.match(indexSource, /exports\.reportEvent\b/);
+  assert.match(deployScript, /functions:custom_cloud_functions:reportEvent\b/);
+});
+
 test("deployment readiness exposes startSearch queue callable", () => {
   const functionIds = new Set(REQUIRED_FUNCTIONS.map((item) => item.id));
   const readinessEntry = REQUIRED_FUNCTIONS.find(

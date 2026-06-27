@@ -421,7 +421,7 @@ Deferred from active scope on 2026-06-19.
 ## Post-MVP Backlog
 
 - [ ] Rich web event preview, deferred deep linking, and optional vendor attribution.
-- [ ] Report event.
+- [x] Report event.
 - [ ] Report chat message.
 - [ ] Event history in profile.
 - [ ] Improved city picker.

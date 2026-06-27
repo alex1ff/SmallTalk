@@ -56,6 +56,7 @@ void main() {
     expect(find.byKey(eventDetailTopBarKey), findsOneWidget);
     expect(find.byKey(eventDetailBackButtonKey), findsOneWidget);
     expect(find.byKey(eventDetailShareButtonKey), findsOneWidget);
+    expect(find.byKey(eventDetailReportButtonKey), findsNothing);
     expect(find.text('Событие'), findsWidgets);
     expect(find.byTooltip('Назад'), findsOneWidget);
     expect(find.byTooltip('Поделиться событием'), findsOneWidget);
@@ -82,6 +83,37 @@ void main() {
     );
     final topBarCenter = tester.getCenter(find.byKey(eventDetailTopBarKey));
     expect((titleCenter.dx - topBarCenter.dx).abs(), lessThan(1.0));
+  });
+
+  testWidgets('report action is shown only when enabled', (tester) async {
+    var reportTapCount = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailWidget(
+          eventId: 'event-123',
+          showReportAction: true,
+          onReportPressed: () => reportTapCount += 1,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailReportButtonKey), findsOneWidget);
+    expect(find.byTooltip('Пожаловаться на событие'), findsOneWidget);
+
+    final reportSemantics = tester.widget<Semantics>(
+      find.byKey(eventDetailReportButtonKey),
+    );
+    expect(reportSemantics.properties.label, 'Пожаловаться на событие');
+    expect(reportSemantics.properties.button, isTrue);
+    expect(reportSemantics.properties.enabled, isTrue);
+    expect(reportSemantics.properties.onTap, isNotNull);
+
+    await tester.tap(find.byKey(eventDetailReportButtonKey));
+    await tester.pump();
+
+    expect(reportTapCount, 1);
   });
 
   testWidgets('share action calls the injected callback once', (tester) async {

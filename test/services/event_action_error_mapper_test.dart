@@ -16,6 +16,7 @@ void main() {
         'invalid_join_request': EventActionFailureKind.validation,
         'invalid_leave_request': EventActionFailureKind.validation,
         'invalid_event_chat_message_request': EventActionFailureKind.validation,
+        'invalid_report_event_request': EventActionFailureKind.validation,
         'invalid_city_catalog': EventActionFailureKind.validation,
         'daily_limit_reached': EventActionFailureKind.dailyLimitReached,
         'create_request_conflict': EventActionFailureKind.createRequestConflict,
@@ -29,6 +30,8 @@ void main() {
         'already_joined': EventActionFailureKind.alreadyJoined,
         'organizer_cannot_leave': EventActionFailureKind.organizerCannotLeave,
         'not_active_participant': EventActionFailureKind.notActiveParticipant,
+        'event_report_self': EventActionFailureKind.eventReportSelf,
+        'event_not_reportable': EventActionFailureKind.eventNotReportable,
         'organizer_profile_required': EventActionFailureKind.profileRequired,
         'participant_profile_required': EventActionFailureKind.profileRequired,
         'sender_profile_required': EventActionFailureKind.profileRequired,
@@ -45,6 +48,8 @@ void main() {
         'event_cancellation_inconsistent':
             EventActionFailureKind.staleEventState,
         'event_participant_state_inconsistent':
+            EventActionFailureKind.staleEventState,
+        'event_report_state_inconsistent':
             EventActionFailureKind.staleEventState,
         'participant_membership_inconsistent':
             EventActionFailureKind.staleEventState,
@@ -188,6 +193,7 @@ void main() {
         'event_creation_counter_inconsistent',
         'event_cancellation_inconsistent',
         'event_participant_state_inconsistent',
+        'event_report_state_inconsistent',
         'participant_membership_inconsistent',
       ]) {
         expect(
@@ -381,6 +387,38 @@ void main() {
       );
       expect(ruMessage, isNot(contains('Raw backend message')));
       expect(enMessage, isNot(contains('Raw backend message')));
+    });
+
+    testWidgets('resolves clear report failure messages without raw backend',
+        (tester) async {
+      for (final scenario in [
+        (
+          error: _domainError('event_report_self'),
+          ruMessage: 'Нельзя пожаловаться на своё событие.',
+          enMessage: 'You cannot report your own event.',
+        ),
+        (
+          error: _domainError('event_not_reportable'),
+          ruMessage: 'На это событие больше нельзя пожаловаться.',
+          enMessage: 'This event can no longer be reported.',
+        ),
+      ]) {
+        final ruMessage = await _localizedMessage(
+          tester,
+          locale: const Locale('ru'),
+          error: scenario.error,
+        );
+        final enMessage = await _localizedMessage(
+          tester,
+          locale: const Locale('en'),
+          error: scenario.error,
+        );
+
+        expect(ruMessage, scenario.ruMessage);
+        expect(enMessage, scenario.enMessage);
+        expect(ruMessage, isNot(contains('Raw backend message')));
+        expect(enMessage, isNot(contains('Raw backend message')));
+      }
     });
   });
 }
