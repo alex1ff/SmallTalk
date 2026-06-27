@@ -6495,14 +6495,21 @@ void main() {
     await tester.pump();
 
     expect(find.text('Пока никого не нашли'), findsOneWidget);
-    expect(find.text('Начать поиск'), findsOneWidget);
+    final startSearchButton =
+        find.widgetWithText(StudentStartSearchButton, 'Начать поиск');
+    expect(startSearchButton, findsOneWidget);
+    expect(startSearchButton.hitTestable(), findsOneWidget);
+    expect(
+      tester.widget<StudentStartSearchButton>(startSearchButton).isActive,
+      isFalse,
+    );
     expect(find.text('Остановить поиск'), findsNothing);
+    expect(find.text('Ищем собеседника'), findsNothing);
+    expect(find.text('Соединяем'), findsNothing);
+    expect(find.text('Не удалось начать поиск'), findsNothing);
 
     await tester.tap(
-      find.ancestor(
-        of: find.text('Начать поиск'),
-        matching: find.byType(InkWell),
-      ),
+      startSearchButton,
     );
     await tester.pump();
 
