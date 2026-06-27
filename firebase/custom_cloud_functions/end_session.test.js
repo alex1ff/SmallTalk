@@ -635,6 +635,113 @@ test("endSession callable stops both active search participants", async () => {
   assert.equal(store.get(`users/${secondStudentId}`).isAvailable, true);
 });
 
+test("endSession callable clears student-teacher call state and student queue", async () => {
+  const startedAtMillis = Date.now() - 90_000;
+  const sessionId = "session-active-ended-student-teacher";
+  const studentId = "student-callable-teacher-cleanup";
+  const teacherId = "teacher-callable-cleanup";
+  const pairAttemptId = `pair-${sessionId}-${studentId}-${teacherId}`;
+  const {firestore, store} = createFakeFirestore({
+    [`users/${studentId}`]: studentUser({
+      currentSessionId: sessionId,
+      isInCall: true,
+      isAvailable: false,
+    }),
+    [`users/${teacherId}`]: studentUser({
+      role: "native_speaker",
+      currentSessionId: sessionId,
+      isInCall: true,
+      isAvailable: false,
+      balance_NS: 0,
+    }),
+    [`searchRequests/${studentId}`]: activeSearchRequest(studentId, {
+      currentSessionId: sessionId,
+      activeSessionId: sessionId,
+      matchedSessionId: sessionId,
+      matchedUserId: teacherId,
+      matchedResponderId: teacherId,
+      matchedRole: "native_speaker",
+      pairAttemptId,
+      lockOwner: pairAttemptId,
+      lockExpiresAt: timestampFromMillis(Date.now() + 45_000),
+    }),
+    [`videoSessions/${sessionId}`]: {
+      status: "active",
+      language: "en",
+      studentId,
+      tutorId: teacherId,
+      requesterId: studentId,
+      requesterRole: "student",
+      responderId: teacherId,
+      responderRole: "native_speaker",
+      currentTutorId: teacherId,
+      currentResponderId: teacherId,
+      currentResponderRole: "native_speaker",
+      participantIds: [studentId, teacherId],
+      participantRoles: {
+        [studentId]: "student",
+        [teacherId]: "native_speaker",
+      },
+      searchRequestIds: {
+        requester: `request-${studentId}`,
+      },
+      matchContext: {
+        requesterRole: "student",
+        acceptedResponderId: teacherId,
+        acceptedResponderRole: "native_speaker",
+      },
+      dailyRoomName: "room-student-teacher-cleanup",
+      createdAt: timestampFromMillis(startedAtMillis - 60_000),
+      sessionMetadata: {
+        callConnectedAtTimestamp: startedAtMillis,
+      },
+    },
+  });
+
+  const response = await withFakeFirestore(firestore, () =>
+    endSession.run(
+      {sessionId, endReason: "user_ended"},
+      {auth: {uid: teacherId}},
+    ));
+
+  assert.equal(response.status, "ended");
+  assert.equal(response.endedBy, "responder");
+  assert.equal(store.get(`videoSessions/${sessionId}`).status, "ended");
+  assert.equal(
+    store.get(`searchRequests/${studentId}`).status,
+    "stopped",
+  );
+  assert.equal(
+    store.get(`searchRequests/${studentId}`).stopReason,
+    "session_ended",
+  );
+  assert.equal(store.get(`searchRequests/${studentId}`).currentSessionId, null);
+  assert.equal(
+    store.get(`searchRequests/${studentId}`).activeSessionId,
+    undefined,
+  );
+  assert.equal(
+    store.get(`searchRequests/${studentId}`).matchedSessionId,
+    undefined,
+  );
+  assert.equal(store.get(`searchRequests/${studentId}`).matchedUserId, null);
+  assert.equal(
+    store.get(`searchRequests/${studentId}`).matchedResponderId,
+    undefined,
+  );
+  assert.equal(store.get(`searchRequests/${studentId}`).matchedRole, null);
+  assert.equal(store.get(`searchRequests/${studentId}`).pairAttemptId, null);
+  assert.equal(store.get(`searchRequests/${studentId}`).lockOwner, null);
+  assert.equal(store.get(`searchRequests/${studentId}`).lockExpiresAt, null);
+  assert.equal(store.get(`searchRequests/${teacherId}`), undefined);
+  assert.equal(store.get(`users/${studentId}`).currentSessionId, undefined);
+  assert.equal(store.get(`users/${teacherId}`).currentSessionId, undefined);
+  assert.equal(store.get(`users/${studentId}`).isInCall, false);
+  assert.equal(store.get(`users/${teacherId}`).isInCall, false);
+  assert.equal(store.get(`users/${studentId}`).isAvailable, true);
+  assert.equal(store.get(`users/${teacherId}`).isAvailable, true);
+});
+
 test("endSession callable cancels pre-active user-ended sessions", async () => {
   const sessionId = "session-pre-active-cancelled";
   const firstStudentId = "student-pre-active-cancel-a";
