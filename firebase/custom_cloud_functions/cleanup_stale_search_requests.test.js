@@ -98,6 +98,76 @@ test("stale search request cleanup uses heartbeat cutoff", () => {
   );
 });
 
+test("90 seconds without heartbeat expires active search request", () => {
+  const writerOperations = [];
+  const writer = {
+    update(ref, data) {
+      writerOperations.push({type: "update", ref, data});
+    },
+  };
+  const cutoffMillis =
+    fixedNowMillis - SEARCH_REQUEST_TIMING.HEARTBEAT_STALE_SECONDS * 1000;
+
+  const freshAtBoundaryResult = queueStaleSearchRequestCleanup({
+    writer,
+    doc: {
+      id: "student-fresh-boundary",
+      ref: {path: "searchRequests/student-fresh-boundary"},
+      data: () => activeRequest({
+        currentSessionId: null,
+        heartbeatAt: timestampFromMillis(cutoffMillis),
+      }),
+    },
+    nowMillis: fixedNowMillis,
+    serverTimestamp,
+    fieldDelete,
+  });
+  const expiredAfterBoundaryResult = queueStaleSearchRequestCleanup({
+    writer,
+    doc: {
+      id: "student-expired-boundary",
+      ref: {path: "searchRequests/student-expired-boundary"},
+      data: () => activeRequest({
+        activeSessionId: "session-a",
+        currentSessionId: null,
+        matchedSessionId: "session-a",
+        matchedResponderId: "student-b",
+        heartbeatAt: timestampFromMillis(cutoffMillis - 1),
+      }),
+    },
+    nowMillis: fixedNowMillis,
+    serverTimestamp,
+    fieldDelete,
+  });
+
+  assert.equal(freshAtBoundaryResult.cleaned, false);
+  assert.equal(expiredAfterBoundaryResult.cleaned, true);
+  assert.equal(expiredAfterBoundaryResult.requestId, "request-a");
+  assert.equal(writerOperations.length, 1);
+  assert.equal(
+    writerOperations[0].ref.path,
+    "searchRequests/student-expired-boundary",
+  );
+  assert.equal(writerOperations[0].data.status, "expired");
+  assert.equal(writerOperations[0].data.stopReason, "heartbeat_stale");
+  assert.equal(writerOperations[0].data.stoppedAt, serverTimestamp);
+  assert.equal(writerOperations[0].data.updatedAt, serverTimestamp);
+  assert.equal(writerOperations[0].data.currentSessionId, null);
+  assert.equal(writerOperations[0].data.activeSessionId, fieldDelete);
+  assert.equal(writerOperations[0].data.matchedSessionId, fieldDelete);
+  assert.equal(writerOperations[0].data.matchedResponderId, fieldDelete);
+  assert.equal(writerOperations[0].data.matchedUserId, null);
+  assert.equal(writerOperations[0].data.matchedRole, null);
+  assert.equal(writerOperations[0].data.pairAttemptId, null);
+  assert.deepEqual(writerOperations[0].data.attemptExcludedCandidateIds, []);
+  assert.equal(writerOperations[0].data.lockOwner, null);
+  assert.equal(writerOperations[0].data.lockExpiresAt, null);
+  assert.deepEqual(writerOperations[0].data.lastError, {
+    code: "heartbeat_stale",
+    message: "Search request heartbeat is stale",
+  });
+});
+
 test("stale search request cleanup marks request expired and clears locks", () => {
   const update = buildStaleSearchRequestCleanupUpdate({
     requestData: activeRequest({status: "matching"}),
