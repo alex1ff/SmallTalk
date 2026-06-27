@@ -6552,6 +6552,8 @@ void main() {
 
   testWidgets('student dashboard renders connecting state and stops locally',
       (tester) async {
+    final startPayloads = <Map<String, dynamic>>[];
+    final stoppedSessions = <String?>[];
     currentUser = _TestAuthUser(
       isLoggedIn: true,
       userId: 'student-connecting-state-test',
@@ -6570,28 +6572,44 @@ void main() {
 
     await tester.pumpWidget(
       _buildDashboardTestApp(
-        const StudentsDashboardWidget(
+        StudentsDashboardWidget(
           initialSearchState: StudentDashboardSearchState.connecting,
+          startSearchRequest: (payload) async {
+            startPayloads.add(Map<String, dynamic>.from(payload));
+            return <String, dynamic>{'requestId': 'request-unexpected-start'};
+          },
+          stopSearchRequest: (activeSessionId) async {
+            stoppedSessions.add(activeSessionId);
+          },
         ),
       ),
     );
     await tester.pump();
 
-    final stopSearchText = find.text('Остановить поиск');
-    expect(stopSearchText, findsOneWidget);
-    expect(find.text('Соединяем'), findsOneWidget);
+    expect(startPayloads, isEmpty);
+    final stopSearchButton =
+        find.widgetWithText(StudentStartSearchButton, 'Остановить поиск');
+    expect(stopSearchButton, findsOneWidget);
+    expect(stopSearchButton.hitTestable(), findsOneWidget);
+    expect(
+      tester.widget<StudentStartSearchButton>(stopSearchButton).isActive,
+      isTrue,
+    );
+    final connectingStatusText = find.text('Соединяем');
+    expect(connectingStatusText, findsOneWidget);
+    expect(connectingStatusText.hitTestable(), findsOneWidget);
+    expect(find.text('Начать поиск'), findsNothing);
     expect(find.text('Ищем собеседника'), findsNothing);
+    expect(find.text('Пока никого не нашли'), findsNothing);
+    expect(find.text('Не удалось начать поиск'), findsNothing);
     expect(find.text('считаем людей рядом'), findsNothing);
     expect(find.textContaining('рядом с вами'), findsNothing);
 
-    await tester.tap(
-      find.ancestor(
-        of: stopSearchText,
-        matching: find.byType(InkWell),
-      ),
-    );
+    await tester.tap(stopSearchButton);
     await tester.pump();
 
+    expect(startPayloads, isEmpty);
+    expect(stoppedSessions, <String?>[null]);
     expect(find.text('Начать поиск'), findsOneWidget);
     expect(find.text('Соединяем'), findsNothing);
     expect(find.byType(NoBalanceWidget), findsNothing);
