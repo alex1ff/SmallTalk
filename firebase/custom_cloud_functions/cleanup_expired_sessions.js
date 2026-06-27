@@ -24,6 +24,10 @@ const {
 const {
   VIDEO_SESSION_STATUS,
 } = require("./video_sessions_shared");
+const {
+  logCallLifecycleError,
+  logCallLifecycleEvent,
+} = require("./call_lifecycle_logs");
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 const PENDING_RESPONSE_TIMEOUT_SESSION_STATUSES = new Set([
   VIDEO_SESSION_STATUS.SEARCHING,
@@ -459,6 +463,15 @@ exports.cleanupExpiredSessions = functions
 
       if (expiredSessionDocs.length === 0) {
         console.log("📭 No expired sessions found");
+        logCallLifecycleEvent({
+          event: "cleanup_sessions_completed",
+          source: "cleanupExpiredSessions",
+          result: "noop",
+          counts: {
+            found: 0,
+            cleaned: 0,
+          },
+        });
         return null;
       }
 
@@ -599,11 +612,26 @@ exports.cleanupExpiredSessions = functions
       }
 
       console.log(`✅ Expired sessions marked as ended: ${cleanedCount}`);
+      logCallLifecycleEvent({
+        event: "cleanup_sessions_completed",
+        source: "cleanupExpiredSessions",
+        result: "completed",
+        counts: {
+          found: expiredSessionDocs.length,
+          cleaned: cleanedCount,
+        },
+      });
 
       console.log("🧹 Expired sessions cleanup completed");
       return null;
     } catch (error) {
       console.error("❌ Error cleaning up expired sessions:", error);
+      logCallLifecycleError({
+        event: "cleanup_sessions_failed",
+        source: "cleanupExpiredSessions",
+        errorCode: error.code || error.name,
+        reason: error.message,
+      });
       return null;
     }
   });

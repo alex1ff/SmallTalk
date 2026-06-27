@@ -42,6 +42,10 @@ const {
   responderFailurePoolFingerprintMatches,
   resolveResponderFailureStopReason,
 } = require("./responder_failure_policy");
+const {
+  logCallLifecycleError,
+  logCallLifecycleEvent,
+} = require("./call_lifecycle_logs");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -237,6 +241,49 @@ function buildTimeoutNextResponderPairLockInput({
   };
 }
 
+function normalizePushResultString(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function buildTimeoutPushLifecycleDecision({pushResult = {}} = {}) {
+  if (pushResult.sent === true) {
+    return {
+      event: "timeout_push_sent",
+      result: "sent",
+      isError: false,
+    };
+  }
+
+  const reason =
+    normalizePushResultString(pushResult.reason) || "push_not_sent";
+  const errorCode =
+    normalizePushResultString(pushResult.errorCode) || reason;
+  const errorMessage =
+    normalizePushResultString(pushResult.errorMessage) || reason;
+  const nonErrorSkipReasons = new Set([
+    "tutor_not_found",
+    "no_push_tokens",
+    "no_fcm_token",
+  ]);
+
+  if (nonErrorSkipReasons.has(reason)) {
+    return {
+      event: "timeout_push_skipped",
+      result: "skipped",
+      skipReason: reason,
+      isError: false,
+    };
+  }
+
+  return {
+    event: "timeout_push_failed",
+    result: "error",
+    reason: errorMessage,
+    errorCode,
+    isError: true,
+  };
+}
+
 async function collectFreshTimeoutFailureResponderIds({
   db,
   sessionRef,
@@ -346,6 +393,13 @@ async function processExpiredNotification(notificationDoc) {
   const sessionId = initialNotificationData.sessionId;
   try {
     console.log(`📺 Processing expired notification: ${notificationId}`);
+    logCallLifecycleEvent({
+      event: "timeout_processing_started",
+      source: "processExpiredNotifications",
+      sessionId,
+      notificationId,
+      responderId: initialNotificationData.recipientId,
+    });
     const db = admin.firestore();
     const sessionRef = sessionId
       ? db.collection("videoSessions").doc(sessionId)
@@ -547,6 +601,9 @@ async function processExpiredNotification(notificationDoc) {
             shouldRecordMissed: true,
             skipReason: "no_available_tutors",
             timedOutResponderId,
+            statusBefore: freshSessionData.status,
+            statusAfter: VIDEO_SESSION_STATUS.EXPIRED,
+            terminalStopReason,
             dailyRoomName: resolveDailyRoomName(freshSessionData),
             sessionData: buildTerminalTimeoutSessionProjection({
               sessionData: freshSessionData,
@@ -579,6 +636,8 @@ async function processExpiredNotification(notificationDoc) {
           shouldRecordMissed: true,
           timedOutResponderId,
           nextTutor,
+          statusBefore: freshSessionData.status,
+          statusAfter: VIDEO_SESSION_STATUS.PENDING_CONFIRMATION,
           sessionData: nextSessionData,
           notificationId: notification.notificationId,
           pushPayload: notification.pushPayload,
@@ -593,8 +652,32 @@ async function processExpiredNotification(notificationDoc) {
         "reason:",
         transition?.skipReason || "unknown",
       );
+      logCallLifecycleEvent({
+        event: "timeout_skipped",
+        source: "processExpiredNotifications",
+        sessionId,
+        notificationId,
+        responderId: initialNotificationData.recipientId,
+        skipReason: transition?.skipReason || "unknown",
+        result: "skipped",
+      });
       return;
     }
+
+    const logTimeoutCompleted = () => {
+      logCallLifecycleEvent({
+        event: "timeout_completed",
+        source: "processExpiredNotifications",
+        sessionId,
+        notificationId,
+        responderId: transition.timedOutResponderId,
+        nextResponderId: transition.nextTutor,
+        statusBefore: transition.statusBefore,
+        statusAfter: transition.statusAfter,
+        reason: transition.terminalStopReason,
+        result: transition.shouldNotify ? "handoff" : "terminal",
+      });
+    };
 
     if (transition.shouldRecordMissed) {
       console.log(
@@ -648,6 +731,16 @@ async function processExpiredNotification(notificationDoc) {
         console.log(
           "⏭️ Skipping push because session disappeared after assignment",
         );
+        logCallLifecycleEvent({
+          event: "timeout_push_skipped",
+          source: "processExpiredNotifications",
+          sessionId,
+          notificationId: transition.notificationId,
+          responderId: transition.nextTutor,
+          skipReason: "session_missing_after_assignment",
+          result: "skipped",
+        });
+        logTimeoutCompleted();
         return;
       }
 
@@ -662,6 +755,18 @@ async function processExpiredNotification(notificationDoc) {
         console.log(
           "⏭️ Skipping push because tutor assignment changed after transaction",
         );
+        logCallLifecycleEvent({
+          event: "timeout_push_skipped",
+          source: "processExpiredNotifications",
+          sessionId,
+          notificationId: transition.notificationId,
+          responderId: transition.nextTutor,
+          statusBefore: transition.statusAfter,
+          statusAfter: freshValidationData.status,
+          skipReason: "assignment_changed_after_transaction",
+          result: "skipped",
+        });
+        logTimeoutCompleted();
         return;
       }
       if (
@@ -673,6 +778,16 @@ async function processExpiredNotification(notificationDoc) {
         console.log(
           "⏭️ Skipping push because tutor is already accepting the session",
         );
+        logCallLifecycleEvent({
+          event: "timeout_push_skipped",
+          source: "processExpiredNotifications",
+          sessionId,
+          notificationId: transition.notificationId,
+          responderId: transition.nextTutor,
+          skipReason: "accept_lock_active",
+          result: "skipped",
+        });
+        logTimeoutCompleted();
         return;
       }
       if (transition.notificationId) {
@@ -686,12 +801,22 @@ async function processExpiredNotification(notificationDoc) {
           console.log(
             "⏭️ Skipping push because notification changed after assignment",
           );
+          logCallLifecycleEvent({
+            event: "timeout_push_skipped",
+            source: "processExpiredNotifications",
+            sessionId,
+            notificationId: transition.notificationId,
+            responderId: transition.nextTutor,
+            skipReason: "notification_changed_after_assignment",
+            result: "skipped",
+          });
+          logTimeoutCompleted();
           return;
         }
       }
 
       try {
-        await sendVoipPushToTutor(transition.nextTutor, {
+        const pushResult = await sendVoipPushToTutor(transition.nextTutor, {
           ...pushPayload,
           sessionId: pushPayload.sessionId || sessionId,
           studentName: pushPayload.studentName || "Student",
@@ -699,18 +824,72 @@ async function processExpiredNotification(notificationDoc) {
           studentPhoto: pushPayload.studentPhoto,
           language: pushPayload.language || "",
         });
-        console.log("✅ VoIP push sent to next tutor");
+        const pushLogDecision = buildTimeoutPushLifecycleDecision({
+          pushResult,
+        });
+        if (pushLogDecision.isError) {
+          console.error(
+            "⚠️ Failed to send VoIP push (non-critical):",
+            pushLogDecision.reason,
+          );
+          logCallLifecycleError({
+            event: pushLogDecision.event,
+            source: "processExpiredNotifications",
+            sessionId,
+            notificationId: transition.notificationId,
+            responderId: transition.nextTutor,
+            errorCode: pushLogDecision.errorCode,
+            reason: pushLogDecision.reason,
+          });
+        } else {
+          if (pushLogDecision.result === "sent") {
+            console.log("✅ VoIP push sent to next tutor");
+          } else {
+            console.log(
+              "⏭️ VoIP push not sent:",
+              pushLogDecision.skipReason || "unknown",
+            );
+          }
+          logCallLifecycleEvent({
+            event: pushLogDecision.event,
+            source: "processExpiredNotifications",
+            sessionId,
+            notificationId: transition.notificationId,
+            responderId: transition.nextTutor,
+            skipReason: pushLogDecision.skipReason,
+            result: pushLogDecision.result,
+          });
+        }
       } catch (pushError) {
         console.error(
           "⚠️ Failed to send VoIP push (non-critical):",
           pushError.message,
         );
+        logCallLifecycleError({
+          event: "timeout_push_failed",
+          source: "processExpiredNotifications",
+          sessionId,
+          notificationId: transition.notificationId,
+          responderId: transition.nextTutor,
+          errorCode: pushError.code || pushError.name,
+          reason: pushError.message,
+        });
       }
     }
 
+    logTimeoutCompleted();
     console.log(`✅ Notification ${notificationId} processed successfully`);
   } catch (error) {
     console.error(`❌ Error processing notification ${notificationId}:`, error);
+    logCallLifecycleError({
+      event: "timeout_failed",
+      source: "processExpiredNotifications",
+      sessionId,
+      notificationId,
+      responderId: initialNotificationData.recipientId,
+      errorCode: error.code || error.name,
+      reason: error.message,
+    });
     throw error;
   }
 }
@@ -718,6 +897,7 @@ async function processExpiredNotification(notificationDoc) {
 exports.__private__ = {
   buildTerminalTimeoutSessionProjection,
   buildTimeoutNextResponderPairLockInput,
+  buildTimeoutPushLifecycleDecision,
   buildTimeoutResponderDecision,
   buildTimeoutResponderFailureRouting,
   collectFreshTimeoutFailureResponderIds,
@@ -740,7 +920,10 @@ async function sendVoipPushToTutor(tutorId, callData) {
 
     if (!tutorDoc.exists) {
       console.log("⚠️ Tutor document not found:", tutorId);
-      return;
+      return {
+        sent: false,
+        reason: "tutor_not_found",
+      };
     }
 
     const tutorData = tutorDoc.data();
@@ -753,7 +936,10 @@ async function sendVoipPushToTutor(tutorId, callData) {
 
     if (!voipPushToken && !fcmToken) {
       console.log("⚠️ Tutor has no push tokens saved");
-      return;
+      return {
+        sent: false,
+        reason: "no_push_tokens",
+      };
     }
 
     if (voipPushToken) {
@@ -766,15 +952,29 @@ async function sendVoipPushToTutor(tutorId, callData) {
           payload: apnsPayload,
         });
         console.log("✅ APNs VoIP push sent successfully");
-        return;
+        return {
+          sent: true,
+          channel: "apns",
+        };
       } catch (error) {
         console.error("❌ Error sending APNs VoIP push:", error.message);
+        if (!fcmToken) {
+          return {
+            sent: false,
+            reason: "apns_failed_no_fcm",
+            errorCode: error.code || error.name,
+            errorMessage: error.message,
+          };
+        }
       }
     }
 
     if (!fcmToken) {
       console.log("⚠️ No FCM token available for fallback");
-      return;
+      return {
+        sent: false,
+        reason: "no_fcm_token",
+      };
     }
 
     console.log("📱 FCM token found");
@@ -789,9 +989,18 @@ async function sendVoipPushToTutor(tutorId, callData) {
     const response = await admin.messaging().send(message);
     console.log("✅ FCM push sent successfully. Message ID:", response);
 
-    return response;
+    return {
+      sent: true,
+      channel: "fcm",
+      messageId: response,
+    };
   } catch (error) {
     console.error("❌ Error sending VoIP push to tutor:", error);
-    return null;
+    return {
+      sent: false,
+      reason: "push_send_failed",
+      errorCode: error.code || error.name,
+      errorMessage: error.message,
+    };
   }
 }

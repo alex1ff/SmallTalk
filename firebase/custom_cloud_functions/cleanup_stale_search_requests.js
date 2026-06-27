@@ -6,6 +6,10 @@ const {
   SEARCH_REQUEST_STATUS,
   SEARCH_REQUEST_TIMING,
 } = require("./search_requests");
+const {
+  logCallLifecycleError,
+  logCallLifecycleEvent,
+} = require("./call_lifecycle_logs");
 
 const STALE_CLEANUP_STATUSES = Object.freeze([
   SEARCH_REQUEST_STATUS.ACTIVE,
@@ -396,6 +400,18 @@ exports.cleanupStaleSearchRequests = functions.pubsub
         backgroundExpiredQuery.empty
       ) {
         console.log("📭 No stale search requests found");
+        logCallLifecycleEvent({
+          event: "cleanup_search_requests_completed",
+          source: "cleanupStaleSearchRequests",
+          result: "noop",
+          counts: {
+            staleFound: 0,
+            staleFallbackFound: 0,
+            backgroundExpiredFound: 0,
+            expiredFound: 0,
+            cleaned: 0,
+          },
+        });
         return null;
       }
 
@@ -440,9 +456,31 @@ exports.cleanupStaleSearchRequests = functions.pubsub
         cleanedByExpiry;
 
       console.log(`✅ Search requests marked expired: ${cleanedCount}`);
+      logCallLifecycleEvent({
+        event: "cleanup_search_requests_completed",
+        source: "cleanupStaleSearchRequests",
+        result: "completed",
+        counts: {
+          staleFound: staleQuery.size,
+          staleFallbackFound: staleFallbackQuery.size,
+          backgroundExpiredFound: backgroundExpiredQuery.size,
+          expiredFound: expiredQuery.size,
+          staleCleaned: cleanedByHeartbeat,
+          staleFallbackCleaned: cleanedByFallback,
+          backgroundExpiredCleaned: cleanedByBackgroundExpiry,
+          expiredCleaned: cleanedByExpiry,
+          cleaned: cleanedCount,
+        },
+      });
       return null;
     } catch (error) {
       console.error("❌ Error cleaning up stale search requests:", error);
+      logCallLifecycleError({
+        event: "cleanup_search_requests_failed",
+        source: "cleanupStaleSearchRequests",
+        errorCode: error.code || error.name,
+        reason: error.message,
+      });
       return null;
     }
   });

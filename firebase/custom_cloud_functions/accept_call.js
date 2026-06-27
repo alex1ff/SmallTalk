@@ -34,6 +34,10 @@ const {
 const {
   buildCallKitIdForSession,
 } = require("./call_notifications");
+const {
+  logCallLifecycleError,
+  logCallLifecycleEvent,
+} = require("./call_lifecycle_logs");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -302,6 +306,7 @@ exports.acceptCall = functions
 
     let tutorId = null;
     let sessionRef = null;
+    let sessionId = null;
     let acceptAttemptId = null;
     let lockAcquired = false;
     let transientDailyRoomName = null;
@@ -316,10 +321,16 @@ exports.acceptCall = functions
       }
 
       tutorId = context.auth.uid;
-      const { sessionId } = data;
+      ({ sessionId } = data || {});
 
       console.log("👨‍🏫 Tutor ID:", tutorId);
       console.log("📺 Session ID:", sessionId);
+      logCallLifecycleEvent({
+        event: "accept_attempt",
+        source: "acceptCall",
+        sessionId,
+        responderId: tutorId,
+      });
 
       if (!sessionId) {
         console.log("❌ Missing sessionId parameter");
@@ -465,6 +476,16 @@ exports.acceptCall = functions
           sessionId,
           requesterId,
           responderId: tutorId,
+        });
+        logCallLifecycleEvent({
+          event: "accept_idempotent_existing",
+          source: "acceptCall",
+          sessionId,
+          requesterId,
+          responderId: tutorId,
+          statusBefore: sessionData.status,
+          statusAfter: sessionData.status,
+          result: "connected",
         });
 
         return {
@@ -807,6 +828,17 @@ exports.acceptCall = functions
           requesterId,
           responderId: tutorId,
         });
+        logCallLifecycleEvent({
+          event: "accept_idempotent_existing",
+          source: "acceptCall",
+          sessionId,
+          requesterId,
+          responderId: tutorId,
+          scenario: existing.scenario || sessionData.scenario,
+          statusBefore: sessionData.status,
+          statusAfter: existing.status,
+          result: "connected",
+        });
 
         return {
           status: "connected",
@@ -905,6 +937,23 @@ exports.acceptCall = functions
 
       // === 8. ПОДГОТОВКА ОТВЕТА ===
       console.log("🎉 Call accepted successfully, preparing response...");
+      logCallLifecycleEvent({
+        event: "accept_connected",
+        source: "acceptCall",
+        sessionId,
+        requesterId,
+        responderId: tutorId,
+        scenario: acceptedLiveSession.scenario || sessionData.scenario,
+        searchRequestId:
+          normalizeSessionId(acceptedLiveSession.searchRequestIds?.requester) ||
+          normalizeSessionId(sessionData.searchRequestIds?.requester),
+        pairAttemptId:
+          normalizeSessionId(acceptedLiveSession.matchContext?.pairAttemptId) ||
+          normalizeSessionId(sessionData.matchContext?.pairAttemptId),
+        statusBefore: sessionData.status,
+        statusAfter: acceptedLiveSession.status,
+        result: "connected",
+      });
 
       const response = {
         status: "connected",
@@ -938,6 +987,14 @@ exports.acceptCall = functions
       return response;
     } catch (error) {
       console.error("❌ Error in acceptCall function:", error);
+      logCallLifecycleError({
+        event: "accept_failed",
+        source: "acceptCall",
+        sessionId,
+        responderId: tutorId,
+        errorCode: error.code || error.name,
+        reason: error.message,
+      });
 
       if (lockAcquired) {
         try {

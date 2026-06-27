@@ -26,6 +26,10 @@ const {
   createIncomingCallNotificationInTransaction,
 } = require("./call_notifications");
 const {
+  logCallLifecycleError,
+  logCallLifecycleEvent,
+} = require("./call_lifecycle_logs");
+const {
   findNextCallableCandidateInTransaction,
 } = require("./call_candidate_tokens");
 const {
@@ -209,6 +213,8 @@ exports.declineCall = functions
   .https.onCall(async (data, context) => {
     console.log("❌ Responder declining call...");
 
+    let responderId = null;
+    let sessionId = null;
     try {
       if (!context.auth) {
         throw new functions.https.HttpsError(
@@ -217,11 +223,17 @@ exports.declineCall = functions
         );
       }
 
-      const responderId = context.auth.uid;
-      const { sessionId } = data;
+      responderId = context.auth.uid;
+      ({ sessionId } = data || {});
 
       console.log("👤 Responder ID:", responderId);
       console.log("📺 Session ID:", sessionId);
+      logCallLifecycleEvent({
+        event: "decline_attempt",
+        source: "declineCall",
+        sessionId,
+        responderId,
+      });
 
       if (!sessionId) {
         throw new functions.https.HttpsError(
@@ -467,6 +479,7 @@ exports.declineCall = functions
           triedTutors: nextTriedTutors,
           notificationId: notification?.notificationId || null,
           pushPayload: notification?.pushPayload || null,
+          terminalStopReason,
         };
       });
 
@@ -533,6 +546,19 @@ exports.declineCall = functions
       }
 
       console.log("✅ Call declined successfully");
+      logCallLifecycleEvent({
+        event: "decline_completed",
+        source: "declineCall",
+        sessionId,
+        responderId,
+        scenario: declineResult.sessionData?.scenario,
+        notificationId: declineResult.notificationId,
+        nextResponderId: declineResult.nextTutor,
+        statusBefore: declineResult.sessionData?.status,
+        statusAfter: declineResult.nextSessionData?.status,
+        reason: declineResult.terminalStopReason,
+        result: declineResult.nextTutor ? "handoff" : "terminal",
+      });
 
       return {
         status: "declined",
@@ -540,6 +566,14 @@ exports.declineCall = functions
       };
     } catch (error) {
       console.error("❌ Error declining call:", error);
+      logCallLifecycleError({
+        event: "decline_failed",
+        source: "declineCall",
+        sessionId,
+        responderId,
+        errorCode: error.code || error.name,
+        reason: error.message,
+      });
 
       if (error.code) {
         throw error;

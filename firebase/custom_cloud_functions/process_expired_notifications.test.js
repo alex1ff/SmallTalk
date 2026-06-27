@@ -9,6 +9,7 @@ const {
   __private__: {
     buildTerminalTimeoutSessionProjection,
     buildTimeoutNextResponderPairLockInput,
+    buildTimeoutPushLifecycleDecision,
     buildTimeoutResponderDecision,
     buildTimeoutResponderFailureRouting,
     collectFreshTimeoutFailureResponderIds,
@@ -276,8 +277,12 @@ test("notification timeout validates next assignment before sending push", () =>
     activeAcceptLockIndex,
   );
   const pushIndex = source.indexOf(
-    "await sendVoipPushToTutor(transition.nextTutor",
+    "const pushResult = await sendVoipPushToTutor(transition.nextTutor",
     notificationStatusIndex,
+  );
+  const pushDecisionIndex = source.indexOf(
+    "buildTimeoutPushLifecycleDecision({",
+    pushIndex,
   );
 
   assert.ok(sessionReadIndex > shouldNotifyIndex);
@@ -286,6 +291,86 @@ test("notification timeout validates next assignment before sending push", () =>
   assert.ok(activeAcceptLockIndex > assignmentGuardIndex);
   assert.ok(notificationStatusIndex > activeAcceptLockIndex);
   assert.ok(pushIndex > notificationStatusIndex);
+  assert.ok(pushDecisionIndex > pushIndex);
+});
+
+test("notification timeout push lifecycle decision reflects real push result", () => {
+  assert.deepEqual(
+    buildTimeoutPushLifecycleDecision({
+      pushResult: {
+        sent: true,
+        channel: "apns",
+      },
+    }),
+    {
+      event: "timeout_push_sent",
+      result: "sent",
+      isError: false,
+    },
+  );
+  assert.deepEqual(
+    buildTimeoutPushLifecycleDecision({
+      pushResult: {
+        sent: false,
+        reason: "no_push_tokens",
+      },
+    }),
+    {
+      event: "timeout_push_skipped",
+      result: "skipped",
+      skipReason: "no_push_tokens",
+      isError: false,
+    },
+  );
+  assert.deepEqual(
+    buildTimeoutPushLifecycleDecision({
+      pushResult: {
+        sent: false,
+        reason: "push_send_failed",
+        errorCode: "messaging/unavailable",
+        errorMessage: "FCM unavailable",
+      },
+    }),
+    {
+      event: "timeout_push_failed",
+      result: "error",
+      reason: "FCM unavailable",
+      errorCode: "messaging/unavailable",
+      isError: true,
+    },
+  );
+});
+
+test("notification timeout logs completion before push validation returns", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "process_expired_notifications.js"),
+    "utf8",
+  );
+  const pushValidationIndex = source.indexOf(
+    "const [freshValidationSnap, notificationValidationSnap]",
+  );
+  assert.ok(pushValidationIndex > 0);
+
+  for (const skipReason of [
+    "session_missing_after_assignment",
+    "assignment_changed_after_transaction",
+    "accept_lock_active",
+    "notification_changed_after_assignment",
+  ]) {
+    const skipReasonIndex = source.indexOf(
+      `skipReason: "${skipReason}"`,
+      pushValidationIndex,
+    );
+    const returnIndex = source.indexOf("return;", skipReasonIndex);
+    const completionIndex = source.lastIndexOf(
+      "logTimeoutCompleted();",
+      returnIndex,
+    );
+
+    assert.ok(skipReasonIndex > pushValidationIndex);
+    assert.ok(completionIndex > skipReasonIndex);
+    assert.ok(completionIndex < returnIndex);
+  }
 });
 
 test("notification timeout validates assignment before fresh pool scan", () => {
