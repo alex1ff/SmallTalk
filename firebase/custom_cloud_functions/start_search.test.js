@@ -4092,7 +4092,9 @@ if (!hasFirestoreEmulator) {
   );
 } else {
   const admin = require("firebase-admin");
+  const axios = require("axios");
   const functionsTest = require("firebase-functions-test");
+  const {acceptCall} = require("./accept_call");
   const {declineCall} = require("./decline_call");
   const {
     processExpiredNotifications,
@@ -4112,6 +4114,7 @@ if (!hasFirestoreEmulator) {
 
   const testEnv = functionsTest({projectId});
   const db = admin.firestore();
+  const wrappedAcceptCall = testEnv.wrap(acceptCall);
   const wrappedDeclineCall = testEnv.wrap(declineCall);
   const wrappedProcessExpiredNotifications =
     testEnv.wrap(processExpiredNotifications);
@@ -4208,6 +4211,57 @@ if (!hasFirestoreEmulator) {
     await db.collection("userPrivateTokens").doc(uid).set({
       voipToken: `voip-${uid}`,
     });
+  }
+
+  async function withMockDailyApi(callback) {
+    const originalPost = axios.post;
+    const dailyCalls = [];
+    axios.post = async (url, body, config) => {
+      dailyCalls.push({url, body, config});
+      if (url === "https://api.daily.co/v1/rooms") {
+        const roomName = body?.name || `room-${dailyCalls.length}`;
+        return {
+          data: {
+            name: roomName,
+            url: `https://smalltalk.daily.co/${roomName}`,
+            privacy: "private",
+            config: body?.properties || {},
+            created_at: new Date().toISOString(),
+          },
+        };
+      }
+      if (url === "https://api.daily.co/v1/meeting-tokens") {
+        return {
+          data: {
+            token:
+              `token-${body?.properties?.room_name || "room"}` +
+              `-${body?.properties?.user_id || "user"}`,
+          },
+        };
+      }
+      return originalPost(url, body, config);
+    };
+
+    const previousDailyApiKey = process.env.DAILY_API_KEY;
+    const previousDailyDomain = process.env.DAILY_DOMAIN;
+    process.env.DAILY_API_KEY = "test-daily-api-key";
+    process.env.DAILY_DOMAIN = "smalltalk";
+
+    try {
+      return await callback(dailyCalls);
+    } finally {
+      axios.post = originalPost;
+      if (previousDailyApiKey === undefined) {
+        delete process.env.DAILY_API_KEY;
+      } else {
+        process.env.DAILY_API_KEY = previousDailyApiKey;
+      }
+      if (previousDailyDomain === undefined) {
+        delete process.env.DAILY_DOMAIN;
+      } else {
+        process.env.DAILY_DOMAIN = previousDailyDomain;
+      }
+    }
   }
 
   async function createBackgroundStudentPair(prefix) {
@@ -5108,6 +5162,119 @@ if (!hasFirestoreEmulator) {
     assert.equal(studentUser.isInCall, false);
     assert.equal(teacherUser.currentSessionId, response.sessionId);
     assert.equal(teacherUser.isInCall, false);
+  });
+
+  test("teacher responder accepts startSearch session", async () => {
+    const studentUid = uniqueId("student-teacher-accept");
+    const teacherUid = uniqueId("teacher-start-search-accept");
+    const cityKey = cityKeyForUid(`${studentUid}-${teacherUid}`);
+    await deleteDoc(userRef(studentUid));
+    await deleteDoc(userRef(teacherUid));
+    await deleteDoc(searchRequestRef(studentUid));
+    await deleteDoc(searchRequestRef(teacherUid));
+    await deleteDoc(db.collection("userPrivateTokens").doc(teacherUid));
+    await seedStudent(studentUid, {
+      display_name: "Student",
+      photo_url: "student-photo",
+      profileCity: {key: cityKey},
+    });
+    await seedTeacher(teacherUid, {
+      display_name: "Teacher",
+      photo_url: "teacher-photo",
+      profileCity: {key: cityKey},
+    });
+    await db.collection("userPrivateTokens").doc(teacherUid).set({
+      voipPushToken: `push-${teacherUid}`,
+    });
+
+    const response = await startSearchCallable({
+      preferredPartnerLevel: "B1",
+    }, authContext(studentUid), {
+      teacherResponderPushSender: async (responderId) => {
+        assert.equal(responderId, teacherUid);
+        return {sent: true, channel: "test"};
+      },
+    });
+
+    const acceptResponse = await withMockDailyApi(async (dailyCalls) => {
+      const result = await wrappedAcceptCall({
+        sessionId: response.sessionId,
+      }, authContext(teacherUid));
+      assert.equal(dailyCalls.length, 2);
+      assert.equal(dailyCalls[0].url, "https://api.daily.co/v1/rooms");
+      assert.equal(
+        dailyCalls[1].url,
+        "https://api.daily.co/v1/meeting-tokens",
+      );
+      return result;
+    });
+
+    const sessionSnapshot = await db
+      .collection("videoSessions")
+      .doc(response.sessionId)
+      .get();
+    const sessionData = sessionSnapshot.data();
+    const studentUser = (await userRef(studentUid).get()).data();
+    const teacherUser = (await userRef(teacherUid).get()).data();
+    const requestData = (await searchRequestRef(studentUid).get()).data();
+    const teacherNotifications = await db
+      .collection("notifications")
+      .where("recipientId", "==", teacherUid)
+      .where("sessionId", "==", response.sessionId)
+      .get();
+
+    assert.equal(response.status, "matched");
+    assert.equal(response.scenario, "student_teacher");
+    assert.equal(response.matchedUserId, teacherUid);
+    assert.equal(response.matchedRole, "native_speaker");
+    assert.equal(acceptResponse.status, "connected");
+    assert.equal(acceptResponse.sessionId, response.sessionId);
+    assert.equal(
+      acceptResponse.roomUrl,
+      `https://smalltalk.daily.co/${acceptResponse.roomName}`,
+    );
+    assert.equal(
+      acceptResponse.meetingToken,
+      `token-${acceptResponse.roomName}-${teacherUid}`,
+    );
+    assert.equal(sessionSnapshot.exists, true);
+    assert.equal(sessionData.status, "connecting");
+    assert.equal(sessionData.tutorId, teacherUid);
+    assert.equal(sessionData.responderId, teacherUid);
+    assert.equal(sessionData.responderRole, "native_speaker");
+    assert.equal(Object.hasOwn(sessionData, "currentResponderId"), false);
+    assert.equal(Object.hasOwn(sessionData, "currentTutorId"), false);
+    assert.equal(Object.hasOwn(sessionData, "currentResponderRole"), false);
+    assert.equal(typeof sessionData.joinDeadlineAt.toMillis, "function");
+    assert.equal(sessionData.dailyRoomUrl, acceptResponse.roomUrl);
+    assert.equal(sessionData.dailyRoomName, acceptResponse.roomName);
+    assert.deepEqual(
+      sessionData.participantIds.slice().sort(),
+      [studentUid, teacherUid].sort(),
+    );
+    assert.equal(
+      sessionData.matchContext.acceptedResponderId,
+      teacherUid,
+    );
+    assert.equal(
+      sessionData.matchContext.acceptedResponderRole,
+      "native_speaker",
+    );
+    assert.deepEqual(
+      sessionData.matchContext.acceptedResponderInfo,
+      {
+        name: "Teacher",
+        photo: "teacher-photo",
+      },
+    );
+    assert.equal(studentUser.isInCall, true);
+    assert.equal(studentUser.currentSessionId, response.sessionId);
+    assert.equal(teacherUser.isInCall, true);
+    assert.equal(teacherUser.currentSessionId, response.sessionId);
+    assert.equal(requestData.status, "matched");
+    assert.equal(requestData.currentSessionId, response.sessionId);
+    assert.equal(teacherNotifications.size, 1);
+    assert.equal(teacherNotifications.docs[0].data().status, "accepted");
   });
 
   test("startSearch callable uses one role-neutral candidate pool", async () => {
