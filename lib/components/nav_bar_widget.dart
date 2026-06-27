@@ -9,6 +9,7 @@ import 'nav_bar_model.dart';
 export 'nav_bar_model.dart';
 
 const _chatIconAsset = 'assets/images/message-circle-01.svg';
+const _navBarBorderColor = Color(0xFFEBEBEB);
 
 class NavBarWidget extends StatefulWidget {
   const NavBarWidget({
@@ -100,13 +101,6 @@ class _NavBarWidgetState extends State<NavBarWidget> {
         ),
       ),
       _NavBarDestination(
-        icon: FFIcons.kcalendar,
-        label: FFLocalizations.of(context).getVariableText(
-          ruText: 'События',
-          enText: 'Events',
-        ),
-      ),
-      _NavBarDestination(
         icon: FFIcons.kbookOpen01,
         label: FFLocalizations.of(context).getVariableText(
           ruText: 'Словарь',
@@ -125,6 +119,13 @@ class _NavBarWidgetState extends State<NavBarWidget> {
         label: FFLocalizations.of(context).getVariableText(
           ruText: 'Профиль',
           enText: 'Profile',
+        ),
+      ),
+      _NavBarDestination(
+        icon: FFIcons.kusers02,
+        label: FFLocalizations.of(context).getVariableText(
+          ruText: 'События',
+          enText: 'Events',
         ),
       ),
     ];
@@ -182,25 +183,25 @@ class _NavBarWidgetState extends State<NavBarWidget> {
       case 1:
         if (_isCurrentTab(1)) return;
         context.goNamed(
-          EventListWidget.routeName,
+          WordsWidget.routeName,
         );
         return;
       case 2:
         if (_isCurrentTab(2)) return;
         context.goNamed(
-          WordsWidget.routeName,
+          FavoriteWidget.routeName,
         );
         return;
       case 3:
         if (_isCurrentTab(3)) return;
         context.goNamed(
-          FavoriteWidget.routeName,
+          ProfileWidget.routeName,
         );
         return;
       case 4:
         if (_isCurrentTab(4)) return;
         context.goNamed(
-          ProfileWidget.routeName,
+          EventListWidget.routeName,
         );
         return;
     }
@@ -226,7 +227,7 @@ class _NavBarWidgetState extends State<NavBarWidget> {
             color: ExpatlioDesign.card,
             border: Border(
               top: BorderSide(
-                color: ExpatlioDesign.separator,
+                color: _navBarBorderColor,
                 width: 1,
               ),
             ),
