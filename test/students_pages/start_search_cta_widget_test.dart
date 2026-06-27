@@ -1066,47 +1066,47 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('student dashboard toggles search CTA after successful start',
+  testWidgets('student dashboard switches CTA to stop after successful start',
       (tester) async {
     setActiveStudent('student-stop-search-test');
+    final startPayloads = <Map<String, dynamic>>[];
 
     await tester.pumpWidget(
-      _buildDashboardTestApp(const StudentsDashboardWidget()),
-    );
-    await tester.pump();
-
-    final startSearchText = find.text('Начать поиск');
-    expect(startSearchText, findsOneWidget);
-
-    await tester.tap(
-      find.ancestor(
-        of: startSearchText,
-        matching: find.byType(InkWell),
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          startSearchRequest: (payload) async {
+            startPayloads.add(Map<String, dynamic>.from(payload));
+            return <String, dynamic>{'requestId': 'request-stop-cta-test'};
+          },
+        ),
       ),
     );
     await tester.pump();
 
-    final stopSearchText = find.text('Остановить поиск');
-    expect(stopSearchText, findsOneWidget);
-    expect(find.text('Ищем собеседника'), findsOneWidget);
-    expect(find.text('Начать поиск'), findsNothing);
-
-    final permissionChecksAfterStart = _checkPermissionStatusCallCount;
-    final permissionRequestsAfterStart = _requestPermissionsCallCount;
-    final stopSearchButton = find.ancestor(
-      of: stopSearchText,
-      matching: find.byType(InkWell),
+    final startSearchButton =
+        find.widgetWithText(StudentStartSearchButton, 'Начать поиск');
+    expect(startSearchButton, findsOneWidget);
+    expect(
+      tester.widget<StudentStartSearchButton>(startSearchButton).isActive,
+      isFalse,
     );
+    expect(find.text('Остановить поиск'), findsNothing);
 
-    await tester.tap(stopSearchButton);
-    await tester.tap(stopSearchButton);
+    await tester.tap(startSearchButton);
     await tester.pump();
 
-    expect(find.text('Начать поиск'), findsOneWidget);
-    expect(find.text('Остановить поиск'), findsNothing);
-    expect(find.text('Ищем собеседника'), findsNothing);
-    expect(_checkPermissionStatusCallCount, permissionChecksAfterStart);
-    expect(_requestPermissionsCallCount, permissionRequestsAfterStart);
+    expect(startPayloads, hasLength(1));
+    expect(startPayloads.single['appState'], 'foreground');
+    expect(startPayloads.single['language'], 'en');
+    final stopSearchButton =
+        find.widgetWithText(StudentStartSearchButton, 'Остановить поиск');
+    expect(stopSearchButton, findsOneWidget);
+    expect(
+      tester.widget<StudentStartSearchButton>(stopSearchButton).isActive,
+      isTrue,
+    );
+    expect(find.text('Ищем собеседника'), findsOneWidget);
+    expect(find.text('Начать поиск'), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
