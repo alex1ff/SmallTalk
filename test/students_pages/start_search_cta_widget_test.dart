@@ -3385,6 +3385,105 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('startup recovery restores active call after restart',
+      (tester) async {
+    const userId = 'student-active-call-restart-test';
+    const peerId = 'student-active-call-peer-test';
+    const sessionId = 'session-active-call-restart-test';
+    final tokenSessionIds = <String>[];
+    final openedSessions = <Map<String, String?>>[];
+    var fallbackSessionsRead = false;
+    debugActiveSessionUserSnapshot = (requestedUserId) async {
+      expect(requestedUserId, userId);
+      return _FakeSessionSnapshot(
+        userId,
+        const <String, dynamic>{
+          'currentSessionId': sessionId,
+          'isInCall': true,
+        },
+        FirebaseFirestore.instance.collection('users').doc(userId),
+      );
+    };
+    debugActiveNavigationSessionSnapshots = (_) async {
+      fallbackSessionsRead = true;
+      return [];
+    };
+    debugActiveCurrentSessionSnapshot = (requestedSessionId) async {
+      expect(requestedSessionId, sessionId);
+      return _FakeSessionSnapshot(
+        sessionId,
+        <String, dynamic>{
+          'status': 'active',
+          'participantIds': [userId, peerId],
+          'requesterId': userId,
+          'responderId': peerId,
+          'dailyRoomUrl': 'https://stale-daily.test/$sessionId',
+          'dailyRoomName': 'stale-room-$sessionId',
+        },
+        FirebaseFirestore.instance.collection('videoSessions').doc(sessionId),
+      );
+    };
+    debugActiveSessionTokenRequest = (requestedSessionId) async {
+      tokenSessionIds.add(requestedSessionId);
+      return <String, dynamic>{
+        'roomUrl': 'https://daily.test/$sessionId',
+        'roomName': 'room-$sessionId',
+        'meetingToken': 'token-$sessionId',
+      };
+    };
+    debugActiveSessionNavigator = (
+      videoDocRef, {
+      roomUrl,
+      roomName,
+      meetingToken,
+    }) {
+      openedSessions.add({
+        'sessionId': videoDocRef.id,
+        'roomUrl': roomUrl,
+        'roomName': roomName,
+        'meetingToken': meetingToken,
+      });
+    };
+    setActiveStudent(userId, currentSessionId: sessionId, isInCall: true);
+    bool? recovered;
+    final router = GoRouter(
+      initialLocation: StudentsDashboardWidget.routePath,
+      routes: [
+        GoRoute(
+          name: StudentsDashboardWidget.routeName,
+          path: StudentsDashboardWidget.routePath,
+          builder: (context, state) => TextButton(
+            key: const Key('recover-active-call-after-restart'),
+            onPressed: () async {
+              recovered = await checkActiveSessionAndNavigate(context);
+            },
+            child: const Text('Recover active call after restart'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildDashboardRouterTestApp(router));
+    await tester.pump();
+
+    await tester
+        .tap(find.byKey(const Key('recover-active-call-after-restart')));
+    await tester.pump();
+    await tester.idle();
+    await tester.pump();
+
+    expect(recovered, isTrue);
+    expect(fallbackSessionsRead, isFalse);
+    expect(tokenSessionIds, [sessionId]);
+    expect(openedSessions, hasLength(1));
+    expect(openedSessions.single['sessionId'], sessionId);
+    expect(openedSessions.single['roomUrl'], 'https://daily.test/$sessionId');
+    expect(openedSessions.single['roomName'], 'room-$sessionId');
+    expect(openedSessions.single['meetingToken'], 'token-$sessionId');
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('accepted recovery ignores current session when not in call',
       (tester) async {
     const userId = 'student-accepted-not-in-call-test';
