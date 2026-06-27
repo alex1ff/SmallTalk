@@ -2131,6 +2131,11 @@ void main() {
     const requestId = 'request-recovered-zero-timeout-test';
     setActiveStudent(userId);
     final heartbeatPayloads = <Map<String, dynamic>>[];
+    final stopPayloads = <Map<String, dynamic>>[];
+    final stoppedSessionIds = <String?>[];
+    StudentsDashboardWidget.debugStopSearchPayloadObserver = (payload) {
+      stopPayloads.add(Map<String, dynamic>.from(payload));
+    };
 
     await tester.pumpWidget(
       _buildDashboardTestApp(
@@ -2142,6 +2147,9 @@ void main() {
           ),
           heartbeatSearchRequest: (payload) async {
             heartbeatPayloads.add(Map<String, dynamic>.from(payload));
+          },
+          stopSearchRequest: (activeSessionId) async {
+            stoppedSessionIds.add(activeSessionId);
           },
         ),
       ),
@@ -2156,6 +2164,10 @@ void main() {
     expect(find.text('Ищем собеседника'), findsNothing);
     expect(find.text('Остановить поиск'), findsNothing);
     expect(heartbeatPayloads, isEmpty);
+    expect(stoppedSessionIds, [null]);
+    expect(stopPayloads, [
+      <String, dynamic>{'requestId': requestId},
+    ]);
 
     await tester.pump(StudentsDashboardWidget.heartbeatSearchInterval);
     await tester.pump();

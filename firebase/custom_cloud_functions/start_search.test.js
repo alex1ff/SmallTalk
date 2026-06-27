@@ -16,6 +16,7 @@ const {
     buildStudentPairResponderFcmMessage,
     buildStudentPairResponderPushPayload,
     buildStartSearchAccessDecision,
+    buildStartSearchFailureUpdate,
     buildStartSearchFilters,
     buildMatchedStartSearchResponse,
     buildStartSearchRequestData,
@@ -26,6 +27,7 @@ const {
     canAttemptStudentPairForSearchRequest,
     canReuseSearchRequestForUser,
     hasCurrentMatchedSession,
+    hasSearchRequestSessionBinding,
     isFreshBackgroundSearchRequest,
     isSessionResponseWindowOpen,
     isStudentResponderSession,
@@ -47,6 +49,7 @@ const {
     sendVoipPushToStudentResponder,
     shouldCreateBackgroundStudentResponderIncomingCall,
     shouldCreateTeacherResponderIncomingCall,
+    shouldFailUnboundStartSearchRequest,
     shouldRetryBackgroundStudentMatchAfterNotifyResult,
     shouldRetryTeacherMatchAfterNotifyResult,
     shouldUseTeacherResponderForIncomingCall,
@@ -64,6 +67,7 @@ const {
 
 const fixedNowMillis = Date.parse("2026-06-21T10:00:00.000Z");
 const serverTimestamp = Symbol("serverTimestamp");
+const fieldDelete = Symbol("fieldDelete");
 
 function timestampFromMillis(millis) {
   return {
@@ -4112,6 +4116,82 @@ test("foreground start keeps background expiry null", () => {
   });
 
   assert.equal(data[SEARCH_REQUEST_FIELD.BACKGROUND_EXPIRES_AT], null);
+});
+
+test("start search failure update makes unbound request terminal", () => {
+  const update = buildStartSearchFailureUpdate({
+    error: new Error("matcher unavailable"),
+    serverTimestamp,
+    fieldDelete,
+  });
+
+  assert.equal(update.status, SEARCH_REQUEST_STATUS.ERROR);
+  assert.equal(update.stopReason, "start_search_failed");
+  assert.equal(update.stoppedAt, serverTimestamp);
+  assert.equal(update.updatedAt, serverTimestamp);
+  assert.equal(update.currentSessionId, null);
+  assert.equal(update.activeSessionId, fieldDelete);
+  assert.equal(update.matchedSessionId, fieldDelete);
+  assert.equal(update.matchedResponderId, fieldDelete);
+  assert.equal(update.matchedUserId, null);
+  assert.equal(update.matchedRole, null);
+  assert.equal(update.pairAttemptId, null);
+  assert.deepEqual(update.attemptExcludedCandidateIds, []);
+  assert.equal(update.lockOwner, null);
+  assert.equal(update.lockExpiresAt, null);
+  assert.deepEqual(update.lastError, {
+    code: "start_search_failed",
+    message: "matcher unavailable",
+  });
+  assert.equal(update.errorCode, "start_search_failed");
+  assert.equal(update.errorMessage, "matcher unavailable");
+});
+
+test("start search failure cleanup targets only same unbound live request", () => {
+  const activeRequest = {
+    status: SEARCH_REQUEST_STATUS.ACTIVE,
+    requestId: "request-a",
+    userId: "student-a",
+    currentSessionId: null,
+    matchedSessionId: null,
+    activeSessionId: null,
+  };
+
+  assert.equal(hasSearchRequestSessionBinding(activeRequest), false);
+  assert.equal(shouldFailUnboundStartSearchRequest({
+    requestData: activeRequest,
+    userId: "student-a",
+    requestId: "request-a",
+  }), true);
+  assert.equal(shouldFailUnboundStartSearchRequest({
+    requestData: {
+      ...activeRequest,
+      currentSessionId: "session-a",
+    },
+    userId: "student-a",
+    requestId: "request-a",
+  }), false);
+  assert.equal(shouldFailUnboundStartSearchRequest({
+    requestData: activeRequest,
+    userId: "student-a",
+    requestId: "request-b",
+  }), false);
+  assert.equal(shouldFailUnboundStartSearchRequest({
+    requestData: {
+      ...activeRequest,
+      status: SEARCH_REQUEST_STATUS.STOPPED,
+    },
+    userId: "student-a",
+    requestId: "request-a",
+  }), false);
+  assert.equal(shouldFailUnboundStartSearchRequest({
+    requestData: {
+      ...activeRequest,
+      userId: "student-b",
+    },
+    userId: "student-a",
+    requestId: "request-a",
+  }), false);
 });
 
 const hasFirestoreEmulator = Boolean(process.env.FIRESTORE_EMULATOR_HOST);

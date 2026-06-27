@@ -3,6 +3,7 @@ const admin = require("firebase-admin");
 const {
   SEARCH_REQUEST_APP_STATE,
   SEARCH_REQUEST_COLLECTION,
+  SEARCH_REQUEST_FIELD,
   SEARCH_REQUEST_STATUS,
   SEARCH_REQUEST_TERMINAL_STATUSES,
   SEARCH_REQUEST_TIMING,
@@ -177,6 +178,82 @@ function buildNoopDecision({
   };
 }
 
+function hasHeartbeatSessionBinding(requestData = {}) {
+  return Boolean(readRequestSessionId(requestData));
+}
+
+function buildHeartbeatTerminalUpdate({
+  stopReason,
+  errorMessage,
+  serverTimestamp,
+  fieldDelete,
+}) {
+  return {
+    [SEARCH_REQUEST_FIELD.STATUS]: SEARCH_REQUEST_STATUS.EXPIRED,
+    [SEARCH_REQUEST_FIELD.UPDATED_AT]: serverTimestamp,
+    [SEARCH_REQUEST_FIELD.STOPPED_AT]: serverTimestamp,
+    [SEARCH_REQUEST_FIELD.STOP_REASON]: stopReason,
+    [SEARCH_REQUEST_FIELD.CURRENT_SESSION_ID]: null,
+    [SEARCH_REQUEST_FIELD.MATCHED_USER_ID]: null,
+    [SEARCH_REQUEST_FIELD.MATCHED_ROLE]: null,
+    [SEARCH_REQUEST_FIELD.PAIR_ATTEMPT_ID]: null,
+    [SEARCH_REQUEST_FIELD.ATTEMPT_EXCLUDED_CANDIDATE_IDS]: [],
+    [SEARCH_REQUEST_FIELD.LOCK_OWNER]: null,
+    [SEARCH_REQUEST_FIELD.LOCK_EXPIRES_AT]: null,
+    [SEARCH_REQUEST_FIELD.LAST_ERROR]: {
+      code: stopReason,
+      message: errorMessage,
+    },
+    [SEARCH_REQUEST_FIELD.ACTIVE_SESSION_ID]: fieldDelete,
+    [SEARCH_REQUEST_FIELD.MATCHED_SESSION_ID]: fieldDelete,
+    [SEARCH_REQUEST_FIELD.MATCHED_RESPONDER_ID]: fieldDelete,
+  };
+}
+
+function buildHeartbeatTerminalDecision({
+  userId,
+  requestData = {},
+  reason,
+  stopReason,
+  errorMessage,
+  serverTimestamp,
+  fieldDelete,
+}) {
+  if (hasHeartbeatSessionBinding(requestData)) {
+    return buildNoopDecision({
+      userId,
+      requestData,
+      reason,
+      errorCode: reason,
+    });
+  }
+
+  return {
+    ok: true,
+    update: buildHeartbeatTerminalUpdate({
+      stopReason,
+      errorMessage,
+      serverTimestamp,
+      fieldDelete,
+    }),
+    response: {
+      ...buildHeartbeatResponse({
+        userId,
+        requestData: {
+          ...requestData,
+          status: SEARCH_REQUEST_STATUS.EXPIRED,
+          currentSessionId: null,
+          activeSessionId: null,
+          matchedSessionId: null,
+        },
+        heartbeat: false,
+        reason,
+      }),
+      errorCode: reason,
+    },
+  };
+}
+
 function buildHeartbeatSearchDecision({
   requestExists,
   requestData = {},
@@ -185,6 +262,7 @@ function buildHeartbeatSearchDecision({
   appState,
   nowMillis = Date.now(),
   serverTimestamp,
+  fieldDelete = admin.firestore.FieldValue.delete(),
   timestampFromMillis = admin.firestore.Timestamp.fromMillis,
 }) {
   if (!requestExists) {
@@ -242,20 +320,26 @@ function buildHeartbeatSearchDecision({
 
   const expiresAtMillis = timestampToMillis(requestData.expiresAt);
   if (expiresAtMillis === null || expiresAtMillis <= nowMillis) {
-    return buildNoopDecision({
+    return buildHeartbeatTerminalDecision({
       userId,
       requestData,
       reason: "expired",
-      errorCode: "expired",
+      stopReason: "search_timeout",
+      errorMessage: "Search request expired without a match",
+      serverTimestamp,
+      fieldDelete,
     });
   }
 
   if (isBackgroundExpired(requestData, nowMillis)) {
-    return buildNoopDecision({
+    return buildHeartbeatTerminalDecision({
       userId,
       requestData,
       reason: "background_expired",
-      errorCode: "background_expired",
+      stopReason: "background_timeout",
+      errorMessage: "Search request expired in background",
+      serverTimestamp,
+      fieldDelete,
     });
   }
 
@@ -263,11 +347,14 @@ function buildHeartbeatSearchDecision({
   const staleCutoffMillis =
     nowMillis - SEARCH_REQUEST_TIMING.HEARTBEAT_STALE_SECONDS * 1000;
   if (heartbeatAtMillis === null || heartbeatAtMillis < staleCutoffMillis) {
-    return buildNoopDecision({
+    return buildHeartbeatTerminalDecision({
       userId,
       requestData,
       reason: "stale",
-      errorCode: "stale",
+      stopReason: "heartbeat_stale",
+      errorMessage: "Search request heartbeat is stale",
+      serverTimestamp,
+      fieldDelete,
     });
   }
 
@@ -350,6 +437,9 @@ exports.__private__ = {
   HEARTBEAT_WRITABLE_STATUSES,
   buildHeartbeatResponse,
   buildHeartbeatSearchDecision,
+  buildHeartbeatTerminalDecision,
+  buildHeartbeatTerminalUpdate,
+  hasHeartbeatSessionBinding,
   isBackgroundExpired,
   isBackgroundGraceActive,
   normalizeHeartbeatInput,

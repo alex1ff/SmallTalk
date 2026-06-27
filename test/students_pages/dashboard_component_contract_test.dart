@@ -160,6 +160,27 @@ void main() {
     expect(source, contains("'requestId': requestId"));
   });
 
+  test('local search timeout stops backend search request', () {
+    final source = File(
+            'lib/students_pages/students_dashboard/students_dashboard_widget.dart')
+        .readAsStringSync();
+    final timeoutStart = source.indexOf('void _startSearchTimeoutTimer');
+    final heartbeatStart =
+        source.indexOf('Map<String, dynamic> _normalizeCallableMap');
+    final timeoutSource = source.substring(timeoutStart, heartbeatStart);
+
+    expect(timeoutStart, isNot(-1));
+    expect(heartbeatStart, greaterThan(timeoutStart));
+    expect(timeoutSource, contains('String? activeSearchRequestId'));
+    expect(
+      timeoutSource,
+      contains('activeSearchRequestId ?? _activeSearchRequestId'),
+    );
+    expect(timeoutSource, contains('_clearSearchHeartbeatTimer()'));
+    expect(timeoutSource, contains('_stopActiveSearchRequest('));
+    expect(timeoutSource, contains('activeSearchRequestId: expiredRequestId'));
+  });
+
   test('student dashboard maps active video session status to search UI', () {
     final source = File(
             'lib/students_pages/students_dashboard/students_dashboard_widget.dart')

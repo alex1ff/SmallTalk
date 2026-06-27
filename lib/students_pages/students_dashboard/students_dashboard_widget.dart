@@ -363,14 +363,22 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
 
   void _startSearchTimeoutTimer([
     Duration duration = const Duration(minutes: 10),
+    String? activeSearchRequestId,
   ]) {
     _clearSearchTimeoutTimer();
     if (duration <= Duration.zero) {
       if (mounted && _searchState == StudentDashboardSearchState.searching) {
+        final expiredRequestId =
+            activeSearchRequestId ?? _activeSearchRequestId;
+        _clearSearchHeartbeatTimer();
         safeSetState(() {
           _searchState = StudentDashboardSearchState.noMatchFound;
           _matchedSearchSessionId = null;
         });
+        unawaited(_stopActiveSearchRequest(
+          null,
+          activeSearchRequestId: expiredRequestId,
+        ));
       }
       return;
     }
@@ -379,11 +387,16 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
         return;
       }
 
+      final expiredRequestId = activeSearchRequestId ?? _activeSearchRequestId;
       _clearSearchHeartbeatTimer();
       safeSetState(() {
         _searchState = StudentDashboardSearchState.noMatchFound;
         _matchedSearchSessionId = null;
       });
+      unawaited(_stopActiveSearchRequest(
+        null,
+        activeSearchRequestId: expiredRequestId,
+      ));
     });
   }
 
@@ -617,7 +630,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
           _isStartingSearch = false;
         });
         if (remainingSearchDuration <= Duration.zero) {
-          _startSearchTimeoutTimer(remainingSearchDuration);
+          _startSearchTimeoutTimer(remainingSearchDuration, requestId);
           return;
         }
         _startSearchTimeoutTimer(remainingSearchDuration);

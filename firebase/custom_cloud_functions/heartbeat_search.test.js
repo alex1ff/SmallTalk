@@ -17,6 +17,7 @@ const {
 
 const fixedNowMillis = Date.parse("2026-06-21T10:00:00.000Z");
 const serverTimestamp = Symbol("serverTimestamp");
+const fieldDelete = Symbol("fieldDelete");
 
 function timestampFromMillis(millis) {
   return {
@@ -204,6 +205,7 @@ test("heartbeat does not revive stale or expired requests", () => {
     appState: SEARCH_REQUEST_APP_STATE.FOREGROUND,
     nowMillis: fixedNowMillis,
     serverTimestamp,
+    fieldDelete,
     timestampFromMillis,
   });
   const expired = buildHeartbeatSearchDecision({
@@ -216,6 +218,7 @@ test("heartbeat does not revive stale or expired requests", () => {
     appState: SEARCH_REQUEST_APP_STATE.FOREGROUND,
     nowMillis: fixedNowMillis,
     serverTimestamp,
+    fieldDelete,
     timestampFromMillis,
   });
   const backgroundExpired = buildHeartbeatSearchDecision({
@@ -229,6 +232,7 @@ test("heartbeat does not revive stale or expired requests", () => {
     appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
     nowMillis: fixedNowMillis,
     serverTimestamp,
+    fieldDelete,
     timestampFromMillis,
   });
   const closedBackgroundStale = buildHeartbeatSearchDecision({
@@ -246,17 +250,45 @@ test("heartbeat does not revive stale or expired requests", () => {
     appState: SEARCH_REQUEST_APP_STATE.FOREGROUND,
     nowMillis: fixedNowMillis,
     serverTimestamp,
+    fieldDelete,
+    timestampFromMillis,
+  });
+  const sessionBoundExpired = buildHeartbeatSearchDecision({
+    requestExists: true,
+    requestData: activeRequest({
+      currentSessionId: "session-a",
+      expiresAt: timestampFromMillis(fixedNowMillis - 1),
+    }),
+    userId: "student-a",
+    requestId: "request-a",
+    appState: SEARCH_REQUEST_APP_STATE.FOREGROUND,
+    nowMillis: fixedNowMillis,
+    serverTimestamp,
+    fieldDelete,
     timestampFromMillis,
   });
 
-  assert.equal(stale.update, null);
+  assert.equal(stale.update.status, "expired");
+  assert.equal(stale.update.stopReason, "heartbeat_stale");
+  assert.equal(stale.update.activeSessionId, fieldDelete);
+  assert.equal(stale.update.currentSessionId, null);
+  assert.deepEqual(stale.update.lastError, {
+    code: "heartbeat_stale",
+    message: "Search request heartbeat is stale",
+  });
   assert.equal(stale.response.reason, "stale");
-  assert.equal(expired.update, null);
+  assert.equal(expired.update.status, "expired");
+  assert.equal(expired.update.stopReason, "search_timeout");
   assert.equal(expired.response.reason, "expired");
-  assert.equal(backgroundExpired.update, null);
+  assert.equal(backgroundExpired.update.status, "expired");
+  assert.equal(backgroundExpired.update.stopReason, "background_timeout");
   assert.equal(backgroundExpired.response.reason, "background_expired");
-  assert.equal(closedBackgroundStale.update, null);
+  assert.equal(closedBackgroundStale.update.status, "expired");
+  assert.equal(closedBackgroundStale.update.stopReason, "heartbeat_stale");
   assert.equal(closedBackgroundStale.response.reason, "stale");
+  assert.equal(sessionBoundExpired.update, null);
+  assert.equal(sessionBoundExpired.response.reason, "expired");
+  assert.equal(sessionBoundExpired.response.sessionId, "session-a");
 });
 
 test("heartbeat does not mutate matched request state", () => {

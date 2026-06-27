@@ -456,6 +456,106 @@ function hasCurrentMatchedSession(requestData = {}) {
     );
 }
 
+function hasSearchRequestSessionBinding(requestData = {}) {
+  return Boolean(
+    normalizeString(requestData.currentSessionId) ||
+    normalizeString(requestData.activeSessionId) ||
+    normalizeString(requestData.matchedSessionId),
+  );
+}
+
+function buildStartSearchFailureUpdate({
+  error,
+  serverTimestamp,
+  fieldDelete,
+}) {
+  const message = readErrorMessage(error, "start_search_failed");
+  return {
+    status: SEARCH_REQUEST_STATUS.ERROR,
+    stopReason: "start_search_failed",
+    stoppedAt: serverTimestamp,
+    updatedAt: serverTimestamp,
+    currentSessionId: null,
+    matchedUserId: null,
+    matchedRole: null,
+    pairAttemptId: null,
+    attemptExcludedCandidateIds: [],
+    lockOwner: null,
+    lockExpiresAt: null,
+    lastError: {
+      code: "start_search_failed",
+      message,
+    },
+    errorCode: "start_search_failed",
+    errorMessage: message,
+    activeSessionId: fieldDelete,
+    matchedSessionId: fieldDelete,
+    matchedResponderId: fieldDelete,
+  };
+}
+
+function shouldFailUnboundStartSearchRequest({
+  requestData = {},
+  userId,
+  requestId,
+}) {
+  if (!searchRequestBelongsToUser(requestData, userId)) {
+    return false;
+  }
+  if (normalizeString(requestData.requestId) !== normalizeString(requestId)) {
+    return false;
+  }
+  if (hasSearchRequestSessionBinding(requestData)) {
+    return false;
+  }
+  return [
+    SEARCH_REQUEST_STATUS.ACTIVE,
+    SEARCH_REQUEST_STATUS.MATCHING,
+    SEARCH_REQUEST_STATUS.LEGACY_SEARCHING,
+  ].includes(normalizeString(requestData.status));
+}
+
+async function failUnboundStartSearchRequestForError({
+  db,
+  userId,
+  requestId,
+  error,
+}) {
+  const normalizedUserId = normalizeString(userId);
+  const normalizedRequestId = normalizeString(requestId);
+  if (!normalizedUserId || !normalizedRequestId) {
+    return {failed: false, reason: "missing_ids"};
+  }
+
+  const searchRequestRef = db
+    .collection(SEARCH_REQUEST_COLLECTION)
+    .doc(normalizedUserId);
+  const serverTimestamp = admin.firestore.FieldValue.serverTimestamp();
+  const fieldDelete = admin.firestore.FieldValue.delete();
+
+  return db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(searchRequestRef);
+    if (!snapshot.exists) {
+      return {failed: false, reason: "not_found"};
+    }
+    const requestData = snapshot.data() || {};
+    if (!shouldFailUnboundStartSearchRequest({
+      requestData,
+      userId: normalizedUserId,
+      requestId: normalizedRequestId,
+    })) {
+      return {failed: false, reason: "not_active_unbound"};
+    }
+
+    transaction.update(searchRequestRef, buildStartSearchFailureUpdate({
+      error,
+      serverTimestamp,
+      fieldDelete,
+    }));
+    return {failed: true, reason: "start_search_failed"};
+  });
+}
+
 async function tryReadCurrentMatchedStartSearchResponse({
   db,
   userId,
@@ -2972,22 +3072,49 @@ async function startSearchCallable(data, context, options = {}) {
   });
 
   if (startResult.shouldTryStudentPair) {
-    const matchResult = await tryCreateStudentPairForSearchRequest({
-      db,
-      userId,
-      requesterData: startResult.requesterData,
-      requestData: startResult.requestData,
-      reused: startResult.reused,
-      teacherResponderPushSender:
-        callableOptions.teacherResponderPushSender ||
-          sendVoipPushToStudentResponder,
-      backgroundStudentResponderPushSender:
-        callableOptions.backgroundStudentResponderPushSender ||
-          sendVoipPushToStudentResponder,
-      teacherResponderTokenReader:
-        callableOptions.teacherResponderTokenReader ||
-          getReadOnlyUserVoipTokenState,
-    });
+    let matchResult;
+    try {
+      matchResult = await tryCreateStudentPairForSearchRequest({
+        db,
+        userId,
+        requesterData: startResult.requesterData,
+        requestData: startResult.requestData,
+        reused: startResult.reused,
+        teacherResponderPushSender:
+          callableOptions.teacherResponderPushSender ||
+            sendVoipPushToStudentResponder,
+        backgroundStudentResponderPushSender:
+          callableOptions.backgroundStudentResponderPushSender ||
+            sendVoipPushToStudentResponder,
+        teacherResponderTokenReader:
+          callableOptions.teacherResponderTokenReader ||
+            getReadOnlyUserVoipTokenState,
+      });
+    } catch (error) {
+      const requestIdForFailure = normalizeString(
+        startResult.requestData?.requestId,
+      );
+      console.error("startSearch matching failed", {
+        userId,
+        requestId: requestIdForFailure,
+        error: readErrorMessage(error, "start_search_failed"),
+      });
+      try {
+        await failUnboundStartSearchRequestForError({
+          db,
+          userId,
+          requestId: requestIdForFailure,
+          error,
+        });
+      } catch (cleanupError) {
+        console.error("startSearch failure cleanup failed", {
+          userId,
+          requestId: requestIdForFailure,
+          error: readErrorMessage(cleanupError, "cleanup_failed"),
+        });
+      }
+      throw error;
+    }
     if (matchResult.matched) {
       return matchResult.response;
     }
@@ -3006,6 +3133,7 @@ exports.__private__ = {
   buildStudentPairResponderFcmMessage,
   buildStudentPairResponderPushPayload,
   buildStartSearchAccessDecision,
+  buildStartSearchFailureUpdate,
   buildStartSearchFilters,
   buildCurrentMatchedStartSearchResponse,
   buildMatchedStartSearchResponse,
@@ -3016,6 +3144,7 @@ exports.__private__ = {
   cancelBackgroundStudentResponderNotification,
   cancelTeacherResponderNotification,
   createTeacherResponderIncomingCall,
+  failUnboundStartSearchRequestForError,
   recordBackgroundStudentResponderPushFailure,
   recordBackgroundStudentResponderPushSuccess,
   releaseBackgroundStudentResponderMatchForRetry,
@@ -3030,6 +3159,7 @@ exports.__private__ = {
   isStudentResponderSession,
   isTeacherResponderSession,
   hasCurrentMatchedSession,
+  hasSearchRequestSessionBinding,
   maybeNotifyBackgroundStudentResponder,
   maybeNotifyTeacherResponder,
   searchRequestMatchesSession,
@@ -3042,6 +3172,7 @@ exports.__private__ = {
   searchRequestBelongsToUser,
   shouldCreateBackgroundStudentResponderIncomingCall,
   shouldCreateTeacherResponderIncomingCall,
+  shouldFailUnboundStartSearchRequest,
   shouldRetryBackgroundStudentMatchAfterNotifyResult,
   shouldRetryTeacherMatchAfterNotifyResult,
   timestampToMillis,
