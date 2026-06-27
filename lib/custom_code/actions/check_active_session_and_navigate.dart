@@ -157,6 +157,20 @@ bool _activeSessionIsJoinableStatus(String? status) {
   return status == 'active' || status == 'connected' || status == 'connecting';
 }
 
+bool _activeSessionHasOpenJoinWindow(Map<String, dynamic> data) {
+  if ((data['status'] as String?) != 'connecting') {
+    return true;
+  }
+
+  final joinDeadlineAt = activeSearchDateTime(data['joinDeadlineAt']);
+  if (joinDeadlineAt == null) {
+    return false;
+  }
+
+  final now = debugActiveSearchRecoveryNow?.call() ?? DateTime.now();
+  return joinDeadlineAt.isAfter(now);
+}
+
 bool _activeSessionIsTerminalStatus(String? status) {
   switch (status?.trim()) {
     case 'cancelled':
@@ -176,6 +190,7 @@ bool _activeSessionIsJoinableParticipant(
   String userId,
 ) {
   return _activeSessionIsJoinableStatus(data['status'] as String?) &&
+      _activeSessionHasOpenJoinWindow(data) &&
       _activeSessionHasParticipant(data, userId);
 }
 
@@ -717,6 +732,20 @@ bool _activeSessionSnapshotHasParticipant(
   return _activeSessionHasParticipant(data, userId);
 }
 
+bool _activeSessionSnapshotIsJoinableParticipant(
+  DocumentSnapshot<Map<String, dynamic>>? snapshot,
+  String userId,
+) {
+  if (snapshot == null || !snapshot.exists) {
+    return true;
+  }
+  final data = snapshot.data();
+  if (data == null) {
+    return false;
+  }
+  return _activeSessionIsJoinableParticipant(data, userId);
+}
+
 Future<_ActiveSessionRecoveryCandidate?> _resolveActiveSessionCandidate({
   required Iterable<DocumentSnapshot<Map<String, dynamic>>> candidates,
   required String userId,
@@ -903,7 +932,7 @@ Future<bool> checkActiveSessionAndNavigate(BuildContext context) async {
           if (activeSearchLinkedSessionTerminal) {
             return false;
           }
-          if (!_activeSessionSnapshotHasParticipant(
+          if (!_activeSessionSnapshotIsJoinableParticipant(
             activeSearchSession,
             userId,
           )) {

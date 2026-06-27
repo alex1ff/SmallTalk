@@ -349,6 +349,17 @@ test("credential session joinability requires an unexpired live session", () => 
   assert.equal(
     isCredentialSessionJoinable(
       {
+        status: "connecting",
+        expiresAt: futureExpiry,
+        joinDeadlineAt: {toMillis: () => nowMillis},
+      },
+      nowMillis,
+    ),
+    false,
+  );
+  assert.equal(
+    isCredentialSessionJoinable(
+      {
         status: "active",
         expiresAt: futureExpiry,
         joinDeadlineAt: pastJoinDeadline,

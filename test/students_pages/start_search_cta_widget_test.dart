@@ -3913,6 +3913,99 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('startup recovery does not open expired room join window',
+      (tester) async {
+    const userId = 'student-startup-expired-join-window-test';
+    const peerId = 'student-startup-expired-join-window-peer-test';
+    const sessionId = 'session-startup-expired-join-window-test';
+    final now = DateTime(2026, 1, 1, 12);
+    final tokenSessionIds = <String>[];
+    final openedSessions = <String>[];
+    debugActiveSearchRecoveryNow = () => now;
+    debugActiveSessionUserSnapshot = (_) async => _FakeSessionSnapshot(
+          userId,
+          const <String, dynamic>{
+            'isInCall': false,
+          },
+          FirebaseFirestore.instance.collection('users').doc(userId),
+        );
+    debugActiveSearchRequestSnapshot = (requestedUserId) async {
+      return _FakeSessionSnapshot(
+        requestedUserId,
+        <String, dynamic>{
+          'requestId': 'request-startup-expired-join-window-test',
+          'userId': userId,
+          'status': 'active',
+          'heartbeatAt': now,
+          'expiresAt': now.add(const Duration(minutes: 5)),
+          'currentSessionId': sessionId,
+        },
+        FirebaseFirestore.instance
+            .collection('searchRequests')
+            .doc(requestedUserId),
+      );
+    };
+    debugActiveCurrentSessionSnapshot = (requestedSessionId) async {
+      expect(requestedSessionId, sessionId);
+      return _FakeSessionSnapshot(
+        sessionId,
+        <String, dynamic>{
+          'status': 'connecting',
+          'participantIds': [userId, peerId],
+          'requesterId': userId,
+          'responderId': peerId,
+          'joinDeadlineAt': now.subtract(const Duration(seconds: 1)),
+          'dailyRoomUrl': 'https://daily.test/$sessionId',
+        },
+        FirebaseFirestore.instance.collection('videoSessions').doc(sessionId),
+      );
+    };
+    debugActiveSessionTokenRequest = (requestedSessionId) async {
+      tokenSessionIds.add(requestedSessionId);
+      throw StateError('Session credential window has expired');
+    };
+    debugActiveSessionNavigator = (
+      videoDocRef, {
+      roomUrl,
+      roomName,
+      meetingToken,
+    }) {
+      openedSessions.add(videoDocRef.id);
+    };
+    setActiveStudent(userId, isInCall: false);
+    bool? recovered;
+    final router = GoRouter(
+      initialLocation: StudentsDashboardWidget.routePath,
+      routes: [
+        GoRoute(
+          name: StudentsDashboardWidget.routeName,
+          path: StudentsDashboardWidget.routePath,
+          builder: (context, state) => TextButton(
+            key: const Key('recover-expired-join-window'),
+            onPressed: () async {
+              recovered = await checkActiveSessionAndNavigate(context);
+            },
+            child: const Text('Recover expired join window'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildDashboardRouterTestApp(router));
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('recover-expired-join-window')));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 3));
+    await tester.idle();
+
+    expect(recovered, isFalse);
+    expect(tokenSessionIds, isEmpty);
+    expect(openedSessions, isEmpty);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('startup recovery waits when active search session lacks token',
       (tester) async {
     const userId = 'student-startup-active-session-no-token-test';
@@ -4010,7 +4103,9 @@ void main() {
     const userId = 'student-startup-connecting-session-search-test';
     const peerId = 'student-startup-connecting-session-peer-test';
     const sessionId = 'session-startup-connecting-session-search-test';
+    final now = DateTime(2026, 1, 1, 12);
     final openedSessions = <String>[];
+    debugActiveSearchRecoveryNow = () => now;
     debugActiveSessionUserSnapshot = (_) async => _FakeSessionSnapshot(
           userId,
           const <String, dynamic>{
@@ -4025,8 +4120,8 @@ void main() {
           'requestId': 'request-startup-connecting-session-search-test',
           'userId': userId,
           'status': 'active',
-          'heartbeatAt': DateTime.now(),
-          'expiresAt': DateTime.now().add(const Duration(minutes: 5)),
+          'heartbeatAt': now,
+          'expiresAt': now.add(const Duration(minutes: 5)),
           'currentSessionId': sessionId,
         },
         FirebaseFirestore.instance
@@ -4043,6 +4138,7 @@ void main() {
           'participantIds': [userId, peerId],
           'requesterId': userId,
           'responderId': peerId,
+          'joinDeadlineAt': now.add(const Duration(seconds: 60)),
           'dailyRoomUrl': 'https://daily.test/$sessionId',
         },
         FirebaseFirestore.instance.collection('videoSessions').doc(sessionId),
