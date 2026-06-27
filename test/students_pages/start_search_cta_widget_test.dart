@@ -6977,6 +6977,194 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('student-student open apps flow connects foreground responder',
+      (tester) async {
+    StudentsDashboardWidget.debugDisableAutoOpenSessionNavigation = false;
+    final requesterSessionController = StreamController<VideoSessionsRecord?>();
+    final responderSessionController = StreamController<VideoSessionsRecord?>();
+    addTearDown(requesterSessionController.close);
+    addTearDown(responderSessionController.close);
+    const sessionId = 'session-student-student-open-apps-test';
+    const requesterId = 'student-open-apps-requester-test';
+    const responderId = 'student-open-apps-responder-test';
+    final acceptedSessions = <Map<String, String>>[];
+    final tokenRequests = <Map<String, String>>[];
+    final openedSessions = <Map<String, String?>>[];
+    StudentsDashboardWidget.debugAcceptCallRequest = (sessionId) async {
+      acceptedSessions.add({
+        'sessionId': sessionId,
+        'userId': currentUserUid,
+      });
+      return <String, dynamic>{
+        'status': 'connected',
+        'sessionId': sessionId,
+        'roomUrl': 'https://daily.test/$sessionId',
+        'roomName': 'room-$sessionId',
+        'meetingToken': 'token-$sessionId',
+      };
+    };
+    StudentsDashboardWidget.debugGetSessionTokensRequest = (sessionId) async {
+      tokenRequests.add({
+        'sessionId': sessionId,
+        'userId': currentUserUid,
+      });
+      return <String, dynamic>{
+        'roomUrl': 'https://daily.test/$sessionId',
+        'roomName': 'room-$sessionId',
+        'meetingToken': 'requester-token-$sessionId',
+      };
+    };
+    StudentsDashboardWidget.debugAutoOpenSessionNavigator = (
+      context,
+      videoDocRef, {
+      roomUrl,
+      meetingToken,
+      roomName,
+    }) {
+      openedSessions.add({
+        'sessionId': videoDocRef.id,
+        'userId': currentUserUid,
+        'roomUrl': roomUrl,
+        'meetingToken': meetingToken,
+        'roomName': roomName,
+      });
+    };
+
+    setActiveStudent(requesterId, currentSessionId: sessionId);
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        Column(
+          children: [
+            Expanded(
+              child: StudentsDashboardWidget(
+                activeSessionStream: requesterSessionController.stream,
+              ),
+            ),
+            Expanded(
+              child: StudentsDashboardWidget(
+                activeSessionStream: responderSessionController.stream,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pump();
+
+    requesterSessionController.add(
+      sessionFixture(
+        sessionId,
+        'pending_confirmation',
+        requesterId: requesterId,
+        responderId: responderId,
+        participantIds: [requesterId, responderId],
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Соединяем'), findsOneWidget);
+    expect(acceptedSessions, isEmpty);
+    expect(tokenRequests, isEmpty);
+    expect(openedSessions, isEmpty);
+
+    setActiveStudent(responderId, currentSessionId: sessionId);
+    responderSessionController.add(
+      sessionFixture(
+        sessionId,
+        'pending_confirmation',
+        requesterId: requesterId,
+        responderId: responderId,
+        participantIds: [requesterId, responderId],
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(acceptedSessions, [
+      {'sessionId': sessionId, 'userId': responderId},
+    ]);
+    expect(tokenRequests, isEmpty);
+    expect(openedSessions, hasLength(1));
+    expect(openedSessions.first['sessionId'], sessionId);
+    expect(openedSessions.first['userId'], responderId);
+    expect(openedSessions.first['roomUrl'], 'https://daily.test/$sessionId');
+    expect(openedSessions.first['meetingToken'], 'token-$sessionId');
+    expect(openedSessions.first['roomName'], 'room-$sessionId');
+
+    responderSessionController.add(
+      sessionFixture(
+        sessionId,
+        'pending_confirmation',
+        requesterId: requesterId,
+        responderId: responderId,
+        participantIds: [requesterId, responderId],
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(acceptedSessions, [
+      {'sessionId': sessionId, 'userId': responderId},
+    ]);
+    expect(openedSessions, hasLength(1));
+
+    setActiveStudent(requesterId, currentSessionId: sessionId);
+    requesterSessionController.add(
+      sessionFixture(
+        sessionId,
+        'connected',
+        requesterId: requesterId,
+        responderId: responderId,
+        participantIds: [requesterId, responderId],
+        dailyRoomUrl: 'https://stale-daily.test/$sessionId',
+        dailyRoomName: 'stale-room-$sessionId',
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(acceptedSessions, [
+      {'sessionId': sessionId, 'userId': responderId},
+    ]);
+    expect(tokenRequests, [
+      {'sessionId': sessionId, 'userId': requesterId},
+    ]);
+    expect(openedSessions, hasLength(2));
+    expect(openedSessions.last['sessionId'], sessionId);
+    expect(openedSessions.last['userId'], requesterId);
+    expect(
+      openedSessions.last['roomUrl'],
+      'https://daily.test/$sessionId',
+    );
+    expect(
+      openedSessions.last['meetingToken'],
+      'requester-token-$sessionId',
+    );
+    expect(openedSessions.last['roomName'], 'room-$sessionId');
+
+    requesterSessionController.add(
+      sessionFixture(
+        sessionId,
+        'connected',
+        requesterId: requesterId,
+        responderId: responderId,
+        participantIds: [requesterId, responderId],
+        dailyRoomUrl: 'https://stale-daily.test/$sessionId',
+        dailyRoomName: 'stale-room-$sessionId',
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(tokenRequests, [
+      {'sessionId': sessionId, 'userId': requesterId},
+    ]);
+    expect(openedSessions, hasLength(2));
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('foreground responder retries accept after transient failure',
       (tester) async {
     StudentsDashboardWidget.debugDisableAutoOpenSessionNavigation = false;
