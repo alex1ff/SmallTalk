@@ -161,8 +161,14 @@ test("deployment readiness exposes event report callable", () => {
   const deployScript = packageJson.scripts["deploy:readiness-functions"];
 
   assert.ok(functionIds.has("reportEvent"));
+  assert.ok(functionIds.has("reportEventChatMessage"));
   assert.match(indexSource, /exports\.reportEvent\b/);
+  assert.match(indexSource, /exports\.reportEventChatMessage\b/);
   assert.match(deployScript, /functions:custom_cloud_functions:reportEvent\b/);
+  assert.match(
+      deployScript,
+      /functions:custom_cloud_functions:reportEventChatMessage\b/,
+  );
 });
 
 test("deployment readiness exposes startSearch queue callable", () => {

@@ -2165,8 +2165,11 @@ test("event bookkeeping exclusions preserve unrelated admin fallback reads", asy
   );
 });
 
-test("event reports are private and server-owned", async () => {
-  const reportPath = "eventReports/report-1";
+test("event report collections are private and server-owned", async () => {
+  const reportPaths = [
+    "eventReports/report-1",
+    "chatMessageReports/report-1",
+  ];
   const contexts = [
     testEnv.unauthenticatedContext(),
     testEnv.authenticatedContext("user-a"),
@@ -2174,45 +2177,54 @@ test("event reports are private and server-owned", async () => {
   ];
   const adminClient = testEnv.authenticatedContext("admin-user", {admin: true});
 
-  await testEnv.withSecurityRulesDisabled(async (context) => {
-    await context.firestore().doc(reportPath).set({
-      eventId: "editable-event",
-      reporterId: "user-a",
-      organizerId: "organizer",
-      reasonCode: "unsafe",
-      status: "open",
-      createdAt: new Date("2026-06-16T10:00:00.000Z"),
-      updatedAt: new Date("2026-06-16T10:00:00.000Z"),
+  for (const reportPath of reportPaths) {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context.firestore().doc(reportPath).set({
+        eventId: "editable-event",
+        reporterId: "user-a",
+        organizerId: "organizer",
+        messageId: "message-1",
+        reasonCode: "unsafe",
+        status: "open",
+        createdAt: new Date("2026-06-16T10:00:00.000Z"),
+        updatedAt: new Date("2026-06-16T10:00:00.000Z"),
+      });
     });
-  });
+  }
 
   for (const context of contexts) {
     const db = context.firestore();
-    await assertFails(db.doc(reportPath).get());
-    await assertFails(db.collection("eventReports").get());
-    await assertFails(
-      db.doc("eventReports/direct-client-report").set({
-        eventId: "editable-event",
-        reporterId: "user-a",
-        reasonCode: "spam",
-      }),
-    );
-    await assertFails(db.doc(reportPath).update({status: "closed"}));
-    await assertFails(db.doc(reportPath).delete());
+    for (const reportPath of reportPaths) {
+      const collectionName = reportPath.split("/")[0];
+      await assertFails(db.doc(reportPath).get());
+      await assertFails(db.collection(collectionName).get());
+      await assertFails(
+        db.doc(`${collectionName}/direct-client-report`).set({
+          eventId: "editable-event",
+          reporterId: "user-a",
+          reasonCode: "spam",
+        }),
+      );
+      await assertFails(db.doc(reportPath).update({status: "closed"}));
+      await assertFails(db.doc(reportPath).delete());
+    }
   }
 
   const adminDb = adminClient.firestore();
-  await assertSucceeds(adminDb.doc(reportPath).get());
-  await assertSucceeds(adminDb.collection("eventReports").get());
-  await assertFails(
-    adminDb.doc("eventReports/direct-admin-report").set({
-      eventId: "editable-event",
-      reporterId: "admin-user",
-      reasonCode: "spam",
-    }),
-  );
-  await assertFails(adminDb.doc(reportPath).update({status: "closed"}));
-  await assertFails(adminDb.doc(reportPath).delete());
+  for (const reportPath of reportPaths) {
+    const collectionName = reportPath.split("/")[0];
+    await assertSucceeds(adminDb.doc(reportPath).get());
+    await assertSucceeds(adminDb.collection(collectionName).get());
+    await assertFails(
+      adminDb.doc(`${collectionName}/direct-admin-report`).set({
+        eventId: "editable-event",
+        reporterId: "admin-user",
+        reasonCode: "spam",
+      }),
+    );
+    await assertFails(adminDb.doc(reportPath).update({status: "closed"}));
+    await assertFails(adminDb.doc(reportPath).delete());
+  }
 });
 
 test("clients cannot directly create event documents", async () => {

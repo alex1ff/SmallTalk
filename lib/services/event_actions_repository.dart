@@ -20,6 +20,7 @@ const leaveEventFunctionName = 'leaveEvent';
 const sendEventChatMessageFunctionName = 'sendEventChatMessage';
 const getEventChatAccessStateFunctionName = 'getEventChatAccessState';
 const reportEventFunctionName = 'reportEvent';
+const reportEventChatMessageFunctionName = 'reportEventChatMessage';
 const eventReportDetailsMaxLength = 500;
 const eventReportReasonCodes = <String>{
   'spam',
@@ -200,6 +201,24 @@ class EventReportResult {
   bool get alreadySubmitted => status == 'already_submitted';
 }
 
+class EventChatMessageReportResult {
+  const EventChatMessageReportResult({
+    required this.eventId,
+    required this.messageId,
+    required this.reportId,
+    required this.status,
+    required this.reportedAt,
+  });
+
+  final String eventId;
+  final String messageId;
+  final String reportId;
+  final String status;
+  final DateTime reportedAt;
+
+  bool get alreadySubmitted => status == 'already_submitted';
+}
+
 class EventActionsRepository {
   const EventActionsRepository._();
 
@@ -352,6 +371,43 @@ class EventActionsRepository {
       reportedAt: _requiredIsoDateTime(data, 'reportedAt'),
     );
   }
+
+  static Future<EventChatMessageReportResult> reportEventChatMessage({
+    required String eventId,
+    required String messageId,
+    required String reasonCode,
+    String? details,
+    EventCallableInvoker? invoker,
+  }) async {
+    final normalizedDetails = normalizeEventReportDetails(details);
+    final responseData = await _callEventFunction(
+      reportEventChatMessageFunctionName,
+      <String, dynamic>{
+        'eventId': normalizeEventActionId(eventId),
+        'messageId': normalizeEventActionId(
+          messageId,
+          fieldName: 'messageId',
+        ),
+        'reasonCode': normalizeEventReportReasonCode(reasonCode),
+        if (normalizedDetails != null) 'details': normalizedDetails,
+      },
+      invoker: invoker,
+    );
+    final data = _responseMap(responseData);
+    final status = _requiredString(data, 'status');
+    if (status != 'submitted' && status != 'already_submitted') {
+      throw const FormatException(
+        'Expected submitted or already_submitted chat message report status.',
+      );
+    }
+    return EventChatMessageReportResult(
+      eventId: _requiredString(data, 'eventId'),
+      messageId: _requiredString(data, 'messageId'),
+      reportId: _requiredString(data, 'reportId'),
+      status: status,
+      reportedAt: _requiredIsoDateTime(data, 'reportedAt'),
+    );
+  }
 }
 
 String newEventCreateRequestId() => const Uuid().v4();
@@ -368,41 +424,44 @@ String normalizeEventCreateRequestId(String createRequestId) {
   return normalizedCreateRequestId;
 }
 
-String normalizeEventActionId(String eventId) {
+String normalizeEventActionId(
+  String eventId, {
+  String fieldName = 'eventId',
+}) {
   final normalizedEventId = eventId.trim();
   if (normalizedEventId.isEmpty) {
     throw ArgumentError.value(
       eventId,
-      'eventId',
-      'Expected a non-empty event id.',
+      fieldName,
+      'Expected a non-empty Firestore document id.',
     );
   }
   if (normalizedEventId == '.' || normalizedEventId == '..') {
     throw ArgumentError.value(
       eventId,
-      'eventId',
+      fieldName,
       'Expected a Firestore document id.',
     );
   }
   if (normalizedEventId.contains('/')) {
     throw ArgumentError.value(
       eventId,
-      'eventId',
-      'Expected an event id without path separators.',
+      fieldName,
+      'Expected a Firestore document id without path separators.',
     );
   }
   if (RegExp(r'^__.*__$').hasMatch(normalizedEventId)) {
     throw ArgumentError.value(
       eventId,
-      'eventId',
+      fieldName,
       'Expected a non-reserved Firestore document id.',
     );
   }
   if (utf8.encode(normalizedEventId).length > 1500) {
     throw ArgumentError.value(
       eventId,
-      'eventId',
-      'Expected an event id no longer than 1500 UTF-8 bytes.',
+      fieldName,
+      'Expected a Firestore document id no longer than 1500 UTF-8 bytes.',
     );
   }
 

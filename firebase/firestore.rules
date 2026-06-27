@@ -31,6 +31,7 @@ service cloud.firestore {
         'eventCreateRequests',
         'eventChats',
         'eventReports',
+        'chatMessageReports',
         'searchRequests'
       ];
     }
@@ -1341,6 +1342,11 @@ service cloud.firestore {
     }
 
     match /eventReports/{document=**} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /chatMessageReports/{document=**} {
       allow read: if isAdmin();
       allow write: if false;
     }

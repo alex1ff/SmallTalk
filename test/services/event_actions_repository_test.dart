@@ -358,6 +358,70 @@ void main() {
       expect(result.alreadySubmitted, isTrue);
     });
 
+    test('reports an event chat message through the trusted callable',
+        () async {
+      String? functionName;
+      Map<String, dynamic>? payload;
+
+      final result = await EventActionsRepository.reportEventChatMessage(
+        eventId: ' event-1 ',
+        messageId: ' message-1 ',
+        reasonCode: ' OFFENSIVE ',
+        details: '  Оскорбительное сообщение  ',
+        invoker: (calledFunctionName, calledPayload) async {
+          functionName = calledFunctionName;
+          payload = calledPayload;
+          return <String, dynamic>{
+            'eventId': 'event-1',
+            'messageId': 'message-1',
+            'reportId': 'report-1',
+            'status': 'submitted',
+            'reportedAt': '2026-06-16T10:00:00.000Z',
+          };
+        },
+      );
+
+      expect(functionName, reportEventChatMessageFunctionName);
+      expect(payload, <String, dynamic>{
+        'eventId': 'event-1',
+        'messageId': 'message-1',
+        'reasonCode': 'offensive',
+        'details': 'Оскорбительное сообщение',
+      });
+      expect(result.eventId, 'event-1');
+      expect(result.messageId, 'message-1');
+      expect(result.reportId, 'report-1');
+      expect(result.status, 'submitted');
+      expect(result.alreadySubmitted, isFalse);
+      expect(result.reportedAt, DateTime.parse('2026-06-16T10:00:00Z'));
+    });
+
+    test('reports duplicate event chat messages idempotently', () async {
+      final result = await EventActionsRepository.reportEventChatMessage(
+        eventId: 'event-1',
+        messageId: 'message-1',
+        reasonCode: 'spam',
+        details: '   ',
+        invoker: (calledFunctionName, calledPayload) async {
+          expect(calledFunctionName, reportEventChatMessageFunctionName);
+          expect(calledPayload, <String, dynamic>{
+            'eventId': 'event-1',
+            'messageId': 'message-1',
+            'reasonCode': 'spam',
+          });
+          return <String, dynamic>{
+            'eventId': 'event-1',
+            'messageId': 'message-1',
+            'reportId': 'report-1',
+            'status': 'already_submitted',
+            'reportedAt': '2026-06-16T10:00:00.000Z',
+          };
+        },
+      );
+
+      expect(result.alreadySubmitted, isTrue);
+    });
+
     test('rejects invalid ids and create request ids before calling functions',
         () async {
       var calls = 0;
@@ -401,10 +465,31 @@ void main() {
           throwsA(isA<ArgumentError>()),
         );
       }
+      for (final messageId in <String>['', ' ', 'messages/message-1']) {
+        await expectLater(
+          EventActionsRepository.reportEventChatMessage(
+            eventId: 'event-1',
+            messageId: messageId,
+            reasonCode: 'spam',
+            invoker: invoker,
+          ),
+          throwsA(isA<ArgumentError>()),
+        );
+      }
       await expectLater(
         EventActionsRepository.reportEvent(
           eventId: 'event-1',
           reasonCode: 'spam',
+          details: 'a' * 501,
+          invoker: invoker,
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+      await expectLater(
+        EventActionsRepository.reportEventChatMessage(
+          eventId: 'event-1',
+          messageId: 'message-1',
+          reasonCode: 'other',
           details: 'a' * 501,
           invoker: invoker,
         ),
@@ -670,6 +755,36 @@ void main() {
           reasonCode: 'spam',
           invoker: (_, __) async => <String, dynamic>{
             'eventId': 'event-1',
+            'reportId': 'report-1',
+            'status': 'submitted',
+            'reportedAt': '2026-06-16T10:00:00Z',
+          },
+        ),
+        throwsA(isA<FormatException>()),
+      );
+      await expectLater(
+        EventActionsRepository.reportEventChatMessage(
+          eventId: 'event-1',
+          messageId: 'message-1',
+          reasonCode: 'spam',
+          invoker: (_, __) async => <String, dynamic>{
+            'eventId': 'event-1',
+            'messageId': 'message-1',
+            'reportId': 'report-1',
+            'status': 'open',
+            'reportedAt': '2026-06-16T10:00:00.000Z',
+          },
+        ),
+        throwsA(isA<FormatException>()),
+      );
+      await expectLater(
+        EventActionsRepository.reportEventChatMessage(
+          eventId: 'event-1',
+          messageId: 'message-1',
+          reasonCode: 'spam',
+          invoker: (_, __) async => <String, dynamic>{
+            'eventId': 'event-1',
+            'messageId': 'message-1',
             'reportId': 'report-1',
             'status': 'submitted',
             'reportedAt': '2026-06-16T10:00:00Z',

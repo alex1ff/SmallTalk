@@ -22,6 +22,9 @@ enum EventActionFailureKind {
   notActiveParticipant,
   eventReportSelf,
   eventNotReportable,
+  chatMessageNotFound,
+  chatMessageReportSelf,
+  chatMessageNotReportable,
   profileRequired,
   capacityBelowParticipants,
   chatUnavailable,
@@ -231,6 +234,21 @@ String eventActionFailureMessageForLocalizations(
         ruText: 'На это событие больше нельзя пожаловаться.',
         enText: 'This event can no longer be reported.',
       );
+    case EventActionFailureKind.chatMessageNotFound:
+      return localizations.getVariableText(
+        ruText: 'Сообщение уже недоступно.',
+        enText: 'This message is no longer available.',
+      );
+    case EventActionFailureKind.chatMessageReportSelf:
+      return localizations.getVariableText(
+        ruText: 'Нельзя пожаловаться на своё сообщение.',
+        enText: 'You cannot report your own message.',
+      );
+    case EventActionFailureKind.chatMessageNotReportable:
+      return localizations.getVariableText(
+        ruText: 'На это сообщение больше нельзя пожаловаться.',
+        enText: 'This message can no longer be reported.',
+      );
     case EventActionFailureKind.profileRequired:
       return localizations.getVariableText(
         ruText: 'Заполните имя и фото профиля, чтобы продолжить с событиями.',
@@ -286,6 +304,7 @@ EventActionFailure? _failureFromDomainCode({
     case 'invalid_leave_request':
     case 'invalid_event_chat_message_request':
     case 'invalid_report_event_request':
+    case 'invalid_report_event_chat_message_request':
     case 'invalid_city_catalog':
       return _failure(
         kind: EventActionFailureKind.validation,
@@ -312,6 +331,13 @@ EventActionFailure? _failureFromDomainCode({
     case 'event_not_found':
       return _failure(
         kind: EventActionFailureKind.eventNotFound,
+        firebaseCode: firebaseCode,
+        domainCode: domainCode,
+        reason: reason,
+      );
+    case 'event_chat_message_not_found':
+      return _failure(
+        kind: EventActionFailureKind.chatMessageNotFound,
         firebaseCode: firebaseCode,
         domainCode: domainCode,
         reason: reason,
@@ -393,6 +419,20 @@ EventActionFailure? _failureFromDomainCode({
         domainCode: domainCode,
         reason: reason,
       );
+    case 'event_chat_message_report_self':
+      return _failure(
+        kind: EventActionFailureKind.chatMessageReportSelf,
+        firebaseCode: firebaseCode,
+        domainCode: domainCode,
+        reason: reason,
+      );
+    case 'event_chat_message_not_reportable':
+      return _failure(
+        kind: EventActionFailureKind.chatMessageNotReportable,
+        firebaseCode: firebaseCode,
+        domainCode: domainCode,
+        reason: reason,
+      );
     case 'organizer_profile_required':
     case 'participant_profile_required':
     case 'sender_profile_required':
@@ -411,7 +451,9 @@ EventActionFailure? _failureFromDomainCode({
         reason: reason,
       );
     case 'event_chat_metadata_invalid':
+    case 'event_chat_access_denied':
     case 'event_chat_writes_blocked':
+    case 'event_chat_message_invalid':
       return _failure(
         kind: EventActionFailureKind.chatUnavailable,
         firebaseCode: firebaseCode,

@@ -30,6 +30,18 @@ const ValueKey<String> eventGroupChatSendErrorSnackBarKey =
     ValueKey<String>('event_group_chat_send_error_snack_bar');
 const ValueKey<String> eventGroupChatReadOnlySnackBarKey =
     ValueKey<String>('event_group_chat_read_only_snack_bar');
+const ValueKey<String> eventGroupChatReportSuccessSnackBarKey =
+    ValueKey<String>('event_group_chat_report_success_snack_bar');
+const ValueKey<String> eventGroupChatReportErrorSnackBarKey =
+    ValueKey<String>('event_group_chat_report_error_snack_bar');
+const ValueKey<String> eventGroupChatReportDialogKey =
+    ValueKey<String>('event_group_chat_report_dialog');
+const ValueKey<String> eventGroupChatReportDetailsFieldKey =
+    ValueKey<String>('event_group_chat_report_details_field');
+const ValueKey<String> eventGroupChatReportDismissButtonKey =
+    ValueKey<String>('event_group_chat_report_dismiss_button');
+const ValueKey<String> eventGroupChatReportSubmitButtonKey =
+    ValueKey<String>('event_group_chat_report_submit_button');
 const ValueKey<String> eventGroupChatCanceledReadOnlyBannerKey =
     ValueKey<String>('event_group_chat_canceled_read_only_banner');
 
@@ -45,6 +57,12 @@ ValueKey<String> eventGroupChatMessageSenderAvatarKey(String messageId) =>
 ValueKey<String> eventGroupChatMessageTombstoneKey(String messageId) =>
     ValueKey<String>('event_group_chat_message_tombstone_$messageId');
 
+ValueKey<String> eventGroupChatMessageReportButtonKey(String messageId) =>
+    ValueKey<String>('event_group_chat_message_report_button_$messageId');
+
+ValueKey<String> eventGroupChatReportReasonKey(String reasonCode) =>
+    ValueKey<String>('event_group_chat_report_reason_$reasonCode');
+
 /// Event chat intentionally uses an event-specific surface.
 ///
 /// The existing one-to-one chat UI is backed by conversation documents and
@@ -59,6 +77,7 @@ class EventGroupChatWidget extends StatefulWidget {
     this.messagesStream,
     this.accessStateInvoker,
     this.sendMessageInvoker,
+    this.reportMessageInvoker,
     this.messageLimit = EventGroupChatRepository.defaultMessageLimit,
   });
 
@@ -67,6 +86,7 @@ class EventGroupChatWidget extends StatefulWidget {
   final EventChatMessagesStream? messagesStream;
   final EventCallableInvoker? accessStateInvoker;
   final EventCallableInvoker? sendMessageInvoker;
+  final EventCallableInvoker? reportMessageInvoker;
   final int messageLimit;
 
   static String routeName = 'eventGroupChat';
@@ -85,6 +105,7 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
   String? _accessStateCacheKey;
   int _chatAccessRevision = 0;
   bool _isSending = false;
+  bool _isReportingMessage = false;
 
   @override
   void initState() {
@@ -207,6 +228,89 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
       if (mounted) {
         setState(() {
           _isSending = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _showReportMessageDialog(
+    EventChatMessagesRecord message,
+  ) async {
+    if (_isReportingMessage || message.deletedAt != null) {
+      return;
+    }
+
+    final eventId = widget.eventId.trim();
+    final messageId = message.reference.id;
+    final reportRequest = await showDialog<_EventChatMessageReportDialogResult>(
+      context: context,
+      builder: (context) => const _EventChatMessageReportDialog(),
+    );
+    if (reportRequest == null ||
+        !mounted ||
+        widget.eventId.trim() != eventId ||
+        message.reference.id != messageId) {
+      return;
+    }
+    await _handleReportMessage(
+      eventId: eventId,
+      messageId: messageId,
+      reportRequest: reportRequest,
+    );
+  }
+
+  Future<void> _handleReportMessage({
+    required String eventId,
+    required String messageId,
+    required _EventChatMessageReportDialogResult reportRequest,
+  }) async {
+    if (_isReportingMessage) {
+      return;
+    }
+
+    setState(() {
+      _isReportingMessage = true;
+    });
+    try {
+      final result = await EventActionsRepository.reportEventChatMessage(
+        eventId: eventId,
+        messageId: messageId,
+        reasonCode: reportRequest.reasonCode,
+        details: reportRequest.details,
+        invoker: widget.reportMessageInvoker,
+      );
+      if (!mounted || widget.eventId.trim() != eventId) {
+        return;
+      }
+      final message = result.alreadySubmitted
+          ? FFLocalizations.of(context).getVariableText(
+              ruText: 'Жалоба уже отправлена.',
+              enText: 'Report already submitted.',
+            )
+          : FFLocalizations.of(context).getVariableText(
+              ruText: 'Жалоба отправлена.',
+              enText: 'Report submitted.',
+            );
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          key: eventGroupChatReportSuccessSnackBarKey,
+          content: Text(message),
+        ),
+      );
+    } catch (error) {
+      if (!mounted || widget.eventId.trim() != eventId) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          key: eventGroupChatReportErrorSnackBarKey,
+          content: Text(eventActionFailureMessage(context, error)),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isReportingMessage = false;
         });
       }
     }
@@ -374,6 +478,7 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
                   final message = messages[messages.length - 1 - index];
                   return _EventGroupChatMessageBubble(
                     message: message,
+                    onReportPressed: () => _showReportMessageDialog(message),
                   );
                 },
               );
@@ -479,6 +584,173 @@ class _EventGroupChatCanceledReadOnlyBanner extends StatelessWidget {
       ),
     );
   }
+}
+
+class _EventChatMessageReportDialogResult {
+  const _EventChatMessageReportDialogResult({
+    required this.reasonCode,
+    this.details,
+  });
+
+  final String reasonCode;
+  final String? details;
+}
+
+class _EventChatMessageReportReasonOption {
+  const _EventChatMessageReportReasonOption({
+    required this.code,
+    required this.label,
+  });
+
+  final String code;
+  final String label;
+}
+
+class _EventChatMessageReportDialog extends StatefulWidget {
+  const _EventChatMessageReportDialog();
+
+  @override
+  State<_EventChatMessageReportDialog> createState() =>
+      _EventChatMessageReportDialogState();
+}
+
+class _EventChatMessageReportDialogState
+    extends State<_EventChatMessageReportDialog> {
+  final TextEditingController _detailsController = TextEditingController();
+  String? _selectedReasonCode;
+
+  @override
+  void dispose() {
+    _detailsController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final localizations = FFLocalizations.of(context);
+    final options = _eventChatMessageReportReasonOptions(context);
+
+    return AlertDialog(
+      key: eventGroupChatReportDialogKey,
+      title: Text(
+        localizations.getVariableText(
+          ruText: 'Пожаловаться на сообщение',
+          enText: 'Report message',
+        ),
+      ),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final option in options)
+                  ChoiceChip(
+                    key: eventGroupChatReportReasonKey(option.code),
+                    label: Text(option.label),
+                    selected: _selectedReasonCode == option.code,
+                    onSelected: (_) {
+                      setState(() {
+                        _selectedReasonCode = option.code;
+                      });
+                    },
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              key: eventGroupChatReportDetailsFieldKey,
+              controller: _detailsController,
+              maxLines: 3,
+              maxLength: eventReportDetailsMaxLength,
+              textInputAction: TextInputAction.newline,
+              decoration: InputDecoration(
+                labelText: localizations.getVariableText(
+                  ruText: 'Комментарий',
+                  enText: 'Comment',
+                ),
+                hintText: localizations.getVariableText(
+                  ruText: 'Можно оставить пустым',
+                  enText: 'Optional',
+                ),
+                border: const OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          key: eventGroupChatReportDismissButtonKey,
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(
+            localizations.getVariableText(
+              ruText: 'Отмена',
+              enText: 'Cancel',
+            ),
+          ),
+        ),
+        FilledButton(
+          key: eventGroupChatReportSubmitButtonKey,
+          onPressed: _selectedReasonCode == null
+              ? null
+              : () {
+                  Navigator.of(context).pop(
+                    _EventChatMessageReportDialogResult(
+                      reasonCode: _selectedReasonCode!,
+                      details: _detailsController.text,
+                    ),
+                  );
+                },
+          child: Text(
+            localizations.getVariableText(
+              ruText: 'Отправить',
+              enText: 'Submit',
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+List<_EventChatMessageReportReasonOption> _eventChatMessageReportReasonOptions(
+    BuildContext context) {
+  final localizations = FFLocalizations.of(context);
+  return [
+    _EventChatMessageReportReasonOption(
+      code: 'spam',
+      label: localizations.getVariableText(
+        ruText: 'Спам',
+        enText: 'Spam',
+      ),
+    ),
+    _EventChatMessageReportReasonOption(
+      code: 'offensive',
+      label: localizations.getVariableText(
+        ruText: 'Оскорбления',
+        enText: 'Offensive',
+      ),
+    ),
+    _EventChatMessageReportReasonOption(
+      code: 'unsafe',
+      label: localizations.getVariableText(
+        ruText: 'Небезопасно',
+        enText: 'Unsafe',
+      ),
+    ),
+    _EventChatMessageReportReasonOption(
+      code: 'other',
+      label: localizations.getVariableText(
+        ruText: 'Другое',
+        enText: 'Other',
+      ),
+    ),
+  ];
 }
 
 class _EventGroupChatComposer extends StatelessWidget {
@@ -626,16 +898,21 @@ class _EventGroupChatStateMessage extends StatelessWidget {
 class _EventGroupChatMessageBubble extends StatelessWidget {
   const _EventGroupChatMessageBubble({
     required this.message,
+    required this.onReportPressed,
   });
 
   final EventChatMessagesRecord message;
+  final VoidCallback onReportPressed;
 
   @override
   Widget build(BuildContext context) {
     final messageId = message.reference.id;
-    final isCurrentUser = message.senderId.trim() == currentUserUid.trim() &&
-        currentUserUid.trim().isNotEmpty;
+    final normalizedCurrentUserUid = currentUserUid.trim();
+    final isCurrentUser = message.senderId.trim() == normalizedCurrentUserUid &&
+        normalizedCurrentUserUid.isNotEmpty;
     final isDeleted = message.deletedAt != null;
+    final canReport =
+        normalizedCurrentUserUid.isNotEmpty && !isCurrentUser && !isDeleted;
     final bubbleColor = isDeleted
         ? ExpatlioDesign.secondarySystemBackground
         : isCurrentUser
@@ -663,60 +940,97 @@ class _EventGroupChatMessageBubble extends StatelessWidget {
       displayName: senderName,
       photoUrl: message.senderPhotoUrl,
     );
+    final bubbleBody = Container(
+      key: eventGroupChatMessageBubbleKey(messageId),
+      constraints: const BoxConstraints(maxWidth: 280),
+      padding: const EdgeInsetsDirectional.symmetric(
+        horizontal: ExpatlioDesign.space12,
+        vertical: ExpatlioDesign.space8,
+      ),
+      decoration: BoxDecoration(
+        color: bubbleColor,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color:
+              isCurrentUser ? ExpatlioDesign.primary : ExpatlioDesign.separator,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            senderName,
+            key: eventGroupChatMessageSenderNameKey(messageId),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: ExpatlioDesign.textStyle(
+              context,
+              color: senderNameColor,
+              size: 13,
+              height: 1.2,
+              weight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            messageText,
+            key:
+                isDeleted ? eventGroupChatMessageTombstoneKey(messageId) : null,
+            style: ExpatlioDesign.textStyle(
+              context,
+              color: textColor,
+              size: 16,
+              height: 1.3,
+              weight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
     final bubble = Flexible(
       child: Align(
         alignment: isCurrentUser
             ? AlignmentDirectional.centerEnd
             : AlignmentDirectional.centerStart,
-        child: Container(
-          key: eventGroupChatMessageBubbleKey(messageId),
-          constraints: const BoxConstraints(maxWidth: 280),
-          padding: const EdgeInsetsDirectional.symmetric(
-            horizontal: ExpatlioDesign.space12,
-            vertical: ExpatlioDesign.space8,
-          ),
-          decoration: BoxDecoration(
-            color: bubbleColor,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: isCurrentUser
-                  ? ExpatlioDesign.primary
-                  : ExpatlioDesign.separator,
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                senderName,
-                key: eventGroupChatMessageSenderNameKey(messageId),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: ExpatlioDesign.textStyle(
-                  context,
-                  color: senderNameColor,
-                  size: 13,
-                  height: 1.2,
-                  weight: FontWeight.w700,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Flexible(child: bubbleBody),
+            if (canReport) ...[
+              const SizedBox(width: ExpatlioDesign.space4),
+              Tooltip(
+                message: FFLocalizations.of(context).getVariableText(
+                  ruText: 'Пожаловаться на сообщение',
+                  enText: 'Report message',
                 ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                messageText,
-                key: isDeleted
-                    ? eventGroupChatMessageTombstoneKey(messageId)
-                    : null,
-                style: ExpatlioDesign.textStyle(
-                  context,
-                  color: textColor,
-                  size: 16,
-                  height: 1.3,
-                  weight: FontWeight.w500,
+                child: Semantics(
+                  key: eventGroupChatMessageReportButtonKey(messageId),
+                  button: true,
+                  label: FFLocalizations.of(context).getVariableText(
+                    ruText: 'Пожаловаться на сообщение',
+                    enText: 'Report message',
+                  ),
+                  onTap: onReportPressed,
+                  child: ExcludeSemantics(
+                    child: IconButton(
+                      onPressed: onReportPressed,
+                      icon: const Icon(Icons.flag_outlined),
+                      iconSize: 18,
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints.tightFor(
+                        width: 48,
+                        height: 48,
+                      ),
+                      color: ExpatlioDesign.muted,
+                    ),
+                  ),
                 ),
               ),
             ],
-          ),
+          ],
         ),
       ),
     );

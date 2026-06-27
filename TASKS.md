@@ -422,7 +422,7 @@ Deferred from active scope on 2026-06-19.
 
 - [ ] Rich web event preview, deferred deep linking, and optional vendor attribution.
 - [x] Report event.
-- [ ] Report chat message.
+- [x] Report chat message.
 - [ ] Event history in profile.
 - [ ] Improved city picker.
 - [ ] Server-side event drafts and draft restore.

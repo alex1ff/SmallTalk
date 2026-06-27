@@ -17,6 +17,8 @@ void main() {
         'invalid_leave_request': EventActionFailureKind.validation,
         'invalid_event_chat_message_request': EventActionFailureKind.validation,
         'invalid_report_event_request': EventActionFailureKind.validation,
+        'invalid_report_event_chat_message_request':
+            EventActionFailureKind.validation,
         'invalid_city_catalog': EventActionFailureKind.validation,
         'daily_limit_reached': EventActionFailureKind.dailyLimitReached,
         'create_request_conflict': EventActionFailureKind.createRequestConflict,
@@ -32,6 +34,12 @@ void main() {
         'not_active_participant': EventActionFailureKind.notActiveParticipant,
         'event_report_self': EventActionFailureKind.eventReportSelf,
         'event_not_reportable': EventActionFailureKind.eventNotReportable,
+        'event_chat_message_not_found':
+            EventActionFailureKind.chatMessageNotFound,
+        'event_chat_message_report_self':
+            EventActionFailureKind.chatMessageReportSelf,
+        'event_chat_message_not_reportable':
+            EventActionFailureKind.chatMessageNotReportable,
         'organizer_profile_required': EventActionFailureKind.profileRequired,
         'participant_profile_required': EventActionFailureKind.profileRequired,
         'sender_profile_required': EventActionFailureKind.profileRequired,
@@ -39,7 +47,9 @@ void main() {
         'capacity_below_participants_count':
             EventActionFailureKind.capacityBelowParticipants,
         'event_chat_metadata_invalid': EventActionFailureKind.chatUnavailable,
+        'event_chat_access_denied': EventActionFailureKind.chatUnavailable,
         'event_chat_writes_blocked': EventActionFailureKind.chatUnavailable,
+        'event_chat_message_invalid': EventActionFailureKind.chatUnavailable,
         'create_request_marker_inconsistent':
             EventActionFailureKind.staleEventState,
         'create_request_marker_missing': EventActionFailureKind.staleEventState,
@@ -401,6 +411,21 @@ void main() {
           error: _domainError('event_not_reportable'),
           ruMessage: 'На это событие больше нельзя пожаловаться.',
           enMessage: 'This event can no longer be reported.',
+        ),
+        (
+          error: _domainError('event_chat_message_report_self'),
+          ruMessage: 'Нельзя пожаловаться на своё сообщение.',
+          enMessage: 'You cannot report your own message.',
+        ),
+        (
+          error: _domainError('event_chat_message_not_reportable'),
+          ruMessage: 'На это сообщение больше нельзя пожаловаться.',
+          enMessage: 'This message can no longer be reported.',
+        ),
+        (
+          error: _domainError('event_chat_message_not_found'),
+          ruMessage: 'Сообщение уже недоступно.',
+          enMessage: 'This message is no longer available.',
         ),
       ]) {
         final ruMessage = await _localizedMessage(

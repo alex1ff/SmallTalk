@@ -1,10 +1,12 @@
 import 'dart:async';
 
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_core_platform_interface/test.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:small_talk/auth/firebase_auth/auth_util.dart';
 import 'package:small_talk/backend/backend.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/shared_pages/events/event_group_chat_widget.dart';
@@ -59,6 +61,10 @@ void main() {
     setupFirebaseCoreMocks();
     await FFLocalizations.initialize();
     await Firebase.initializeApp();
+  });
+
+  tearDown(() {
+    currentUser = null;
   });
 
   testWidgets('shows loading while event chat messages stream is pending',
@@ -736,6 +742,279 @@ void main() {
     expect(find.text('Марко'), findsOneWidget);
   });
 
+  testWidgets('reports another participant event chat message', (tester) async {
+    currentUser = _TestAuthUser('viewer-1');
+    final chatRef = EventChatsRecord.collection.doc('event-123');
+    final message = _messageFixture(
+      chatRef: chatRef,
+      messageId: 'message-1',
+      senderId: 'sender-1',
+      text: 'Suspicious message',
+    );
+    String? functionName;
+    Map<String, dynamic>? payload;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: ' event-123 ',
+          chatStream: _allowedChatStream(),
+          accessStateInvoker: _accessStateInvoker(),
+          messagesStream: (_) => Stream.value(<EventChatMessagesRecord>[
+            message,
+          ]),
+          reportMessageInvoker: (calledFunctionName, calledPayload) async {
+            functionName = calledFunctionName;
+            payload = calledPayload;
+            return <String, dynamic>{
+              'eventId': 'event-123',
+              'messageId': 'message-1',
+              'reportId': 'report-1',
+              'status': 'submitted',
+              'reportedAt': '2026-06-16T10:00:00.000Z',
+            };
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventGroupChatMessageReportButtonKey('message-1')),
+        findsOneWidget);
+    final reportIconButton = tester.widget<IconButton>(
+      find.descendant(
+        of: find.byKey(eventGroupChatMessageReportButtonKey('message-1')),
+        matching: find.byType(IconButton),
+      ),
+    );
+    expect(
+      reportIconButton.constraints,
+      const BoxConstraints.tightFor(width: 48, height: 48),
+    );
+
+    await tester
+        .tap(find.byKey(eventGroupChatMessageReportButtonKey('message-1')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventGroupChatReportDialogKey), findsOneWidget);
+
+    await tester.tap(find.byKey(eventGroupChatReportReasonKey('offensive')));
+    await tester.enterText(
+      find.byKey(eventGroupChatReportDetailsFieldKey),
+      '  rude text  ',
+    );
+    await tester.tap(find.byKey(eventGroupChatReportSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(functionName, reportEventChatMessageFunctionName);
+    expect(payload, <String, dynamic>{
+      'eventId': 'event-123',
+      'messageId': 'message-1',
+      'reasonCode': 'offensive',
+      'details': 'rude text',
+    });
+    expect(find.byKey(eventGroupChatReportSuccessSnackBarKey), findsOneWidget);
+    expect(find.text('Жалоба отправлена.'), findsOneWidget);
+  });
+
+  testWidgets('hides report action for own and deleted messages',
+      (tester) async {
+    currentUser = _TestAuthUser('viewer-1');
+    final chatRef = EventChatsRecord.collection.doc('event-123');
+    final ownMessage = _messageFixture(
+      chatRef: chatRef,
+      messageId: 'own-message',
+      senderId: 'viewer-1',
+      text: 'Own message',
+    );
+    final deletedMessage = _messageFixture(
+      chatRef: chatRef,
+      messageId: 'deleted-message',
+      senderId: 'sender-1',
+      text: 'Deleted message',
+      deletedAt: DateTime.parse('2026-06-15T11:30:00Z'),
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-123',
+          chatStream: _allowedChatStream(),
+          accessStateInvoker: _accessStateInvoker(),
+          messagesStream: (_) => Stream.value(<EventChatMessagesRecord>[
+            ownMessage,
+            deletedMessage,
+          ]),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventGroupChatMessageReportButtonKey('own-message')),
+        findsNothing);
+    expect(find.byKey(eventGroupChatMessageReportButtonKey('deleted-message')),
+        findsNothing);
+
+    currentUser = null;
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-123',
+          chatStream: _allowedChatStream(),
+          accessStateInvoker: _accessStateInvoker(),
+          messagesStream: (_) => Stream.value(<EventChatMessagesRecord>[
+            _messageFixture(
+              chatRef: chatRef,
+              messageId: 'anonymous-view-message',
+              senderId: 'sender-1',
+              text: 'Visible message',
+            ),
+          ]),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+        find.byKey(
+          eventGroupChatMessageReportButtonKey('anonymous-view-message'),
+        ),
+        findsNothing);
+  });
+
+  testWidgets(
+      'ignores stale event chat message report result after event change',
+      (tester) async {
+    currentUser = _TestAuthUser('viewer-1');
+    var eventId = 'event-123';
+    var reportCalls = 0;
+    late StateSetter setHostState;
+    final reportCompleter = Completer<Object?>();
+    addTearDown(() {
+      if (!reportCompleter.isCompleted) {
+        reportCompleter.complete(<String, dynamic>{
+          'eventId': 'event-123',
+          'messageId': 'message-1',
+          'reportId': 'report-1',
+          'status': 'submitted',
+          'reportedAt': '2026-06-16T10:00:00.000Z',
+        });
+      }
+    });
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: StatefulBuilder(
+          builder: (context, setState) {
+            setHostState = setState;
+            return EventGroupChatWidget(
+              eventId: eventId,
+              chatStream: (chatRef) => Stream<EventChatsRecord?>.value(
+                _chatFixture(chatRef: chatRef, eventId: eventId),
+              ),
+              accessStateInvoker: (functionName, payload) async {
+                expect(functionName, getEventChatAccessStateFunctionName);
+                return <String, dynamic>{
+                  'eventId': payload['eventId'] as String,
+                  'status': 'active',
+                  'readOnly': false,
+                };
+              },
+              messagesStream: (chatRef) =>
+                  Stream.value(<EventChatMessagesRecord>[
+                _messageFixture(
+                  chatRef: chatRef,
+                  messageId: 'message-1',
+                  senderId: 'sender-1',
+                  text: 'Suspicious message',
+                ),
+              ]),
+              reportMessageInvoker: (_, __) {
+                reportCalls += 1;
+                return reportCompleter.future;
+              },
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester
+        .tap(find.byKey(eventGroupChatMessageReportButtonKey('message-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventGroupChatReportReasonKey('spam')));
+    await tester.pump();
+    await tester.tap(find.byKey(eventGroupChatReportSubmitButtonKey));
+    await tester.pump();
+
+    setHostState(() {
+      eventId = 'event-456';
+    });
+    await tester.pumpAndSettle();
+
+    reportCompleter.complete(<String, dynamic>{
+      'eventId': 'event-123',
+      'messageId': 'message-1',
+      'reportId': 'report-1',
+      'status': 'submitted',
+      'reportedAt': '2026-06-16T10:00:00.000Z',
+    });
+    await tester.pumpAndSettle();
+
+    expect(reportCalls, 1);
+    expect(find.byKey(eventGroupChatReportSuccessSnackBarKey), findsNothing);
+    expect(find.byKey(eventGroupChatReportErrorSnackBarKey), findsNothing);
+    expect(find.text('Жалоба отправлена.'), findsNothing);
+  });
+
+  testWidgets('shows mapped error when event chat message report fails',
+      (tester) async {
+    currentUser = _TestAuthUser('viewer-1');
+    final chatRef = EventChatsRecord.collection.doc('event-123');
+    final message = _messageFixture(
+      chatRef: chatRef,
+      messageId: 'message-1',
+      senderId: 'sender-1',
+      text: 'Suspicious message',
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-123',
+          chatStream: _allowedChatStream(),
+          accessStateInvoker: _accessStateInvoker(),
+          messagesStream: (_) => Stream.value(<EventChatMessagesRecord>[
+            message,
+          ]),
+          reportMessageInvoker: (_, __) async {
+            throw _TestFirebaseFunctionsException(
+              code: 'failed-precondition',
+              message: 'Raw backend message',
+              details: <String, dynamic>{
+                'domainCode': 'event_chat_message_not_reportable',
+              },
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester
+        .tap(find.byKey(eventGroupChatMessageReportButtonKey('message-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventGroupChatReportReasonKey('spam')));
+    await tester.pump();
+    await tester.tap(find.byKey(eventGroupChatReportSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventGroupChatReportErrorSnackBarKey), findsOneWidget);
+    expect(find.text('На это сообщение больше нельзя пожаловаться.'),
+        findsOneWidget);
+  });
+
   testWidgets('sends event chat message through callable and clears input',
       (tester) async {
     String? functionName;
@@ -859,6 +1138,41 @@ void main() {
 
     expect(find.byKey(eventGroupChatMessagesErrorKey), findsOneWidget);
     expect(find.text('Не удалось загрузить чат'), findsOneWidget);
+  });
+}
+
+class _TestAuthUser extends BaseAuthUser {
+  _TestAuthUser(this._uid);
+
+  final String _uid;
+
+  @override
+  bool get loggedIn => true;
+
+  @override
+  bool get emailVerified => true;
+
+  @override
+  AuthUserInfo get authUserInfo => AuthUserInfo(uid: _uid);
+
+  @override
+  Future<void> delete() async {}
+
+  @override
+  Future<void> updateEmail(String email) async {}
+
+  @override
+  Future<void> updatePassword(String newPassword) async {}
+
+  @override
+  Future<void> sendEmailVerification() async {}
+}
+
+class _TestFirebaseFunctionsException extends FirebaseFunctionsException {
+  _TestFirebaseFunctionsException({
+    required super.code,
+    required super.message,
+    super.details,
   });
 }
 
