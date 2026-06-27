@@ -401,7 +401,7 @@
 
 - [x] Student-student: оба приложения открыты.
 - [x] Student-student: один студент в фоне.
-- [ ] Student-student: один студент отклоняет звонок.
+- [x] Student-student: один студент отклоняет звонок.
 - [ ] Student-student: один студент не отвечает 45 секунд.
 - [ ] Student-teacher: учитель принимает звонок.
 - [ ] Student-teacher: учитель отклоняет звонок.
