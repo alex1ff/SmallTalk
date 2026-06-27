@@ -4743,6 +4743,113 @@ if (!hasFirestoreEmulator) {
     });
   });
 
+  test("startSearch callable chooses exact level before adjacent", async () => {
+    const requesterUid = uniqueId("exact-level-requester");
+    const adjacentStudentUid = uniqueId("adjacent-level-student");
+    const exactTeacherUid = uniqueId("exact-level-teacher");
+    const cityKey = cityKeyForUid(
+      `${requesterUid}-${adjacentStudentUid}-${exactTeacherUid}`,
+    );
+    const refsToDelete = [
+      userRef(requesterUid),
+      userRef(adjacentStudentUid),
+      userRef(exactTeacherUid),
+      searchRequestRef(requesterUid),
+      searchRequestRef(adjacentStudentUid),
+      searchRequestRef(exactTeacherUid),
+      db.collection("userPrivateTokens").doc(exactTeacherUid),
+    ];
+    let sessionId = "";
+
+    try {
+      await Promise.all(refsToDelete.map(deleteDoc));
+      await seedStudent(adjacentStudentUid, {
+        display_name: "Adjacent Student",
+        level: "A2",
+        profileCity: {key: cityKey},
+      });
+      await seedStudent(requesterUid, {
+        display_name: "Requester Student",
+        level: "B1",
+        profileCity: {key: cityKey},
+      });
+
+      const adjacentStudentResponse = await wrappedStartSearch({
+        preferredPartnerLevel: "B1",
+        appState: "foreground",
+      }, authContext(adjacentStudentUid));
+      await searchRequestRef(adjacentStudentUid).update({
+        createdAt: admin.firestore.Timestamp.fromMillis(
+          Date.now() - 10 * 60 * 1000,
+        ),
+        updatedAt: admin.firestore.Timestamp.now(),
+        heartbeatAt: admin.firestore.Timestamp.now(),
+      });
+      await seedTeacher(exactTeacherUid, {
+        display_name: "Exact Teacher",
+        level: "B1",
+        profileCity: {key: cityKey},
+        availableSince: admin.firestore.Timestamp.fromMillis(
+          Date.now() - 2 * 60 * 1000,
+        ),
+      });
+      await db.collection("userPrivateTokens").doc(exactTeacherUid).set({
+        voipPushToken: `push-${exactTeacherUid}`,
+      });
+
+      let teacherPushSendCount = 0;
+      const response = await startSearchCallable({
+        preferredPartnerLevel: "B1",
+        appState: "foreground",
+      }, authContext(requesterUid), {
+        teacherResponderPushSender: async (responderId, callData) => {
+          teacherPushSendCount += 1;
+          assert.equal(responderId, exactTeacherUid);
+          assert.equal(callData.callerId, requesterUid);
+          return {sent: true, channel: "test"};
+        },
+      });
+      sessionId = response.sessionId;
+      const sessionSnapshot = await db
+        .collection("videoSessions")
+        .doc(response.sessionId)
+        .get();
+      const sessionData = sessionSnapshot.data();
+      const adjacentStudentRequest =
+        (await searchRequestRef(adjacentStudentUid).get()).data();
+
+      assert.equal(adjacentStudentResponse.status, "active");
+      assert.equal(response.status, "matched");
+      assert.equal(response.matchedUserId, exactTeacherUid);
+      assert.equal(response.matchedRole, "native_speaker");
+      assert.equal(response.scenario, "student_teacher");
+      assert.equal(sessionSnapshot.exists, true);
+      assert.deepEqual(sessionData.availableTutors, [
+        exactTeacherUid,
+        adjacentStudentUid,
+      ]);
+      assert.deepEqual(
+        sessionData.matchContext.candidateIds,
+        sessionData.availableTutors,
+      );
+      assert.equal(sessionData.matchContext.selectedResponderId, exactTeacherUid);
+      assert.equal(
+        sessionData.matchContext.selectedResponderRole,
+        "native_speaker",
+      );
+      assert.equal(sessionData.currentResponderId, exactTeacherUid);
+      assert.equal(sessionData.currentResponderRole, "native_speaker");
+      assert.equal(teacherPushSendCount, 1);
+      assert.equal(adjacentStudentRequest.status, SEARCH_REQUEST_STATUS.ACTIVE);
+      assert.equal(adjacentStudentRequest.currentSessionId, null);
+    } finally {
+      if (sessionId) {
+        await deleteDoc(db.collection("videoSessions").doc(sessionId));
+      }
+      await Promise.all(refsToDelete.map(deleteDoc));
+    }
+  });
+
   test("startSearch callable creates one session under concurrent starts", async () => {
     const firstUid = uniqueId("student-concurrent-a");
     const secondUid = uniqueId("student-concurrent-b");
