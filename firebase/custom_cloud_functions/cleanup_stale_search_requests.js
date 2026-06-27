@@ -81,10 +81,6 @@ function isStaleSearchRequest(requestData = {}, nowMillis = Date.now()) {
     return false;
   }
 
-  if (hasBackgroundSearchDeadline(requestData)) {
-    return false;
-  }
-
   const heartbeatAtMillis = timestampToMillis(requestData.heartbeatAt);
   return heartbeatAtMillis === null ||
     heartbeatAtMillis < staleCutoffMillisFor(nowMillis);

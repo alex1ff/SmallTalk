@@ -4621,6 +4621,8 @@ void main() {
   testWidgets('startup recovery keeps background search during grace window',
       (tester) async {
     const userId = 'student-startup-background-search-test';
+    final now = DateTime(2026, 1, 1, 12);
+    debugActiveSearchRecoveryNow = () => now;
     final observedSearchState = await runStartupSearchRecoveryTest(
       tester,
       userId: userId,
@@ -4629,9 +4631,9 @@ void main() {
         'userId': userId,
         'status': 'active',
         'appState': 'background',
-        'heartbeatAt': DateTime.now().subtract(const Duration(minutes: 5)),
-        'backgroundExpiresAt': DateTime.now().add(const Duration(minutes: 5)),
-        'expiresAt': DateTime.now().add(const Duration(minutes: 5)),
+        'heartbeatAt': now.subtract(const Duration(seconds: 30)),
+        'backgroundExpiresAt': now.add(const Duration(minutes: 5)),
+        'expiresAt': now.add(const Duration(minutes: 5)),
       },
     );
 
@@ -4641,6 +4643,33 @@ void main() {
     expect(observedSearchState.isLiveStatus, isTrue);
     expect(observedSearchState.isExpired, isFalse);
     expect(observedSearchState.hasActiveSearch, isTrue);
+  });
+
+  testWidgets('startup recovery rejects closed background stale heartbeat',
+      (tester) async {
+    const userId = 'student-startup-background-stale-search-test';
+    final now = DateTime(2026, 1, 1, 12);
+    debugActiveSearchRecoveryNow = () => now;
+    final observedSearchState = await runStartupSearchRecoveryTest(
+      tester,
+      userId: userId,
+      searchData: <String, dynamic>{
+        'requestId': 'request-startup-background-stale-search-test',
+        'userId': userId,
+        'status': 'active',
+        'appState': 'background',
+        'heartbeatAt': now.subtract(const Duration(seconds: 91)),
+        'backgroundExpiresAt': now.add(const Duration(minutes: 5)),
+        'expiresAt': now.add(const Duration(minutes: 5)),
+      },
+    );
+
+    expect(observedSearchState, isNotNull);
+    expect(observedSearchState!.exists, isTrue);
+    expect(observedSearchState.belongsToUser, isTrue);
+    expect(observedSearchState.isLiveStatus, isTrue);
+    expect(observedSearchState.isExpired, isTrue);
+    expect(observedSearchState.hasActiveSearch, isFalse);
   });
 
   testWidgets('startup recovery rejects mismatched search owner',

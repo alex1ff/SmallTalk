@@ -127,7 +127,7 @@ test("background heartbeat keeps first background expiry deadline", () => {
     requestData: activeRequest({
       appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
       backgroundExpiresAt: existingBackgroundExpiresAt,
-      heartbeatAt: timestampFromMillis(fixedNowMillis - 2 * 60 * 1000),
+      heartbeatAt: timestampFromMillis(fixedNowMillis - 30 * 1000),
     }),
     userId: "student-a",
     requestId: "request-a",
@@ -147,7 +147,7 @@ test("foreground heartbeat resumes background request before deadline", () => {
     requestData: activeRequest({
       appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
       backgroundExpiresAt: timestampFromMillis(fixedNowMillis + 5 * 60 * 1000),
-      heartbeatAt: timestampFromMillis(fixedNowMillis - 2 * 60 * 1000),
+      heartbeatAt: timestampFromMillis(fixedNowMillis - 30 * 1000),
     }),
     userId: "student-a",
     requestId: "request-a",
@@ -231,6 +231,23 @@ test("heartbeat does not revive stale or expired requests", () => {
     serverTimestamp,
     timestampFromMillis,
   });
+  const closedBackgroundStale = buildHeartbeatSearchDecision({
+    requestExists: true,
+    requestData: activeRequest({
+      appState: "background",
+      backgroundExpiresAt: timestampFromMillis(fixedNowMillis + 5 * 60 * 1000),
+      heartbeatAt: timestampFromMillis(
+        fixedNowMillis -
+          (SEARCH_REQUEST_TIMING.HEARTBEAT_STALE_SECONDS + 1) * 1000,
+      ),
+    }),
+    userId: "student-a",
+    requestId: "request-a",
+    appState: SEARCH_REQUEST_APP_STATE.FOREGROUND,
+    nowMillis: fixedNowMillis,
+    serverTimestamp,
+    timestampFromMillis,
+  });
 
   assert.equal(stale.update, null);
   assert.equal(stale.response.reason, "stale");
@@ -238,6 +255,8 @@ test("heartbeat does not revive stale or expired requests", () => {
   assert.equal(expired.response.reason, "expired");
   assert.equal(backgroundExpired.update, null);
   assert.equal(backgroundExpired.response.reason, "background_expired");
+  assert.equal(closedBackgroundStale.update, null);
+  assert.equal(closedBackgroundStale.response.reason, "stale");
 });
 
 test("heartbeat does not mutate matched request state", () => {

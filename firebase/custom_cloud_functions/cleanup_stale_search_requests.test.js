@@ -94,7 +94,7 @@ test("stale search request cleanup uses heartbeat cutoff", () => {
       backgroundExpiresAt: timestampFromMillis(fixedNowMillis + 60 * 1000),
       heartbeatAt: timestampFromMillis(cutoffMillis - 1),
     }), fixedNowMillis),
-    false,
+    true,
   );
 });
 
@@ -166,6 +166,40 @@ test("90 seconds without heartbeat expires active search request", () => {
     code: "heartbeat_stale",
     message: "Search request heartbeat is stale",
   });
+});
+
+test("closed background search request expires after 90 seconds without heartbeat", () => {
+  const writerOperations = [];
+  const writer = {
+    update(ref, data) {
+      writerOperations.push({type: "update", ref, data});
+    },
+  };
+  const staleHeartbeatMillis =
+    fixedNowMillis -
+    (SEARCH_REQUEST_TIMING.HEARTBEAT_STALE_SECONDS + 1) * 1000;
+
+  const result = queueStaleSearchRequestCleanup({
+    writer,
+    doc: {
+      id: "student-background-closed",
+      ref: {path: "searchRequests/student-background-closed"},
+      data: () => activeRequest({
+        appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+        backgroundExpiresAt: timestampFromMillis(fixedNowMillis + 10 * 60_000),
+        heartbeatAt: timestampFromMillis(staleHeartbeatMillis),
+        currentSessionId: null,
+      }),
+    },
+    nowMillis: fixedNowMillis,
+    serverTimestamp,
+    fieldDelete,
+  });
+
+  assert.equal(result.cleaned, true);
+  assert.equal(writerOperations.length, 1);
+  assert.equal(writerOperations[0].data.status, "expired");
+  assert.equal(writerOperations[0].data.stopReason, "heartbeat_stale");
 });
 
 test("stale search request cleanup marks request expired and clears locks", () => {
@@ -667,7 +701,7 @@ test("cleanup stale docs rereads transaction data and dedupes fallback hits", as
   assert.equal(updates.length, 1);
 });
 
-test("background cleanup still runs after stale pass skips same doc", async () => {
+test("background cleanup still runs after heartbeat-fresh stale pass skips same doc", async () => {
   const updates = [];
   const backgroundDoc = {
     id: "student-a",
@@ -682,10 +716,7 @@ test("background cleanup still runs after stale pass skips same doc", async () =
             data: () => activeRequest({
               appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
               backgroundExpiresAt: timestampFromMillis(fixedNowMillis),
-              heartbeatAt: timestampFromMillis(
-                fixedNowMillis -
-                  (SEARCH_REQUEST_TIMING.HEARTBEAT_STALE_SECONDS + 1) * 1000,
-              ),
+              heartbeatAt: timestampFromMillis(fixedNowMillis - 30 * 1000),
             }),
           };
         },

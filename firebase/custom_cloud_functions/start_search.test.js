@@ -3954,11 +3954,40 @@ test("background active search request is reusable before background deadline", 
     isReusableSearchRequest({
       status: SEARCH_REQUEST_STATUS.ACTIVE,
       appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+      heartbeatAt: timestampFromMillis(fixedNowMillis - 30 * 1000),
+      backgroundExpiresAt: timestampFromMillis(fixedNowMillis + 1),
+      expiresAt: futureTimestamp(3),
+    }, fixedNowMillis),
+    true,
+  );
+});
+
+test("background active search request is not reusable with stale heartbeat", () => {
+  assert.equal(
+    isReusableSearchRequest({
+      status: SEARCH_REQUEST_STATUS.ACTIVE,
+      appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
       heartbeatAt: timestampFromMillis(
         fixedNowMillis -
           (SEARCH_REQUEST_TIMING.HEARTBEAT_STALE_SECONDS + 1) * 1000,
       ),
-      backgroundExpiresAt: timestampFromMillis(fixedNowMillis + 1),
+      backgroundExpiresAt: timestampFromMillis(fixedNowMillis + 60 * 1000),
+      expiresAt: futureTimestamp(3),
+    }, fixedNowMillis),
+    false,
+  );
+});
+
+test("background active search request is reusable at heartbeat cutoff", () => {
+  assert.equal(
+    isReusableSearchRequest({
+      status: SEARCH_REQUEST_STATUS.ACTIVE,
+      appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+      heartbeatAt: timestampFromMillis(
+        fixedNowMillis -
+          SEARCH_REQUEST_TIMING.HEARTBEAT_STALE_SECONDS * 1000,
+      ),
+      backgroundExpiresAt: timestampFromMillis(fixedNowMillis + 60 * 1000),
       expiresAt: futureTimestamp(3),
     }, fixedNowMillis),
     true,

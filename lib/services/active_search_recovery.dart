@@ -226,6 +226,14 @@ bool activeSearchRequestIsExpired(
     return true;
   }
 
+  final heartbeatAt = activeSearchDateTime(data['heartbeatAt']);
+  if (heartbeatAt == null) {
+    return true;
+  }
+  if (effectiveNow.difference(heartbeatAt) > activeSearchHeartbeatStaleAfter) {
+    return true;
+  }
+
   if (activeSearchNonEmpty(data['appState']) == 'background') {
     final backgroundExpiresAt =
         activeSearchDateTime(data['backgroundExpiresAt']);
@@ -237,14 +245,6 @@ bool activeSearchRequestIsExpired(
         backgroundExpiresAt.isAfter(effectiveNow)) {
       return false;
     }
-  }
-
-  final heartbeatAt = activeSearchDateTime(data['heartbeatAt']);
-  if (heartbeatAt == null) {
-    return true;
-  }
-  if (effectiveNow.difference(heartbeatAt) > activeSearchHeartbeatStaleAfter) {
-    return true;
   }
 
   return false;

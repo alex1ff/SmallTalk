@@ -262,10 +262,7 @@ function buildHeartbeatSearchDecision({
   const heartbeatAtMillis = timestampToMillis(requestData.heartbeatAt);
   const staleCutoffMillis =
     nowMillis - SEARCH_REQUEST_TIMING.HEARTBEAT_STALE_SECONDS * 1000;
-  if (
-    !isBackgroundGraceActive(requestData, nowMillis) &&
-    (heartbeatAtMillis === null || heartbeatAtMillis < staleCutoffMillis)
-  ) {
+  if (heartbeatAtMillis === null || heartbeatAtMillis < staleCutoffMillis) {
     return buildNoopDecision({
       userId,
       requestData,

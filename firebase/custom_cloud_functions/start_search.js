@@ -325,6 +325,13 @@ function isReusableSearchRequest(requestData = {}, nowMillis = Date.now()) {
     return true;
   }
 
+  const heartbeatAtMillis = timestampToMillis(requestData.heartbeatAt);
+  const staleCutoffMillis =
+    nowMillis - SEARCH_REQUEST_TIMING.HEARTBEAT_STALE_SECONDS * 1000;
+  if (heartbeatAtMillis === null || heartbeatAtMillis < staleCutoffMillis) {
+    return false;
+  }
+
   const isBackgroundSearch =
     normalizeAppState(requestData.appState) ===
       SEARCH_REQUEST_APP_STATE.BACKGROUND;
@@ -346,11 +353,7 @@ function isReusableSearchRequest(requestData = {}, nowMillis = Date.now()) {
     return true;
   }
 
-  const heartbeatAtMillis = timestampToMillis(requestData.heartbeatAt);
-  const staleCutoffMillis =
-    nowMillis - SEARCH_REQUEST_TIMING.HEARTBEAT_STALE_SECONDS * 1000;
-
-  return heartbeatAtMillis !== null && heartbeatAtMillis >= staleCutoffMillis;
+  return true;
 }
 
 function canReuseSearchRequestForUser({
