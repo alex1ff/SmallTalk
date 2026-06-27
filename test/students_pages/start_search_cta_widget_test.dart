@@ -1111,6 +1111,43 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('student dashboard renders searching state', (tester) async {
+    setActiveStudent('student-searching-state-render-test');
+    final startPayloads = <Map<String, dynamic>>[];
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          initialSearchState: StudentDashboardSearchState.searching,
+          startSearchRequest: (payload) async {
+            startPayloads.add(Map<String, dynamic>.from(payload));
+            return <String, dynamic>{'requestId': 'request-unexpected-start'};
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(startPayloads, isEmpty);
+    final stopSearchButton =
+        find.widgetWithText(StudentStartSearchButton, 'Остановить поиск');
+    expect(stopSearchButton, findsOneWidget);
+    expect(stopSearchButton.hitTestable(), findsOneWidget);
+    expect(
+      tester.widget<StudentStartSearchButton>(stopSearchButton).isActive,
+      isTrue,
+    );
+    final searchingStatusText = find.text('Ищем собеседника');
+    expect(searchingStatusText, findsOneWidget);
+    expect(searchingStatusText.hitTestable(), findsOneWidget);
+    expect(find.text('Начать поиск'), findsNothing);
+    expect(find.text('Соединяем'), findsNothing);
+    expect(find.text('Пока никого не нашли'), findsNothing);
+    expect(find.text('Не удалось начать поиск'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('student dashboard sends search heartbeat every thirty seconds',
       (tester) async {
     setActiveStudent('student-heartbeat-test');
