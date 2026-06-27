@@ -891,10 +891,11 @@ Future<bool> checkActiveSessionAndNavigate(BuildContext context) async {
         }
       }
       if (activeSearchState?.canResumeUnboundSearch == true) {
-        debugPrint(
-          'ActiveSessionRecovery: ignoring unbound active search for $userId',
-        );
-        return false;
+        if (!context.mounted) {
+          return false;
+        }
+        context.goNamed(app.StudentsDashboardWidget.routeName);
+        return true;
       }
       if (activeSearchState?.canResumeConnection == true) {
         try {

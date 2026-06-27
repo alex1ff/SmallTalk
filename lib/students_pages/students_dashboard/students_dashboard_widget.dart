@@ -598,9 +598,31 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       }
 
       if (state.canResumeUnboundSearch) {
-        debugPrint(
-          'StudentsDashboard: ignoring unbound active search recovery for $userId',
-        );
+        final requestId = state.requestId;
+        if (requestId == null) {
+          return;
+        }
+
+        final remainingSearchDuration = state.remainingSearchDuration();
+        _clearActiveSearchRecoveryRetryTimer();
+        _clearSearchTimeoutTimer();
+        _clearSearchHeartbeatTimer();
+        safeSetState(() {
+          _searchState = StudentDashboardSearchState.searching;
+          _searchErrorReason = null;
+          _matchedSearchSessionId = null;
+          _recoveredConnectionSessionId = null;
+          _suppressedActiveSessionId = null;
+          _suppressedActiveSearchUserId = null;
+          _isStartingSearch = false;
+        });
+        if (remainingSearchDuration <= Duration.zero) {
+          _startSearchTimeoutTimer(remainingSearchDuration);
+          return;
+        }
+        _startSearchTimeoutTimer(remainingSearchDuration);
+        _startSearchHeartbeatTimer(requestId);
+        unawaited(_sendSearchHeartbeat(requestId));
       }
       return;
     } catch (error) {

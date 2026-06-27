@@ -1334,12 +1334,18 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('student dashboard does not restore unbound active search',
+  testWidgets('student dashboard restores active search after restart',
       (tester) async {
-    const userId = 'student-recover-active-search-ui-test';
+    const userId = 'student-recover-active-search-after-restart-test';
+    const requestId = 'request-recovered-search-after-restart-test';
     setActiveStudent(userId);
     final startPayloads = <Map<String, dynamic>>[];
     final heartbeatPayloads = <Map<String, dynamic>>[];
+    final stopPayloads = <Map<String, dynamic>>[];
+    final stoppedSessionIds = <String?>[];
+    StudentsDashboardWidget.debugStopSearchPayloadObserver = (payload) {
+      stopPayloads.add(Map<String, dynamic>.from(payload));
+    };
 
     await tester.pumpWidget(
       _buildDashboardTestApp(
@@ -1348,7 +1354,8 @@ void main() {
             expect(requestedUserId, userId);
             return activeSearchRecoveryState(
               userId: userId,
-              requestId: 'request-recovered-search-ui-test',
+              requestId: requestId,
+              expiresAt: DateTime.now().add(const Duration(minutes: 5)),
             );
           },
           startSearchRequest: (payload) async {
@@ -1360,52 +1367,64 @@ void main() {
           heartbeatSearchRequest: (payload) async {
             heartbeatPayloads.add(Map<String, dynamic>.from(payload));
           },
-          stopSearchRequest: (_) async => null,
+          stopSearchRequest: (activeSessionId) async {
+            stoppedSessionIds.add(activeSessionId);
+          },
         ),
       ),
     );
     await tester.pump();
     await tester.pump();
     await tester.idle();
+    await tester.pump();
 
-    expect(find.text('Начать поиск'), findsOneWidget);
-    expect(find.text('Ищем собеседника'), findsNothing);
-    expect(find.text('Остановить поиск'), findsNothing);
     expect(startPayloads, isEmpty);
-    expect(heartbeatPayloads, isEmpty);
+    expect(find.text('Ищем собеседника'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsOneWidget);
+    expect(find.text('Начать поиск'), findsNothing);
+    expect(heartbeatPayloads, hasLength(1));
+    expect(heartbeatPayloads.single, <String, dynamic>{
+      'requestId': requestId,
+      'appState': 'foreground',
+    });
 
     await tester.pump(StudentsDashboardWidget.heartbeatSearchInterval);
     await tester.pump();
 
-    expect(heartbeatPayloads, isEmpty);
+    expect(heartbeatPayloads, hasLength(2));
+    expect(heartbeatPayloads.last, <String, dynamic>{
+      'requestId': requestId,
+      'appState': 'foreground',
+    });
 
     await tester.tap(
       find.ancestor(
-        of: find.text('Начать поиск'),
+        of: find.text('Остановить поиск'),
         matching: find.byType(InkWell),
       ),
     );
     await tester.pump();
 
-    expect(startPayloads, hasLength(1));
-    expect(find.text('Остановить поиск'), findsOneWidget);
-    expect(heartbeatPayloads, isEmpty);
+    expect(stoppedSessionIds, [null]);
+    expect(stopPayloads, [
+      <String, dynamic>{'requestId': requestId},
+    ]);
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Ищем собеседника'), findsNothing);
+    expect(find.text('Остановить поиск'), findsNothing);
 
     await tester.pump(StudentsDashboardWidget.heartbeatSearchInterval);
     await tester.pump();
 
-    expect(heartbeatPayloads, hasLength(1));
-    expect(heartbeatPayloads.single, <String, dynamic>{
-      'requestId': 'request-should-not-start-test',
-      'appState': 'foreground',
-    });
+    expect(heartbeatPayloads, hasLength(2));
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('student dashboard ignores recovered unbound search mismatch',
+  testWidgets('student dashboard handles recovered search request mismatch',
       (tester) async {
     const userId = 'student-recover-request-mismatch-test';
+    const requestId = 'request-mismatch-recovery-test';
     setActiveStudent(userId);
     final heartbeatPayloads = <Map<String, dynamic>>[];
 
@@ -1414,7 +1433,7 @@ void main() {
         StudentsDashboardWidget(
           activeSearchRecoveryReader: (_) async => activeSearchRecoveryState(
             userId: userId,
-            requestId: 'request-mismatch-recovery-test',
+            requestId: requestId,
           ),
           heartbeatSearchRequest: (payload) async {
             heartbeatPayloads.add(Map<String, dynamic>.from(payload));
@@ -1431,11 +1450,16 @@ void main() {
     await tester.pump();
     await tester.idle();
 
-    expect(find.text('Начать поиск'), findsOneWidget);
-    expect(find.text('Пока никого не нашли'), findsNothing);
+    expect(heartbeatPayloads, [
+      <String, dynamic>{
+        'requestId': requestId,
+        'appState': 'foreground',
+      },
+    ]);
+    expect(find.text('Пока никого не нашли'), findsOneWidget);
     expect(find.text('Ищем собеседника'), findsNothing);
     expect(find.text('Остановить поиск'), findsNothing);
-    expect(heartbeatPayloads, isEmpty);
+    expect(find.text('Начать поиск'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
@@ -1545,9 +1569,10 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('student dashboard retry ignores unbound active search recovery',
+  testWidgets('student dashboard retry restores active search recovery',
       (tester) async {
     const userId = 'student-recover-search-retry-test';
+    const requestId = 'request-retry-recovery-test';
     setActiveStudent(userId);
     var recoveryReadCount = 0;
     final heartbeatPayloads = <Map<String, dynamic>>[];
@@ -1562,7 +1587,7 @@ void main() {
             }
             return activeSearchRecoveryState(
               userId: userId,
-              requestId: 'request-retry-recovery-test',
+              requestId: requestId,
             );
           },
           heartbeatSearchRequest: (payload) async {
@@ -1581,12 +1606,18 @@ void main() {
     await tester.pump(StudentsDashboardWidget.activeSearchRecoveryRetryDelay);
     await tester.pump();
     await tester.idle();
+    await tester.pump();
 
     expect(recoveryReadCount, 2);
-    expect(find.text('Начать поиск'), findsOneWidget);
-    expect(find.text('Ищем собеседника'), findsNothing);
-    expect(find.text('Остановить поиск'), findsNothing);
-    expect(heartbeatPayloads, isEmpty);
+    expect(find.text('Ищем собеседника'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsOneWidget);
+    expect(find.text('Начать поиск'), findsNothing);
+    expect(heartbeatPayloads, [
+      <String, dynamic>{
+        'requestId': requestId,
+        'appState': 'foreground',
+      },
+    ]);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
@@ -2044,19 +2075,24 @@ void main() {
     await verifyStatus('completed');
   });
 
-  testWidgets('student dashboard ignores recovered unbound search expiry',
+  testWidgets('student dashboard times out recovered active search',
       (tester) async {
     const userId = 'student-recover-search-expiry-timeout-test';
+    const requestId = 'request-recovered-expiry-timeout-test';
     setActiveStudent(userId);
+    final heartbeatPayloads = <Map<String, dynamic>>[];
 
     await tester.pumpWidget(
       _buildDashboardTestApp(
         StudentsDashboardWidget(
           activeSearchRecoveryReader: (_) async => activeSearchRecoveryState(
             userId: userId,
-            requestId: 'request-recovered-expiry-timeout-test',
+            requestId: requestId,
             expiresAt: DateTime.now().add(const Duration(seconds: 2)),
           ),
+          heartbeatSearchRequest: (payload) async {
+            heartbeatPayloads.add(Map<String, dynamic>.from(payload));
+          },
         ),
       ),
     );
@@ -2064,16 +2100,63 @@ void main() {
     await tester.pump();
     await tester.idle();
 
-    expect(find.text('Начать поиск'), findsOneWidget);
-    expect(find.text('Ищем собеседника'), findsNothing);
-    expect(find.text('Остановить поиск'), findsNothing);
+    expect(find.text('Ищем собеседника'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsOneWidget);
+    expect(find.text('Начать поиск'), findsNothing);
+    expect(heartbeatPayloads, [
+      <String, dynamic>{
+        'requestId': requestId,
+        'appState': 'foreground',
+      },
+    ]);
 
     await tester.pump(const Duration(milliseconds: 2100));
     await tester.pump();
 
+    expect(find.text('Пока никого не нашли'), findsOneWidget);
     expect(find.text('Начать поиск'), findsOneWidget);
-    expect(find.text('Пока никого не нашли'), findsNothing);
     expect(find.text('Остановить поиск'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets(
+      'student dashboard skips heartbeat when recovered search has expired',
+      (tester) async {
+    const userId = 'student-recover-search-zero-timeout-test';
+    const requestId = 'request-recovered-zero-timeout-test';
+    setActiveStudent(userId);
+    final heartbeatPayloads = <Map<String, dynamic>>[];
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSearchRecoveryReader: (_) async => activeSearchRecoveryState(
+            userId: userId,
+            requestId: requestId,
+            expiresAt: DateTime.now().subtract(const Duration(seconds: 1)),
+          ),
+          heartbeatSearchRequest: (payload) async {
+            heartbeatPayloads.add(Map<String, dynamic>.from(payload));
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.idle();
+    await tester.pump();
+
+    expect(find.text('Пока никого не нашли'), findsOneWidget);
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Ищем собеседника'), findsNothing);
+    expect(find.text('Остановить поиск'), findsNothing);
+    expect(heartbeatPayloads, isEmpty);
+
+    await tester.pump(StudentsDashboardWidget.heartbeatSearchInterval);
+    await tester.pump();
+
+    expect(heartbeatPayloads, isEmpty);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
@@ -3384,7 +3467,7 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('startup recovery ignores unbound active search request',
+  testWidgets('startup recovery opens dashboard for active search request',
       (tester) async {
     const userId = 'student-startup-active-search-test';
     final searchRequestReads = <String>[];
@@ -3423,17 +3506,24 @@ void main() {
     setActiveStudent(userId, isInCall: false);
     bool? recovered;
     final router = GoRouter(
-      initialLocation: StudentsDashboardWidget.routePath,
+      initialLocation: '/startup-active-search-test',
       routes: [
         GoRoute(
-          name: StudentsDashboardWidget.routeName,
-          path: StudentsDashboardWidget.routePath,
+          name: 'StartupActiveSearchTest',
+          path: '/startup-active-search-test',
           builder: (context, state) => TextButton(
             key: const Key('recover-active-search-request'),
             onPressed: () async {
               recovered = await checkActiveSessionAndNavigate(context);
             },
             child: const Text('Recover active search request'),
+          ),
+        ),
+        GoRoute(
+          name: StudentsDashboardWidget.routeName,
+          path: StudentsDashboardWidget.routePath,
+          builder: (context, state) => const Text(
+            'Recovered active search dashboard',
           ),
         ),
       ],
@@ -3445,8 +3535,11 @@ void main() {
     await tester.tap(find.byKey(const Key('recover-active-search-request')));
     await tester.pump();
     await tester.idle();
+    await tester.pump();
 
-    expect(recovered, isFalse);
+    expect(recovered, isTrue);
+    expect(router.getCurrentLocation(), StudentsDashboardWidget.routePath);
+    expect(find.text('Recovered active search dashboard'), findsOneWidget);
     expect(searchRequestReads, [userId]);
     expect(currentSessionRead, isFalse);
     expect(observedSearchState, isNotNull);
