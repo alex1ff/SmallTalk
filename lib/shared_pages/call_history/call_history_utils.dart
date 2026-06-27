@@ -1,14 +1,66 @@
 import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/review_flow/review_submission_helper.dart';
 import 'package:flutter/material.dart';
+
+DateTime? resolveCallConnectedAtMetadata(dynamic value) {
+  if (value is DateTime) {
+    return value;
+  }
+  if (value is Timestamp) {
+    return value.toDate();
+  }
+  if (value is num && value > 0) {
+    try {
+      return DateTime.fromMillisecondsSinceEpoch(value.toInt());
+    } catch (_) {
+      return null;
+    }
+  }
+  if (value is String) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return null;
+    }
+
+    final numericMillis = int.tryParse(trimmed);
+    if (numericMillis != null && numericMillis > 0) {
+      try {
+        return DateTime.fromMillisecondsSinceEpoch(numericMillis);
+      } catch (_) {
+        return null;
+      }
+    }
+
+    return DateTime.tryParse(trimmed);
+  }
+  return null;
+}
 
 DateTime? resolveSessionStartedAt(VideoSessionsRecord session) {
   final sessionMetadata = session.snapshotData['sessionMetadata'];
-  final connectedAt =
-      sessionMetadata is Map ? sessionMetadata['callConnectedAt'] : null;
+  if (sessionMetadata is Map) {
+    for (final connectedAt in [
+      sessionMetadata['callConnectedAt'],
+      sessionMetadata['callConnectedAtTimestamp'],
+      sessionMetadata['dailyWebhookConnectedAt'],
+    ]) {
+      final startedAt = resolveCallConnectedAtMetadata(connectedAt);
+      if (startedAt != null) {
+        return startedAt;
+      }
+    }
+  }
 
-  if (connectedAt is DateTime) {
-    return connectedAt;
+  for (final connectedAt in [
+    session.snapshotData['callConnectedAt'],
+    session.snapshotData['callConnectedAtTimestamp'],
+    session.snapshotData['dailyWebhookConnectedAt'],
+  ]) {
+    final startedAt = resolveCallConnectedAtMetadata(connectedAt);
+    if (startedAt != null) {
+      return startedAt;
+    }
   }
 
   return session.startedAt ?? session.createdAt;
@@ -38,6 +90,48 @@ int compareSessionsByStartedAtDesc(
   final bStartedAt =
       resolveSessionStartedAt(b) ?? DateTime.fromMillisecondsSinceEpoch(0);
   return bStartedAt.compareTo(aStartedAt);
+}
+
+bool callHistorySessionDataIncludesUser(
+  Map<String, dynamic> sessionData,
+  String userId,
+) {
+  return resolveSessionReviewParticipant(
+    sessionData: sessionData,
+    currentUserId: userId,
+  ).isParticipant;
+}
+
+bool callHistorySessionIncludesUser(
+  VideoSessionsRecord session,
+  String userId,
+) {
+  return callHistorySessionDataIncludesUser(session.snapshotData, userId);
+}
+
+List<VideoSessionsRecord> mergeCallHistorySessionsForUser(
+  Iterable<List<VideoSessionsRecord>> branches,
+  String userId,
+) {
+  final normalizedUserId = userId.trim();
+  if (normalizedUserId.isEmpty) {
+    return const <VideoSessionsRecord>[];
+  }
+
+  final sessionsByPath = <String, VideoSessionsRecord>{};
+  for (final sessions in branches) {
+    for (final session in sessions) {
+      if (session.status != 'ended') {
+        continue;
+      }
+      if (!callHistorySessionIncludesUser(session, normalizedUserId)) {
+        continue;
+      }
+      sessionsByPath.putIfAbsent(session.reference.path, () => session);
+    }
+  }
+
+  return sessionsByPath.values.toList()..sort(compareSessionsByStartedAtDesc);
 }
 
 String _sessionTimeLabel(BuildContext context, DateTime startedAtLocal) {

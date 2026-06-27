@@ -13,23 +13,48 @@ void main() {
     expect(pageSource, contains('AppLoadingIndicator()'));
   });
 
-  test('my calls page queries sessions by participant membership', () {
+  test('my calls page loads history through trusted callable repository', () {
     final pageSource = File('lib/shared_pages/my_calls/my_calls_widget.dart')
         .readAsStringSync();
 
-    expect(pageSource, contains("'participantIds'"));
-    expect(pageSource, contains('arrayContains: currentUserUid'));
+    expect(pageSource, contains('snapshot.hasError'));
+    expect(pageSource, contains('_buildErrorState(context)'));
+    expect(
+        pageSource, contains('CallHistoryRepository.loadCallHistorySessions'));
+    expect(pageSource, isNot(contains('queryVideoSessionsRecord(')));
+    for (final field in [
+      "'studentId'",
+      "'tutorId'",
+      "'currentTutorId'",
+      "'requesterId'",
+      "'responderId'",
+      "'currentResponderId'",
+      "'matchContext.requesterId'",
+      "'matchContext.acceptedResponderId'",
+      "'matchContext.responderId'",
+      "'matchContext.currentResponderId'",
+    ]) {
+      expect(pageSource, isNot(contains(field)));
+    }
     expect(
       pageSource,
       isNot(contains("final userField = _isTeacher ? 'tutorId' : 'studentId'")),
     );
   });
 
-  test('call history card resolves counterpart independent of current role', () {
+  test('call history card resolves counterpart independent of current role',
+      () {
     final cardSource =
         File('lib/components/call_history_card.dart').readAsStringSync();
+    final participantDisplaySource = File(
+      'lib/shared_pages/call_history/call_participant_display_utils.dart',
+    ).readAsStringSync();
 
     expect(cardSource, contains('resolveSessionReviewParticipant('));
+    expect(cardSource, contains('resolveSessionParticipantDisplayInfo('));
+    expect(participantDisplaySource, contains('participantInfos'));
+    expect(participantDisplaySource, contains('requesterInfo'));
+    expect(participantDisplaySource, contains('acceptedResponderInfo'));
     expect(
       cardSource,
       isNot(

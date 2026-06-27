@@ -9,6 +9,7 @@ const {
   getCredentialDeadlineMillis,
   getCredentialTtlSeconds,
   getSessionExpiryTtlSeconds,
+  getRequesterId,
   getSessionParticipantIds,
   getSessionPolicyEffectiveLimitSeconds,
   getSessionPolicyExpiresAt,
@@ -159,6 +160,24 @@ test("getSessionParticipantIds skips empty legacy requester fields", () => {
   );
 });
 
+test("getRequesterId prefers neutral requester before stale legacy student", () => {
+  assert.equal(
+    getRequesterId({
+      studentId: "legacy-student",
+      requesterId: "neutral-requester",
+    }),
+    "neutral-requester",
+  );
+  assert.equal(
+    getRequesterId({
+      studentId: "legacy-student",
+      matchContext: {requesterId: "context-requester"},
+    }),
+    "context-requester",
+  );
+  assert.equal(getRequesterId({studentId: "legacy-student"}), "legacy-student");
+});
+
 test("getAssignedResponderId supports student responder assignments", () => {
   assert.equal(
     getAssignedResponderId({currentResponderId: "student-b"}),
@@ -189,9 +208,9 @@ test("getAssignedResponderId supports student responder assignments", () => {
   assert.equal(
     getAssignedResponderId({
       tutorId: "teacher-b",
-      currentResponderId: "stale-student",
+      currentResponderId: "neutral-student",
     }),
-    "teacher-b",
+    "neutral-student",
   );
   assert.equal(
     getAssignedResponderId({

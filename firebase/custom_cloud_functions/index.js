@@ -52,6 +52,8 @@ exports.scheduledLegacyVoipTokenMigration =
   legacyVoipTokenMigration.scheduledLegacyVoipTokenMigration;
 const submitReview = require("./submit_review.js");
 exports.submitReview = submitReview.submitReview;
+const getCallHistory = require("./get_call_history.js");
+exports.getCallHistory = getCallHistory.getCallHistory;
 const createPaymentSession = require("./create_payment_session.js");
 exports.createPaymentSession = createPaymentSession.createPaymentSession;
 const conversationUnlockEvents = require("./conversation_unlock_events.js");

@@ -94,9 +94,9 @@ Map<String, dynamic> _sessionMatchContext(Map<String, dynamic> sessionData) {
 String? resolveSessionRequesterId(Map<String, dynamic> sessionData) {
   final matchContext = _sessionMatchContext(sessionData);
   for (final candidate in [
-    sessionData['studentId'],
-    matchContext['requesterId'],
     sessionData['requesterId'],
+    matchContext['requesterId'],
+    sessionData['studentId'],
   ]) {
     final requesterId = _normalizeSessionParticipantId(candidate);
     if (requesterId.isNotEmpty) {
@@ -109,13 +109,13 @@ String? resolveSessionRequesterId(Map<String, dynamic> sessionData) {
 String? resolveSessionResponderId(Map<String, dynamic> sessionData) {
   final matchContext = _sessionMatchContext(sessionData);
   for (final candidate in [
-    sessionData['tutorId'],
-    matchContext['acceptedResponderId'],
     sessionData['responderId'],
+    matchContext['acceptedResponderId'],
     sessionData['currentResponderId'],
-    sessionData['currentTutorId'],
     matchContext['responderId'],
     matchContext['currentResponderId'],
+    sessionData['tutorId'],
+    sessionData['currentTutorId'],
   ]) {
     final responderId = _normalizeSessionParticipantId(candidate);
     if (responderId.isNotEmpty) {

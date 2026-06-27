@@ -1,7 +1,9 @@
+import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:small_talk/backend/backend.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/shared_pages/call_history/call_history_utils.dart';
 
@@ -43,12 +45,24 @@ Future<T> _readWithContext<T>(
   return result;
 }
 
+VideoSessionsRecord _session(
+  String id,
+  Map<String, dynamic> data,
+) {
+  return VideoSessionsRecord.getDocumentFromData(
+    data,
+    VideoSessionsRecord.collection.doc(id),
+  );
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
+    setupFirebaseCoreMocks();
     await FFLocalizations.initialize();
+    await Firebase.initializeApp();
   });
 
   group('call history utils', () {
@@ -107,6 +121,146 @@ void main() {
       );
 
       expect(label, '-');
+    });
+
+    test('parses connected-at metadata from legacy storage shapes', () {
+      final connectedAt = DateTime.utc(2026, 5, 12, 9, 30);
+      final millis = connectedAt.millisecondsSinceEpoch;
+
+      expect(resolveCallConnectedAtMetadata(connectedAt), connectedAt);
+      expect(
+        resolveCallConnectedAtMetadata(Timestamp.fromDate(connectedAt)),
+        connectedAt.toLocal(),
+      );
+      expect(
+        resolveCallConnectedAtMetadata(millis),
+        DateTime.fromMillisecondsSinceEpoch(millis),
+      );
+      expect(
+        resolveCallConnectedAtMetadata('$millis'),
+        DateTime.fromMillisecondsSinceEpoch(millis),
+      );
+      expect(
+        resolveCallConnectedAtMetadata(connectedAt.toIso8601String()),
+        connectedAt,
+      );
+      expect(resolveCallConnectedAtMetadata('connected'), isNull);
+    });
+
+    test('history participant filter ignores stale legacy participant fields',
+        () {
+      expect(
+        callHistorySessionDataIncludesUser(
+          {
+            'studentId': 'stale-student',
+            'tutorId': 'stale-teacher',
+            'requesterId': 'actual-requester',
+            'responderId': 'actual-responder',
+          },
+          'stale-student',
+        ),
+        isFalse,
+      );
+      expect(
+        callHistorySessionDataIncludesUser(
+          {
+            'studentId': 'legacy-student',
+            'tutorId': 'legacy-teacher',
+          },
+          'legacy-student',
+        ),
+        isTrue,
+      );
+      expect(
+        callHistorySessionDataIncludesUser(
+          {
+            'participantIds': ['user-a', 'user-b'],
+            'studentId': 'stale-student',
+            'tutorId': 'stale-teacher',
+          },
+          'stale-student',
+        ),
+        isFalse,
+      );
+      expect(
+        callHistorySessionDataIncludesUser(
+          {
+            'participantIds': ['requester-only'],
+            'matchContext': {
+              'requesterId': 'requester-only',
+              'acceptedResponderId': 'nested-responder',
+            },
+          },
+          'nested-responder',
+        ),
+        isTrue,
+      );
+    });
+
+    test('merges only user-owned ended sessions across history branches', () {
+      final newerNestedSession = _session(
+        'newer-nested-session',
+        {
+          'status': 'ended',
+          'participantIds': ['requester-only'],
+          'matchContext': {
+            'requesterId': 'requester-only',
+            'acceptedResponderId': 'current-user',
+          },
+          'sessionMetadata': {
+            'callConnectedAt': DateTime.utc(2026, 5, 13, 12),
+          },
+          'startedAt': DateTime.utc(2026, 5, 13, 11),
+        },
+      );
+      final olderCanonicalSession = _session(
+        'older-canonical-session',
+        {
+          'status': 'ended',
+          'participantIds': ['current-user', 'peer-user'],
+          'requesterId': 'current-user',
+          'responderId': 'peer-user',
+          'startedAt': DateTime.utc(2026, 5, 12, 10),
+        },
+      );
+      final staleLegacySession = _session(
+        'stale-legacy-session',
+        {
+          'status': 'ended',
+          'participantIds': ['actual-requester', 'actual-responder'],
+          'studentId': 'current-user',
+          'tutorId': 'stale-teacher',
+          'requesterId': 'actual-requester',
+          'responderId': 'actual-responder',
+          'startedAt': DateTime.utc(2026, 5, 14, 10),
+        },
+      );
+      final activeSession = _session(
+        'active-session',
+        {
+          'status': 'active',
+          'participantIds': ['current-user', 'active-peer'],
+          'requesterId': 'current-user',
+          'responderId': 'active-peer',
+          'startedAt': DateTime.utc(2026, 5, 15, 10),
+        },
+      );
+
+      final merged = mergeCallHistorySessionsForUser(
+        [
+          [olderCanonicalSession, staleLegacySession],
+          [newerNestedSession, olderCanonicalSession, activeSession],
+        ],
+        'current-user',
+      );
+
+      expect(
+        merged.map((session) => session.reference.id),
+        [
+          'newer-nested-session',
+          'older-canonical-session',
+        ],
+      );
     });
   });
 }

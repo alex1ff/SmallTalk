@@ -590,6 +590,119 @@ test("video session navigation cleanup follows participant roles", async () => {
   }));
 });
 
+test("video session reads ignore stale legacy participant mirrors", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await db.doc("videoSessions/history-stale-legacy").set({
+      status: "ended",
+      participantIds: ["actual-requester", "actual-responder"],
+      studentId: "student-a",
+      tutorId: "teacher-a",
+      requesterId: "actual-requester",
+      responderId: "actual-responder",
+    });
+    await db.doc("videoSessions/history-legacy-only").set({
+      status: "ended",
+      studentId: "student-a",
+      tutorId: "teacher-a",
+    });
+    await db.doc("videoSessions/history-nested-only").set({
+      status: "ended",
+      participantIds: ["actual-requester"],
+      matchContext: {
+        requesterId: "actual-requester",
+        acceptedResponderId: "teacher-a",
+      },
+    });
+    await db.doc("videoSessions/history-neutral-requester-legacy-responder").set({
+      status: "ended",
+      requesterId: "actual-requester",
+      tutorId: "teacher-a",
+    });
+    await db.doc("videoSessions/history-legacy-requester-neutral-responder").set({
+      status: "ended",
+      studentId: "student-a",
+      responderId: "actual-responder",
+    });
+    await db.doc("videoSessions/history-stale-lower-priority-responder").set({
+      status: "ended",
+      requesterId: "actual-requester",
+      responderId: "actual-responder",
+      currentResponderId: "teacher-a",
+      matchContext: {
+        acceptedResponderId: "stale-accepted",
+        responderId: "stale-nested-responder",
+        currentResponderId: "stale-nested-current",
+      },
+    });
+    await db.doc("videoSessions/history-stale-lower-priority-after-accepted").set({
+      status: "ended",
+      requesterId: "actual-requester",
+      currentResponderId: "teacher-a",
+      matchContext: {
+        acceptedResponderId: "actual-responder",
+      },
+    });
+  });
+
+  const staleLegacyStudent = testEnv
+    .authenticatedContext("student-a")
+    .firestore()
+    .doc("videoSessions/history-stale-legacy");
+  const actualRequester = testEnv
+    .authenticatedContext("actual-requester")
+    .firestore()
+    .doc("videoSessions/history-stale-legacy");
+  const legacyStudent = testEnv
+    .authenticatedContext("student-a")
+    .firestore()
+    .doc("videoSessions/history-legacy-only");
+  const nestedResponder = testEnv
+    .authenticatedContext("teacher-a")
+    .firestore()
+    .doc("videoSessions/history-nested-only");
+  const neutralRequesterLegacyResponder = testEnv
+    .authenticatedContext("teacher-a")
+    .firestore()
+    .doc("videoSessions/history-neutral-requester-legacy-responder");
+  const legacyRequesterNeutralResponder = testEnv
+    .authenticatedContext("student-a")
+    .firestore()
+    .doc("videoSessions/history-legacy-requester-neutral-responder");
+  const actualResponder = testEnv
+    .authenticatedContext("actual-responder")
+    .firestore()
+    .doc("videoSessions/history-stale-lower-priority-responder");
+  const staleCurrentResponder = testEnv
+    .authenticatedContext("teacher-a")
+    .firestore()
+    .doc("videoSessions/history-stale-lower-priority-responder");
+  const staleAcceptedResponder = testEnv
+    .authenticatedContext("stale-accepted")
+    .firestore()
+    .doc("videoSessions/history-stale-lower-priority-responder");
+  const acceptedResponder = testEnv
+    .authenticatedContext("actual-responder")
+    .firestore()
+    .doc("videoSessions/history-stale-lower-priority-after-accepted");
+  const lowerPriorityCurrentResponder = testEnv
+    .authenticatedContext("teacher-a")
+    .firestore()
+    .doc("videoSessions/history-stale-lower-priority-after-accepted");
+
+  await assertFails(staleLegacyStudent.get());
+  await assertSucceeds(actualRequester.get());
+  await assertSucceeds(legacyStudent.get());
+  await assertSucceeds(nestedResponder.get());
+  await assertSucceeds(neutralRequesterLegacyResponder.get());
+  await assertSucceeds(legacyRequesterNeutralResponder.get());
+  await assertSucceeds(actualResponder.get());
+  await assertFails(staleCurrentResponder.get());
+  await assertFails(staleAcceptedResponder.get());
+  await assertSucceeds(acceptedResponder.get());
+  await assertFails(lowerPriorityCurrentResponder.get());
+});
+
 test("session participants can write only safe caption diagnostics", async () => {
   const sessionId = "caption-diagnostic-session";
   await testEnv.withSecurityRulesDisabled(async (context) => {

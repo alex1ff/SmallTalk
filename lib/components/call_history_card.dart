@@ -2,6 +2,7 @@ import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/call_details/call_details_widget.dart';
+import '/shared_pages/call_history/call_participant_display_utils.dart';
 import '/shared_pages/call_history/call_history_utils.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/shared_pages/review_flow/review_submission_helper.dart';
@@ -28,23 +29,6 @@ class CallHistoryCard extends StatelessWidget {
         currentUserId: currentUserUid,
       );
 
-  bool _counterpartUsesStudentInfo(String? counterpartId) {
-    return counterpartId != null &&
-        counterpartId.isNotEmpty &&
-        counterpartId == session.studentId.trim();
-  }
-
-  bool _counterpartUsesTutorInfo(String? counterpartId) {
-    final responderIds = <String>{
-      session.tutorId.trim(),
-      resolveSessionResponderId(session.snapshotData) ?? '',
-    }..remove('');
-
-    return counterpartId != null &&
-        counterpartId.isNotEmpty &&
-        responderIds.contains(counterpartId);
-  }
-
   String _fallbackName() {
     if (isTeacher) {
       return session.studentInfo.name.trim();
@@ -61,22 +45,30 @@ class CallHistoryCard extends StatelessWidget {
 
   String _rawCounterpartName() {
     final counterpartId = _participantResolution.counterpartUserId;
-    if (_counterpartUsesStudentInfo(counterpartId)) {
-      return session.studentInfo.name.trim();
+    final info = resolveSessionParticipantDisplayInfo(
+      session: session,
+      userId: counterpartId,
+    );
+    if (info.name.isNotEmpty) {
+      return info.name;
     }
-    if (_counterpartUsesTutorInfo(counterpartId)) {
-      return session.tutorInfo.name.trim();
+    if (counterpartId != null && counterpartId.isNotEmpty) {
+      return '';
     }
     return _fallbackName();
   }
 
   String _rawCounterpartPhotoUrl() {
     final counterpartId = _participantResolution.counterpartUserId;
-    if (_counterpartUsesStudentInfo(counterpartId)) {
-      return session.studentInfo.photo.trim();
+    final info = resolveSessionParticipantDisplayInfo(
+      session: session,
+      userId: counterpartId,
+    );
+    if (info.photoUrl.isNotEmpty) {
+      return info.photoUrl;
     }
-    if (_counterpartUsesTutorInfo(counterpartId)) {
-      return session.tutorInfo.photo.trim();
+    if (counterpartId != null && counterpartId.isNotEmpty) {
+      return '';
     }
     return _fallbackPhotoUrl();
   }
@@ -85,6 +77,14 @@ class CallHistoryCard extends StatelessWidget {
     final rawName = _rawCounterpartName();
     if (rawName.isNotEmpty) {
       return rawName;
+    }
+
+    final counterpartId = _participantResolution.counterpartUserId;
+    if (counterpartId != null && counterpartId.isNotEmpty) {
+      return FFLocalizations.of(context).getVariableText(
+        ruText: 'Собеседник',
+        enText: 'Partner',
+      );
     }
 
     return FFLocalizations.of(context).getVariableText(

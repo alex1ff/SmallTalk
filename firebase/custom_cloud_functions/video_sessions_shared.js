@@ -671,21 +671,21 @@ function buildStoredMatchProfile(
 
 function getRequesterId(sessionData = {}) {
   return normalizeString(
-    normalizeString(sessionData.studentId) ||
+    normalizeString(sessionData.requesterId) ||
       normalizeString(sessionData.matchContext?.requesterId) ||
-      normalizeString(sessionData.requesterId),
+      normalizeString(sessionData.studentId),
   ) || null;
 }
 
 function getAssignedResponderId(sessionData = {}) {
   return normalizeString(
-    normalizeString(sessionData.tutorId) ||
+    normalizeString(sessionData.responderId) ||
       normalizeString(sessionData.matchContext?.acceptedResponderId) ||
-      normalizeString(sessionData.responderId) ||
       normalizeString(sessionData.currentResponderId) ||
-      normalizeString(sessionData.currentTutorId) ||
       normalizeString(sessionData.matchContext?.responderId) ||
-      normalizeString(sessionData.matchContext?.currentResponderId),
+      normalizeString(sessionData.matchContext?.currentResponderId) ||
+      normalizeString(sessionData.tutorId) ||
+      normalizeString(sessionData.currentTutorId),
   ) || null;
 }
 

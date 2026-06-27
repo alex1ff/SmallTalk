@@ -13,10 +13,32 @@ service cloud.firestore {
       return hasField(data, fieldName) && data[fieldName] == value;
     }
 
+    function fieldHasText(data, fieldName) {
+      return hasField(data, fieldName) &&
+        data[fieldName] is string &&
+        data[fieldName].size() > 0;
+    }
+
     function nestedFieldEquals(data, parentFieldName, fieldName, value) {
       return hasField(data, parentFieldName) &&
         data[parentFieldName] is map &&
         fieldEquals(data[parentFieldName], fieldName, value);
+    }
+
+    function nestedFieldHasText(data, parentFieldName, fieldName) {
+      return hasField(data, parentFieldName) &&
+        data[parentFieldName] is map &&
+        fieldHasText(data[parentFieldName], fieldName);
+    }
+
+    function textField(data, fieldName) {
+      return fieldHasText(data, fieldName) ? data[fieldName] : '';
+    }
+
+    function nestedTextField(data, parentFieldName, fieldName) {
+      return nestedFieldHasText(data, parentFieldName, fieldName) ?
+        data[parentFieldName][fieldName] :
+        '';
     }
 
     function isAdmin() {
@@ -48,51 +70,93 @@ service cloud.firestore {
       return isSignedIn() && userRef == currentUserRef();
     }
 
-    function isSessionParticipant(data) {
-      return isSignedIn() && (
-        isParticipantIdForSession(data) ||
-        fieldEquals(data, 'studentId', request.auth.uid) ||
-        fieldEquals(data, 'requesterId', request.auth.uid) ||
-        fieldEquals(data, 'tutorId', request.auth.uid) ||
-        fieldEquals(data, 'currentTutorId', request.auth.uid) ||
-        fieldEquals(data, 'currentResponderId', request.auth.uid) ||
-        fieldEquals(data, 'responderId', request.auth.uid) ||
-        nestedFieldEquals(data, 'matchContext', 'requesterId', request.auth.uid) ||
-        nestedFieldEquals(data, 'matchContext', 'acceptedResponderId', request.auth.uid) ||
-        nestedFieldEquals(data, 'matchContext', 'currentResponderId', request.auth.uid) ||
-        nestedFieldEquals(data, 'matchContext', 'responderId', request.auth.uid)
-      );
-    }
-
     function isParticipantIdForSession(data) {
       return isSignedIn() &&
         (
+          hasField(data, 'participantIds') &&
           data.participantIds is list &&
           data.participantIds.hasAny([request.auth.uid])
       );
     }
 
-    function isRequesterForSession(data) {
+    function hasResolvedSessionParticipantScope(data) {
+      return hasField(data, 'participantIds') &&
+        data.participantIds is list &&
+        data.participantIds.size() >= 2;
+    }
+
+    function resolvedSessionRequesterId(data) {
+      let requesterId = textField(data, 'requesterId');
+      let matchRequesterId = nestedTextField(data, 'matchContext', 'requesterId');
+      let studentId = textField(data, 'studentId');
+      return requesterId != '' ?
+        requesterId :
+        (matchRequesterId != '' ? matchRequesterId : studentId);
+    }
+
+    function resolvedSessionResponderId(data) {
+      let responderId = textField(data, 'responderId');
+      let acceptedResponderId = nestedTextField(
+        data,
+        'matchContext',
+        'acceptedResponderId'
+      );
+      let currentResponderId = textField(data, 'currentResponderId');
+      let matchResponderId = nestedTextField(data, 'matchContext', 'responderId');
+      let matchCurrentResponderId = nestedTextField(
+        data,
+        'matchContext',
+        'currentResponderId'
+      );
+      let tutorId = textField(data, 'tutorId');
+      let currentTutorId = textField(data, 'currentTutorId');
+      return responderId != '' ?
+        responderId :
+        (
+          acceptedResponderId != '' ?
+            acceptedResponderId :
+            (
+              currentResponderId != '' ?
+                currentResponderId :
+                (
+                  matchResponderId != '' ?
+                    matchResponderId :
+                    (
+                      matchCurrentResponderId != '' ?
+                        matchCurrentResponderId :
+                        (tutorId != '' ? tutorId : currentTutorId)
+                    )
+                )
+            )
+        );
+    }
+
+    function isSessionParticipant(data) {
       return isSignedIn() && (
-        fieldEquals(data, 'studentId', request.auth.uid) ||
-        fieldEquals(data, 'requesterId', request.auth.uid) ||
-        nestedFieldEquals(data, 'matchContext', 'requesterId', request.auth.uid)
+        (
+          hasResolvedSessionParticipantScope(data) &&
+          isParticipantIdForSession(data)
+        ) ||
+        (
+          !hasResolvedSessionParticipantScope(data) &&
+          (
+            isParticipantIdForSession(data) ||
+            resolvedSessionRequesterId(data) == request.auth.uid ||
+            resolvedSessionResponderId(data) == request.auth.uid
+          )
+        )
       );
     }
 
+    function isRequesterForSession(data) {
+      return isSignedIn() &&
+        resolvedSessionRequesterId(data) == request.auth.uid;
+    }
+
     function isResponderForSession(data) {
-      return isSignedIn() && (
-        !isRequesterForSession(data) &&
-        (
-          fieldEquals(data, 'tutorId', request.auth.uid) ||
-          fieldEquals(data, 'currentTutorId', request.auth.uid) ||
-          fieldEquals(data, 'currentResponderId', request.auth.uid) ||
-          fieldEquals(data, 'responderId', request.auth.uid) ||
-          nestedFieldEquals(data, 'matchContext', 'acceptedResponderId', request.auth.uid) ||
-          nestedFieldEquals(data, 'matchContext', 'currentResponderId', request.auth.uid) ||
-          nestedFieldEquals(data, 'matchContext', 'responderId', request.auth.uid)
-        )
-      );
+      return isSignedIn() &&
+        resolvedSessionRequesterId(data) != request.auth.uid &&
+        resolvedSessionResponderId(data) == request.auth.uid;
     }
 
     function isValidSessionNavigationTimestamp(fieldName) {

@@ -5,7 +5,7 @@ import '/components/call_history_card.dart';
 import '/components/empty/empty_widget.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/services/user_match_profile.dart';
-import '/shared_pages/call_history/call_history_utils.dart';
+import '/services/call_history_repository.dart';
 import '/components/basic_page_header.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
@@ -47,6 +47,20 @@ class _MyCallsWidgetState extends State<MyCallsWidget> {
     );
   }
 
+  Widget _buildErrorState(BuildContext context) {
+    return Center(
+      child: SizedBox(
+        height: 500.0,
+        child: EmptyWidget(
+          txt: FFLocalizations.of(context).getVariableText(
+            ruText: 'Не удалось загрузить историю звонков. Попробуйте позже.',
+            enText: 'Unable to load call history. Please try again later.',
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildHeader(BuildContext context) {
     return BasicPageHeader(
       title: FFLocalizations.of(context).getVariableText(
@@ -54,6 +68,17 @@ class _MyCallsWidgetState extends State<MyCallsWidget> {
         enText: 'My calls',
       ),
     );
+  }
+
+  Stream<List<VideoSessionsRecord>> _callHistoryStream() {
+    final userId = currentUserUid.trim();
+    if (userId.isEmpty) {
+      return Stream.value(const <VideoSessionsRecord>[]);
+    }
+
+    return CallHistoryRepository.loadCallHistorySessions(
+      userId: userId,
+    ).asStream();
   }
 
   @override
@@ -86,22 +111,17 @@ class _MyCallsWidgetState extends State<MyCallsWidget> {
                     ExpatlioDesign.space0,
                   ),
                   child: StreamBuilder<List<VideoSessionsRecord>>(
-                    stream: queryVideoSessionsRecord(
-                      queryBuilder: (videoSessionsRecord) =>
-                          videoSessionsRecord.where(
-                        'participantIds',
-                        arrayContains: currentUserUid,
-                      ),
-                    ),
+                    stream: _callHistoryStream(),
                     builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return _buildErrorState(context);
+                      }
+
                       if (!snapshot.hasData) {
                         return _buildLoadingState(context);
                       }
 
-                      final sessions = snapshot.data!
-                          .where((session) => session.status == 'ended')
-                          .toList()
-                        ..sort(compareSessionsByStartedAtDesc);
+                      final sessions = snapshot.data!;
 
                       if (sessions.isEmpty) {
                         return Center(

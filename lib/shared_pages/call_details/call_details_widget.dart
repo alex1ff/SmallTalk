@@ -9,6 +9,7 @@ import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
+import '/shared_pages/call_history/call_participant_display_utils.dart';
 import '/shared_pages/call_history/call_language_utils.dart';
 import '/shared_pages/call_history/call_history_utils.dart';
 import '/shared_pages/learning/caption_word_flow.dart';
@@ -70,37 +71,6 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
       sessionData: session.snapshotData,
       currentUserId: currentUserUid,
     );
-  }
-
-  Map<String, dynamic> _sessionMatchContext(VideoSessionsRecord session) {
-    final rawMatchContext = session.snapshotData['matchContext'];
-    if (rawMatchContext is Map) {
-      return rawMatchContext.map(
-        (key, value) => MapEntry(key.toString(), value),
-      );
-    }
-
-    return const <String, dynamic>{};
-  }
-
-  String _acceptedResponderName(VideoSessionsRecord session) {
-    final matchContext = _sessionMatchContext(session);
-    final acceptedResponderInfo = matchContext['acceptedResponderInfo'];
-    if (acceptedResponderInfo is! Map) {
-      return '';
-    }
-
-    return (acceptedResponderInfo['name'] as String? ?? '').trim();
-  }
-
-  String _acceptedResponderPhotoUrl(VideoSessionsRecord session) {
-    final matchContext = _sessionMatchContext(session);
-    final acceptedResponderInfo = matchContext['acceptedResponderInfo'];
-    if (acceptedResponderInfo is! Map) {
-      return '';
-    }
-
-    return (acceptedResponderInfo['photo'] as String? ?? '').trim();
   }
 
   bool _isTeacherForSession(VideoSessionsRecord session) {
@@ -831,22 +801,11 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     final resolution = _participantResolution(session);
     final counterpartId = resolution.counterpartUserId;
 
-    String rawName = '';
-    if (resolution.isResponder ||
-        (counterpartId != null && counterpartId == session.studentId.trim())) {
-      rawName = session.studentInfo.name.trim();
-    } else if (resolution.isRequester ||
-        (counterpartId != null &&
-            {
-              session.tutorId.trim(),
-              session.currentTutorId.trim(),
-              resolveSessionResponderId(session.snapshotData) ?? '',
-            }.contains(counterpartId))) {
-      rawName = session.tutorInfo.name.trim();
-      if (rawName.isEmpty) {
-        rawName = _acceptedResponderName(session);
-      }
-    }
+    final displayInfo = resolveSessionParticipantDisplayInfo(
+      session: session,
+      userId: counterpartId,
+    );
+    final rawName = displayInfo.name;
 
     if (rawName.isNotEmpty) {
       return rawName;
@@ -869,25 +828,10 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     final resolution = _participantResolution(session);
     final counterpartId = resolution.counterpartUserId;
 
-    if (resolution.isResponder ||
-        (counterpartId != null && counterpartId == session.studentId.trim())) {
-      return session.studentInfo.photo.trim();
-    }
-
-    if (resolution.isRequester ||
-        (counterpartId != null &&
-            {
-              session.tutorId.trim(),
-              session.currentTutorId.trim(),
-              resolveSessionResponderId(session.snapshotData) ?? '',
-            }.contains(counterpartId))) {
-      final tutorPhotoUrl = session.tutorInfo.photo.trim();
-      return tutorPhotoUrl.isNotEmpty
-          ? tutorPhotoUrl
-          : _acceptedResponderPhotoUrl(session);
-    }
-
-    return '';
+    return resolveSessionParticipantDisplayInfo(
+      session: session,
+      userId: counterpartId,
+    ).photoUrl;
   }
 
   String _callDateLabel(BuildContext context, VideoSessionsRecord session) {
@@ -936,9 +880,18 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     );
   }
 
+  bool _currentUserWasCaller(VideoSessionsRecord session) {
+    final requesterId = resolveSessionRequesterId(session.snapshotData);
+    if (requesterId != null && requesterId.isNotEmpty) {
+      return requesterId == currentUserUid;
+    }
+
+    return session.studentId.trim() == currentUserUid;
+  }
+
   String _callDirectionLabel(
       BuildContext context, VideoSessionsRecord session) {
-    final isOutgoing = session.studentId.trim() == currentUserUid;
+    final isOutgoing = _currentUserWasCaller(session);
     return FFLocalizations.of(context).getVariableText(
       ruText: isOutgoing ? 'Исходящий звонок' : 'Входящий звонок',
       enText: isOutgoing ? 'Outgoing call' : 'Incoming call',
@@ -1499,6 +1452,13 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
               }
 
               final session = VideoSessionsRecord.fromSnapshot(sessionDoc);
+              final participant = resolveSessionReviewParticipant(
+                sessionData: session.snapshotData,
+                currentUserId: currentUserUid,
+              );
+              if (!participant.isParticipant) {
+                return _buildUnavailableCallContent(context);
+              }
               final counterpartName = _counterpartName(context, session);
               final counterpartPhotoUrl = _counterpartPhotoUrl(session);
               final sessionLanguage = findSessionLanguageByCode(

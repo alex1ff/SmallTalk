@@ -87,6 +87,7 @@ test("deployment readiness fails missing critical functions", () => {
   assert.ok(missingIds.includes("getEventChatAccessState"));
   assert.ok(missingIds.includes("sendCustomEmailVerification"));
   assert.ok(missingIds.includes("submitReview"));
+  assert.ok(missingIds.includes("getCallHistory"));
 });
 
 test("deployment readiness requires core call runtime exports", () => {
@@ -169,6 +170,23 @@ test("deployment readiness exposes event report callable", () => {
       deployScript,
       /functions:custom_cloud_functions:reportEventChatMessage\b/,
   );
+});
+
+test("deployment readiness exposes call history callable", () => {
+  const functionIds = new Set(REQUIRED_FUNCTIONS.map((item) => item.id));
+  const indexSource = fs.readFileSync(
+      path.join(__dirname, "index.js"),
+      "utf8",
+  );
+  const packageJson = JSON.parse(fs.readFileSync(
+      path.join(__dirname, "package.json"),
+      "utf8",
+  ));
+  const deployScript = packageJson.scripts["deploy:readiness-functions"];
+
+  assert.ok(functionIds.has("getCallHistory"));
+  assert.match(indexSource, /exports\.getCallHistory\b/);
+  assert.match(deployScript, /functions:custom_cloud_functions:getCallHistory\b/);
 });
 
 test("deployment readiness exposes startSearch queue callable", () => {
