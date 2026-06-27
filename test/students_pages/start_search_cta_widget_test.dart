@@ -767,6 +767,32 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('student dashboard renders start search CTA in idle state',
+      (tester) async {
+    setActiveStudent('student-start-search-idle-render-test');
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(const StudentsDashboardWidget()),
+    );
+    await tester.pump();
+
+    final cta = find.widgetWithText(StudentStartSearchButton, 'Начать поиск');
+    expect(cta, findsOneWidget);
+    expect(tester.widget<StudentStartSearchButton>(cta).isActive, isFalse);
+    expect(
+      find
+          .descendant(of: cta, matching: find.text('Начать поиск'))
+          .hitTestable(),
+      findsOneWidget,
+    );
+    expect(find.text('Остановить поиск'), findsNothing);
+    expect(find.text('Ищем собеседника'), findsNothing);
+    expect(find.text('Соединяем'), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('student dashboard requires auth before starting search',
       (tester) async {
     setActiveStudent(
