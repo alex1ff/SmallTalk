@@ -1609,9 +1609,10 @@ async function reserveMatchPair({
     return buildPairLockFailure("invalid_pair_lock_input");
   }
 
-  const sessionRef = db
-    .collection(VIDEO_SESSION_COLLECTION)
-    .doc(normalizedSessionId || undefined);
+  const sessionCollection = db.collection(VIDEO_SESSION_COLLECTION);
+  const sessionRef = normalizedSessionId ?
+    sessionCollection.doc(normalizedSessionId) :
+    sessionCollection.doc();
   const lockExpiresAt = timestampFromMillis(
     nowMillis + lockTtlSeconds * 1000,
   );

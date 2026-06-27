@@ -4607,6 +4607,142 @@ if (!hasFirestoreEmulator) {
     );
   });
 
+  test("startSearch callable uses one role-neutral candidate pool", async () => {
+    async function runRoleNeutralScenario({
+      prefix,
+      teacherAvailableMinutesAgo,
+      studentCreatedMinutesAgo,
+      expectedResponderRole,
+    }) {
+      const requesterUid = uniqueId(`${prefix}-requester`);
+      const waitingUid = uniqueId(`${prefix}-waiting-student`);
+      const teacherUid = uniqueId(`${prefix}-teacher`);
+      const cityKey = cityKeyForUid(
+        `${requesterUid}-${waitingUid}-${teacherUid}`,
+      );
+      const participantRefs = [
+        userRef(requesterUid),
+        userRef(waitingUid),
+        userRef(teacherUid),
+        searchRequestRef(requesterUid),
+        searchRequestRef(waitingUid),
+        searchRequestRef(teacherUid),
+        db.collection("userPrivateTokens").doc(teacherUid),
+      ];
+      let sessionId = "";
+
+      try {
+        await Promise.all(participantRefs.map(deleteDoc));
+        await seedStudent(waitingUid, {
+          display_name: "Waiting Student",
+          profileCity: {key: cityKey},
+        });
+        await seedStudent(requesterUid, {
+          display_name: "Requester Student",
+          profileCity: {key: cityKey},
+        });
+
+        const waitingResponse = await wrappedStartSearch({
+          preferredPartnerLevel: "B1",
+          appState: "foreground",
+        }, authContext(waitingUid));
+        const waitingCreatedAt = admin.firestore.Timestamp.fromMillis(
+          Date.now() - studentCreatedMinutesAgo * 60 * 1000,
+        );
+        await searchRequestRef(waitingUid).update({
+          createdAt: waitingCreatedAt,
+          updatedAt: admin.firestore.Timestamp.now(),
+          heartbeatAt: admin.firestore.Timestamp.now(),
+        });
+        await seedTeacher(teacherUid, {
+          profileCity: {key: cityKey},
+          availableSince: admin.firestore.Timestamp.fromMillis(
+            Date.now() - teacherAvailableMinutesAgo * 60 * 1000,
+          ),
+        });
+        await db.collection("userPrivateTokens").doc(teacherUid).set({
+          voipPushToken: `push-${teacherUid}`,
+        });
+
+        let teacherPushSendCount = 0;
+        const response = await startSearchCallable({
+          preferredPartnerLevel: "B1",
+          appState: "foreground",
+        }, authContext(requesterUid), {
+          teacherResponderPushSender: async (responderId, callData) => {
+            teacherPushSendCount += 1;
+            assert.equal(responderId, teacherUid);
+            assert.equal(callData.callerId, requesterUid);
+            return {sent: true, channel: "test"};
+          },
+        });
+        sessionId = response.sessionId;
+        const sessionSnapshot = await db
+          .collection("videoSessions")
+          .doc(response.sessionId)
+          .get();
+        const sessionData = sessionSnapshot.data();
+        const waitingRequest =
+          (await searchRequestRef(waitingUid).get()).data();
+
+        assert.equal(waitingResponse.status, "active");
+        assert.equal(response.status, "matched");
+        assert.equal(response.matchedRole, expectedResponderRole);
+        assert.equal(sessionSnapshot.exists, true);
+        assert.deepEqual(sessionData.availableTutors, expectedResponderRole ===
+          "native_speaker" ?
+            [teacherUid, waitingUid] :
+            [waitingUid, teacherUid]);
+        assert.deepEqual(sessionData.matchContext.candidateIds,
+          sessionData.availableTutors);
+        assert.ok(
+          sessionData.matchContext.candidateStats.studentCandidates >= 1,
+        );
+        assert.equal(
+          sessionData.matchContext.candidateStats.teacherCandidates,
+          1,
+        );
+        assert.equal(sessionData.matchContext.candidateStats.totalCandidates, 2);
+
+        if (expectedResponderRole === "native_speaker") {
+          assert.equal(response.matchedUserId, teacherUid);
+          assert.equal(response.scenario, "student_teacher");
+          assert.equal(sessionData.currentResponderId, teacherUid);
+          assert.equal(sessionData.currentResponderRole, "native_speaker");
+          assert.equal(teacherPushSendCount, 1);
+          assert.equal(waitingRequest.status, SEARCH_REQUEST_STATUS.ACTIVE);
+          assert.equal(waitingRequest.currentSessionId, null);
+        } else {
+          assert.equal(response.matchedUserId, waitingUid);
+          assert.equal(response.scenario, "student_student");
+          assert.equal(sessionData.currentResponderId, waitingUid);
+          assert.equal(sessionData.currentResponderRole, "student");
+          assert.equal(teacherPushSendCount, 0);
+          assert.equal(waitingRequest.status, SEARCH_REQUEST_STATUS.MATCHED);
+          assert.equal(waitingRequest.currentSessionId, response.sessionId);
+        }
+      } finally {
+        if (sessionId) {
+          await deleteDoc(db.collection("videoSessions").doc(sessionId));
+        }
+        await Promise.all(participantRefs.map(deleteDoc));
+      }
+    }
+
+    await runRoleNeutralScenario({
+      prefix: "teacher-older",
+      teacherAvailableMinutesAgo: 8,
+      studentCreatedMinutesAgo: 3,
+      expectedResponderRole: "native_speaker",
+    });
+    await runRoleNeutralScenario({
+      prefix: "student-older",
+      teacherAvailableMinutesAgo: 3,
+      studentCreatedMinutesAgo: 8,
+      expectedResponderRole: "student",
+    });
+  });
+
   test("startSearch callable creates one session under concurrent starts", async () => {
     const firstUid = uniqueId("student-concurrent-a");
     const secondUid = uniqueId("student-concurrent-b");
