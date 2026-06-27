@@ -404,7 +404,7 @@
 - [x] Student-student: один студент отклоняет звонок.
 - [x] Student-student: один студент не отвечает 45 секунд.
 - [x] Student-teacher: учитель принимает звонок.
-- [ ] Student-teacher: учитель отклоняет звонок.
+- [x] Student-teacher: учитель отклоняет звонок.
 - [ ] Student-teacher: учитель не отвечает 45 секунд.
 - [ ] Direct-call учителю: accept.
 - [ ] Direct-call учителю: decline.

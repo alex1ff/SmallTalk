@@ -5277,6 +5277,84 @@ if (!hasFirestoreEmulator) {
     assert.equal(teacherNotifications.docs[0].data().status, "accepted");
   });
 
+  test("teacher responder decline restores student search", async () => {
+    const studentUid = uniqueId("student-teacher-decline");
+    const teacherUid = uniqueId("teacher-start-search-decline");
+    const cityKey = cityKeyForUid(`${studentUid}-${teacherUid}`);
+    await deleteDoc(userRef(studentUid));
+    await deleteDoc(userRef(teacherUid));
+    await deleteDoc(searchRequestRef(studentUid));
+    await deleteDoc(searchRequestRef(teacherUid));
+    await deleteDoc(db.collection("userPrivateTokens").doc(teacherUid));
+    await seedStudent(studentUid, {
+      display_name: "Student",
+      photo_url: "student-photo",
+      profileCity: {key: cityKey},
+    });
+    await seedTeacher(teacherUid, {
+      display_name: "Teacher",
+      photo_url: "teacher-photo",
+      profileCity: {key: cityKey},
+    });
+    await db.collection("userPrivateTokens").doc(teacherUid).set({
+      voipPushToken: `push-${teacherUid}`,
+    });
+
+    const response = await startSearchCallable({
+      preferredPartnerLevel: "B1",
+    }, authContext(studentUid), {
+      teacherResponderPushSender: async (responderId) => {
+        assert.equal(responderId, teacherUid);
+        return {sent: true, channel: "test"};
+      },
+    });
+    const declineResponse = await wrappedDeclineCall({
+      sessionId: response.sessionId,
+    }, authContext(teacherUid));
+
+    const sessionSnapshot = await db
+      .collection("videoSessions")
+      .doc(response.sessionId)
+      .get();
+    const sessionData = sessionSnapshot.data();
+    const requestData = (await searchRequestRef(studentUid).get()).data();
+    const studentUser = (await userRef(studentUid).get()).data();
+    const teacherUser = (await userRef(teacherUid).get()).data();
+    const teacherNotifications = await db
+      .collection("notifications")
+      .where("recipientId", "==", teacherUid)
+      .where("sessionId", "==", response.sessionId)
+      .get();
+
+    assert.equal(response.status, "matched");
+    assert.equal(response.scenario, "student_teacher");
+    assert.equal(response.matchedUserId, teacherUid);
+    assert.equal(response.matchedRole, "native_speaker");
+    assert.equal(declineResponse.status, "declined");
+    assert.equal(sessionSnapshot.exists, true);
+    assert.equal(sessionData.status, "cancelled");
+    assert.equal(sessionData.pairStatus, "cancelled");
+    assert.equal(sessionData.cancelledBy, teacherUid);
+    assert.equal(sessionData.cancelReason, "no_available_responder_after_decline");
+    assert.equal(Object.hasOwn(sessionData, "currentResponderId"), false);
+    assert.equal(Object.hasOwn(sessionData, "currentTutorId"), false);
+    assert.equal(Object.hasOwn(sessionData, "currentResponderRole"), false);
+    assert.deepEqual(sessionData.triedTutors, [teacherUid]);
+    assertSearchRequestRestoredToActive(requestData, teacherUid);
+    assert.equal(requestData.stoppedAt, null);
+    assert.equal(Object.hasOwn(requestData, "stoppedBy"), false);
+    assert.equal(Object.hasOwn(studentUser, "currentSessionId"), false);
+    assert.equal(Object.hasOwn(teacherUser, "currentSessionId"), false);
+    assert.equal(studentUser.isInCall, false);
+    assert.equal(teacherUser.isInCall, false);
+    assert.equal(teacherNotifications.size, 1);
+    assert.equal(teacherNotifications.docs[0].data().status, "declined");
+    assert.equal(
+      typeof teacherNotifications.docs[0].data().declinedAt.toMillis,
+      "function",
+    );
+  });
+
   test("startSearch callable uses one role-neutral candidate pool", async () => {
     async function runRoleNeutralScenario({
       prefix,
