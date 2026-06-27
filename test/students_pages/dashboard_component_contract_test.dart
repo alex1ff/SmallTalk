@@ -2,10 +2,28 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+List<String> _nonDeleteAvailabilityWrites(String source) {
+  final writes = <String>[];
+  writes.addAll(
+    RegExp(r"""['"]availabilityToday['"]\s*:\s*(?!\s*FieldValue\.delete\(\))[^,\n]+""")
+        .allMatches(source)
+        .map((match) => match.group(0)!),
+  );
+  writes.addAll(
+    RegExp(r"""\[\s*['"]availabilityToday['"]\s*\]\s*=\s*(?!\s*FieldValue\.delete\(\))[^;\n]+""")
+        .allMatches(source)
+        .map((match) => match.group(0)!),
+  );
+  return writes;
+}
+
 void main() {
   test('student dashboard delegates local controls to flat components', () {
     final source = File(
             'lib/students_pages/students_dashboard/students_dashboard_widget.dart')
+        .readAsStringSync();
+    final modelSource = File(
+            'lib/students_pages/students_dashboard/students_dashboard_model.dart')
         .readAsStringSync();
 
     expect(
@@ -21,17 +39,27 @@ void main() {
       isFalse,
     );
     expect(source, isNot(contains('StudentAvailabilitySwitchControl(')));
+    expect(source, isNot(contains('AvailabilitySwitchControl(')));
     expect(source, isNot(contains('_buildAvailabilitySwitch')));
     expect(source, isNot(contains('_handleAvailabilitySwitchChanged')));
     expect(source, contains('DashboardInlineFilterButton('));
     expect(source, contains('OrbitingAvatarsCta('));
     expect(source, isNot(contains('AvailabilityScheduleCard(')));
-    expect(source, isNot(contains('AddInterWidget()')));
+    expect(source, isNot(contains('Доступен сегодня')));
+    expect(source, isNot(contains("'/components/add_inter_widget.dart'")));
+    expect(source, isNot(contains('AddInterWidget(')));
     expect(source, isNot(contains('_buildAvailabilitySection')));
     expect(source, isNot(contains('_buildAnimatedAvailabilitySection')));
     expect(source, contains('_studentUserUpdate'));
     expect(source, contains("'availabilityToday': FieldValue.delete()"));
+    expect(_nonDeleteAvailabilityWrites(source), isEmpty);
     expect(source, isNot(contains('createAvailabilityTodayStruct')));
+    expect(source, isNot(contains('getIntervalsFirestoreData')));
+    expect(source, isNot(contains('updateIntervalsStruct')));
+    expect(source, isNot(contains('FieldValue.arrayRemove')));
+    expect(modelSource, isNot(contains('switchValue')));
+    expect(modelSource, isNot(contains('availabilityToday')));
+    expect(modelSource, isNot(contains('AvailabilityTodayStruct')));
     expect(source, isNot(contains('class _StudentAvailabilitySwitchControl')));
     expect(source, isNot(contains('class _DashboardInlineFilterButton')));
     expect(source, isNot(contains('class _OrbitingAvatarsCta')));

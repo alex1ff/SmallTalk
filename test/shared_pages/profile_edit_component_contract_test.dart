@@ -17,6 +17,17 @@ void main() {
     expect(source, contains('_saveNameIfNeeded('));
     expect(source, contains('_profileUserUpdate'));
     expect(source, contains("'availabilityToday': FieldValue.delete()"));
+    expect(source, isNot(contains('AvailabilityScheduleCard(')));
+    expect(source, isNot(contains('AvailabilitySwitchControl(')));
+    expect(source, isNot(contains('StudentAvailabilitySwitchControl(')));
+    expect(source, isNot(contains("'/components/add_inter_widget.dart'")));
+    expect(source, isNot(contains('AddInterWidget(')));
+    expect(source, isNot(contains('AddInterWidget()')));
+    expect(source, isNot(contains('createAvailabilityTodayStruct')));
+    expect(source, isNot(contains('getIntervalsFirestoreData')));
+    expect(source, isNot(contains('updateIntervalsStruct')));
+    expect(source, isNot(contains('FieldValue.arrayRemove')));
+    expect(source, isNot(contains('Доступен сегодня')));
     expect(source, isNot(contains("'/components/profile_save_bar.dart'")));
     expect(source, isNot(contains('ProfileSaveBar(')));
     expect(source, isNot(contains('class _ProfileAvatar')));
