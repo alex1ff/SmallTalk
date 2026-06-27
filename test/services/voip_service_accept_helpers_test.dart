@@ -2356,6 +2356,39 @@ void main() {
       );
     });
 
+    test('runtime closed app incoming payload before 90 seconds tracks CallKit',
+        () async {
+      const sessionId = 'session-closed-before-stale';
+      final expiresAt =
+          DateTime.now().toUtc().add(const Duration(seconds: 89));
+
+      expect(
+        voipIncomingCallPayloadHasExpired({
+          'expiresAt': expiresAt.toIso8601String(),
+        }),
+        isFalse,
+      );
+
+      await service.showIncomingCall(
+        sessionId: sessionId,
+        callerName: 'Caller',
+        callerId: 'caller-a',
+        extraData: {
+          'type': 'incoming_call',
+          'sessionId': sessionId,
+          'recipientId': 'current-user',
+          'acceptMode': 'responder_accepts',
+          'tokenStrategy': 'accept_call',
+          'expiresAt': expiresAt.toIso8601String(),
+        },
+      );
+
+      expect(
+        service.debugCallKitIdForSessionForTesting(sessionId),
+        deterministicCallKitIdForTest(sessionId),
+      );
+    });
+
     test('runtime background replay opens accepted open_session call',
         () async {
       final navigationCalls = <Map<String, dynamic>>[];
