@@ -156,6 +156,7 @@ function buildTerminalTimeoutSessionProjection({
     currentResponderId: null,
     currentResponderRole: null,
     status: VIDEO_SESSION_STATUS.EXPIRED,
+    pairStatus: VIDEO_SESSION_STATUS.EXPIRED,
   };
 }
 
@@ -536,6 +537,7 @@ async function processExpiredNotification(notificationDoc) {
             acceptingAt: admin.firestore.FieldValue.delete(),
             acceptAttemptId: admin.firestore.FieldValue.delete(),
             status: VIDEO_SESSION_STATUS.EXPIRED,
+            pairStatus: VIDEO_SESSION_STATUS.EXPIRED,
             endedAt: admin.firestore.FieldValue.serverTimestamp(),
             expiredAt: admin.firestore.FieldValue.serverTimestamp(),
             expireReason: terminalStopReason,

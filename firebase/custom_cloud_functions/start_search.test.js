@@ -4093,6 +4093,10 @@ if (!hasFirestoreEmulator) {
 } else {
   const admin = require("firebase-admin");
   const functionsTest = require("firebase-functions-test");
+  const {declineCall} = require("./decline_call");
+  const {
+    processExpiredNotifications,
+  } = require("./process_expired_notifications");
   const {startSearch} = require("./start_search");
 
   const projectId =
@@ -4108,6 +4112,9 @@ if (!hasFirestoreEmulator) {
 
   const testEnv = functionsTest({projectId});
   const db = admin.firestore();
+  const wrappedDeclineCall = testEnv.wrap(declineCall);
+  const wrappedProcessExpiredNotifications =
+    testEnv.wrap(processExpiredNotifications);
   const wrappedStartSearch = testEnv.wrap(startSearch);
   let uidCounter = 0;
 
@@ -4201,6 +4208,131 @@ if (!hasFirestoreEmulator) {
     await db.collection("userPrivateTokens").doc(uid).set({
       voipToken: `voip-${uid}`,
     });
+  }
+
+  async function createBackgroundStudentPair(prefix) {
+    const waitingUid = uniqueId(`${prefix}-waiting`);
+    const joiningUid = uniqueId(`${prefix}-joining`);
+    const cityKey = cityKeyForUid(`${waitingUid}-${joiningUid}`);
+    await deleteDoc(userRef(waitingUid));
+    await deleteDoc(userRef(joiningUid));
+    await deleteDoc(searchRequestRef(waitingUid));
+    await deleteDoc(searchRequestRef(joiningUid));
+    await seedStudent(waitingUid, {
+      display_name: "Waiting Student",
+      photo_url: "waiting-photo",
+      profileCity: {key: cityKey},
+    });
+    await seedStudent(joiningUid, {
+      display_name: "Joining Student",
+      photo_url: "joining-photo",
+      profileCity: {key: cityKey},
+    });
+
+    const waitingResponse = await wrappedStartSearch({
+      preferredPartnerLevel: "B1",
+      appState: "background",
+      platform: "ios",
+    }, authContext(waitingUid));
+    let pushedCallData = null;
+    const joiningResponse = await startSearchCallable({
+      preferredPartnerLevel: "B1",
+      appState: "foreground",
+      platform: "ios",
+    }, authContext(joiningUid), {
+      backgroundStudentResponderPushSender: async (responderId, callData) => {
+        pushedCallData = callData;
+        assert.equal(responderId, waitingUid);
+        assert.equal(callData.searchRequestId, waitingResponse.requestId);
+        return {sent: true, channel: "test_voip"};
+      },
+    });
+    const notificationQuery = await db
+      .collection("notifications")
+      .where("recipientId", "==", waitingUid)
+      .get();
+    const matchingNotifications = notificationQuery.docs
+      .map((doc) => ({id: doc.id, ref: doc.ref, data: doc.data()}))
+      .filter((item) => item.data.sessionId === joiningResponse.sessionId);
+
+    assert.equal(waitingResponse.status, "active");
+    assert.equal(joiningResponse.status, "matched");
+    assert.equal(joiningResponse.matchedUserId, waitingUid);
+    assert.ok(pushedCallData);
+    assert.equal(pushedCallData.sessionId, joiningResponse.sessionId);
+    assert.equal(matchingNotifications.length, 1);
+    assert.equal(matchingNotifications[0].data.status, "sent");
+
+    await Promise.all([
+      searchRequestRef(waitingUid).update({
+        activeSessionId: joiningResponse.sessionId,
+      }),
+      searchRequestRef(joiningUid).update({
+        activeSessionId: joiningResponse.sessionId,
+      }),
+    ]);
+
+    return {
+      waitingUid,
+      joiningUid,
+      joiningResponse,
+      notification: matchingNotifications[0],
+    };
+  }
+
+  function assertSearchRequestRestoredToActive(requestData, excludedUid) {
+    assert.equal(requestData.status, SEARCH_REQUEST_STATUS.ACTIVE);
+    assert.equal(Object.hasOwn(requestData, "activeSessionId"), false);
+    assert.equal(requestData.currentSessionId, null);
+    assert.equal(Object.hasOwn(requestData, "matchedSessionId"), false);
+    assert.equal(requestData.matchedUserId, null);
+    assert.equal(Object.hasOwn(requestData, "matchedResponderId"), false);
+    assert.equal(requestData.matchedRole, null);
+    assert.equal(requestData.pairAttemptId, null);
+    assert.equal(requestData.lockOwner, null);
+    assert.equal(requestData.lockExpiresAt, null);
+    assert.deepEqual(requestData.attemptExcludedCandidateIds, []);
+    assert.deepEqual(requestData.excludedCandidateIds, [excludedUid]);
+    assert.equal(requestData.stopReason, null);
+  }
+
+  function assertSearchRequestStopped(requestData, status, stopReason) {
+    assert.equal(requestData.status, status);
+    assert.equal(requestData.stopReason, stopReason);
+    assert.equal(Object.hasOwn(requestData, "activeSessionId"), false);
+    assert.equal(requestData.currentSessionId, null);
+    assert.equal(Object.hasOwn(requestData, "matchedSessionId"), false);
+    assert.equal(requestData.matchedUserId, null);
+    assert.equal(Object.hasOwn(requestData, "matchedResponderId"), false);
+    assert.equal(requestData.matchedRole, null);
+    assert.equal(requestData.pairAttemptId, null);
+    assert.equal(requestData.lockOwner, null);
+    assert.equal(requestData.lockExpiresAt, null);
+    assert.deepEqual(requestData.attemptExcludedCandidateIds, []);
+  }
+
+  function assertUsersReleasedFromSession({
+    waitingUser,
+    joiningUser,
+  }) {
+    assert.equal(Object.hasOwn(waitingUser, "currentSessionId"), false);
+    assert.equal(Object.hasOwn(joiningUser, "currentSessionId"), false);
+    assert.equal(waitingUser.isInCall, false);
+    assert.equal(joiningUser.isInCall, false);
+  }
+
+  function assertTerminalSessionPairAudit(
+    sessionData,
+    response,
+    participantIds,
+  ) {
+    assert.equal(sessionData.pairAttemptId, response.pairAttemptId);
+    assert.equal(sessionData.matchLock.owner, response.pairAttemptId);
+    assert.equal(typeof sessionData.matchLock.expiresAt.toMillis, "function");
+    assert.deepEqual(
+      sessionData.matchLock.participantIds.slice().sort(),
+      participantIds.slice().sort(),
+    );
   }
 
   test("startSearch callable creates one active request document", async () => {
@@ -4567,6 +4699,97 @@ if (!hasFirestoreEmulator) {
       Object.hasOwn(matchingNotifications[0].data, "meetingToken"),
       false,
     );
+  });
+
+  test("declineCall restores student requester search", async () => {
+    const {
+      waitingUid,
+      joiningUid,
+      joiningResponse,
+      notification,
+    } = await createBackgroundStudentPair("student-decline-restore");
+
+    const response = await wrappedDeclineCall({
+      sessionId: joiningResponse.sessionId,
+    }, authContext(waitingUid));
+
+    const joiningRequest = (await searchRequestRef(joiningUid).get()).data();
+    const waitingRequest = (await searchRequestRef(waitingUid).get()).data();
+    const joiningUser = (await userRef(joiningUid).get()).data();
+    const waitingUser = (await userRef(waitingUid).get()).data();
+    const sessionData = (await db
+      .collection("videoSessions")
+      .doc(joiningResponse.sessionId)
+      .get()).data();
+    const notificationData = (await notification.ref.get()).data();
+
+    assert.equal(response.status, "declined");
+    assertSearchRequestRestoredToActive(joiningRequest, waitingUid);
+    assertSearchRequestStopped(
+      waitingRequest,
+      SEARCH_REQUEST_STATUS.CANCELLED,
+      "student_pair_declined",
+    );
+    assertUsersReleasedFromSession({waitingUser, joiningUser});
+    assert.equal(sessionData.status, "cancelled");
+    assert.equal(sessionData.pairStatus, "cancelled");
+    assert.equal(sessionData.cancelReason, "student_pair_declined");
+    assert.equal(sessionData.cancelledBy, waitingUid);
+    assertTerminalSessionPairAudit(sessionData, joiningResponse, [
+      joiningUid,
+      waitingUid,
+    ]);
+    assert.equal(Object.hasOwn(sessionData, "currentResponderId"), false);
+    assert.equal(Object.hasOwn(sessionData, "currentResponderRole"), false);
+    assert.equal(Object.hasOwn(sessionData, "currentTutorId"), false);
+    assert.ok(sessionData.triedTutors.includes(waitingUid));
+    assert.equal(notificationData.status, "declined");
+    assert.equal(typeof notificationData.declinedAt.toMillis, "function");
+  });
+
+  test("expired student responder notification restores requester search", async () => {
+    const {
+      waitingUid,
+      joiningUid,
+      joiningResponse,
+      notification,
+    } = await createBackgroundStudentPair("student-timeout-restore");
+
+    await notification.ref.update({
+      expiresAt: admin.firestore.Timestamp.fromMillis(Date.now() - 1000),
+    });
+    await wrappedProcessExpiredNotifications();
+
+    const joiningRequest = (await searchRequestRef(joiningUid).get()).data();
+    const waitingRequest = (await searchRequestRef(waitingUid).get()).data();
+    const joiningUser = (await userRef(joiningUid).get()).data();
+    const waitingUser = (await userRef(waitingUid).get()).data();
+    const sessionData = (await db
+      .collection("videoSessions")
+      .doc(joiningResponse.sessionId)
+      .get()).data();
+    const notificationData = (await notification.ref.get()).data();
+
+    assertSearchRequestRestoredToActive(joiningRequest, waitingUid);
+    assertSearchRequestStopped(
+      waitingRequest,
+      SEARCH_REQUEST_STATUS.EXPIRED,
+      "student_pair_response_timeout",
+    );
+    assertUsersReleasedFromSession({waitingUser, joiningUser});
+    assert.equal(sessionData.status, "expired");
+    assert.equal(sessionData.pairStatus, "expired");
+    assert.equal(sessionData.expireReason, "student_pair_response_timeout");
+    assertTerminalSessionPairAudit(sessionData, joiningResponse, [
+      joiningUid,
+      waitingUid,
+    ]);
+    assert.equal(Object.hasOwn(sessionData, "currentResponderId"), false);
+    assert.equal(Object.hasOwn(sessionData, "currentResponderRole"), false);
+    assert.equal(Object.hasOwn(sessionData, "currentTutorId"), false);
+    assert.ok(sessionData.triedTutors.includes(waitingUid));
+    assert.equal(notificationData.status, "expired");
+    assert.equal(typeof notificationData.expiredAt.toMillis, "function");
   });
 
   test("startSearch callable retries when background student push fails", async () => {

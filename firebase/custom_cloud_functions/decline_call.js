@@ -398,6 +398,7 @@ exports.declineCall = functions
         };
         if (!nextTutor) {
           sessionUpdate.status = VIDEO_SESSION_STATUS.CANCELLED;
+          sessionUpdate.pairStatus = VIDEO_SESSION_STATUS.CANCELLED;
           sessionUpdate.endedAt =
             admin.firestore.FieldValue.serverTimestamp();
           sessionUpdate.cancelledAt =
@@ -455,6 +456,9 @@ exports.declineCall = functions
             currentResponderRole:
               preparedSessionUpdate.currentResponderRole || null,
             status: nextTutor ?
+              VIDEO_SESSION_STATUS.PENDING_CONFIRMATION :
+              VIDEO_SESSION_STATUS.CANCELLED,
+            pairStatus: nextTutor ?
               VIDEO_SESSION_STATUS.PENDING_CONFIRMATION :
               VIDEO_SESSION_STATUS.CANCELLED,
           },
