@@ -5970,6 +5970,111 @@ if (!hasFirestoreEmulator) {
     );
   });
 
+  test("startSearch callable prevents double session for one requester", async () => {
+    const waitingUid = uniqueId("student-double-session-waiting");
+    const joiningUid = uniqueId("student-double-session-joining");
+    const cityKey = cityKeyForUid(`${waitingUid}-${joiningUid}`);
+    await deleteDoc(userRef(waitingUid));
+    await deleteDoc(userRef(joiningUid));
+    await deleteDoc(searchRequestRef(waitingUid));
+    await deleteDoc(searchRequestRef(joiningUid));
+    await seedStudent(waitingUid, {
+      display_name: "Waiting Student",
+      profileCity: {key: cityKey},
+    });
+    await seedStudent(joiningUid, {
+      display_name: "Joining Student",
+      profileCity: {key: cityKey},
+    });
+
+    const waitingResponse = await wrappedStartSearch({
+      preferredPartnerLevel: "B1",
+    }, authContext(waitingUid));
+    const results = await Promise.allSettled(
+      Array.from({length: 5}, () => wrappedStartSearch({
+        preferredPartnerLevel: "B1",
+      }, authContext(joiningUid))),
+    );
+    const rejectedResult = results.find((result) =>
+      result.status === "rejected",
+    );
+    if (rejectedResult) {
+      throw rejectedResult.reason;
+    }
+
+    const responses = results.map((result) => result.value);
+    const waitingRequest = (await searchRequestRef(waitingUid).get()).data();
+    const joiningRequest = (await searchRequestRef(joiningUid).get()).data();
+    const waitingUser = (await userRef(waitingUid).get()).data();
+    const joiningUser = (await userRef(joiningUid).get()).data();
+    const responseSessionIds = Array.from(new Set(
+      responses.map((response) => response.sessionId).filter(Boolean),
+    ));
+    const finalSessionIds = Array.from(new Set([
+      ...responseSessionIds,
+      waitingRequest.currentSessionId,
+      waitingRequest.activeSessionId,
+      waitingRequest.matchedSessionId,
+      joiningRequest.currentSessionId,
+      joiningRequest.activeSessionId,
+      joiningRequest.matchedSessionId,
+      waitingUser.currentSessionId,
+      joiningUser.currentSessionId,
+    ].filter(Boolean)));
+
+    assert.equal(waitingResponse.status, "active");
+    assert.equal(responseSessionIds.length, 1);
+    assert.equal(finalSessionIds.length, 1);
+    const [sessionId] = finalSessionIds;
+    const sessionSnapshot = await db
+      .collection("videoSessions")
+      .doc(sessionId)
+      .get();
+    const sessionData = sessionSnapshot.data();
+    const waitingParticipantSessions = await db
+      .collection("videoSessions")
+      .where("participantIds", "array-contains", waitingUid)
+      .get();
+    const joiningParticipantSessions = await db
+      .collection("videoSessions")
+      .where("participantIds", "array-contains", joiningUid)
+      .get();
+    const participantSessionIds = new Set([
+      ...waitingParticipantSessions.docs,
+      ...joiningParticipantSessions.docs,
+    ].map((doc) => doc.id));
+
+    assert.equal(sessionSnapshot.exists, true);
+    assert.equal(sessionData.status, "pending_confirmation");
+    assert.equal(sessionData.pairStatus, "pending_confirmation");
+    assert.deepEqual(
+      sessionData.participantIds.slice().sort(),
+      [joiningUid, waitingUid].sort(),
+    );
+    assert.equal(participantSessionIds.size, 1);
+    assert.deepEqual(Array.from(participantSessionIds), [sessionId]);
+    assert.equal(waitingRequest.status, SEARCH_REQUEST_STATUS.MATCHED);
+    assert.equal(joiningRequest.status, SEARCH_REQUEST_STATUS.MATCHED);
+    assert.equal(waitingRequest.currentSessionId, sessionId);
+    assert.equal(waitingRequest.matchedSessionId, sessionId);
+    assert.equal(joiningRequest.currentSessionId, sessionId);
+    assert.equal(joiningRequest.matchedSessionId, sessionId);
+    assert.equal(typeof joiningRequest.pairAttemptId, "string");
+    assert.ok(joiningRequest.pairAttemptId);
+    assert.equal(waitingRequest.pairAttemptId, joiningRequest.pairAttemptId);
+    assert.equal(waitingRequest.lockOwner, waitingRequest.pairAttemptId);
+    assert.equal(joiningRequest.lockOwner, joiningRequest.pairAttemptId);
+    assert.equal(sessionData.pairAttemptId, joiningRequest.pairAttemptId);
+    assert.equal(sessionData.matchLock.owner, joiningRequest.pairAttemptId);
+    assert.equal(waitingUser.currentSessionId, sessionId);
+    assert.equal(joiningUser.currentSessionId, sessionId);
+    assert.equal(
+      responses.every((response) =>
+        response.status === "matched" && response.sessionId === sessionId),
+      true,
+    );
+  });
+
   test("startSearch callable keeps a single active request under concurrency", async () => {
     for (let round = 0; round < 3; round += 1) {
       const uid = uniqueId(`student-concurrent-${round}`);
