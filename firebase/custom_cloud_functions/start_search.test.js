@@ -58,6 +58,9 @@ const {
 const {
   buildCallKitIdForSession,
 } = require("./call_notifications");
+const {
+  MATCH_PAIR_LOCK_TTL_SECONDS,
+} = require("./match_pair_lock");
 
 const fixedNowMillis = Date.parse("2026-06-21T10:00:00.000Z");
 const serverTimestamp = Symbol("serverTimestamp");
@@ -5354,6 +5357,123 @@ if (!hasFirestoreEmulator) {
       "function",
     );
   });
+
+  test(
+    "expired teacher responder notification restores student search",
+    async () => {
+      const studentUid = uniqueId("student-teacher-timeout");
+      const teacherUid = uniqueId("teacher-start-search-timeout");
+      const cityKey = cityKeyForUid(`${studentUid}-${teacherUid}`);
+      await deleteDoc(userRef(studentUid));
+      await deleteDoc(userRef(teacherUid));
+      await deleteDoc(searchRequestRef(studentUid));
+      await deleteDoc(searchRequestRef(teacherUid));
+      await deleteDoc(db.collection("userPrivateTokens").doc(teacherUid));
+      await seedStudent(studentUid, {
+        display_name: "Student",
+        photo_url: "student-photo",
+        profileCity: {key: cityKey},
+      });
+      await seedTeacher(teacherUid, {
+        display_name: "Teacher",
+        photo_url: "teacher-photo",
+        profileCity: {key: cityKey},
+      });
+      await db.collection("userPrivateTokens").doc(teacherUid).set({
+        voipPushToken: `push-${teacherUid}`,
+      });
+
+      const startSearchStartedAtMillis = Date.now();
+      const response = await startSearchCallable({
+        preferredPartnerLevel: "B1",
+      }, authContext(studentUid), {
+        teacherResponderPushSender: async (responderId) => {
+          assert.equal(responderId, teacherUid);
+          return {sent: true, channel: "test"};
+        },
+      });
+      const startSearchCompletedAtMillis = Date.now();
+      const teacherNotifications = await db
+        .collection("notifications")
+        .where("recipientId", "==", teacherUid)
+        .where("sessionId", "==", response.sessionId)
+        .get();
+      assert.equal(teacherNotifications.size, 1);
+      const teacherNotificationRef = teacherNotifications.docs[0].ref;
+      const pendingNotificationData = teacherNotifications.docs[0].data();
+      const pendingSessionData = (
+        await db.collection("videoSessions").doc(response.sessionId).get()
+      ).data();
+      const responseWindowMillis = MATCH_PAIR_LOCK_TTL_SECONDS * 1000;
+      const notificationExpiresAtMillis =
+        pendingNotificationData.expiresAt.toMillis();
+      const sessionResponseExpiresAtMillis =
+        pendingSessionData.responseExpiresAt.toMillis();
+      assert.equal(
+        sessionResponseExpiresAtMillis,
+        pendingSessionData.confirmationExpiresAt.toMillis(),
+      );
+      assert.equal(
+        sessionResponseExpiresAtMillis,
+        pendingSessionData.matchLock.expiresAt.toMillis(),
+      );
+      assert.ok(
+        sessionResponseExpiresAtMillis >=
+          startSearchStartedAtMillis + responseWindowMillis,
+      );
+      assert.ok(
+        sessionResponseExpiresAtMillis <=
+          startSearchCompletedAtMillis + responseWindowMillis,
+      );
+      assert.ok(
+        notificationExpiresAtMillis >=
+          startSearchStartedAtMillis + responseWindowMillis,
+      );
+      assert.ok(
+        notificationExpiresAtMillis <=
+          startSearchCompletedAtMillis + responseWindowMillis,
+      );
+      await teacherNotificationRef.update({
+        expiresAt: admin.firestore.Timestamp.fromMillis(Date.now() - 1000),
+      });
+      await wrappedProcessExpiredNotifications();
+
+      const sessionSnapshot = await db
+        .collection("videoSessions")
+        .doc(response.sessionId)
+        .get();
+      const sessionData = sessionSnapshot.data();
+      const requestData = (await searchRequestRef(studentUid).get()).data();
+      const studentUser = (await userRef(studentUid).get()).data();
+      const teacherUser = (await userRef(teacherUid).get()).data();
+      const notificationData = (await teacherNotificationRef.get()).data();
+
+      assert.equal(response.status, "matched");
+      assert.equal(response.scenario, "student_teacher");
+      assert.equal(response.matchedUserId, teacherUid);
+      assert.equal(response.matchedRole, "native_speaker");
+      assert.equal(sessionSnapshot.exists, true);
+      assert.equal(sessionData.status, "expired");
+      assert.equal(sessionData.pairStatus, "expired");
+      assert.equal(
+        sessionData.expireReason,
+        "no_available_responder_after_timeout",
+      );
+      assert.equal(Object.hasOwn(sessionData, "currentResponderId"), false);
+      assert.equal(Object.hasOwn(sessionData, "currentTutorId"), false);
+      assert.equal(Object.hasOwn(sessionData, "currentResponderRole"), false);
+      assert.deepEqual(sessionData.triedTutors, [teacherUid]);
+      assertSearchRequestRestoredToActive(requestData, teacherUid);
+      assert.equal(requestData.stoppedAt, null);
+      assert.equal(Object.hasOwn(requestData, "stoppedBy"), false);
+      assert.equal(Object.hasOwn(studentUser, "currentSessionId"), false);
+      assert.equal(Object.hasOwn(teacherUser, "currentSessionId"), false);
+      assert.equal(studentUser.isInCall, false);
+      assert.equal(teacherUser.isInCall, false);
+      assert.equal(notificationData.status, "expired");
+      assert.equal(typeof notificationData.expiredAt.toMillis, "function");
+    },
+  );
 
   test("startSearch callable uses one role-neutral candidate pool", async () => {
     async function runRoleNeutralScenario({
