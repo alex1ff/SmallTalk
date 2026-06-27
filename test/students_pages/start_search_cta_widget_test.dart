@@ -715,8 +715,9 @@ void main() {
     return observedSearchState;
   }
 
-  testWidgets('student dashboard renders and handles the start search CTA',
+  testWidgets('student dashboard blocks search without active subscription',
       (tester) async {
+    final startPayloads = <Map<String, dynamic>>[];
     currentUser = _TestAuthUser(
       isLoggedIn: true,
       userId: 'student-start-search-test',
@@ -734,7 +735,14 @@ void main() {
     );
 
     await tester.pumpWidget(
-      _buildDashboardTestApp(const StudentsDashboardWidget()),
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          startSearchRequest: (payload) async {
+            startPayloads.add(Map<String, dynamic>.from(payload));
+            return <String, dynamic>{'requestId': 'request-unexpected-start'};
+          },
+        ),
+      ),
     );
     await tester.pump();
 
@@ -753,6 +761,15 @@ void main() {
 
     expect(find.byType(NoBalanceWidget), findsOneWidget);
     expect(find.text('Нет активной подписки'), findsOneWidget);
+    expect(startPayloads, isEmpty);
+    final blockedStartSearchButton =
+        find.widgetWithText(StudentStartSearchButton, 'Начать поиск');
+    expect(blockedStartSearchButton, findsOneWidget);
+    expect(
+      tester.widget<StudentStartSearchButton>(blockedStartSearchButton)
+          .isActive,
+      isFalse,
+    );
     expect(find.text('Остановить поиск'), findsNothing);
     expect(find.text('Ищем собеседника'), findsNothing);
     expect(find.text('Соединяем'), findsNothing);
@@ -1006,29 +1023,37 @@ void main() {
 
   testWidgets('student dashboard blocks search when usage limit is reached',
       (tester) async {
+    final startPayloads = <Map<String, dynamic>>[];
     setActiveStudent('student-start-search-usage-limit-test');
 
     await tester.pumpWidget(
       _buildDashboardTestApp(
         StudentsDashboardWidget(
           usageLimitReachedChecker: (_) async => true,
+          startSearchRequest: (payload) async {
+            startPayloads.add(Map<String, dynamic>.from(payload));
+            return <String, dynamic>{'requestId': 'request-unexpected-start'};
+          },
         ),
       ),
     );
     await tester.pump();
 
-    await tester.tap(
-      find.ancestor(
-        of: find.text('Начать поиск'),
-        matching: find.byType(InkWell),
-      ),
-    );
+    final startSearchButton =
+        find.widgetWithText(StudentStartSearchButton, 'Начать поиск');
+    await tester.tap(startSearchButton);
     await tester.pump();
 
     expect(find.text('Лимит звонков исчерпан'), findsOneWidget);
-    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(startPayloads, isEmpty);
+    expect(startSearchButton, findsOneWidget);
+    expect(
+      tester.widget<StudentStartSearchButton>(startSearchButton).isActive,
+      isFalse,
+    );
     expect(find.text('Остановить поиск'), findsNothing);
     expect(find.text('Ищем собеседника'), findsNothing);
+    expect(find.text('Соединяем'), findsNothing);
     expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(_checkPermissionStatusCallCount, 0);
     expect(_requestPermissionsCallCount, 0);
