@@ -4335,12 +4335,17 @@ if (!hasFirestoreEmulator) {
     assert.equal(sessionData.pairStatus, "pending_confirmation");
     assert.equal(sessionData.scenario, "student_student");
     assert.equal(sessionData.requesterId, joiningUid);
+    assert.equal(sessionData.requesterRole, "student");
     assert.equal(sessionData.responderId, waitingUid);
+    assert.equal(sessionData.responderRole, "student");
     assert.equal(sessionData.currentResponderId, waitingUid);
     assert.equal(sessionData.currentResponderRole, "student");
     assert.equal(sessionData.currentTutorId, waitingUid);
+    assert.equal(sessionData.studentId, joiningUid);
     assert.equal(sessionData.tutorId, null);
     assert.equal(typeof sessionData.expiresAt.toMillis, "function");
+    assert.equal(typeof sessionData.responseExpiresAt.toMillis, "function");
+    assert.equal(typeof sessionData.confirmationExpiresAt.toMillis, "function");
     assert.equal(sessionData.sessionPolicy.baseLimitSeconds, 300);
     assert.equal(sessionData.sessionPolicy.warningLeadSeconds, 60);
     assert.equal(sessionData.sessionPolicy.maxExtensionCount, 1);
@@ -4356,15 +4361,57 @@ if (!hasFirestoreEmulator) {
       [joiningUid]: "student",
       [waitingUid]: "student",
     });
+    assert.deepEqual(sessionData.participantInfos, {
+      [joiningUid]: {
+        displayName: "Joining Student",
+        photoUrl: "joining-photo",
+      },
+      [waitingUid]: {
+        displayName: "Waiting Student",
+        photoUrl: "waiting-photo",
+      },
+    });
+    assert.deepEqual(sessionData.requesterInfo, {
+      displayName: "Joining Student",
+      photoUrl: "joining-photo",
+    });
+    assert.deepEqual(sessionData.responderInfo, {
+      displayName: "Waiting Student",
+      photoUrl: "waiting-photo",
+    });
+    assert.deepEqual(sessionData.studentInfo, {
+      name: "Joining Student",
+      photo: "joining-photo",
+    });
+    assert.deepEqual(sessionData.tutorInfo, {
+      name: "Waiting Student",
+      photo: "waiting-photo",
+    });
     assert.deepEqual(sessionData.searchRequestIds, {
       requester: joiningResponse.requestId,
       responder: waitingResponse.requestId,
     });
+    assert.equal(sessionData.matchLock.owner, joiningResponse.pairAttemptId);
+    assert.equal(typeof sessionData.matchLock.expiresAt.toMillis, "function");
+    assert.deepEqual(
+      sessionData.matchLock.participantIds.slice().sort(),
+      [joiningUid, waitingUid].sort(),
+    );
     assert.equal(sessionData.matchContext.requesterId, joiningUid);
+    assert.equal(sessionData.matchContext.requesterRole, "student");
     assert.equal(sessionData.matchContext.selectedResponderId, waitingUid);
+    assert.equal(sessionData.matchContext.selectedResponderRole, "student");
+    assert.equal(
+      sessionData.matchContext.selectedResponderSource,
+      "active_student_queue",
+    );
     assert.equal(
       sessionData.matchContext.selectedResponderSearchRequestId,
       waitingResponse.requestId,
+    );
+    assert.deepEqual(
+      sessionData.matchContext.candidateIds,
+      [waitingUid],
     );
     assert.deepEqual(sessionData.availableTutors, [waitingUid]);
     assert.deepEqual(sessionData.triedTutors, [waitingUid]);
@@ -4376,6 +4423,8 @@ if (!hasFirestoreEmulator) {
     assert.equal(waitingRequest.matchedResponderId, waitingUid);
     assert.equal(waitingRequest.matchedRole, "student");
     assert.equal(waitingRequest.pairAttemptId, joiningResponse.pairAttemptId);
+    assert.equal(waitingRequest.lockOwner, joiningResponse.pairAttemptId);
+    assert.equal(typeof waitingRequest.lockExpiresAt.toMillis, "function");
     assert.equal(joiningRequest.status, "matched");
     assert.equal(joiningRequest.currentSessionId, joiningResponse.sessionId);
     assert.equal(joiningRequest.matchedSessionId, joiningResponse.sessionId);
@@ -4383,8 +4432,12 @@ if (!hasFirestoreEmulator) {
     assert.equal(joiningRequest.matchedResponderId, waitingUid);
     assert.equal(joiningRequest.matchedRole, "student");
     assert.equal(joiningRequest.pairAttemptId, joiningResponse.pairAttemptId);
+    assert.equal(joiningRequest.lockOwner, joiningResponse.pairAttemptId);
+    assert.equal(typeof joiningRequest.lockExpiresAt.toMillis, "function");
     assert.equal(waitingUser.currentSessionId, joiningResponse.sessionId);
+    assert.equal(waitingUser.isInCall, false);
     assert.equal(joiningUser.currentSessionId, joiningResponse.sessionId);
+    assert.equal(joiningUser.isInCall, false);
     assert.equal(waitingNotifications.empty, true);
   });
 
@@ -4425,6 +4478,24 @@ if (!hasFirestoreEmulator) {
         assert.equal(responderId, waitingUid);
         assert.equal(callData.callerId, joiningUid);
         assert.equal(callData.callerName, "Joining Student");
+        assert.equal(callData.callerPhoto, "joining-photo");
+        assert.equal(callData.language, "en");
+        assert.equal(callData.scenario, "student_student");
+        assert.equal(callData.recipientId, waitingUid);
+        assert.equal(callData.requesterId, joiningUid);
+        assert.equal(callData.responderId, waitingUid);
+        assert.equal(callData.requesterRole, "student");
+        assert.equal(callData.responderRole, "student");
+        assert.equal(callData.navRole, "student");
+        assert.equal(callData.acceptMode, "responder_accepts");
+        assert.equal(callData.searchRequestId, waitingResponse.requestId);
+        assert.ok(callData.callKitId);
+        assert.ok(callData.notificationId);
+        assert.ok(callData.expiresAt);
+        assert.equal(callData.roomUrl, "");
+        assert.equal(typeof callData.roomName, "string");
+        assert.equal(callData.tokenStrategy, "accept_call");
+        assert.equal(Object.hasOwn(callData, "meetingToken"), false);
         return {sent: true, channel: "test_voip"};
       },
     });
@@ -4443,8 +4514,44 @@ if (!hasFirestoreEmulator) {
     assert.equal(matchingNotifications[0].data.type, "incoming_call");
     assert.equal(matchingNotifications[0].data.status, "sent");
     assert.equal(matchingNotifications[0].data.recipientId, waitingUid);
+    assert.equal(matchingNotifications[0].data.scenario, "student_student");
+    assert.equal(matchingNotifications[0].data.requesterId, joiningUid);
+    assert.equal(matchingNotifications[0].data.responderId, waitingUid);
+    assert.equal(matchingNotifications[0].data.requesterRole, "student");
+    assert.equal(matchingNotifications[0].data.responderRole, "student");
+    assert.equal(matchingNotifications[0].data.navRole, "student");
+    assert.equal(matchingNotifications[0].data.acceptMode, "responder_accepts");
+    assert.equal(
+      matchingNotifications[0].data.searchRequestId,
+      waitingResponse.requestId,
+    );
+    assert.equal(
+      matchingNotifications[0].data.callKitId,
+      pushedCallData.callKitId,
+    );
+    assert.equal(
+      matchingNotifications[0].data.notificationId,
+      matchingNotifications[0].id,
+    );
+    assert.equal(
+      matchingNotifications[0].data.tokenStrategy,
+      "accept_call",
+    );
+    assert.equal(
+      matchingNotifications[0].data.payloadExpiresAt,
+      pushedCallData.expiresAt,
+    );
+    assert.equal(
+      typeof matchingNotifications[0].data.expiresAt.toMillis,
+      "function",
+    );
+    assert.equal(
+      matchingNotifications[0].data.roomName,
+      pushedCallData.roomName,
+    );
     assert.equal(pushSendCount, 1);
     assert.equal(pushedCallData.sessionId, joiningResponse.sessionId);
+    assert.equal(pushedCallData.notificationId, matchingNotifications[0].id);
     assert.equal(matchingNotifications[0].data.pushChannel, "test_voip");
     assert.ok(matchingNotifications[0].data.pushSentAt);
     assert.equal(
