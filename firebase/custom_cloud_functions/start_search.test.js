@@ -4650,8 +4650,16 @@ if (!hasFirestoreEmulator) {
     await deleteDoc(searchRequestRef(studentUid));
     await deleteDoc(searchRequestRef(teacherUid));
     await deleteDoc(db.collection("userPrivateTokens").doc(teacherUid));
-    await seedStudent(studentUid, {profileCity: {key: cityKey}});
-    await seedTeacher(teacherUid, {profileCity: {key: cityKey}});
+    await seedStudent(studentUid, {
+      display_name: "Student",
+      photo_url: "student-photo",
+      profileCity: {key: cityKey},
+    });
+    await seedTeacher(teacherUid, {
+      display_name: "Teacher",
+      photo_url: "teacher-photo",
+      profileCity: {key: cityKey},
+    });
     await db.collection("userPrivateTokens").doc(teacherUid).set({
       voipPushToken: `push-${teacherUid}`,
     });
@@ -4666,15 +4674,37 @@ if (!hasFirestoreEmulator) {
         teacherPushCallData = callData;
         assert.equal(responderId, teacherUid);
         assert.equal(callData.callerId, studentUid);
+        assert.equal(callData.callerName, "Student");
+        assert.equal(callData.callerPhoto, "student-photo");
+        assert.equal(callData.language, "en");
+        assert.equal(callData.scenario, "student_teacher");
+        assert.equal(callData.recipientId, teacherUid);
+        assert.equal(callData.requesterId, studentUid);
+        assert.equal(callData.responderId, teacherUid);
+        assert.equal(callData.requesterRole, "student");
+        assert.equal(callData.responderRole, "native_speaker");
+        assert.equal(callData.navRole, "tutor");
+        assert.equal(callData.acceptMode, "responder_accepts");
+        assert.equal(callData.searchRequestId, "");
+        assert.ok(callData.callKitId);
+        assert.ok(callData.notificationId);
+        assert.ok(callData.expiresAt);
+        assert.equal(callData.roomUrl, "");
+        assert.equal(typeof callData.roomName, "string");
+        assert.equal(callData.tokenStrategy, "accept_call");
+        assert.equal(Object.hasOwn(callData, "meetingToken"), false);
         return {sent: true, channel: "test"};
       },
     });
     const requestData = (await searchRequestRef(studentUid).get()).data();
+    const teacherSearchSnapshot = await searchRequestRef(teacherUid).get();
     const sessionSnapshot = await db
       .collection("videoSessions")
       .doc(response.sessionId)
       .get();
     const sessionData = sessionSnapshot.data();
+    const studentUser = (await userRef(studentUid).get()).data();
+    const teacherUser = (await userRef(teacherUid).get()).data();
     const notificationQuery = await db
       .collection("notifications")
       .where("recipientId", "==", teacherUid)
@@ -4682,6 +4712,10 @@ if (!hasFirestoreEmulator) {
     const matchingNotifications = notificationQuery.docs
       .map((doc) => ({id: doc.id, data: doc.data()}))
       .filter((item) => item.data.sessionId === response.sessionId);
+    const studentNotificationQuery = await db
+      .collection("notifications")
+      .where("recipientId", "==", studentUid)
+      .get();
 
     assert.equal(response.status, "matched");
     assert.equal(response.matchedUserId, teacherUid);
@@ -4689,29 +4723,168 @@ if (!hasFirestoreEmulator) {
     assert.equal(response.scenario, "student_teacher");
     assert.equal(typeof response.sessionId, "string");
     assert.equal(typeof response.pairAttemptId, "string");
+    assert.ok(response.requestId);
+    assert.equal(typeof response.requestId, "string");
+    assert.equal(requestData.requestId, response.requestId);
     assert.equal(requestData.status, "matched");
     assert.equal(requestData.currentSessionId, response.sessionId);
+    assert.equal(requestData.matchedSessionId, response.sessionId);
     assert.equal(requestData.matchedUserId, teacherUid);
     assert.equal(requestData.matchedResponderId, teacherUid);
     assert.equal(requestData.matchedRole, "native_speaker");
+    assert.equal(requestData.pairAttemptId, response.pairAttemptId);
+    assert.equal(requestData.lockOwner, response.pairAttemptId);
+    assert.equal(typeof requestData.lockExpiresAt.toMillis, "function");
+    assert.equal(teacherSearchSnapshot.exists, false);
     assert.equal(sessionSnapshot.exists, true);
     assert.equal(sessionData.status, "pending_confirmation");
+    assert.equal(sessionData.pairStatus, "pending_confirmation");
     assert.equal(sessionData.scenario, "student_teacher");
+    assert.equal(sessionData.requesterId, studentUid);
+    assert.equal(sessionData.requesterRole, "student");
+    assert.equal(sessionData.studentId, studentUid);
+    assert.equal(sessionData.responderId, teacherUid);
+    assert.equal(sessionData.responderRole, "native_speaker");
     assert.equal(sessionData.currentResponderId, teacherUid);
     assert.equal(sessionData.currentTutorId, teacherUid);
     assert.equal(sessionData.currentResponderRole, "native_speaker");
     assert.equal(sessionData.tutorId, teacherUid);
+    assert.equal(typeof sessionData.responseExpiresAt.toMillis, "function");
+    assert.equal(typeof sessionData.confirmationExpiresAt.toMillis, "function");
+    assert.deepEqual(
+      sessionData.participantIds.slice().sort(),
+      [studentUid, teacherUid].sort(),
+    );
+    assert.deepEqual(sessionData.participantRoles, {
+      [studentUid]: "student",
+      [teacherUid]: "native_speaker",
+    });
+    assert.deepEqual(sessionData.participantInfos, {
+      [studentUid]: {
+        displayName: "Student",
+        photoUrl: "student-photo",
+      },
+      [teacherUid]: {
+        displayName: "Teacher",
+        photoUrl: "teacher-photo",
+      },
+    });
+    assert.deepEqual(sessionData.requesterInfo, {
+      displayName: "Student",
+      photoUrl: "student-photo",
+    });
+    assert.deepEqual(sessionData.responderInfo, {
+      displayName: "Teacher",
+      photoUrl: "teacher-photo",
+    });
+    assert.deepEqual(sessionData.studentInfo, {
+      name: "Student",
+      photo: "student-photo",
+    });
+    assert.deepEqual(sessionData.tutorInfo, {
+      name: "Teacher",
+      photo: "teacher-photo",
+    });
+    assert.deepEqual(sessionData.searchRequestIds, {
+      requester: response.requestId,
+      responder: null,
+    });
+    assert.deepEqual(sessionData.availableTutors, [teacherUid]);
+    assert.deepEqual(sessionData.triedTutors, [teacherUid]);
+    assert.equal(sessionData.matchLock.owner, response.pairAttemptId);
+    assert.equal(typeof sessionData.matchLock.expiresAt.toMillis, "function");
+    assert.deepEqual(
+      sessionData.matchLock.participantIds.slice().sort(),
+      [studentUid, teacherUid].sort(),
+    );
+    assert.equal(sessionData.matchContext.requesterId, studentUid);
+    assert.equal(sessionData.matchContext.requesterRole, "student");
+    assert.equal(sessionData.matchContext.selectedResponderId, teacherUid);
+    assert.equal(
+      sessionData.matchContext.selectedResponderRole,
+      "native_speaker",
+    );
+    assert.equal(
+      sessionData.matchContext.selectedResponderSource,
+      "teacher_availability",
+    );
+    assert.equal(
+      sessionData.matchContext.selectedResponderSearchRequestId,
+      null,
+    );
+    assert.deepEqual(
+      sessionData.matchContext.candidateIds,
+      [teacherUid],
+    );
     assert.equal(matchingNotifications.length, 1);
     assert.equal(matchingNotifications[0].data.type, "incoming_call");
     assert.equal(matchingNotifications[0].data.status, "sent");
     assert.equal(matchingNotifications[0].data.recipientId, teacherUid);
+    assert.equal(matchingNotifications[0].data.scenario, "student_teacher");
+    assert.equal(matchingNotifications[0].data.requesterId, studentUid);
+    assert.equal(matchingNotifications[0].data.responderId, teacherUid);
+    assert.equal(matchingNotifications[0].data.requesterRole, "student");
+    assert.equal(
+      matchingNotifications[0].data.responderRole,
+      "native_speaker",
+    );
+    assert.equal(matchingNotifications[0].data.navRole, "tutor");
+    assert.equal(matchingNotifications[0].data.acceptMode, "responder_accepts");
+    assert.equal(matchingNotifications[0].data.searchRequestId, "");
+    assert.equal(
+      matchingNotifications[0].data.callKitId,
+      buildCallKitIdForSession(response.sessionId),
+    );
+    assert.equal(
+      matchingNotifications[0].data.callKitId,
+      teacherPushCallData.callKitId,
+    );
+    assert.equal(
+      matchingNotifications[0].data.notificationId,
+      matchingNotifications[0].id,
+    );
+    assert.equal(
+      matchingNotifications[0].data.tokenStrategy,
+      "accept_call",
+    );
+    assert.equal(
+      matchingNotifications[0].data.payloadExpiresAt,
+      teacherPushCallData.expiresAt,
+    );
+    assert.equal(
+      typeof matchingNotifications[0].data.expiresAt.toMillis,
+      "function",
+    );
+    assert.equal(
+      matchingNotifications[0].data.roomName,
+      teacherPushCallData.roomName,
+    );
     assert.equal(teacherPushSendCount, 1);
     assert.equal(teacherPushCallData.sessionId, response.sessionId);
+    assert.equal(teacherPushCallData.notificationId, matchingNotifications[0].id);
     assert.equal(matchingNotifications[0].data.pushChannel, "test");
+    assert.equal(
+      typeof matchingNotifications[0].data.pushSentAt.toMillis,
+      "function",
+    );
     assert.equal(
       matchingNotifications[0].data.studentInfo.name,
       "Student",
     );
+    assert.equal(
+      matchingNotifications[0].data.studentInfo.photo,
+      "student-photo",
+    );
+    assert.equal(matchingNotifications[0].data.roomUrl, "");
+    assert.equal(
+      Object.hasOwn(matchingNotifications[0].data, "meetingToken"),
+      false,
+    );
+    assert.equal(studentNotificationQuery.empty, true);
+    assert.equal(studentUser.currentSessionId, response.sessionId);
+    assert.equal(studentUser.isInCall, false);
+    assert.equal(teacherUser.currentSessionId, response.sessionId);
+    assert.equal(teacherUser.isInCall, false);
   });
 
   test("startSearch callable uses one role-neutral candidate pool", async () => {
