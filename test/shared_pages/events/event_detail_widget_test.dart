@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -215,7 +216,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
+    expect(find.byType(SvgPicture), findsOneWidget);
 
     await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
     await tester.pumpAndSettle();
@@ -468,7 +469,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Покинуть'), findsOneWidget);
-    expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
+    expect(find.byType(SvgPicture), findsOneWidget);
 
     await tester.tap(find.byKey(eventDetailChatCtaKey));
     await tester.pumpAndSettle();
@@ -675,7 +676,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Мест нет'), findsOneWidget);
-    expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
+    expect(find.byType(SvgPicture), findsOneWidget);
 
     await tester.tap(find.byKey(eventDetailChatCtaKey));
     await tester.pumpAndSettle();
@@ -803,7 +804,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(eventDetailCanceledBannerKey), findsOneWidget);
-    expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
+    expect(find.byType(SvgPicture), findsOneWidget);
 
     await tester.tap(find.byKey(eventDetailChatCtaKey));
     await tester.pumpAndSettle();
@@ -1419,7 +1420,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(eventDetailOrganizerAvatarKey),
-        matching: find.text('АИ'),
+        matching: find.text('А'),
       ),
       findsOneWidget,
     );
@@ -1465,7 +1466,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(eventDetailOrganizerAvatarKey),
-        matching: find.text('MA'),
+        matching: find.text('M'),
       ),
       findsOneWidget,
     );
@@ -1882,11 +1883,11 @@ void main() {
     expect(find.byKey(eventDetailParticipantTileKey(2)), findsOneWidget);
     expect(find.text('Marco Rossi'), findsOneWidget);
     expect(find.text('Лиза'), findsOneWidget);
-    expect(find.text('Участник'), findsOneWidget);
+    expect(find.text('Участник'), findsNothing);
     expect(
       find.descendant(
         of: find.byKey(eventDetailParticipantTileKey(0)),
-        matching: find.text('MR'),
+        matching: find.text('M'),
       ),
       findsOneWidget,
     );
@@ -1899,7 +1900,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.bySemanticsLabel(RegExp('Участник: Участник')),
+      find.bySemanticsLabel(RegExp(r'^Участник$')),
       findsOneWidget,
     );
     semanticsHandle.dispose();
@@ -1985,7 +1986,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(eventDetailParticipantTileKey(0)),
-        matching: find.text('AL'),
+        matching: find.text('A'),
       ),
       findsOneWidget,
     );

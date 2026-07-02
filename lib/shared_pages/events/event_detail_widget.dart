@@ -110,10 +110,12 @@ ValueKey<String> eventDetailParticipantTileKey(int index) =>
 
 class EventDetailParticipantViewModel {
   const EventDetailParticipantViewModel({
+    this.userId = '',
     required this.displayName,
     this.photoUrl,
   });
 
+  final String userId;
   final String displayName;
   final String? photoUrl;
 }
@@ -1214,7 +1216,9 @@ class _EventDetailParticipantsSection extends StatelessWidget {
               ),
               if (occupancyLabel != null) ...[
                 const SizedBox(width: ExpatlioDesign.space12),
-                _EventDetailOccupancyLabel(label: occupancyLabel),
+                Flexible(
+                  child: _EventDetailOccupancyLabel(label: occupancyLabel),
+                ),
               ],
             ],
           ),
@@ -1310,19 +1314,14 @@ class _EventDetailParticipantTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fallbackName = FFLocalizations.of(context).getVariableText(
-      ruText: 'Участник',
-      enText: 'Participant',
-    );
-    final displayName = participant.displayName.trim().isEmpty
-        ? fallbackName
-        : participant.displayName.trim();
+    final displayName = participant.displayName.trim();
     final semanticsLabel = FFLocalizations.of(context).getVariableText(
-      ruText: 'Участник: $displayName',
-      enText: 'Participant: $displayName',
+      ruText: displayName.isEmpty ? 'Участник' : 'Участник: $displayName',
+      enText: displayName.isEmpty ? 'Participant' : 'Participant: $displayName',
     );
 
     return Semantics(
+      container: true,
       label: semanticsLabel,
       child: ExcludeSemantics(
         child: SizedBox(
@@ -1334,19 +1333,21 @@ class _EventDetailParticipantTile extends StatelessWidget {
                 participant: participant,
                 displayName: displayName,
               ),
-              const SizedBox(height: ExpatlioDesign.space8),
-              Text(
-                displayName,
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: ExpatlioDesign.textStyle(
-                  context,
-                  color: _eventDetailMutedText,
-                  size: 13,
-                  weight: FontWeight.w500,
+              if (displayName.isNotEmpty) ...[
+                const SizedBox(height: ExpatlioDesign.space8),
+                Text(
+                  displayName,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: ExpatlioDesign.textStyle(
+                    context,
+                    color: _eventDetailMutedText,
+                    size: 13,
+                    weight: FontWeight.w500,
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
@@ -1410,10 +1411,6 @@ class _EventDetailOccupiedParticipantTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = FFLocalizations.of(context).getVariableText(
-      ruText: 'Участник',
-      enText: 'Participant',
-    );
     final semanticsLabel = FFLocalizations.of(context).getVariableText(
       ruText: 'Участник',
       enText: 'Participant',
@@ -1428,19 +1425,6 @@ class _EventDetailOccupiedParticipantTile extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               const _EventDetailOccupiedSlotAvatar(),
-              const SizedBox(height: ExpatlioDesign.space8),
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: ExpatlioDesign.textStyle(
-                  context,
-                  color: _eventDetailMutedText,
-                  size: 12,
-                  weight: FontWeight.w500,
-                ),
-              ),
             ],
           ),
         ),
@@ -1576,6 +1560,16 @@ class _EventDetailParticipantAvatar extends StatelessWidget {
   }
 
   Widget _fallback(BuildContext context) {
+    if (displayName.trim().isEmpty) {
+      return const ColoredBox(
+        color: ExpatlioDesign.avatarFallbackBackground,
+        child: Icon(
+          Icons.person_outline,
+          color: ExpatlioDesign.avatarFallbackText,
+          size: 18,
+        ),
+      );
+    }
     return Container(
       padding: const EdgeInsets.all(ExpatlioDesign.space12),
       color: ExpatlioDesign.avatarFallbackBackground,

@@ -5,6 +5,7 @@ import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:small_talk/auth/firebase_auth/auth_util.dart';
@@ -909,7 +910,7 @@ void main() {
     expect(find.byKey(eventListEmptyStateKey), findsOneWidget);
     expect(find.byKey(eventListLoadingStateKey), findsNothing);
     expect(find.byKey(eventListCardShellKey), findsNothing);
-    expect(find.text('Пока нет событий'), findsOneWidget);
+    expect(find.text('Здесь пока пусто'), findsOneWidget);
     expect(
         find.text('Выберите другой день, уровень или город.'), findsOneWidget);
 
@@ -918,7 +919,7 @@ void main() {
     );
     expect(
       emptySemantics.properties.label,
-      'Пока нет событий. Выберите другой день, уровень или город.',
+      'Выберите другой день, уровень или город.',
     );
     expect(emptySemantics.properties.liveRegion, isTrue);
     expect(emptySemantics.container, isTrue);
@@ -1015,7 +1016,7 @@ void main() {
     expect(find.byKey(eventListCardOrganizerNameKey), findsOneWidget);
     expect(find.text('Организатор'), findsOneWidget);
     expect(find.text('Анастасия Иванова'), findsOneWidget);
-    expect(find.text('АИ'), findsOneWidget);
+    expect(find.text('А'), findsOneWidget);
   });
 
   testWidgets('organizer avatar handles broken photo url with fallback',
@@ -1047,7 +1048,7 @@ void main() {
 
     expect(find.byKey(eventListCardOrganizerAvatarKey), findsOneWidget);
     expect(find.text('Alex'), findsOneWidget);
-    expect(find.text('AL'), findsOneWidget);
+    expect(find.text('A'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -1355,9 +1356,9 @@ void main() {
     expect(_participantAvatarFinder(5), findsOneWidget);
     expect(find.byKey(eventListParticipantOverflowKey), findsOneWidget);
     expect(find.byIcon(Icons.person_outline), findsOneWidget);
-    expect(find.text('MR'), findsOneWidget);
-    expect(find.text('ЛИ'), findsOneWidget);
-    expect(find.text('KE'), findsOneWidget);
+    expect(find.text('M'), findsOneWidget);
+    expect(find.text('Л'), findsOneWidget);
+    expect(find.text('K'), findsOneWidget);
     expect(find.text('+3'), findsOneWidget);
   });
 
@@ -1395,7 +1396,7 @@ void main() {
 
     expect(find.byKey(eventListParticipantAvatarStackKey), findsOneWidget);
     expect(_participantAvatarFinder(0), findsOneWidget);
-    expect(find.text('BP'), findsOneWidget);
+    expect(find.text('B'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -1603,13 +1604,126 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(eventListParticipantAvatarStackKey),
-        matching: find.text('АИ'),
+        matching: find.text('А'),
       ),
       findsOneWidget,
     );
     expect(find.text('+4'), findsOneWidget);
     expect(find.text('+1'), findsNothing);
     expect(find.text('1/10 мест'), findsOneWidget);
+  });
+
+  testWidgets('loaded event uses active participants preview from records',
+      (tester) async {
+    currentUserDocument = _userFixture(
+      uid: 'participant-preview-user',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+    final nowUtc = DateTime.utc(2035, 6, 14, 9);
+    var previewLookups = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          nowUtcProvider: () => nowUtc,
+          eventPageLoader: (
+            collection,
+            recordBuilder, {
+            queryBuilder,
+            nextPageMarker,
+            required pageSize,
+            required isStream,
+          }) async {
+            return FFFirestorePage<EventsRecord>(
+              [
+                _eventsRecordFixture(
+                  'participant-preview-event',
+                  title: 'Participant preview event',
+                  startsAt: DateTime.utc(2035, 6, 14, 15),
+                ),
+              ],
+              null,
+              null,
+            );
+          },
+          activeParticipantsLoader: (eventRef) async {
+            previewLookups += 1;
+            return [
+              EventParticipantsRecord.getDocumentFromData(
+                createEventParticipantsRecordData(
+                  userId: 'organizer-user',
+                  displayName: 'Анастасия Иванова',
+                  role: 'organizer',
+                  status: eventStatusActive,
+                  joinedAt: DateTime.utc(2035, 6, 14, 8),
+                ),
+                EventParticipantsRecord.createDoc(
+                  eventRef,
+                  id: 'organizer-user',
+                ),
+              ),
+              EventParticipantsRecord.getDocumentFromData(
+                createEventParticipantsRecordData(
+                  userId: 'student-1',
+                  displayName: 'hjk',
+                  role: 'participant',
+                  status: eventStatusActive,
+                  joinedAt: DateTime.utc(2035, 6, 14, 9),
+                ),
+                EventParticipantsRecord.createDoc(eventRef, id: 'student-1'),
+              ),
+              EventParticipantsRecord.getDocumentFromData(
+                createEventParticipantsRecordData(
+                  userId: 'student-2',
+                  displayName: 'Участник',
+                  role: 'participant',
+                  status: eventStatusActive,
+                  joinedAt: DateTime.utc(2035, 6, 14, 10),
+                ),
+                EventParticipantsRecord.createDoc(eventRef, id: 'student-2'),
+              ),
+            ];
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(previewLookups, 1);
+    expect(find.byKey(eventListParticipantAvatarStackKey), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(eventListParticipantAvatarStackKey),
+        matching: find.text('А'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(eventListParticipantAvatarStackKey),
+        matching: find.text('H'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: _participantAvatarFinder(2),
+        matching: find.byIcon(Icons.person_outline),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('У'), findsNothing);
+    expect(find.text('+4'), findsOneWidget);
+    expect(find.text('1/10 мест'), findsNothing);
   });
 
   testWidgets(
@@ -1657,6 +1771,8 @@ void main() {
                 null,
               );
             },
+            activeParticipantsLoader: (_) async =>
+                const <EventParticipantsRecord>[],
             currentUserParticipantLoader: (eventRef, userId) async {
               participantLookups += 1;
               capturedEventRef = eventRef;
@@ -1730,6 +1846,8 @@ void main() {
                   null,
                 );
               },
+              activeParticipantsLoader: (_) async =>
+                  const <EventParticipantsRecord>[],
               currentUserParticipantLoader: (eventRef, userId) async {
                 participantLookups += 1;
                 if (participantLookups == 1) {
@@ -1975,7 +2093,7 @@ void main() {
 
     expect(find.byKey(eventListCardChatCtaKey), findsOneWidget);
     expect(find.text('Чат'), findsOneWidget);
-    expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
+    expect(find.byType(SvgPicture), findsOneWidget);
     final semantics = tester.getSemantics(find.byKey(eventListCardChatCtaKey));
     expect(semantics.flagsCollection.isButton, isTrue);
     expect(semantics.flagsCollection.isEnabled, isTrue);
@@ -2008,7 +2126,7 @@ void main() {
 
     expect(find.byKey(eventListCardChatCtaKey), findsOneWidget);
     expect(find.text('Чат'), findsOneWidget);
-    expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
+    expect(find.byType(SvgPicture), findsOneWidget);
     final semantics = tester.getSemantics(find.byKey(eventListCardChatCtaKey));
     expect(semantics.flagsCollection.isButton, isTrue);
     expect(semantics.flagsCollection.isEnabled, isFalse);

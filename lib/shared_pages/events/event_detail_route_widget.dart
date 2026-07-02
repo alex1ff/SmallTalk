@@ -571,10 +571,13 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
               ),
               builder: (context, participantsSnapshot) {
                 final participantViewModels =
-                    _eventDetailParticipantViewModelsForRoute(
-                  event: event,
-                  participants: participantsSnapshot.data ??
-                      const <EventParticipantsRecord>[],
+                    _eventDetailParticipantViewModelsWithLocalJoin(
+                  participants: _eventDetailParticipantViewModelsForRoute(
+                    event: event,
+                    participants: participantsSnapshot.data ??
+                        const <EventParticipantsRecord>[],
+                  ),
+                  isLocallyJoined: isLocallyJoined,
                 );
 
                 return EventDetailWidget(
@@ -1017,8 +1020,10 @@ List<EventDetailParticipantViewModel>
   final participantViewModels = participants.map((participant) {
     final isOrganizer =
         organizerId.isNotEmpty && participant.userId.trim() == organizerId;
-    final displayName = participant.displayName.trim().isNotEmpty
-        ? participant.displayName.trim()
+    final participantDisplayName =
+        _eventDetailVisibleParticipantDisplayName(participant.displayName);
+    final displayName = participantDisplayName.isNotEmpty
+        ? participantDisplayName
         : isOrganizer
             ? organizerDisplayName
             : '';
@@ -1029,6 +1034,7 @@ List<EventDetailParticipantViewModel>
             : '';
 
     return EventDetailParticipantViewModel(
+      userId: participant.userId.trim(),
       displayName: displayName,
       photoUrl: photoUrl.isEmpty ? null : photoUrl,
     );
@@ -1040,11 +1046,47 @@ List<EventDetailParticipantViewModel>
 
   return [
     EventDetailParticipantViewModel(
+      userId: organizerId,
       displayName: organizerDisplayName,
       photoUrl: organizerPhotoUrl.isEmpty ? null : organizerPhotoUrl,
     ),
     ...participantViewModels,
   ];
+}
+
+List<EventDetailParticipantViewModel>
+    _eventDetailParticipantViewModelsWithLocalJoin({
+  required List<EventDetailParticipantViewModel> participants,
+  required bool isLocallyJoined,
+}) {
+  if (!isLocallyJoined) {
+    return participants;
+  }
+  final userId = currentUserUid.trim();
+  if (userId.isEmpty ||
+      participants.any((participant) => participant.userId.trim() == userId)) {
+    return participants;
+  }
+  final displayName =
+      _eventDetailVisibleParticipantDisplayName(currentUserDisplayName);
+  final photoUrl = currentUserPhoto.trim();
+  return [
+    ...participants,
+    EventDetailParticipantViewModel(
+      userId: userId,
+      displayName: displayName,
+      photoUrl: photoUrl.isEmpty ? null : photoUrl,
+    ),
+  ];
+}
+
+String _eventDetailVisibleParticipantDisplayName(String displayName) {
+  final normalized = displayName.trim();
+  final lower = normalized.toLowerCase();
+  if (lower == 'участник' || lower == 'participant') {
+    return '';
+  }
+  return normalized;
 }
 
 class _EventDetailRouteStateScaffold extends StatelessWidget {

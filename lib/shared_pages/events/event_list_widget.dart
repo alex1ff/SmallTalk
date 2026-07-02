@@ -92,8 +92,13 @@ typedef EventListCurrentUserParticipantLoader = Future<EventParticipantsRecord?>
   DocumentReference eventRef,
   String userId,
 );
+typedef EventListActiveParticipantsLoader
+    = Future<List<EventParticipantsRecord>> Function(
+  DocumentReference eventRef,
+);
 
 const int _eventListPageSize = 20;
+const int _eventListParticipantPreviewLimit = 6;
 const int _eventListCardsCacheMaxEntries = 24;
 const Duration _eventListCardsCacheTtl = Duration(minutes: 5);
 const double _eventListHorizontalPadding = 17.0;
@@ -120,10 +125,12 @@ void debugClearEventListCache() => _eventListCardsCache.clear();
 
 class EventListParticipantViewModel {
   const EventListParticipantViewModel({
+    this.userId = '',
     required this.displayName,
     this.photoUrl,
   });
 
+  final String userId;
   final String displayName;
   final String? photoUrl;
 }
@@ -216,6 +223,7 @@ class EventListWidget extends StatefulWidget {
     this.analyticsTracker,
     this.eventPageLoader,
     this.currentUserParticipantLoader,
+    this.activeParticipantsLoader,
     this.nowUtcProvider,
   });
 
@@ -233,6 +241,7 @@ class EventListWidget extends StatefulWidget {
   final EventsAnalyticsTracker? analyticsTracker;
   final EventListPageLoader? eventPageLoader;
   final EventListCurrentUserParticipantLoader? currentUserParticipantLoader;
+  final EventListActiveParticipantsLoader? activeParticipantsLoader;
   final EventListNowProvider? nowUtcProvider;
 
   @override
@@ -279,6 +288,7 @@ class _EventListWidgetState extends State<EventListWidget> {
     if (oldWidget.eventPageLoader != widget.eventPageLoader ||
         oldWidget.currentUserParticipantLoader !=
             widget.currentUserParticipantLoader ||
+        oldWidget.activeParticipantsLoader != widget.activeParticipantsLoader ||
         oldWidget.nowUtcProvider != widget.nowUtcProvider) {
       _eventListLoadKey = null;
       _eventCardsFuture = null;
@@ -547,6 +557,9 @@ class _EventListWidgetState extends State<EventListWidget> {
       participantLoaderIdentity: widget.currentUserParticipantLoader == null
           ? 0
           : identityHashCode(widget.currentUserParticipantLoader),
+      activeParticipantsLoaderIdentity: widget.activeParticipantsLoader == null
+          ? 0
+          : identityHashCode(widget.activeParticipantsLoader),
     );
     if (_eventListLoadKey != key || _eventCardsFuture == null) {
       _eventListLoadKey = key;
@@ -605,6 +618,8 @@ class _EventListWidgetState extends State<EventListWidget> {
       events: page.data,
       currentUserId: currentUserId,
     );
+    final activeParticipantRecordsByEventId =
+        await _loadActiveParticipantRecordsByEventId(events: page.data);
 
     final cards = page.data
         .map(
@@ -615,6 +630,9 @@ class _EventListWidgetState extends State<EventListWidget> {
             currentUserId: currentUserId,
             currentUserParticipant:
                 participantRecordsByEventId[event.reference.id],
+            activeParticipants:
+                activeParticipantRecordsByEventId[event.reference.id] ??
+                    const <EventParticipantsRecord>[],
           ),
         )
         .whereType<EventListCardViewModel>()
@@ -659,6 +677,42 @@ class _EventListWidgetState extends State<EventListWidget> {
     );
     return Map<String, EventParticipantsRecord>.fromEntries(
       entries.whereType<MapEntry<String, EventParticipantsRecord>>(),
+    );
+  }
+
+  Future<Map<String, List<EventParticipantsRecord>>>
+      _loadActiveParticipantRecordsByEventId({
+    required List<EventsRecord> events,
+  }) async {
+    if (events.isEmpty) {
+      return const <String, List<EventParticipantsRecord>>{};
+    }
+    if (widget.activeParticipantsLoader == null &&
+        widget.eventPageLoader != null) {
+      return const <String, List<EventParticipantsRecord>>{};
+    }
+    final loader = widget.activeParticipantsLoader ??
+        _loadEventListActiveParticipantPreview;
+    final entries = await Future.wait(
+      events.map((event) async {
+        try {
+          final participants = await loader(event.reference);
+          final activeParticipants = participants
+              .where((participant) =>
+                  participant.status.trim() == eventStatusActive &&
+                  participant.parentReference.path == event.reference.path)
+              .toList(growable: false);
+          if (activeParticipants.isEmpty) {
+            return null;
+          }
+          return MapEntry(event.reference.id, activeParticipants);
+        } catch (_) {
+          return null;
+        }
+      }),
+    );
+    return Map<String, List<EventParticipantsRecord>>.fromEntries(
+      entries.whereType<MapEntry<String, List<EventParticipantsRecord>>>(),
     );
   }
 
@@ -975,6 +1029,7 @@ class _EventListLoadKey {
     required this.pageLoaderIdentity,
     required this.currentUserId,
     required this.participantLoaderIdentity,
+    required this.activeParticipantsLoaderIdentity,
   });
 
   final String countryCode;
@@ -987,6 +1042,7 @@ class _EventListLoadKey {
   final int pageLoaderIdentity;
   final String currentUserId;
   final int participantLoaderIdentity;
+  final int activeParticipantsLoaderIdentity;
 
   @override
   bool operator ==(Object other) {
@@ -1000,7 +1056,9 @@ class _EventListLoadKey {
         other.selectedLevel == selectedLevel &&
         other.pageLoaderIdentity == pageLoaderIdentity &&
         other.currentUserId == currentUserId &&
-        other.participantLoaderIdentity == participantLoaderIdentity;
+        other.participantLoaderIdentity == participantLoaderIdentity &&
+        other.activeParticipantsLoaderIdentity ==
+            activeParticipantsLoaderIdentity;
   }
 
   @override
@@ -1015,6 +1073,7 @@ class _EventListLoadKey {
         pageLoaderIdentity,
         currentUserId,
         participantLoaderIdentity,
+        activeParticipantsLoaderIdentity,
       );
 }
 
@@ -1104,12 +1163,26 @@ Future<EventParticipantsRecord?> _loadEventListParticipant(
   return EventParticipantsRecord.fromSnapshot(snapshot);
 }
 
+Future<List<EventParticipantsRecord>> _loadEventListActiveParticipantPreview(
+  DocumentReference eventRef,
+) {
+  return queryEventParticipantsRecordOnce(
+    parent: eventRef,
+    queryBuilder: (participantsQuery) => participantsQuery
+        .where('status', isEqualTo: eventStatusActive)
+        .orderBy('joinedAt'),
+    limit: _eventListParticipantPreviewLimit,
+  );
+}
+
 EventListCardViewModel? _eventListCardFromRecord(
   EventsRecord event, {
   required String fallbackTimeZoneId,
   required DateTime nowUtc,
   required String currentUserId,
   EventParticipantsRecord? currentUserParticipant,
+  List<EventParticipantsRecord> activeParticipants =
+      const <EventParticipantsRecord>[],
 }) {
   final startsAt = event.startsAt;
   if (startsAt == null) {
@@ -1150,7 +1223,10 @@ EventListCardViewModel? _eventListCardFromRecord(
     startsAt: startsAt,
     timeZoneId: timeZoneId,
     locationName: event.locationName,
-    participants: _eventListParticipantsForRecord(event),
+    participants: _eventListParticipantsForRecord(
+      event,
+      activeParticipants: activeParticipants,
+    ),
     participantsCount: participantsCount,
     capacity: capacity,
     joinCtaState: _eventListJoinStateForRecord(
@@ -1187,8 +1263,38 @@ bool _eventListParticipantIsActiveForUser(
 }
 
 List<EventListParticipantViewModel> _eventListParticipantsForRecord(
-  EventsRecord event,
-) {
+  EventsRecord event, {
+  List<EventParticipantsRecord> activeParticipants =
+      const <EventParticipantsRecord>[],
+}) {
+  final participantViewModels = activeParticipants
+      .where((participant) => participant.status.trim() == eventStatusActive)
+      .map((participant) {
+    final isOrganizer = event.organizerId.trim().isNotEmpty &&
+        participant.userId.trim() == event.organizerId.trim();
+    final displayName = _eventListVisibleParticipantDisplayName(
+      participant.displayName,
+    );
+    final resolvedDisplayName = displayName.isNotEmpty
+        ? displayName
+        : isOrganizer
+            ? event.organizerDisplayName.trim()
+            : '';
+    final photoUrl = participant.photoUrl.trim().isNotEmpty
+        ? participant.photoUrl.trim()
+        : isOrganizer && event.hasOrganizerPhotoUrl()
+            ? event.organizerPhotoUrl.trim()
+            : '';
+    return EventListParticipantViewModel(
+      userId: participant.userId.trim(),
+      displayName: resolvedDisplayName,
+      photoUrl: photoUrl.isEmpty ? null : photoUrl,
+    );
+  }).toList(growable: false);
+  if (participantViewModels.isNotEmpty) {
+    return participantViewModels;
+  }
+
   final displayName = event.organizerDisplayName.trim();
   final photoUrl =
       event.hasOrganizerPhotoUrl() ? event.organizerPhotoUrl.trim() : null;
@@ -1201,10 +1307,20 @@ List<EventListParticipantViewModel> _eventListParticipantsForRecord(
   }
   return [
     EventListParticipantViewModel(
+      userId: event.organizerId.trim(),
       displayName: displayName,
       photoUrl: photoUrl,
     ),
   ];
+}
+
+String _eventListVisibleParticipantDisplayName(String displayName) {
+  final normalized = displayName.trim();
+  final lower = normalized.toLowerCase();
+  if (lower == 'участник' || lower == 'participant') {
+    return '';
+  }
+  return normalized;
 }
 
 EventListJoinCtaState _eventListJoinStateForRecord({
@@ -2246,6 +2362,17 @@ class _EventParticipantAvatar extends StatelessWidget {
   }
 
   Widget _fallback(BuildContext context) {
+    if (participant.displayName.trim().isEmpty) {
+      return Container(
+        color: ExpatlioDesign.avatarFallbackBackground,
+        alignment: Alignment.center,
+        child: Icon(
+          Icons.person_outline,
+          color: ExpatlioDesign.avatarFallbackText,
+          size: dimension * 0.62,
+        ),
+      );
+    }
     return Container(
       color: ExpatlioDesign.avatarFallbackBackground,
       alignment: Alignment.center,

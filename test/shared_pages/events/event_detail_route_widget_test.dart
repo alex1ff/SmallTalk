@@ -76,6 +76,7 @@ void main() {
   tearDown(() {
     EventsAnalyticsService.defaultTracker = EventsAnalyticsService.instance;
     currentUser = null;
+    currentUserDocument = null;
   });
 
   testWidgets('organizer confirmation cancels event through callable once',
@@ -871,6 +872,69 @@ void main() {
     } finally {
       semanticsHandle.dispose();
     }
+  });
+
+  testWidgets('successful join appends current user participant preview',
+      (tester) async {
+    currentUser = _TestAuthUser('student-1');
+    currentUserDocument = UsersRecord.getDocumentFromData(
+      {
+        'display_name': 'Марко Росси',
+        'photo_url': 'https://example.test/marco.jpg',
+      },
+      UsersRecord.collection.doc('student-1'),
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(participantsCount: 2),
+            ),
+          ),
+          participantsStream: (eventRef) =>
+              Stream<List<EventParticipantsRecord>>.value([
+            EventParticipantsRecord.getDocumentFromData(
+              _participantData(
+                userId: 'organizer-1',
+                status: 'active',
+                displayName: 'Anastasia Ivanova',
+                joinedAt: DateTime.utc(2099, 6, 18, 12),
+              ),
+              EventParticipantsRecord.createDoc(eventRef, id: 'organizer-1'),
+            ),
+            EventParticipantsRecord.getDocumentFromData(
+              _participantData(
+                userId: 'student-2',
+                status: 'active',
+                displayName: 'hjk',
+                joinedAt: DateTime.utc(2099, 6, 18, 13),
+              ),
+              EventParticipantsRecord.createDoc(eventRef, id: 'student-2'),
+            ),
+          ]),
+          joinEventInvoker: (_, __) async =>
+              _joinEventResponse(participantsCount: 3),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pumpAndSettle();
+
+    expect(find.text('3/10 мест'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(eventDetailParticipantTileKey(2)),
+        matching: find.text('Марко Росси'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Участник'), findsNothing);
   });
 
   testWidgets('join analytics failure does not block successful join',
