@@ -1009,8 +1009,12 @@ List<EventDetailParticipantViewModel>
   final organizerId = event.organizerId.trim();
   final organizerDisplayName = event.organizerDisplayName.trim();
   final organizerPhotoUrl = event.organizerPhotoUrl.trim();
+  final hasOrganizerParticipant = organizerId.isNotEmpty &&
+      participants.any(
+        (participant) => participant.userId.trim() == organizerId,
+      );
 
-  return participants.map((participant) {
+  final participantViewModels = participants.map((participant) {
     final isOrganizer =
         organizerId.isNotEmpty && participant.userId.trim() == organizerId;
     final displayName = participant.displayName.trim().isNotEmpty
@@ -1029,6 +1033,18 @@ List<EventDetailParticipantViewModel>
       photoUrl: photoUrl.isEmpty ? null : photoUrl,
     );
   }).toList(growable: false);
+
+  if (organizerId.isEmpty || hasOrganizerParticipant) {
+    return participantViewModels;
+  }
+
+  return [
+    EventDetailParticipantViewModel(
+      displayName: organizerDisplayName,
+      photoUrl: organizerPhotoUrl.isEmpty ? null : organizerPhotoUrl,
+    ),
+    ...participantViewModels,
+  ];
 }
 
 class _EventDetailRouteStateScaffold extends StatelessWidget {

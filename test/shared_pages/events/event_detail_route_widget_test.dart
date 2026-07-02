@@ -215,10 +215,71 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(eventDetailParticipantTileKey(0)),
-        matching: find.text('AI'),
+        matching: find.text('Anastasia Ivanova'),
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets(
+      'uses event organizer as occupied participant when stream omits it',
+      (tester) async {
+    currentUser = _TestAuthUser('student-1');
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(
+                organizerId: 'organizer-1',
+                participantsCount: 2,
+              ),
+            ),
+          ),
+          participantSnapshotStream: (participantRef) =>
+              Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: participantRef,
+              data: _participantData(
+                userId: 'student-1',
+                status: 'left',
+              ),
+            ),
+          ),
+          participantsStream: (eventRef) =>
+              Stream<List<EventParticipantsRecord>>.value([
+            EventParticipantsRecord.getDocumentFromData(
+              _participantData(
+                userId: 'student-2',
+                status: 'active',
+                displayName: 'Марко Росси',
+              ),
+              EventParticipantsRecord.createDoc(eventRef, id: 'student-2'),
+            ),
+          ]),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byKey(eventDetailParticipantTileKey(0)),
+        matching: find.text('Anastasia Ivanova'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(eventDetailParticipantTileKey(1)),
+        matching: find.text('Марко Росси'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('2/10 мест'), findsOneWidget);
   });
 
   testWidgets('opens organizer private chat before joining', (tester) async {

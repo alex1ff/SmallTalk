@@ -104,6 +104,33 @@ class _TestFirebaseAuthPlatform extends FirebaseAuthPlatform {
   Stream<UserPlatform?> userChanges() => const Stream<UserPlatform?>.empty();
 }
 
+class _TestAuthUser extends BaseAuthUser {
+  _TestAuthUser(this._uid);
+
+  final String _uid;
+
+  @override
+  bool get loggedIn => true;
+
+  @override
+  bool get emailVerified => true;
+
+  @override
+  AuthUserInfo get authUserInfo => AuthUserInfo(uid: _uid);
+
+  @override
+  Future<void> delete() async {}
+
+  @override
+  Future<void> updateEmail(String email) async {}
+
+  @override
+  Future<void> updatePassword(String newPassword) async {}
+
+  @override
+  Future<void> sendEmailVerification() async {}
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -1584,6 +1611,160 @@ void main() {
     expect(find.text('+1'), findsNothing);
     expect(find.text('1/10 мест'), findsOneWidget);
   });
+
+  testWidgets(
+    'marks loaded event as joined when current user is active participant',
+    (tester) async {
+      currentUser = _TestAuthUser('student-joined-user');
+      currentUserDocument = _userFixture(
+        uid: 'student-joined-user',
+        data: {
+          'profileCity': _profileCityFixture(
+            countryCode: 'RU',
+            cityKey: 'moscow',
+            catalogVersion: _catalog.catalogVersion,
+          ).toMap(),
+        },
+      );
+      final nowUtc = DateTime.utc(2035, 6, 14, 9);
+      var participantLookups = 0;
+      DocumentReference? capturedEventRef;
+      String? capturedUserId;
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            nowUtcProvider: () => nowUtc,
+            eventPageLoader: (
+              collection,
+              recordBuilder, {
+              queryBuilder,
+              nextPageMarker,
+              required pageSize,
+              required isStream,
+            }) async {
+              return FFFirestorePage<EventsRecord>(
+                [
+                  _eventsRecordFixture(
+                    'joined-event',
+                    title: 'Joined loaded event',
+                    startsAt: DateTime.utc(2035, 6, 14, 15),
+                  ),
+                ],
+                null,
+                null,
+              );
+            },
+            currentUserParticipantLoader: (eventRef, userId) async {
+              participantLookups += 1;
+              capturedEventRef = eventRef;
+              capturedUserId = userId;
+              return EventParticipantsRecord.getDocumentFromData(
+                createEventParticipantsRecordData(
+                  userId: userId,
+                  displayName: 'Участник',
+                  status: eventStatusActive,
+                  joinedAt: DateTime.utc(2035, 6, 14, 8),
+                ),
+                EventParticipantsRecord.createDoc(eventRef, id: userId),
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(participantLookups, 1);
+      expect(capturedEventRef?.id, 'joined-event');
+      expect(capturedUserId, 'student-joined-user');
+      expect(find.text('Вы участвуете'), findsOneWidget);
+      final chatSemantics =
+          tester.getSemantics(find.byKey(eventListCardChatCtaKey));
+      expect(chatSemantics.flagsCollection.isButton, isTrue);
+      expect(chatSemantics.flagsCollection.isEnabled, isTrue);
+    },
+  );
+
+  testWidgets(
+    'refreshes signed-in participant state when event list is reopened',
+    (tester) async {
+      currentUser = _TestAuthUser('student-cache-user');
+      currentUserDocument = _userFixture(
+        uid: 'student-cache-user',
+        data: {
+          'profileCity': _profileCityFixture(
+            countryCode: 'RU',
+            cityKey: 'moscow',
+            catalogVersion: _catalog.catalogVersion,
+          ).toMap(),
+        },
+      );
+      final nowUtc = DateTime.utc(2035, 6, 14, 9);
+      var participantLookups = 0;
+
+      Widget buildList() => _buildTestApp(
+            home: EventListWidget(
+              cityCatalogOverride: _catalog,
+              languageCatalogOverride: _languageCatalog,
+              nowUtcProvider: () => nowUtc,
+              eventPageLoader: (
+                collection,
+                recordBuilder, {
+                queryBuilder,
+                nextPageMarker,
+                required pageSize,
+                required isStream,
+              }) async {
+                return FFFirestorePage<EventsRecord>(
+                  [
+                    _eventsRecordFixture(
+                      'joined-cache-event',
+                      title: 'Joined cache event',
+                      startsAt: DateTime.utc(2035, 6, 14, 15),
+                    ),
+                  ],
+                  null,
+                  null,
+                );
+              },
+              currentUserParticipantLoader: (eventRef, userId) async {
+                participantLookups += 1;
+                if (participantLookups == 1) {
+                  return null;
+                }
+                return EventParticipantsRecord.getDocumentFromData(
+                  createEventParticipantsRecordData(
+                    userId: userId,
+                    displayName: 'Участник',
+                    status: eventStatusActive,
+                    joinedAt: DateTime.utc(2035, 6, 14, 8),
+                  ),
+                  EventParticipantsRecord.createDoc(eventRef, id: userId),
+                );
+              },
+            ),
+          );
+
+      await tester.pumpWidget(buildList());
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(participantLookups, 1);
+      expect(find.text('Присоединиться'), findsOneWidget);
+
+      await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(buildList());
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(participantLookups, 2);
+      expect(find.text('Вы участвуете'), findsOneWidget);
+    },
+  );
 
   testWidgets('shows zero occupancy without empty avatar stack',
       (tester) async {

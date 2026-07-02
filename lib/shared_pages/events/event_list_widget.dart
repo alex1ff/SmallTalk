@@ -87,6 +87,11 @@ const ValueKey<String> eventListCardOccupancyKey =
     ValueKey<String>('event_list_card_occupancy');
 
 typedef EventListNowProvider = DateTime Function();
+typedef EventListCurrentUserParticipantLoader = Future<EventParticipantsRecord?>
+    Function(
+  DocumentReference eventRef,
+  String userId,
+);
 
 const int _eventListPageSize = 20;
 const int _eventListCardsCacheMaxEntries = 24;
@@ -210,6 +215,7 @@ class EventListWidget extends StatefulWidget {
     this.onRetryEventsPressed,
     this.analyticsTracker,
     this.eventPageLoader,
+    this.currentUserParticipantLoader,
     this.nowUtcProvider,
   });
 
@@ -226,6 +232,7 @@ class EventListWidget extends StatefulWidget {
   final VoidCallback? onRetryEventsPressed;
   final EventsAnalyticsTracker? analyticsTracker;
   final EventListPageLoader? eventPageLoader;
+  final EventListCurrentUserParticipantLoader? currentUserParticipantLoader;
   final EventListNowProvider? nowUtcProvider;
 
   @override
@@ -270,6 +277,8 @@ class _EventListWidgetState extends State<EventListWidget> {
       _cityChipsCatalog = null;
     }
     if (oldWidget.eventPageLoader != widget.eventPageLoader ||
+        oldWidget.currentUserParticipantLoader !=
+            widget.currentUserParticipantLoader ||
         oldWidget.nowUtcProvider != widget.nowUtcProvider) {
       _eventListLoadKey = null;
       _eventCardsFuture = null;
@@ -514,6 +523,7 @@ class _EventListWidgetState extends State<EventListWidget> {
 
     final nowUtc = (widget.nowUtcProvider ?? _eventListNowUtc)();
     final normalizedNowUtc = nowUtc.isUtc ? nowUtc : nowUtc.toUtc();
+    final viewerUserId = currentUserUid.trim();
     final selectedDateFilter = _selectedDateFilter;
     final localDateRange = selectedDateFilter == null
         ? null
@@ -533,13 +543,19 @@ class _EventListWidgetState extends State<EventListWidget> {
       pageLoaderIdentity: widget.eventPageLoader == null
           ? 0
           : identityHashCode(widget.eventPageLoader),
+      currentUserId: viewerUserId,
+      participantLoaderIdentity: widget.currentUserParticipantLoader == null
+          ? 0
+          : identityHashCode(widget.currentUserParticipantLoader),
     );
     if (_eventListLoadKey != key || _eventCardsFuture == null) {
       _eventListLoadKey = key;
-      final cachedCards = _eventListCardsCache.read(
-        key,
-        nowUtc: normalizedNowUtc,
-      );
+      final cachedCards = viewerUserId.isEmpty
+          ? _eventListCardsCache.read(
+              key,
+              nowUtc: normalizedNowUtc,
+            )
+          : null;
       _eventCardsFuture = cachedCards == null
           ? _loadEventCards(
               selected: selected,
@@ -547,6 +563,7 @@ class _EventListWidgetState extends State<EventListWidget> {
               localDateRange: localDateRange,
               nowUtc: normalizedNowUtc,
               selectedLevel: _selectedLevel,
+              currentUserId: viewerUserId,
             )
           : Future.value(cachedCards);
     }
@@ -559,6 +576,7 @@ class _EventListWidgetState extends State<EventListWidget> {
     required EventListLocalDateRange? localDateRange,
     required DateTime nowUtc,
     required String? selectedLevel,
+    required String currentUserId,
   }) async {
     final page = localDateRange == null
         ? await EventListRepository.loadLevelFilteredActiveEventPage(
@@ -582,17 +600,26 @@ class _EventListWidgetState extends State<EventListWidget> {
             pageLoader: widget.eventPageLoader,
           );
 
+    final participantRecordsByEventId =
+        await _loadCurrentUserParticipantRecordsByEventId(
+      events: page.data,
+      currentUserId: currentUserId,
+    );
+
     final cards = page.data
         .map(
           (event) => _eventListCardFromRecord(
             event,
             fallbackTimeZoneId: selected.city.timeZoneId,
             nowUtc: nowUtc,
+            currentUserId: currentUserId,
+            currentUserParticipant:
+                participantRecordsByEventId[event.reference.id],
           ),
         )
         .whereType<EventListCardViewModel>()
         .toList(growable: false);
-    if (cards.isNotEmpty) {
+    if (cards.isNotEmpty && currentUserId.isEmpty) {
       _eventListCardsCache.write(
         key,
         cards,
@@ -600,6 +627,39 @@ class _EventListWidgetState extends State<EventListWidget> {
       );
     }
     return cards;
+  }
+
+  Future<Map<String, EventParticipantsRecord>>
+      _loadCurrentUserParticipantRecordsByEventId({
+    required List<EventsRecord> events,
+    required String currentUserId,
+  }) async {
+    final userId = currentUserId.trim();
+    if (events.isEmpty || userId.isEmpty) {
+      return const <String, EventParticipantsRecord>{};
+    }
+    final loader =
+        widget.currentUserParticipantLoader ?? _loadEventListParticipant;
+    final entries = await Future.wait(
+      events.map((event) async {
+        try {
+          final participant = await loader(event.reference, userId);
+          if (!_eventListParticipantIsActiveForUser(
+            participant,
+            eventReference: event.reference,
+            userId: userId,
+          )) {
+            return null;
+          }
+          return MapEntry(event.reference.id, participant!);
+        } catch (_) {
+          return null;
+        }
+      }),
+    );
+    return Map<String, EventParticipantsRecord>.fromEntries(
+      entries.whereType<MapEntry<String, EventParticipantsRecord>>(),
+    );
   }
 
   Future<void> _openCityDropdown({
@@ -913,6 +973,8 @@ class _EventListLoadKey {
     required this.localExclusiveEndDate,
     required this.selectedLevel,
     required this.pageLoaderIdentity,
+    required this.currentUserId,
+    required this.participantLoaderIdentity,
   });
 
   final String countryCode;
@@ -923,6 +985,8 @@ class _EventListLoadKey {
   final DateTime? localExclusiveEndDate;
   final String? selectedLevel;
   final int pageLoaderIdentity;
+  final String currentUserId;
+  final int participantLoaderIdentity;
 
   @override
   bool operator ==(Object other) {
@@ -934,7 +998,9 @@ class _EventListLoadKey {
         other.localStartDate == localStartDate &&
         other.localExclusiveEndDate == localExclusiveEndDate &&
         other.selectedLevel == selectedLevel &&
-        other.pageLoaderIdentity == pageLoaderIdentity;
+        other.pageLoaderIdentity == pageLoaderIdentity &&
+        other.currentUserId == currentUserId &&
+        other.participantLoaderIdentity == participantLoaderIdentity;
   }
 
   @override
@@ -947,6 +1013,8 @@ class _EventListLoadKey {
         localExclusiveEndDate,
         selectedLevel,
         pageLoaderIdentity,
+        currentUserId,
+        participantLoaderIdentity,
       );
 }
 
@@ -1019,10 +1087,29 @@ class _EventListCardsCacheEntry {
 
 DateTime _eventListNowUtc() => DateTime.now().toUtc();
 
+Future<EventParticipantsRecord?> _loadEventListParticipant(
+  DocumentReference eventRef,
+  String userId,
+) async {
+  final trimmedUserId = userId.trim();
+  if (trimmedUserId.isEmpty) {
+    return null;
+  }
+  final snapshot =
+      await EventParticipantsRecord.createDoc(eventRef, id: trimmedUserId)
+          .get();
+  if (!snapshot.exists) {
+    return null;
+  }
+  return EventParticipantsRecord.fromSnapshot(snapshot);
+}
+
 EventListCardViewModel? _eventListCardFromRecord(
   EventsRecord event, {
   required String fallbackTimeZoneId,
   required DateTime nowUtc,
+  required String currentUserId,
+  EventParticipantsRecord? currentUserParticipant,
 }) {
   final startsAt = event.startsAt;
   if (startsAt == null) {
@@ -1034,8 +1121,15 @@ EventListCardViewModel? _eventListCardFromRecord(
   final participantsCount =
       event.hasParticipantsCount() ? event.participantsCount : null;
   final capacity = event.hasCapacity() ? event.capacity : null;
-  final isOrganizer = currentUserUid.trim().isNotEmpty &&
-      event.organizerId.trim() == currentUserUid.trim();
+  final viewerUserId = currentUserId.trim();
+  final isOrganizer =
+      viewerUserId.isNotEmpty && event.organizerId.trim() == viewerUserId;
+  final isActiveParticipant = _eventListParticipantIsActiveForUser(
+    currentUserParticipant,
+    eventReference: event.reference,
+    userId: viewerUserId,
+  );
+  final isJoined = isOrganizer || isActiveParticipant;
 
   return EventListCardViewModel(
     eventId: event.reference.id,
@@ -1062,14 +1156,34 @@ EventListCardViewModel? _eventListCardFromRecord(
     joinCtaState: _eventListJoinStateForRecord(
       event: event,
       nowUtc: nowUtc,
-      isOrganizer: isOrganizer,
+      isJoined: isJoined,
       participantsCount: participantsCount,
       capacity: capacity,
     ),
-    chatCtaState: isOrganizer
+    chatCtaState: isJoined
         ? EventListChatCtaState.enabled
         : EventListChatCtaState.participantOnly,
   );
+}
+
+bool _eventListParticipantIsActiveForUser(
+  EventParticipantsRecord? participant, {
+  required DocumentReference eventReference,
+  required String userId,
+}) {
+  final trimmedUserId = userId.trim();
+  if (participant == null || trimmedUserId.isEmpty) {
+    return false;
+  }
+  final participantUserId = participant.userId.trim();
+  final belongsToUser = participantUserId.isEmpty
+      ? participant.reference.id == trimmedUserId
+      : participantUserId == trimmedUserId;
+  if (!belongsToUser ||
+      participant.parentReference.path != eventReference.path) {
+    return false;
+  }
+  return participant.status.trim() == eventStatusActive;
 }
 
 List<EventListParticipantViewModel> _eventListParticipantsForRecord(
@@ -1096,14 +1210,14 @@ List<EventListParticipantViewModel> _eventListParticipantsForRecord(
 EventListJoinCtaState _eventListJoinStateForRecord({
   required EventsRecord event,
   required DateTime nowUtc,
-  required bool isOrganizer,
+  required bool isJoined,
   required int? participantsCount,
   required int? capacity,
 }) {
   if (event.status == eventStatusCanceled) {
     return EventListJoinCtaState.canceled;
   }
-  if (isOrganizer) {
+  if (isJoined) {
     return EventListJoinCtaState.joined;
   }
   final startsAt = event.startsAt;
