@@ -329,9 +329,14 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       return;
     }
 
+    final optimisticConversationRef =
+        _eventDetailOrganizerConversationRef(event);
     setState(() {
       _isOpeningOrganizerChat = true;
     });
+    if (optimisticConversationRef != null) {
+      _openChatThreadInBackground(optimisticConversationRef);
+    }
     try {
       final result = await EventActionsRepository.openEventOrganizerChat(
         eventId: event.reference.id,
@@ -343,10 +348,13 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       final conversationRef = FirebaseFirestore.instance.doc(
         result.conversationPath,
       );
-      await (widget.chatThreadOpener ?? openChatThread)(
-        context,
-        conversationRef: conversationRef,
-      );
+      if (optimisticConversationRef == null ||
+          optimisticConversationRef.path != conversationRef.path) {
+        await (widget.chatThreadOpener ?? openChatThread)(
+          context,
+          conversationRef: conversationRef,
+        );
+      }
     } catch (error) {
       if (!mounted) {
         return;
@@ -364,6 +372,35 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         });
       }
     }
+  }
+
+  DocumentReference? _eventDetailOrganizerConversationRef(EventsRecord event) {
+    final requesterId = currentUserUid.trim();
+    final organizerId = event.organizerId.trim();
+    if (requesterId.isEmpty ||
+        organizerId.isEmpty ||
+        requesterId == organizerId) {
+      return null;
+    }
+
+    try {
+      return conversationReferenceForPairId(
+        canonicalConversationPairId(requesterId, organizerId),
+      );
+    } on ArgumentError {
+      return null;
+    }
+  }
+
+  void _openChatThreadInBackground(DocumentReference conversationRef) {
+    try {
+      unawaited(
+        (widget.chatThreadOpener ?? openChatThread)(
+          context,
+          conversationRef: conversationRef,
+        ).catchError((Object error, StackTrace stackTrace) {}),
+      );
+    } catch (_) {}
   }
 
   Future<void> _showReportEventDialog(EventsRecord event) async {
@@ -557,8 +594,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
                 event.organizerId.trim().isNotEmpty &&
                 event.organizerId.trim() != currentUserUid.trim() &&
                 isActive &&
-                !isCanceled &&
-                !_isOpeningOrganizerChat;
+                !isCanceled;
             final canAttemptReport = currentUserUid.trim().isNotEmpty &&
                 isActive &&
                 !isCanceled &&

@@ -340,6 +340,58 @@ void main() {
     expect(openedConversationPath, 'conversations/organizer-1_student-1');
   });
 
+  testWidgets('opens organizer private chat optimistically while callable runs',
+      (tester) async {
+    currentUser = _TestAuthUser('student-1');
+    final openCompleter = Completer<Map<String, dynamic>>();
+    String? openedConversationPath;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(organizerId: 'organizer-1'),
+            ),
+          ),
+          participantSnapshotStream: (participantRef) =>
+              Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: participantRef,
+              data: _participantData(
+                userId: 'student-1',
+                status: 'left',
+              ),
+            ),
+          ),
+          openOrganizerChatInvoker: (_, __) => openCompleter.future,
+          chatThreadOpener: (
+            context, {
+            required conversationRef,
+            initialConversation,
+          }) async {
+            openedConversationPath = conversationRef?.path;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailOrganizerMessageButtonKey));
+    await tester.pump();
+
+    expect(openedConversationPath, 'conversations/organizer-1_student-1');
+    expect(find.byKey(eventDetailOrganizerMessageButtonKey), findsOneWidget);
+
+    openCompleter.complete(<String, dynamic>{
+      'conversationId': 'organizer-1_student-1',
+      'conversationPath': 'conversations/organizer-1_student-1',
+    });
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('non-organizer reports event through callable', (tester) async {
     currentUser = _TestAuthUser('student-1');
     String? functionName;
