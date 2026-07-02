@@ -638,11 +638,21 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
         unawaited(_sendSearchHeartbeat(requestId));
       }
       return;
-    } catch (error) {
+    } catch (error, stackTrace) {
+      if (error is FirebaseException && error.code == 'permission-denied') {
+        debugPrint(
+          'StudentsDashboard: active search recovery denied by Firestore rules '
+          'for $userId: $error',
+        );
+        debugPrintStack(stackTrace: stackTrace);
+        return;
+      }
+
       _scheduleActiveSearchRecoveryRetry(userId);
       debugPrint(
         'StudentsDashboard: failed to recover active search: $error',
       );
+      debugPrintStack(stackTrace: stackTrace);
     } finally {
       _activeSearchRecoveryInFlight = false;
     }
@@ -2243,6 +2253,19 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     });
   }
 
+  void _logStartSearchFailure(Object error, StackTrace stackTrace) {
+    if (error is FirebaseFunctionsException) {
+      debugPrint(
+        'StudentsDashboard: failed to start search '
+        '(${error.code}, details: ${error.details}): '
+        '${error.message ?? error.toString()}',
+      );
+    } else {
+      debugPrint('StudentsDashboard: failed to start search: $error');
+    }
+    debugPrintStack(stackTrace: stackTrace);
+  }
+
   Future<void> _handleStartConversation(
     StudentDashboardSearchState visibleSearchState,
     String? visibleSessionId,
@@ -2359,7 +2382,8 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       if (shouldOpenTeacherWaitingPage && sessionId != null) {
         _scheduleStudentTeacherWaitingPage(sessionId);
       }
-    } on Exception {
+    } on Exception catch (error, stackTrace) {
+      _logStartSearchFailure(error, stackTrace);
       if (mounted) {
         _setSearchError(StudentDashboardSearchErrorReason.searchUnavailable);
       }
