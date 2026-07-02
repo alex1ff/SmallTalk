@@ -294,7 +294,7 @@ void main() {
       ),
     );
     expect(locationField.minLines, 1);
-    expect(locationField.maxLines, 2);
+    expect(locationField.maxLines, 1);
     expect(locationField.keyboardType, TextInputType.streetAddress);
     expect(locationField.textInputAction, TextInputAction.done);
     final capacityField = tester.widget<TextField>(
@@ -1289,7 +1289,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('  Starbucks,\n  ул.   Арбат, 5  '), findsOneWidget);
+    final locationField = tester.widget<TextFormField>(
+      find.byKey(eventCreateLocationFieldKey),
+    );
+    expect(locationField.controller?.text, '  Starbucks,  ул.   Арбат, 5  ');
     expect(
       drafts.map(_locationDraftValue),
       ['', 'Starbucks, ул. Арбат, 5'],
@@ -3036,7 +3039,7 @@ void main() {
       final locationSemantics =
           tester.getSemantics(find.byKey(eventCreateLocationFieldSemanticsKey));
       expect(locationSemantics.flagsCollection.isTextField, isTrue);
-      expect(locationSemantics.flagsCollection.isMultiline, isTrue);
+      expect(locationSemantics.flagsCollection.isMultiline, isFalse);
       expect(locationSemantics.label, contains('Место'));
       expect(
         locationSemantics.hint,
@@ -3115,7 +3118,7 @@ void main() {
       final locationSemantics =
           tester.getSemantics(find.byKey(eventCreateLocationFieldSemanticsKey));
       expect(locationSemantics.flagsCollection.isTextField, isTrue);
-      expect(locationSemantics.flagsCollection.isMultiline, isTrue);
+      expect(locationSemantics.flagsCollection.isMultiline, isFalse);
       expect(locationSemantics.label, contains('Place'));
       expect(
         locationSemantics.hint,

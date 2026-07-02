@@ -547,7 +547,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(eventGroupChatMessageSenderAvatarKey('message-1')),
-        matching: find.text('МР'),
+        matching: find.text('М'),
       ),
       findsOneWidget,
     );
@@ -584,7 +584,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(eventGroupChatMessageSenderAvatarKey('message-1')),
-        matching: find.text('УЧ'),
+        matching: find.text('У'),
       ),
       findsOneWidget,
     );

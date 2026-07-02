@@ -229,6 +229,7 @@ class EventDetailWidget extends StatelessWidget {
         onChatPressed: onChatPressed,
       ),
       body: SafeArea(
+        bottom: false,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [

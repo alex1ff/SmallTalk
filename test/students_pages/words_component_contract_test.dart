@@ -34,4 +34,20 @@ void main() {
       contains('static List<WordReviewsRecord>? _cachedWordReviews'),
     );
   });
+
+  test('words review bar uses a compact count label', () {
+    final pageSource =
+        File('lib/students_pages/words/words_widget.dart').readAsStringSync();
+
+    expect(pageSource, isNot(contains('к повторению')));
+  });
+
+  test('words page separates rows with a simple divider', () {
+    final pageSource =
+        File('lib/students_pages/words/words_widget.dart').readAsStringSync();
+
+    expect(pageSource, contains('separatorBuilder'));
+    expect(pageSource, contains('Divider('));
+    expect(pageSource, contains('ExpatlioDesign.border'));
+  });
 }

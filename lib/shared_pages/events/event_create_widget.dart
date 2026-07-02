@@ -1631,6 +1631,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
         builder: (context) => Scaffold(
           backgroundColor: ExpatlioDesign.background,
           body: SafeArea(
+            bottom: false,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -1861,7 +1862,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
                                   textInputAction: TextInputAction.done,
                                   keyboardType: TextInputType.streetAddress,
                                   minLines: 1,
-                                  maxLines: 2,
+                                  maxLines: 1,
                                   validator: (value) =>
                                       _eventCreateRequiredText(
                                     context,
@@ -2110,98 +2111,101 @@ class _EventCreateSubmitBar extends StatelessWidget {
     final isEnabled = !isSubmitting && onPressed != null;
     return DecoratedBox(
       decoration: const BoxDecoration(
-        color: ExpatlioDesign.card,
+        color: ExpatlioDesign.background,
         border: Border(
           top: BorderSide(color: ExpatlioDesign.separator),
         ),
       ),
-      child: Padding(
-        padding: const EdgeInsetsDirectional.fromSTEB(
-          ExpatlioDesign.pagePadding,
-          ExpatlioDesign.space16,
-          ExpatlioDesign.pagePadding,
-          ExpatlioDesign.space16,
-        ),
-        child: Align(
-          alignment: AlignmentDirectional.center,
-          heightFactor: 1,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: _eventCreateContentMaxWidth,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (errorText != null) ...[
-                  Semantics(
-                    liveRegion: true,
-                    child: Text(
-                      errorText!,
-                      key: eventCreateSubmitErrorKey,
-                      textAlign: TextAlign.center,
-                      style: ExpatlioDesign.textStyle(
-                        context,
-                        color: ExpatlioDesign.danger,
-                        size: 14,
-                        weight: FontWeight.w600,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsetsDirectional.fromSTEB(
+            ExpatlioDesign.pagePadding,
+            ExpatlioDesign.space16,
+            ExpatlioDesign.pagePadding,
+            ExpatlioDesign.space16,
+          ),
+          child: Align(
+            alignment: AlignmentDirectional.center,
+            heightFactor: 1,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: _eventCreateContentMaxWidth,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (errorText != null) ...[
+                    Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        errorText!,
+                        key: eventCreateSubmitErrorKey,
+                        textAlign: TextAlign.center,
+                        style: ExpatlioDesign.textStyle(
+                          context,
+                          color: ExpatlioDesign.danger,
+                          size: 14,
+                          weight: FontWeight.w600,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: ExpatlioDesign.space12),
-                ],
-                SizedBox(
-                  width: double.infinity,
-                  child: TextButton(
-                    key: eventCreateSubmitButtonKey,
-                    onPressed: isEnabled ? onPressed : null,
-                    style: TextButton.styleFrom(
-                      minimumSize: const Size(0, ExpatlioDesign.buttonHeight),
-                      padding: const EdgeInsetsDirectional.symmetric(
-                        horizontal: ExpatlioDesign.space16,
+                    const SizedBox(height: ExpatlioDesign.space12),
+                  ],
+                  SizedBox(
+                    width: double.infinity,
+                    child: TextButton(
+                      key: eventCreateSubmitButtonKey,
+                      onPressed: isEnabled ? onPressed : null,
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(0, ExpatlioDesign.buttonHeight),
+                        padding: const EdgeInsetsDirectional.symmetric(
+                          horizontal: ExpatlioDesign.space16,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                              ExpatlioDesign.buttonRadius),
+                        ),
+                        backgroundColor: isEnabled
+                            ? ExpatlioDesign.primary
+                            : ExpatlioDesign.separator,
+                        foregroundColor: Colors.white,
+                        disabledForegroundColor: Colors.white,
                       ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.circular(ExpatlioDesign.buttonRadius),
-                      ),
-                      backgroundColor: isEnabled
-                          ? ExpatlioDesign.primary
-                          : ExpatlioDesign.separator,
-                      foregroundColor: Colors.white,
-                      disabledForegroundColor: Colors.white,
-                    ),
-                    child: isSubmitting
-                        ? const SizedBox.square(
-                            dimension: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.4,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Colors.white,
+                      child: isSubmitting
+                          ? const SizedBox.square(
+                              dimension: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.4,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.white,
+                                ),
+                              ),
+                            )
+                          : Text(
+                              FFLocalizations.of(context).getVariableText(
+                                ruText: formMode == EventFormMode.create
+                                    ? 'Создать'
+                                    : 'Сохранить',
+                                enText: formMode == EventFormMode.create
+                                    ? 'Create'
+                                    : 'Save',
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                              style: ExpatlioDesign.textStyle(
+                                context,
+                                color: Colors.white,
+                                size: 16,
+                                weight: FontWeight.w600,
                               ),
                             ),
-                          )
-                        : Text(
-                            FFLocalizations.of(context).getVariableText(
-                              ruText: formMode == EventFormMode.create
-                                  ? 'Создать'
-                                  : 'Сохранить',
-                              enText: formMode == EventFormMode.create
-                                  ? 'Create'
-                                  : 'Save',
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                            style: ExpatlioDesign.textStyle(
-                              context,
-                              color: Colors.white,
-                              size: 16,
-                              weight: FontWeight.w600,
-                            ),
-                          ),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

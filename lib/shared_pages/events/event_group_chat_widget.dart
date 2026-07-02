@@ -351,6 +351,7 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
     return Scaffold(
       backgroundColor: ExpatlioDesign.background,
       body: SafeArea(
+        bottom: false,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -779,7 +780,7 @@ class _EventGroupChatComposer extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: const BoxDecoration(
-        color: ExpatlioDesign.card,
+        color: ExpatlioDesign.background,
         border: Border(
           top: BorderSide(color: ExpatlioDesign.separator),
         ),

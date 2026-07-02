@@ -90,10 +90,8 @@ class _WordsWidgetState extends State<WordsWidget> {
 
   String _reviewCountText(BuildContext context, int dueCount) {
     return FFLocalizations.of(context).getVariableText(
-      ruText:
-          '${_dueCountLabel(dueCount)} ${_ruWordsPlural(dueCount)} к повторению',
-      enText:
-          '${_dueCountLabel(dueCount)} ${dueCount == 1 ? 'word' : 'words'} to review',
+      ruText: '${_dueCountLabel(dueCount)} ${_ruWordsPlural(dueCount)}',
+      enText: '${_dueCountLabel(dueCount)} ${dueCount == 1 ? 'word' : 'words'}',
     );
   }
 
@@ -204,8 +202,11 @@ class _WordsWidgetState extends State<WordsWidget> {
                               _contentBottomPadding(context),
                             ),
                             itemCount: words.length,
-                            separatorBuilder: (context, index) =>
-                                const SizedBox(height: ExpatlioDesign.space0),
+                            separatorBuilder: (context, index) => const Divider(
+                              height: 1.0,
+                              thickness: 1.0,
+                              color: ExpatlioDesign.border,
+                            ),
                             itemBuilder: (context, index) {
                               final word = words[index];
                               final entry = word.entry.firstOrNull;

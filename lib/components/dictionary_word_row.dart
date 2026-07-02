@@ -25,17 +25,9 @@ class DictionaryWordRow extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
         onTap: onTap,
-        child: Container(
+        child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 49.0),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
-            border: Border.all(
-              color: ExpatlioDesign.border,
-              width: 1.0,
-            ),
-          ),
           child: Padding(
             padding: const EdgeInsetsDirectional.fromSTEB(
               ExpatlioDesign.space16,
