@@ -268,22 +268,11 @@ function throwAccessDecision(decision) {
 
 function buildStartSearchFilters({
   input = {},
-  requesterData = {},
 }) {
-  const storedProfile = readNestedObject(requesterData.matchProfile);
   return normalizeSearchRequestFilters({
-    preferredLevel:
-      input.preferredPartnerLevel ||
-      readLevelValue(requesterData.level) ||
-      readLevelValue(storedProfile.level),
-    countryCode:
-      input.preferredCountry ||
-      readCountryCode(requesterData.Country_NS) ||
-      readCountryCode(storedProfile.country),
-    cityKey:
-      input.cityKey ||
-      readCityKey(requesterData.profileCity) ||
-      readCityKey(storedProfile.city),
+    preferredLevel: input.preferredPartnerLevel,
+    countryCode: input.preferredCountry,
+    cityKey: input.cityKey,
   });
 }
 

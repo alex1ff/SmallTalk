@@ -261,7 +261,7 @@ test("start search access decision blocks invalid callers server-side", () => {
   );
 });
 
-test("start search filters are built from payload and profile defaults", () => {
+test("start search filters are built only from explicit payload filters", () => {
   assert.deepEqual(
     buildStartSearchFilters({
       input: {
@@ -283,12 +283,7 @@ test("start search filters are built from payload and profile defaults", () => {
       input: {},
       requesterData: studentData(),
     }),
-    {
-      preferredLevel: "B1",
-      levelRank: 3,
-      countryCode: "US",
-      cityKey: "new_york",
-    },
+    {},
   );
 });
 
@@ -4097,8 +4092,6 @@ test("new start search request data resets lifecycle fields", () => {
   assert.deepEqual(data[SEARCH_REQUEST_FIELD.FILTERS], {
     preferredLevel: "C2",
     levelRank: 6,
-    countryCode: "US",
-    cityKey: "new_york",
   });
   assert.equal(data[SEARCH_REQUEST_FIELD.CURRENT_SESSION_ID], null);
   assert.equal(data[SEARCH_REQUEST_FIELD.PAIR_ATTEMPT_ID], null);
