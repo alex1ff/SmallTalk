@@ -137,6 +137,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
   bool _startSearchAfterStop = false;
   bool _queuedStartHasActiveCallSession = false;
   bool _stopFailureSinceLastDrain = false;
+  bool _stopSearchWhenStartCompletes = false;
   final Set<String> _stoppingSearchKeys = <String>{};
   String? _suppressedActiveSessionId;
   String? _suppressedActiveSearchUserId;
@@ -2279,7 +2280,13 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       _ignoreStopSearchUntilNextFrame = true;
       final stopSessionId = _stopSessionIdFor(visibleSessionId);
       final stopSearchRequestId = _activeSearchRequestId;
+      final shouldStopWhenStartCompletes = _isStartingSearch &&
+          stopSessionId == null &&
+          stopSearchRequestId == null;
       _clearQueuedStartSearchAfterStop();
+      if (shouldStopWhenStartCompletes) {
+        _stopSearchWhenStartCompletes = true;
+      }
       safeSetState(() {
         _searchState = StudentDashboardSearchState.idle;
         _searchErrorReason = null;
@@ -2291,10 +2298,12 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       });
       _clearSearchTimeoutTimer();
       _clearSearchHeartbeatTimer();
-      unawaited(_stopActiveSearchRequest(
-        stopSessionId,
-        activeSearchRequestId: stopSearchRequestId,
-      ));
+      if (!shouldStopWhenStartCompletes) {
+        unawaited(_stopActiveSearchRequest(
+          stopSessionId,
+          activeSearchRequestId: stopSearchRequestId,
+        ));
+      }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           _ignoreStartSearchUntilNextFrame = false;
@@ -2321,6 +2330,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
 
     safeSetState(() {
       _isStartingSearch = true;
+      _stopSearchWhenStartCompletes = false;
       _searchErrorReason = null;
       _suppressedActiveSessionId = null;
       _suppressedActiveSearchUserId = null;
@@ -2337,6 +2347,14 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       if (!mounted) {
         return;
       }
+
+      safeSetState(() {
+        _searchState = StudentDashboardSearchState.searching;
+        _searchErrorReason = null;
+        _matchedSearchSessionId = null;
+        _suppressedActiveSessionId = null;
+        _suppressedActiveSearchUserId = null;
+      });
 
       final startSearchData = await _startActiveSearchRequest(
         currentUserDocument!,
@@ -2357,6 +2375,15 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       final nextSearchState = sessionId != null || status == 'matched'
           ? StudentDashboardSearchState.connecting
           : StudentDashboardSearchState.searching;
+
+      if (_stopSearchWhenStartCompletes) {
+        _stopSearchWhenStartCompletes = false;
+        unawaited(_stopActiveSearchRequest(
+          sessionId,
+          activeSearchRequestId: requestId,
+        ));
+        return;
+      }
 
       if (!mounted) {
         return;
@@ -2384,6 +2411,10 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       }
     } on Exception catch (error, stackTrace) {
       _logStartSearchFailure(error, stackTrace);
+      if (_stopSearchWhenStartCompletes) {
+        _stopSearchWhenStartCompletes = false;
+        return;
+      }
       if (mounted) {
         _setSearchError(StudentDashboardSearchErrorReason.searchUnavailable);
       }

@@ -1150,6 +1150,104 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('student dashboard switches CTA before start request finishes',
+      (tester) async {
+    setActiveStudent('student-optimistic-start-search-test');
+    final startCompleter = Completer<Map<String, dynamic>>();
+    final startPayloads = <Map<String, dynamic>>[];
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          startSearchRequest: (payload) {
+            startPayloads.add(Map<String, dynamic>.from(payload));
+            return startCompleter.future;
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(startPayloads, hasLength(1));
+    expect(find.text('Ищем собеседника'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsOneWidget);
+    expect(find.text('Начать поиск'), findsNothing);
+
+    startCompleter.complete(<String, dynamic>{
+      'requestId': 'request-optimistic-start-test',
+    });
+    await tester.pump();
+
+    expect(find.text('Ищем собеседника'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard stops queued start after request id arrives',
+      (tester) async {
+    setActiveStudent('student-stop-queued-start-search-test');
+    final startCompleter = Completer<Map<String, dynamic>>();
+    final stopPayloads = <Map<String, dynamic>>[];
+    final stoppedSessionIds = <String?>[];
+    StudentsDashboardWidget.debugStopSearchPayloadObserver = (payload) {
+      stopPayloads.add(Map<String, dynamic>.from(payload));
+    };
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          startSearchRequest: (_) => startCompleter.future,
+          stopSearchRequest: (activeSessionId) async {
+            stoppedSessionIds.add(activeSessionId);
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Остановить поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(stopPayloads, isEmpty);
+
+    startCompleter.complete(<String, dynamic>{
+      'requestId': 'request-stop-queued-start-test',
+    });
+    await tester.pump();
+    await tester.pump();
+
+    expect(stopPayloads, [
+      <String, dynamic>{'requestId': 'request-stop-queued-start-test'},
+    ]);
+    expect(stoppedSessionIds, [null]);
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('student dashboard renders searching state', (tester) async {
     setActiveStudent('student-searching-state-render-test');
     final startPayloads = <Map<String, dynamic>>[];

@@ -28,6 +28,7 @@ const {
     canReuseSearchRequestForUser,
     hasCurrentMatchedSession,
     hasSearchRequestSessionBinding,
+    isFirestoreIndexUnavailableError,
     isFreshBackgroundSearchRequest,
     isSessionResponseWindowOpen,
     isStudentResponderSession,
@@ -180,6 +181,27 @@ test("start search error message helper never throws", () => {
   assert.equal(readErrorMessage("text failure", "fallback"), "text failure");
   assert.equal(readErrorMessage(throwingMessage, "fallback"), "fallback");
   assert.equal(readErrorMessage(throwingToString, "fallback"), "fallback");
+});
+
+test("start search keeps request active when matcher index is unavailable", () => {
+  const buildingIndexError = new Error(
+    "9 FAILED_PRECONDITION: The query requires an index. " +
+      "That index is currently building and cannot be used yet.",
+  );
+  buildingIndexError.code = 9;
+  buildingIndexError.details = "The query requires an index.";
+
+  const missingIndexError = new Error(
+    "The query requires an index. See its status in Firestore indexes.",
+  );
+  missingIndexError.code = "failed-precondition";
+
+  const unrelatedPrecondition = new Error("Active call must finish first");
+  unrelatedPrecondition.code = 9;
+
+  assert.equal(isFirestoreIndexUnavailableError(buildingIndexError), true);
+  assert.equal(isFirestoreIndexUnavailableError(missingIndexError), true);
+  assert.equal(isFirestoreIndexUnavailableError(unrelatedPrecondition), false);
 });
 
 test("start search access decision blocks invalid callers server-side", () => {

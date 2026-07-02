@@ -73,6 +73,25 @@ function readErrorMessage(error, fallback = "") {
   }
 }
 
+function isFirestoreIndexUnavailableError(error) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const code = error.code;
+  const normalizedCode = normalizeString(code);
+  const message = readErrorMessage(error, "");
+  const details = normalizeString(error.details);
+  const combinedText = `${message} ${details}`.toLowerCase();
+  const isFailedPrecondition =
+    code === 9 ||
+    normalizedCode === "9" ||
+    normalizedCode === "failed-precondition";
+
+  return isFailedPrecondition &&
+    combinedText.includes("requires an index");
+}
+
 function throwIfAborted(signal) {
   if (!signal?.aborted) {
     return;
@@ -3094,6 +3113,15 @@ async function startSearchCallable(data, context, options = {}) {
       const requestIdForFailure = normalizeString(
         startResult.requestData?.requestId,
       );
+      if (isFirestoreIndexUnavailableError(error)) {
+        console.warn("startSearch matching skipped while index is unavailable", {
+          userId,
+          requestId: requestIdForFailure,
+          error: readErrorMessage(error, "index_unavailable"),
+        });
+        return startResult.response;
+      }
+
       console.error("startSearch matching failed", {
         userId,
         requestId: requestIdForFailure,
@@ -3154,6 +3182,7 @@ exports.__private__ = {
   runBackgroundStudentResponderPushSender,
   sendVoipPushToStudentResponder,
   startSearchCallable,
+  isFirestoreIndexUnavailableError,
   isFreshBackgroundSearchRequest,
   isSessionResponseWindowOpen,
   isStudentResponderSession,
