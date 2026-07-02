@@ -291,7 +291,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
         color: FlutterFlowTheme.of(context).primaryBackground,
         borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
         border: Border.all(
-          color: const Color(0xFFE7E7EC),
+          color: ExpatlioDesign.border,
         ),
       ),
       child: Padding(
@@ -438,7 +438,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
               : FlutterFlowTheme.of(context).primaryBackground,
           borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
           border: Border.all(
-            color: isActive ? activeBorderColor : const Color(0xFFE7E7EC),
+            color: ExpatlioDesign.border,
           ),
         ),
         child: Padding(
@@ -538,12 +538,13 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
   Widget _buildSummaryAvatar(
     BuildContext context, {
     required String photoUrl,
+    required String displayName,
   }) {
     return Container(
       width: 78.0,
       height: 78.0,
       decoration: BoxDecoration(
-        color: FlutterFlowTheme.of(context).secondaryBackground,
+        color: ExpatlioDesign.avatarFallbackBackground,
         shape: BoxShape.circle,
         image: photoUrl.isNotEmpty
             ? DecorationImage(
@@ -557,10 +558,17 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
             : null,
       ),
       child: photoUrl.isEmpty
-          ? Icon(
-              Icons.person_rounded,
-              color: ExpatlioDesign.muted,
-              size: 34.0,
+          ? Center(
+              child: Text(
+                ExpatlioDesign.avatarInitial(displayName),
+                maxLines: 1,
+                style: ExpatlioDesign.textStyle(
+                  context,
+                  color: ExpatlioDesign.avatarFallbackText,
+                  size: 24.0,
+                  weight: FontWeight.w700,
+                ),
+              ),
             )
           : null,
     );
@@ -580,7 +588,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
       },
       child: Scaffold(
         key: scaffoldKey,
-        backgroundColor: const Color(0xFFFAFAFB),
+        backgroundColor: ExpatlioDesign.background,
         body: FutureBuilder<UserPublicProfilesRecord?>(
           future: _model.userFuture,
           builder: (context, snapshot) {
@@ -725,6 +733,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                   _buildSummaryAvatar(
                                     context,
                                     photoUrl: stackUserPhotoUrl,
+                                    displayName: displayName,
                                   ),
                                   const SizedBox(
                                       height: ExpatlioDesign.space12),

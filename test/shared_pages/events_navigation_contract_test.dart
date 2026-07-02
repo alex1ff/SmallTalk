@@ -19,6 +19,7 @@ import 'package:small_talk/shared_pages/events/event_detail_route_widget.dart';
 import 'package:small_talk/shared_pages/events/event_detail_widget.dart';
 import 'package:small_talk/shared_pages/events/event_edit_widget.dart';
 import 'package:small_talk/shared_pages/events/event_group_chat_widget.dart';
+import 'package:small_talk/shared_pages/events/event_history_widget.dart';
 import 'package:small_talk/shared_pages/events/event_list_widget.dart';
 import 'package:small_talk/shared_pages/profile/profile_widget.dart';
 import 'package:small_talk/students_pages/favorite/favorite_widget.dart';
@@ -73,6 +74,11 @@ void main() {
   test('event group chat route exposes the canonical chat route', () {
     expect(EventGroupChatWidget.routeName, 'eventGroupChat');
     expect(EventGroupChatWidget.routePath, '/events/:eventId/chat');
+  });
+
+  test('event history route exposes the canonical profile route', () {
+    expect(EventHistoryWidget.routeName, 'eventHistory');
+    expect(EventHistoryWidget.routePath, '/profile/events');
   });
 
   test('bottom navigation exposes events in the role-specific tab order', () {
@@ -286,6 +292,14 @@ void main() {
       ),
     );
     expect(
+      router,
+      contains(
+        RegExp(
+          r'FFRoute\([\s\S]*name: EventHistoryWidget\.routeName,[\s\S]*path: EventHistoryWidget\.routePath,[\s\S]*requireAuth: true',
+        ),
+      ),
+    );
+    expect(
       router.indexOf('name: EventCreateWidget.routeName'),
       lessThan(router.indexOf('name: EventEditWidget.routeName')),
     );
@@ -313,6 +327,10 @@ void main() {
       router.indexOf('name: EventGroupChatWidget.routeName'),
       lessThan(router.indexOf('ShellRoute(')),
     );
+    expect(
+      router.indexOf('name: EventHistoryWidget.routeName'),
+      lessThan(router.indexOf('ShellRoute(')),
+    );
     expect(index,
         contains("export '/shared_pages/events/event_create_widget.dart'"));
     expect(index, contains('show EventCreateWidget, EventFormMode'));
@@ -328,6 +346,8 @@ void main() {
       index,
       contains("export '/shared_pages/events/event_detail_route_widget.dart'"),
     );
+    expect(index,
+        contains("export '/shared_pages/events/event_history_widget.dart'"));
   });
 
   test('event detail screen stays presentation-only behind route binding', () {

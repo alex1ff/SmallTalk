@@ -17,7 +17,7 @@ class ProfileSaveBar extends StatelessWidget {
       decoration: const BoxDecoration(
         color: Color(0xFFFBFBFB),
         border: Border(
-          top: BorderSide(color: Color(0xFFEDEDED), width: 1.0),
+          top: BorderSide(color: ExpatlioDesign.border, width: 1.0),
         ),
       ),
       child: SafeArea(

@@ -16,8 +16,8 @@ const fixedTimestamp = {
   toDate: () => fixedNow,
 };
 const futureStartsAt = {
-  toMillis: () => Date.parse("2026-06-20T15:00:00.000Z"),
-  toDate: () => new Date("2026-06-20T15:00:00.000Z"),
+  toMillis: () => Date.parse("2099-06-20T15:00:00.000Z"),
+  toDate: () => new Date("2099-06-20T15:00:00.000Z"),
 };
 const pastStartsAt = {
   toMillis: () => Date.parse("2026-06-16T09:00:00.000Z"),
@@ -35,7 +35,7 @@ const validEditRequest = Object.freeze({
   cityKey: "moscow",
   locationName: " Starbucks,   ул. Арбат, 5 ",
   locationGeoPoint: null,
-  startsAt: "2026-06-20T15:00:00.000Z",
+  startsAt: "2099-06-20T15:00:00.000Z",
   capacity: 10,
 });
 

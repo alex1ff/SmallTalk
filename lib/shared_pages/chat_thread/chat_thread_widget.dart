@@ -789,7 +789,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: ExpatlioDesign.primary,
                                   side: const BorderSide(
-                                    color: ExpatlioDesign.primary,
+                                    color: ExpatlioDesign.border,
                                   ),
                                   minimumSize: Size.zero,
                                   fixedSize: Size.fromHeight(35.0),
@@ -868,16 +868,13 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     required double size,
   }) {
     final normalizedPhotoUrl = photoUrl.trim();
-    final normalizedName = displayName.trim();
-    final fallbackText = normalizedName.isEmpty
-        ? '?'
-        : normalizedName.characters.take(2).toString().toUpperCase();
+    final fallbackText = ExpatlioDesign.avatarInitial(displayName);
 
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: ExpatlioDesign.mutedSurface,
+        color: ExpatlioDesign.avatarFallbackBackground,
         shape: BoxShape.circle,
         border: Border.all(color: ExpatlioDesign.border),
       ),
@@ -912,7 +909,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
         maxLines: 1,
         style: ExpatlioDesign.textStyle(
           context,
-          color: ExpatlioDesign.muted,
+          color: ExpatlioDesign.avatarFallbackText,
           size: 13.0,
           weight: FontWeight.w700,
         ),

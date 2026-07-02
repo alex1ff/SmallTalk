@@ -138,6 +138,52 @@ void main() {
 
       expect(participants, <EventParticipantsRecord?>[null]);
     });
+
+    test('watches active participants and normalizes known records', () async {
+      DocumentReference? capturedEventRef;
+
+      final participants = await EventDetailRepository.watchActiveParticipants(
+        eventId: ' event-1 ',
+        participantsStream: (eventRef) {
+          capturedEventRef = eventRef;
+          return Stream<List<EventParticipantsRecord>>.value([
+            EventParticipantsRecord.getDocumentFromData(
+              participantData(
+                userId: 'left-user',
+                status: 'left',
+                displayName: 'Left User',
+              ),
+              participantObjectRef('event-1', 'left-user'),
+            ),
+            EventParticipantsRecord.getDocumentFromData(
+              participantData(
+                userId: 'second-user',
+                status: 'active',
+                displayName: 'Second User',
+                joinedAt: DateTime.utc(2026, 6, 14, 12, 2),
+              ),
+              participantObjectRef('event-1', 'second-user'),
+            ),
+            EventParticipantsRecord.getDocumentFromData(
+              participantData(
+                userId: 'first-user',
+                status: 'active',
+                displayName: 'First User',
+                joinedAt: DateTime.utc(2026, 6, 14, 12),
+              ),
+              participantObjectRef('event-1', 'first-user'),
+            ),
+          ]);
+        },
+      ).toList();
+
+      expect(capturedEventRef?.path, 'events/event-1');
+      expect(participants, hasLength(1));
+      expect(
+        participants.single.map((participant) => participant.userId),
+        ['first-user', 'second-user'],
+      );
+    });
   });
 }
 
@@ -182,12 +228,17 @@ DocumentReference<Object?> participantObjectRef(
 Map<String, dynamic> participantData({
   required String userId,
   required String status,
+  String displayName = 'Participant',
+  String? photoUrl,
+  DateTime? joinedAt,
 }) =>
     <String, dynamic>{
       'userId': userId,
-      'displayName': 'Participant',
+      'displayName': displayName,
+      if (photoUrl != null) 'photoUrl': photoUrl,
       'role': 'participant',
       'status': status,
+      if (joinedAt != null) 'joinedAt': joinedAt,
     };
 
 // ignore: subtype_of_sealed_class

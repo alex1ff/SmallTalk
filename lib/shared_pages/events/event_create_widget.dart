@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '/auth/firebase_auth/auth_util.dart';
+import '/components/profile_dropdown_menu_item.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
@@ -105,6 +107,7 @@ const String _eventCreateDefaultLanguageCode = 'en';
 const int _eventCreateDefaultCapacity = 10;
 const int _eventCreateMinCapacity = 2;
 const int _eventCreateMaxCapacity = 50;
+const double _eventCreateContentMaxWidth = 760;
 
 ValueKey<String> eventCreateLanguageOptionKey(String code) =>
     ValueKey<String>('event_create_language_option_$code');
@@ -114,6 +117,12 @@ ValueKey<String> eventCreateLevelMinOptionKey(String level) =>
 
 ValueKey<String> eventCreateLevelMaxOptionKey(String level) =>
     ValueKey<String>('event_create_level_max_option_$level');
+
+ValueKey<String> eventCreateLevelRangeOptionKey(
+  String levelMin,
+  String levelMax,
+) =>
+    ValueKey<String>('event_create_level_range_option_${levelMin}_$levelMax');
 
 ValueKey<String> eventCreateCityChipKey(EventCity city) => ValueKey<String>(
     'event_create_city_chip_${city.countryCode}_${city.cityKey}');
@@ -1075,18 +1084,25 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   }
 
   Future<void> _showLanguageSelector(
+    BuildContext anchorContext,
     EventLanguageCatalog catalog,
     String selectedLanguageCode,
   ) async {
-    final selectedCode = await showModalBottomSheet<String>(
-      context: context,
-      useSafeArea: true,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _EventCreateLanguageSheet(
-        catalog: catalog,
-        selectedLanguageCode: selectedLanguageCode,
-      ),
+    final selectedCode = await _showEventCreateDropdownMenu<String>(
+      anchorContext,
+      options: [
+        for (final language in catalog.languages)
+          _EventCreateDropdownMenuOption<String>(
+            key: eventCreateLanguageOptionKey(language.code),
+            value: language.code,
+            label: _eventCreateLanguageDisplayName(
+              context: context,
+              catalog: catalog,
+              languageCode: language.code,
+            ),
+            selected: language.code == selectedLanguageCode,
+          ),
+      ],
     );
     if (selectedCode == null || !mounted) {
       return;
@@ -1098,15 +1114,26 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     _emitLanguageDraftNow(selectedCode);
   }
 
-  Future<void> _showLevelSelector(EventLevelRange selectedRange) async {
-    final selectedLevelRange = await showModalBottomSheet<EventLevelRange>(
-      context: context,
-      useSafeArea: true,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _EventCreateLevelSheet(
-        selectedRange: selectedRange,
-      ),
+  Future<void> _showLevelSelector(
+    BuildContext anchorContext,
+    EventLevelRange selectedRange,
+  ) async {
+    final selectedLevelRange =
+        await _showEventCreateDropdownMenu<EventLevelRange>(
+      anchorContext,
+      options: [
+        for (final range in _eventCreateLevelRangeOptions())
+          _EventCreateDropdownMenuOption<EventLevelRange>(
+            key: eventCreateLevelRangeOptionKey(
+              range.levelMin,
+              range.levelMax,
+            ),
+            value: range,
+            label: _eventCreateLevelRangeLabel(range),
+            selected: _eventCreateLevelDraftKey(range) ==
+                _eventCreateLevelDraftKey(selectedRange),
+          ),
+      ],
     );
     if (selectedLevelRange == null || !mounted) {
       return;
@@ -1119,26 +1146,41 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   }
 
   Future<void> _showCitySelector({
+    required BuildContext anchorContext,
     required EventCityCatalog catalog,
+    required EventSelectedCity? selectedCity,
     required String? countryCodeHint,
   }) async {
-    final city = await showModalBottomSheet<EventCity>(
-      context: context,
-      useSafeArea: true,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _EventCreateCitySheet(
-        catalog: catalog,
-        countryCodeHint: countryCodeHint,
-      ),
+    final options = await _loadCityMenuOptions(
+      catalog: catalog,
+      countryCodeHint: countryCodeHint,
+      selectedCity: selectedCity,
     );
-    if (city == null || !mounted) {
+    if (!mounted) {
+      return;
+    }
+    final selectedOption = await _showEventCreateDropdownMenu<EventCityChip>(
+      anchorContext,
+      options: [
+        for (final option in options)
+          _EventCreateDropdownMenuOption<EventCityChip>(
+            key: eventCreateCityOptionKey(option.city),
+            value: option,
+            label: _eventCreateCityLabel(context, option.city),
+            selected: selectedCity?.city.identity == option.city.identity,
+          ),
+      ],
+    );
+    if (selectedOption == null || !mounted) {
+      return;
+    }
+    if (selectedCity?.city.identity == selectedOption.city.identity) {
       return;
     }
     await _selectCity(
       catalog: catalog,
-      city: city,
-      source: EventCitySelectionSource.manual,
+      city: selectedOption.city,
+      source: selectedOption.source,
     );
   }
 
@@ -1172,12 +1214,12 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     _emitCityDraftNow(selectedCity);
   }
 
-  Future<List<EventCityChip>> _loadCityChips({
+  Future<List<EventCityChip>> _loadCityMenuOptions({
     required EventCityCatalog catalog,
-    required EventSelectedCityState selectedState,
+    required String? countryCodeHint,
+    required EventSelectedCity? selectedCity,
   }) {
-    final countryCodeHint = selectedState.countryCodeHint;
-    final selectedIdentity = selectedState.selected?.city.identity;
+    final selectedIdentity = selectedCity?.city.identity;
     if (_cityChipsFuture == null ||
         _cityChipsCatalog != catalog ||
         _cityChipsCountryCodeHint != countryCodeHint ||
@@ -1185,25 +1227,23 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
       _cityChipsCatalog = catalog;
       _cityChipsCountryCodeHint = countryCodeHint;
       _cityChipsSelectedIdentity = selectedIdentity;
-      _cityChipsFuture = _loadCityChipsFromStore(
+      _cityChipsFuture = _loadCityMenuOptionsFromStore(
         catalog: catalog,
-        selectedCityToExclude: selectedState.selected?.city,
         countryCodeHint: countryCodeHint,
       );
     }
     return _cityChipsFuture!;
   }
 
-  Future<List<EventCityChip>> _loadCityChipsFromStore({
+  Future<List<EventCityChip>> _loadCityMenuOptionsFromStore({
     required EventCityCatalog catalog,
-    required EventCity? selectedCityToExclude,
     required String? countryCodeHint,
   }) async {
     final chipSource = await _loadCityChipSource();
     return chipSource.loadChips(
       catalog: catalog,
-      selectedCityToExclude: selectedCityToExclude,
       countryCodeHint: countryCodeHint,
+      maxChips: catalog.cities.length,
     );
   }
 
@@ -1603,16 +1643,18 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
                 Expanded(
                   child: ListView(
                     padding: const EdgeInsetsDirectional.fromSTEB(
-                      ExpatlioDesign.space24,
-                      ExpatlioDesign.space24,
-                      ExpatlioDesign.space24,
+                      ExpatlioDesign.pagePadding,
+                      ExpatlioDesign.pageTopSpacing,
+                      ExpatlioDesign.pagePadding,
                       ExpatlioDesign.space32,
                     ),
                     children: [
                       Align(
                         alignment: AlignmentDirectional.topCenter,
                         child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 760),
+                          constraints: const BoxConstraints(
+                            maxWidth: _eventCreateContentMaxWidth,
+                          ),
                           child: Form(
                             key: _formKey,
                             autovalidateMode: _hasAttemptedSubmit
@@ -1652,7 +1694,9 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
                                     _descriptionFocusNode.requestFocus();
                                   },
                                 ),
-                                const SizedBox(height: ExpatlioDesign.space20),
+                                const SizedBox(
+                                  height: ExpatlioDesign.sectionSpacing,
+                                ),
                                 _EventCreateTextField(
                                   labelKey: eventCreateDescriptionLabelKey,
                                   semanticsKey:
@@ -1683,7 +1727,9 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
                                     enText: 'Enter description',
                                   ),
                                 ),
-                                const SizedBox(height: ExpatlioDesign.space20),
+                                const SizedBox(
+                                  height: ExpatlioDesign.sectionSpacing,
+                                ),
                                 FutureBuilder<EventLanguageCatalog>(
                                   future: _languageCatalogFuture,
                                   builder: (context, snapshot) {
@@ -1709,20 +1755,29 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
                                         catalog: catalog,
                                         languageCode: selectedLanguageCode,
                                       ),
-                                      onPressed: () => _showLanguageSelector(
+                                      onPressed: (anchorContext) =>
+                                          _showLanguageSelector(
+                                        anchorContext,
                                         catalog,
                                         selectedLanguageCode,
                                       ),
                                     );
                                   },
                                 ),
-                                const SizedBox(height: ExpatlioDesign.space20),
+                                const SizedBox(
+                                  height: ExpatlioDesign.sectionSpacing,
+                                ),
                                 _EventCreateLevelSelector(
                                   selectedRange: selectedLevelRange,
-                                  onPressed: () =>
-                                      _showLevelSelector(selectedLevelRange),
+                                  onPressed: (anchorContext) =>
+                                      _showLevelSelector(
+                                    anchorContext,
+                                    selectedLevelRange,
+                                  ),
                                 ),
-                                const SizedBox(height: ExpatlioDesign.space20),
+                                const SizedBox(
+                                  height: ExpatlioDesign.sectionSpacing,
+                                ),
                                 FutureBuilder<EventCityCatalog>(
                                   future: _cityCatalogFuture,
                                   builder: (context, snapshot) {
@@ -1747,17 +1802,6 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
                                     if (selectedCity != null) {
                                       _queueCityDraft(selectedCity);
                                     }
-                                    final showsCityChips = selectedState !=
-                                            null &&
-                                        selectedState.needsCitySelection &&
-                                        !selectedState.hasOutdatedProfileCity;
-                                    final cityChipsFuture = showsCityChips
-                                        ? _loadCityChips(
-                                            catalog: catalog,
-                                            selectedState: selectedState,
-                                          )
-                                        : null;
-
                                     return Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
@@ -1781,33 +1825,22 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
                                                       .needsCitySelection &&
                                                   !selectedState
                                                       .hasOutdatedProfileCity,
-                                          onPressed: () => _showCitySelector(
+                                          onPressed: (anchorContext) =>
+                                              _showCitySelector(
+                                            anchorContext: anchorContext,
                                             catalog: catalog,
+                                            selectedCity: selectedCity,
                                             countryCodeHint:
                                                 selectedState?.countryCodeHint,
                                           ),
                                         ),
-                                        if (cityChipsFuture != null) ...[
-                                          const SizedBox(
-                                              height: ExpatlioDesign.space12),
-                                          _EventCreateCityChips(
-                                            chipsFuture: cityChipsFuture,
-                                            onChipPressed: (chip) {
-                                              unawaited(
-                                                _selectCity(
-                                                  catalog: catalog,
-                                                  city: chip.city,
-                                                  source: chip.source,
-                                                ),
-                                              );
-                                            },
-                                          ),
-                                        ],
                                       ],
                                     );
                                   },
                                 ),
-                                const SizedBox(height: ExpatlioDesign.space20),
+                                const SizedBox(
+                                  height: ExpatlioDesign.sectionSpacing,
+                                ),
                                 _EventCreateTextField(
                                   labelKey: eventCreateLocationLabelKey,
                                   semanticsKey:
@@ -1837,21 +1870,27 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
                                     enText: 'Enter place',
                                   ),
                                 ),
-                                const SizedBox(height: ExpatlioDesign.space20),
+                                const SizedBox(
+                                  height: ExpatlioDesign.sectionSpacing,
+                                ),
                                 _EventCreateDateSelector(
                                   selectedDate: _selectedDate,
                                   hasError: _startTimeErrorText != null,
                                   onPressed: () =>
                                       _showDateSelector(_selectedDate),
                                 ),
-                                const SizedBox(height: ExpatlioDesign.space20),
+                                const SizedBox(
+                                  height: ExpatlioDesign.sectionSpacing,
+                                ),
                                 _EventCreateTimeSelector(
                                   selectedTime: _selectedTime,
                                   errorText: _startTimeErrorText,
                                   onPressed: () =>
                                       _showTimeSelector(_selectedTime),
                                 ),
-                                const SizedBox(height: ExpatlioDesign.space20),
+                                const SizedBox(
+                                  height: ExpatlioDesign.sectionSpacing,
+                                ),
                                 _EventCreateTextField(
                                   labelKey: eventCreateCapacityLabelKey,
                                   semanticsKey:
@@ -2078,16 +2117,18 @@ class _EventCreateSubmitBar extends StatelessWidget {
       ),
       child: Padding(
         padding: const EdgeInsetsDirectional.fromSTEB(
-          ExpatlioDesign.space24,
+          ExpatlioDesign.pagePadding,
           ExpatlioDesign.space16,
-          ExpatlioDesign.space24,
+          ExpatlioDesign.pagePadding,
           ExpatlioDesign.space16,
         ),
         child: Align(
           alignment: AlignmentDirectional.center,
           heightFactor: 1,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760),
+            constraints: const BoxConstraints(
+              maxWidth: _eventCreateContentMaxWidth,
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2155,7 +2196,7 @@ class _EventCreateSubmitBar extends StatelessWidget {
                               context,
                               color: Colors.white,
                               size: 16,
-                              weight: FontWeight.w700,
+                              weight: FontWeight.w600,
                             ),
                           ),
                   ),
@@ -2184,7 +2225,7 @@ class _EventCreateLanguageSelector extends StatelessWidget {
 
   final _EventCreateLanguageSelectorState state;
   final String? selectedLabel;
-  final VoidCallback? onPressed;
+  final Future<void> Function(BuildContext context)? onPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -2225,71 +2266,78 @@ class _EventCreateLanguageSelector extends StatelessWidget {
           style: ExpatlioDesign.formLabelStyle(context),
         ),
         const SizedBox(height: ExpatlioDesign.space8),
-        Semantics(
-          key: eventCreateLanguageSelectorSemanticsKey,
-          button: true,
-          enabled: isEnabled,
-          label: semanticsLabel,
-          value: selectorLabel,
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              key: eventCreateLanguageSelectorKey,
-              onTap: isEnabled ? onPressed : null,
-              borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
-              child: Container(
-                constraints: const BoxConstraints(minHeight: 48),
-                padding: const EdgeInsetsDirectional.fromSTEB(
-                  ExpatlioDesign.space16,
-                  ExpatlioDesign.space12,
-                  ExpatlioDesign.space12,
-                  ExpatlioDesign.space12,
-                ),
-                decoration: ExpatlioDesign.cardDecoration(
-                  borderColor: ExpatlioDesign.separator,
-                  radius: ExpatlioDesign.controlRadius,
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.translate_outlined,
-                      color: state == _EventCreateLanguageSelectorState.error
-                          ? ExpatlioDesign.danger
-                          : ExpatlioDesign.primary,
-                      size: 20,
-                    ),
-                    const SizedBox(width: ExpatlioDesign.space8),
-                    Expanded(
-                      child: Text(
-                        selectorLabel,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: ExpatlioDesign.textStyle(
-                          context,
-                          color: isEnabled
-                              ? ExpatlioDesign.text
-                              : ExpatlioDesign.muted,
-                          size: 16,
-                          weight: FontWeight.w600,
+        Builder(
+          builder: (fieldContext) => Semantics(
+            key: eventCreateLanguageSelectorSemanticsKey,
+            button: true,
+            enabled: isEnabled,
+            label: semanticsLabel,
+            value: selectorLabel,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                key: eventCreateLanguageSelectorKey,
+                onTap: isEnabled
+                    ? () async {
+                        await onPressed?.call(fieldContext);
+                      }
+                    : null,
+                borderRadius:
+                    BorderRadius.circular(ExpatlioDesign.controlRadius),
+                child: Container(
+                  constraints: const BoxConstraints(minHeight: 48),
+                  padding: const EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.space16,
+                    ExpatlioDesign.space12,
+                    ExpatlioDesign.space12,
+                    ExpatlioDesign.space12,
+                  ),
+                  decoration: ExpatlioDesign.cardDecoration(
+                    borderColor: ExpatlioDesign.separator,
+                    radius: ExpatlioDesign.controlRadius,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.translate_outlined,
+                        color: state == _EventCreateLanguageSelectorState.error
+                            ? ExpatlioDesign.danger
+                            : ExpatlioDesign.primary,
+                        size: 20,
+                      ),
+                      const SizedBox(width: ExpatlioDesign.space8),
+                      Expanded(
+                        child: Text(
+                          selectorLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: ExpatlioDesign.textStyle(
+                            context,
+                            color: isEnabled
+                                ? ExpatlioDesign.text
+                                : ExpatlioDesign.muted,
+                            size: 16,
+                            weight: FontWeight.w400,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: ExpatlioDesign.space8),
-                    if (state == _EventCreateLanguageSelectorState.loading)
-                      Icon(
-                        Icons.hourglass_empty,
-                        color: ExpatlioDesign.muted,
-                        size: 20,
-                      )
-                    else
-                      Icon(
-                        FFIcons.kchevronDown,
-                        color: isEnabled
-                            ? ExpatlioDesign.muted
-                            : ExpatlioDesign.disabled,
-                        size: 20,
-                      ),
-                  ],
+                      const SizedBox(width: ExpatlioDesign.space8),
+                      if (state == _EventCreateLanguageSelectorState.loading)
+                        Icon(
+                          Icons.hourglass_empty,
+                          color: ExpatlioDesign.muted,
+                          size: 20,
+                        )
+                      else
+                        Icon(
+                          FFIcons.kchevronDown,
+                          color: isEnabled
+                              ? ExpatlioDesign.muted
+                              : ExpatlioDesign.disabled,
+                          size: 20,
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -2307,7 +2355,7 @@ class _EventCreateLevelSelector extends StatelessWidget {
   });
 
   final EventLevelRange selectedRange;
-  final VoidCallback onPressed;
+  final Future<void> Function(BuildContext context) onPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -2330,58 +2378,63 @@ class _EventCreateLevelSelector extends StatelessWidget {
           style: ExpatlioDesign.formLabelStyle(context),
         ),
         const SizedBox(height: ExpatlioDesign.space8),
-        Semantics(
-          key: eventCreateLevelSelectorSemanticsKey,
-          button: true,
-          enabled: true,
-          label: semanticsLabel,
-          value: selectorLabel,
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              key: eventCreateLevelSelectorKey,
-              onTap: onPressed,
-              borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
-              child: Container(
-                constraints: const BoxConstraints(minHeight: 48),
-                padding: const EdgeInsetsDirectional.fromSTEB(
-                  ExpatlioDesign.space16,
-                  ExpatlioDesign.space12,
-                  ExpatlioDesign.space12,
-                  ExpatlioDesign.space12,
-                ),
-                decoration: ExpatlioDesign.cardDecoration(
-                  borderColor: ExpatlioDesign.separator,
-                  radius: ExpatlioDesign.controlRadius,
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.school_outlined,
-                      color: ExpatlioDesign.primary,
-                      size: 20,
-                    ),
-                    const SizedBox(width: ExpatlioDesign.space8),
-                    Expanded(
-                      child: Text(
-                        selectorLabel,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: ExpatlioDesign.textStyle(
-                          context,
-                          color: ExpatlioDesign.text,
-                          size: 16,
-                          weight: FontWeight.w600,
+        Builder(
+          builder: (fieldContext) => Semantics(
+            key: eventCreateLevelSelectorSemanticsKey,
+            button: true,
+            enabled: true,
+            label: semanticsLabel,
+            value: selectorLabel,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                key: eventCreateLevelSelectorKey,
+                onTap: () async {
+                  await onPressed(fieldContext);
+                },
+                borderRadius:
+                    BorderRadius.circular(ExpatlioDesign.controlRadius),
+                child: Container(
+                  constraints: const BoxConstraints(minHeight: 48),
+                  padding: const EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.space16,
+                    ExpatlioDesign.space12,
+                    ExpatlioDesign.space12,
+                    ExpatlioDesign.space12,
+                  ),
+                  decoration: ExpatlioDesign.cardDecoration(
+                    borderColor: ExpatlioDesign.separator,
+                    radius: ExpatlioDesign.controlRadius,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.school_outlined,
+                        color: ExpatlioDesign.primary,
+                        size: 20,
+                      ),
+                      const SizedBox(width: ExpatlioDesign.space8),
+                      Expanded(
+                        child: Text(
+                          selectorLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: ExpatlioDesign.textStyle(
+                            context,
+                            color: ExpatlioDesign.text,
+                            size: 16,
+                            weight: FontWeight.w400,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: ExpatlioDesign.space8),
-                    Icon(
-                      FFIcons.kchevronDown,
-                      color: ExpatlioDesign.muted,
-                      size: 20,
-                    ),
-                  ],
+                      const SizedBox(width: ExpatlioDesign.space8),
+                      Icon(
+                        FFIcons.kchevronDown,
+                        color: ExpatlioDesign.muted,
+                        size: 20,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -2413,7 +2466,7 @@ class _EventCreateCitySelector extends StatelessWidget {
   final bool hasOutdatedProfileCity;
   final String? errorText;
   final bool showsMissingLocationPrompt;
-  final VoidCallback? onPressed;
+  final Future<void> Function(BuildContext context)? onPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -2441,89 +2494,96 @@ class _EventCreateCitySelector extends StatelessWidget {
           style: ExpatlioDesign.formLabelStyle(context),
         ),
         const SizedBox(height: ExpatlioDesign.space8),
-        Semantics(
-          key: eventCreateCitySelectorSemanticsKey,
-          button: true,
-          enabled: isEnabled,
-          label: semanticsLabel,
-          value: selectorLabel,
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              key: eventCreateCitySelectorKey,
-              onTap: isEnabled ? onPressed : null,
-              borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
-              child: Container(
-                constraints: const BoxConstraints(minHeight: 48),
-                padding: const EdgeInsetsDirectional.fromSTEB(
-                  ExpatlioDesign.space16,
-                  ExpatlioDesign.space12,
-                  ExpatlioDesign.space12,
-                  ExpatlioDesign.space12,
-                ),
-                decoration: ExpatlioDesign.cardDecoration(
-                  borderColor: errorText == null
-                      ? ExpatlioDesign.separator
-                      : ExpatlioDesign.danger,
-                  radius: ExpatlioDesign.controlRadius,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.location_on_outlined,
-                          color: iconColor,
-                          size: 20,
-                        ),
-                        const SizedBox(width: ExpatlioDesign.space8),
-                        Expanded(
-                          child: Text(
-                            selectorLabel,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: ExpatlioDesign.textStyle(
-                              context,
-                              color: selectedCity == null
-                                  ? ExpatlioDesign.muted
-                                  : ExpatlioDesign.text,
-                              size: 16,
-                              weight: FontWeight.w600,
+        Builder(
+          builder: (fieldContext) => Semantics(
+            key: eventCreateCitySelectorSemanticsKey,
+            button: true,
+            enabled: isEnabled,
+            label: semanticsLabel,
+            value: selectorLabel,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                key: eventCreateCitySelectorKey,
+                onTap: isEnabled
+                    ? () async {
+                        await onPressed?.call(fieldContext);
+                      }
+                    : null,
+                borderRadius:
+                    BorderRadius.circular(ExpatlioDesign.controlRadius),
+                child: Container(
+                  constraints: const BoxConstraints(minHeight: 48),
+                  padding: const EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.space16,
+                    ExpatlioDesign.space12,
+                    ExpatlioDesign.space12,
+                    ExpatlioDesign.space12,
+                  ),
+                  decoration: ExpatlioDesign.cardDecoration(
+                    borderColor: errorText == null
+                        ? ExpatlioDesign.separator
+                        : ExpatlioDesign.danger,
+                    radius: ExpatlioDesign.controlRadius,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.location_on_outlined,
+                            color: iconColor,
+                            size: 20,
+                          ),
+                          const SizedBox(width: ExpatlioDesign.space8),
+                          Expanded(
+                            child: Text(
+                              selectorLabel,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: ExpatlioDesign.textStyle(
+                                context,
+                                color: selectedCity == null
+                                    ? ExpatlioDesign.muted
+                                    : ExpatlioDesign.text,
+                                size: 16,
+                                weight: FontWeight.w400,
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: ExpatlioDesign.space8),
-                        if (state == _EventCreateCitySelectorState.loading)
-                          Icon(
-                            Icons.hourglass_empty,
-                            color: ExpatlioDesign.muted,
-                            size: 20,
-                          )
-                        else
-                          Icon(
-                            FFIcons.kchevronDown,
-                            color: isEnabled
-                                ? ExpatlioDesign.muted
-                                : ExpatlioDesign.disabled,
-                            size: 20,
-                          ),
-                      ],
-                    ),
-                    if (hasOutdatedProfileCity ||
-                        showsMissingLocationPrompt) ...[
-                      const SizedBox(height: ExpatlioDesign.space8),
-                      Text(
-                        _helperText(context),
-                        style: ExpatlioDesign.textStyle(
-                          context,
-                          color: ExpatlioDesign.muted,
-                          size: 13,
-                          weight: FontWeight.w500,
-                        ),
+                          const SizedBox(width: ExpatlioDesign.space8),
+                          if (state == _EventCreateCitySelectorState.loading)
+                            Icon(
+                              Icons.hourglass_empty,
+                              color: ExpatlioDesign.muted,
+                              size: 20,
+                            )
+                          else
+                            Icon(
+                              FFIcons.kchevronDown,
+                              color: isEnabled
+                                  ? ExpatlioDesign.muted
+                                  : ExpatlioDesign.disabled,
+                              size: 20,
+                            ),
+                        ],
                       ),
+                      if (hasOutdatedProfileCity ||
+                          showsMissingLocationPrompt) ...[
+                        const SizedBox(height: ExpatlioDesign.space8),
+                        Text(
+                          _helperText(context),
+                          style: ExpatlioDesign.textStyle(
+                            context,
+                            color: ExpatlioDesign.muted,
+                            size: 13,
+                            weight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -2584,52 +2644,8 @@ class _EventCreateCitySelector extends StatelessWidget {
       );
     }
     return FFLocalizations.of(context).getVariableText(
-      ruText: 'Выберите город события или нажмите один из вариантов ниже.',
-      enText: 'Choose the event city or tap one of the options below.',
-    );
-  }
-}
-
-class _EventCreateCityChips extends StatelessWidget {
-  const _EventCreateCityChips({
-    required this.chipsFuture,
-    required this.onChipPressed,
-  });
-
-  final Future<List<EventCityChip>> chipsFuture;
-  final ValueChanged<EventCityChip> onChipPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<List<EventCityChip>>(
-      future: chipsFuture,
-      builder: (context, snapshot) {
-        final chips = snapshot.data;
-        if (chips == null || chips.isEmpty) {
-          return const SizedBox.shrink();
-        }
-        return Wrap(
-          spacing: ExpatlioDesign.space8,
-          runSpacing: ExpatlioDesign.space8,
-          children: [
-            for (final chip in chips)
-              ActionChip(
-                key: eventCreateCityChipKey(chip.city),
-                label: Text(_eventCreateCityLabel(context, chip.city)),
-                onPressed: () => onChipPressed(chip),
-                visualDensity: VisualDensity.compact,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                backgroundColor: ExpatlioDesign.secondarySystemBackground,
-                side: BorderSide(color: ExpatlioDesign.separator),
-                labelStyle: ExpatlioDesign.textStyle(
-                  context,
-                  size: 14,
-                  weight: FontWeight.w600,
-                ),
-              ),
-          ],
-        );
-      },
+      ruText: 'Выберите город события из списка.',
+      enText: 'Choose the event city from the list.',
     );
   }
 }
@@ -2714,7 +2730,7 @@ class _EventCreateDateSelector extends StatelessWidget {
                           context,
                           color: ExpatlioDesign.text,
                           size: 16,
-                          weight: FontWeight.w600,
+                          weight: FontWeight.w400,
                         ),
                       ),
                     ),
@@ -2812,7 +2828,7 @@ class _EventCreateTimeSelector extends StatelessWidget {
                           context,
                           color: ExpatlioDesign.text,
                           size: 16,
-                          weight: FontWeight.w600,
+                          weight: FontWeight.w400,
                         ),
                       ),
                     ),
@@ -2846,508 +2862,97 @@ class _EventCreateTimeSelector extends StatelessWidget {
   }
 }
 
-class _EventCreateLevelSheet extends StatefulWidget {
-  const _EventCreateLevelSheet({
-    required this.selectedRange,
-  });
-
-  final EventLevelRange selectedRange;
-
-  @override
-  State<_EventCreateLevelSheet> createState() => _EventCreateLevelSheetState();
-}
-
-class _EventCreateLevelSheetState extends State<_EventCreateLevelSheet> {
-  late EventLevelRange _selectedRange;
-
-  @override
-  void initState() {
-    super.initState();
-    _selectedRange = widget.selectedRange;
-  }
-
-  void _selectLevelMin(String level) {
-    final selectedRank = eventLevelRanks[level]!;
-    final maxLevel =
-        selectedRank > _selectedRange.maxRank ? level : _selectedRange.levelMax;
-    setState(() {
-      _selectedRange = eventLevelRange(
-        levelMin: level,
-        levelMax: maxLevel,
-      );
-    });
-  }
-
-  void _selectLevelMax(String level) {
-    final selectedRank = eventLevelRanks[level]!;
-    final minLevel =
-        selectedRank < _selectedRange.minRank ? level : _selectedRange.levelMin;
-    setState(() {
-      _selectedRange = eventLevelRange(
-        levelMin: minLevel,
-        levelMax: level,
-      );
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final maxHeight = MediaQuery.sizeOf(context).height * 0.72;
-    return SafeArea(
-      top: false,
-      child: Container(
-        key: eventCreateLevelSheetKey,
-        decoration: ExpatlioDesign.sheetDecoration(),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: maxHeight),
-          child: SingleChildScrollView(
-            padding: const EdgeInsetsDirectional.fromSTEB(
-              ExpatlioDesign.space20,
-              ExpatlioDesign.space20,
-              ExpatlioDesign.space20,
-              ExpatlioDesign.space24,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  FFLocalizations.of(context).getVariableText(
-                    ruText: 'Выберите уровень',
-                    enText: 'Choose level',
-                  ),
-                  style: ExpatlioDesign.bottomSheetTitleStyle(context),
-                ),
-                const SizedBox(height: ExpatlioDesign.space20),
-                _EventCreateLevelChipGroup(
-                  label: FFLocalizations.of(context).getVariableText(
-                    ruText: 'От',
-                    enText: 'From',
-                  ),
-                  selectedLevel: _selectedRange.levelMin,
-                  optionKeyBuilder: eventCreateLevelMinOptionKey,
-                  onChanged: _selectLevelMin,
-                ),
-                const SizedBox(height: ExpatlioDesign.space16),
-                _EventCreateLevelChipGroup(
-                  label: FFLocalizations.of(context).getVariableText(
-                    ruText: 'До',
-                    enText: 'To',
-                  ),
-                  selectedLevel: _selectedRange.levelMax,
-                  optionKeyBuilder: eventCreateLevelMaxOptionKey,
-                  onChanged: _selectLevelMax,
-                ),
-                const SizedBox(height: ExpatlioDesign.space24),
-                Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    key: eventCreateLevelDoneButtonKey,
-                    onTap: () => Navigator.of(context).pop(_selectedRange),
-                    borderRadius:
-                        BorderRadius.circular(ExpatlioDesign.controlRadius),
-                    child: Container(
-                      constraints: const BoxConstraints(minHeight: 48),
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: ExpatlioDesign.primary,
-                        borderRadius:
-                            BorderRadius.circular(ExpatlioDesign.controlRadius),
-                      ),
-                      child: Text(
-                        FFLocalizations.of(context).getVariableText(
-                          ruText: 'Готово',
-                          enText: 'Done',
-                        ),
-                        style: ExpatlioDesign.textStyle(
-                          context,
-                          color: Colors.white,
-                          size: 16,
-                          weight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _EventCreateLevelChipGroup extends StatelessWidget {
-  const _EventCreateLevelChipGroup({
-    required this.label,
-    required this.selectedLevel,
-    required this.optionKeyBuilder,
-    required this.onChanged,
-  });
-
-  final String label;
-  final String selectedLevel;
-  final ValueKey<String> Function(String level) optionKeyBuilder;
-  final ValueChanged<String> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: ExpatlioDesign.textStyle(
-            context,
-            color: ExpatlioDesign.muted,
-            size: 14,
-            weight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: ExpatlioDesign.space8),
-        Wrap(
-          spacing: ExpatlioDesign.space8,
-          runSpacing: ExpatlioDesign.space8,
-          children: [
-            for (final level in eventLevelRanks.keys)
-              ChoiceChip(
-                key: optionKeyBuilder(level),
-                label: Text(level),
-                selected: selectedLevel == level,
-                onSelected: (_) => onChanged(level),
-                showCheckmark: false,
-                visualDensity: VisualDensity.compact,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                backgroundColor: ExpatlioDesign.secondarySystemBackground,
-                selectedColor: ExpatlioDesign.primary.withValues(alpha: 0.12),
-                side: BorderSide(
-                  color: selectedLevel == level
-                      ? ExpatlioDesign.primary
-                      : ExpatlioDesign.separator,
-                ),
-                labelStyle: ExpatlioDesign.textStyle(
-                  context,
-                  color: selectedLevel == level
-                      ? ExpatlioDesign.primary
-                      : ExpatlioDesign.text,
-                  size: 14,
-                  weight: FontWeight.w600,
-                ),
-              ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _EventCreateCitySheet extends StatefulWidget {
-  const _EventCreateCitySheet({
-    required this.catalog,
-    required this.countryCodeHint,
-  });
-
-  final EventCityCatalog catalog;
-  final String? countryCodeHint;
-
-  @override
-  State<_EventCreateCitySheet> createState() => _EventCreateCitySheetState();
-}
-
-class _EventCreateCitySheetState extends State<_EventCreateCitySheet> {
-  final TextEditingController _searchController = TextEditingController();
-  String _query = '';
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-    final options = _options;
-    final maxHeight = MediaQuery.sizeOf(context).height * 0.78;
-
-    return SafeArea(
-      top: false,
-      child: Container(
-        key: eventCreateCitySheetKey,
-        decoration: ExpatlioDesign.sheetDecoration(),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: maxHeight),
-          child: Padding(
-            padding: EdgeInsetsDirectional.fromSTEB(
-              ExpatlioDesign.space20,
-              ExpatlioDesign.space20,
-              ExpatlioDesign.space20,
-              ExpatlioDesign.space20 + bottomInset,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  FFLocalizations.of(context).getVariableText(
-                    ruText: 'Выберите город',
-                    enText: 'Choose city',
-                  ),
-                  style: ExpatlioDesign.bottomSheetTitleStyle(context),
-                ),
-                const SizedBox(height: ExpatlioDesign.space12),
-                TextField(
-                  key: eventCreateCitySearchFieldKey,
-                  controller: _searchController,
-                  autofocus: true,
-                  textInputAction: TextInputAction.search,
-                  decoration: InputDecoration(
-                    hintText: FFLocalizations.of(context).getVariableText(
-                      ruText: 'Поиск города',
-                      enText: 'Search city',
-                    ),
-                    prefixIcon: const Icon(Icons.search),
-                    filled: true,
-                    fillColor: ExpatlioDesign.secondarySystemBackground,
-                    border: OutlineInputBorder(
-                      borderRadius:
-                          BorderRadius.circular(ExpatlioDesign.controlRadius),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsetsDirectional.fromSTEB(
-                      ExpatlioDesign.space16,
-                      ExpatlioDesign.space12,
-                      ExpatlioDesign.space16,
-                      ExpatlioDesign.space12,
-                    ),
-                  ),
-                  onChanged: (value) => setState(() {
-                    _query = value;
-                  }),
-                ),
-                const SizedBox(height: ExpatlioDesign.space12),
-                Flexible(
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: options.length,
-                    separatorBuilder: (_, __) =>
-                        const SizedBox(height: ExpatlioDesign.space8),
-                    itemBuilder: (context, index) {
-                      final option = options[index];
-                      return _EventCreateCityOptionTile(
-                        option: option,
-                        onTap: () => Navigator.of(context).pop(option.city),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  List<EventCitySearchOption> get _options {
-    if (_query.trim().isEmpty) {
-      return widget.catalog
-          .popularCities(countryCodeHint: widget.countryCodeHint)
-          .map((city) => EventCitySearchOption(city: city))
-          .toList(growable: false);
-    }
-    return widget.catalog.searchOptions(
-      _query,
-      countryCodeHint: widget.countryCodeHint,
-    );
-  }
-}
-
-class _EventCreateCityOptionTile extends StatelessWidget {
-  const _EventCreateCityOptionTile({
-    required this.option,
-    required this.onTap,
-  });
-
-  final EventCitySearchOption option;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: _eventCreateCityLabel(context, option.city),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          key: eventCreateCityOptionKey(option.city),
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
-          child: Container(
-            padding: const EdgeInsetsDirectional.fromSTEB(
-              ExpatlioDesign.space12,
-              ExpatlioDesign.space12,
-              ExpatlioDesign.space12,
-              ExpatlioDesign.space12,
-            ),
-            decoration: ExpatlioDesign.cardDecoration(
-              borderColor: ExpatlioDesign.separator,
-              radius: ExpatlioDesign.controlRadius,
-            ),
-            child: Text(
-              _eventCreateCityLabel(context, option.city),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: ExpatlioDesign.textStyle(
-                context,
-                size: 16,
-                weight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _EventCreateLanguageSheet extends StatelessWidget {
-  const _EventCreateLanguageSheet({
-    required this.catalog,
-    required this.selectedLanguageCode,
-  });
-
-  final EventLanguageCatalog catalog;
-  final String selectedLanguageCode;
-
-  @override
-  Widget build(BuildContext context) {
-    final maxHeight = MediaQuery.sizeOf(context).height * 0.72;
-    return SafeArea(
-      top: false,
-      child: Container(
-        key: eventCreateLanguageSheetKey,
-        decoration: ExpatlioDesign.sheetDecoration(),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: maxHeight),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsetsDirectional.fromSTEB(
-                  ExpatlioDesign.space20,
-                  ExpatlioDesign.space20,
-                  ExpatlioDesign.space20,
-                  ExpatlioDesign.space12,
-                ),
-                child: Text(
-                  FFLocalizations.of(context).getVariableText(
-                    ruText: 'Выберите язык',
-                    enText: 'Choose language',
-                  ),
-                  style: ExpatlioDesign.bottomSheetTitleStyle(context),
-                ),
-              ),
-              Flexible(
-                child: ListView.separated(
-                  padding: const EdgeInsetsDirectional.fromSTEB(
-                    ExpatlioDesign.space16,
-                    ExpatlioDesign.space8,
-                    ExpatlioDesign.space16,
-                    ExpatlioDesign.space24,
-                  ),
-                  itemCount: catalog.languages.length,
-                  separatorBuilder: (_, __) =>
-                      const SizedBox(height: ExpatlioDesign.space8),
-                  itemBuilder: (context, index) {
-                    final language = catalog.languages[index];
-                    return _EventCreateLanguageOptionTile(
-                      language: language,
-                      label: _eventCreateLanguageDisplayName(
-                        context: context,
-                        catalog: catalog,
-                        languageCode: language.code,
-                      ),
-                      selected: language.code == selectedLanguageCode,
-                      onTap: () => Navigator.of(context).pop(language.code),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _EventCreateLanguageOptionTile extends StatelessWidget {
-  const _EventCreateLanguageOptionTile({
-    required this.language,
+class _EventCreateDropdownMenuOption<T> {
+  const _EventCreateDropdownMenuOption({
+    required this.key,
+    required this.value,
     required this.label,
     required this.selected,
-    required this.onTap,
   });
 
-  final EventLanguage language;
+  final Key key;
+  final T value;
   final String label;
   final bool selected;
-  final VoidCallback onTap;
+}
 
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: label,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          key: eventCreateLanguageOptionKey(language.code),
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
-          child: Container(
-            constraints: const BoxConstraints(minHeight: 48),
-            padding: const EdgeInsetsDirectional.fromSTEB(
-              ExpatlioDesign.space12,
-              ExpatlioDesign.space12,
-              ExpatlioDesign.space12,
-              ExpatlioDesign.space12,
-            ),
-            decoration: ExpatlioDesign.cardDecoration(
-              borderColor:
-                  selected ? ExpatlioDesign.primary : ExpatlioDesign.separator,
-              radius: ExpatlioDesign.controlRadius,
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: ExpatlioDesign.textStyle(
-                      context,
-                      size: 16,
-                      weight: selected ? FontWeight.w700 : FontWeight.w600,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: ExpatlioDesign.space8),
-                if (selected)
-                  Icon(
-                    Icons.check_circle,
-                    color: ExpatlioDesign.primary,
-                    size: 20,
-                  ),
-              ],
-            ),
+Future<T?> _showEventCreateDropdownMenu<T>(
+  BuildContext anchorContext, {
+  required List<_EventCreateDropdownMenuOption<T>> options,
+}) {
+  final anchorBox = anchorContext.findRenderObject() as RenderBox?;
+  final overlayBox =
+      Overlay.of(anchorContext).context.findRenderObject() as RenderBox?;
+
+  if (anchorBox == null || overlayBox == null || !anchorBox.attached) {
+    return Future<T?>.value(null);
+  }
+
+  const viewportMargin = 16.0;
+  const minMenuWidth = 206.0;
+  final anchorOffset =
+      anchorBox.localToGlobal(Offset.zero, ancestor: overlayBox);
+  final availableMenuWidth =
+      math.max(0.0, overlayBox.size.width - (viewportMargin * 2));
+  final menuWidth = math
+      .min(math.max(anchorBox.size.width, minMenuWidth), availableMenuWidth)
+      .toDouble();
+  final maxMenuLeft = math.max(
+    viewportMargin,
+    overlayBox.size.width - menuWidth - viewportMargin,
+  );
+  final menuLeft =
+      anchorOffset.dx.clamp(viewportMargin, maxMenuLeft).toDouble();
+  final anchorRect = Rect.fromLTWH(
+    menuLeft,
+    anchorOffset.dy + anchorBox.size.height + 8.0,
+    menuWidth,
+    0.0,
+  );
+
+  return showMenu<T>(
+    context: anchorContext,
+    position: RelativeRect.fromRect(anchorRect, Offset.zero & overlayBox.size),
+    color: ExpatlioDesign.card,
+    elevation: 8.0,
+    shadowColor: const Color(0x12000000),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
+      side: const BorderSide(color: ExpatlioDesign.border),
+    ),
+    clipBehavior: Clip.antiAlias,
+    popUpAnimationStyle: AnimationStyle.noAnimation,
+    constraints: BoxConstraints(
+      minWidth: menuWidth,
+      maxWidth: menuWidth,
+      maxHeight: math.min(360.0, overlayBox.size.height * 0.58),
+    ),
+    items: [
+      for (final option in options)
+        PopupMenuItem<T>(
+          value: option.value,
+          height: 42.0,
+          padding: EdgeInsets.zero,
+          child: ProfileDropdownMenuItem(
+            key: option.key,
+            label: option.label,
+            selected: option.selected,
           ),
         ),
-      ),
-    );
-  }
+    ],
+  );
+}
+
+List<EventLevelRange> _eventCreateLevelRangeOptions() {
+  final levels = eventLevelRanks.keys.toList(growable: false);
+  return [
+    for (var minIndex = 0; minIndex < levels.length; minIndex += 1)
+      for (var maxIndex = minIndex; maxIndex < levels.length; maxIndex += 1)
+        eventLevelRange(
+          levelMin: levels[minIndex],
+          levelMax: levels[maxIndex],
+        ),
+  ];
 }
 
 class _EventCreateTopBar extends StatelessWidget {

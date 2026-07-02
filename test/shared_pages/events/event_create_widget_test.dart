@@ -89,6 +89,12 @@ GoRouter _buildEventCreateRouter({
         ),
       ),
       GoRoute(
+        path: '/events',
+        builder: (context, state) => const Scaffold(
+          body: Text('Events home'),
+        ),
+      ),
+      GoRoute(
         name: EventCreateWidget.routeName,
         path: EventCreateWidget.routePath,
         builder: (context, state) => EventCreateWidget(
@@ -562,7 +568,7 @@ void main() {
     expect(drafts.map((draft) => draft.languageCode), ['en']);
   });
 
-  testWidgets('opens language sheet and selects primary language code',
+  testWidgets('opens language dropdown and selects primary language code',
       (tester) async {
     final selectedCodes = <String>[];
     final drafts = <EventCreateLanguageDraft>[];
@@ -581,8 +587,7 @@ void main() {
     await tester.tap(find.byKey(eventCreateLanguageSelectorKey));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(eventCreateLanguageSheetKey), findsOneWidget);
-    expect(find.text('Выберите язык'), findsOneWidget);
+    expect(find.byKey(eventCreateLanguageSheetKey), findsNothing);
     expect(find.byKey(eventCreateLanguageOptionKey('en')), findsOneWidget);
     expect(find.byKey(eventCreateLanguageOptionKey('es')), findsOneWidget);
 
@@ -682,7 +687,7 @@ void main() {
     expect(drafts.map(_levelDraftValue), ['B2:B2']);
   });
 
-  testWidgets('opens level sheet and selects range', (tester) async {
+  testWidgets('opens level dropdown and selects range', (tester) async {
     final drafts = <EventCreateLevelDraft>[];
 
     await tester.pumpWidget(
@@ -698,26 +703,21 @@ void main() {
     await tester.tap(find.byKey(eventCreateLevelSelectorKey));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(eventCreateLevelSheetKey), findsOneWidget);
-    expect(find.text('Выберите уровень'), findsOneWidget);
+    expect(find.byKey(eventCreateLevelSheetKey), findsNothing);
     expect(
-      tester
-          .widget<ChoiceChip>(find.byKey(eventCreateLevelMinOptionKey('B1')))
-          .selected,
-      isTrue,
+      find.byKey(eventCreateLevelRangeOptionKey('B1', 'C1')),
+      findsOneWidget,
     );
     expect(
-      tester
-          .widget<ChoiceChip>(find.byKey(eventCreateLevelMaxOptionKey('C1')))
-          .selected,
-      isTrue,
+      find.byKey(eventCreateLevelRangeOptionKey('A2', 'B2')),
+      findsOneWidget,
     );
 
-    await tester.tap(find.byKey(eventCreateLevelMinOptionKey('A2')));
+    await tester.ensureVisible(
+      find.byKey(eventCreateLevelRangeOptionKey('A2', 'B2')),
+    );
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(eventCreateLevelMaxOptionKey('B2')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(eventCreateLevelDoneButtonKey));
+    await tester.tap(find.byKey(eventCreateLevelRangeOptionKey('A2', 'B2')));
     await tester.pumpAndSettle();
 
     expect(find.byKey(eventCreateLevelSheetKey), findsNothing);
@@ -725,8 +725,7 @@ void main() {
     expect(drafts.map(_levelDraftValue), ['B1:C1', 'A2:B2']);
   });
 
-  testWidgets('keeps level range ordered when selecting reversed bounds',
-      (tester) async {
+  testWidgets('level dropdown supports same-level range', (tester) async {
     final drafts = <EventCreateLevelDraft>[];
 
     await tester.pumpWidget(
@@ -741,31 +740,20 @@ void main() {
 
     await tester.tap(find.byKey(eventCreateLevelSelectorKey));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(eventCreateLevelMaxOptionKey('A2')));
-    await tester.pumpAndSettle();
 
     expect(
-      tester
-          .widget<ChoiceChip>(find.byKey(eventCreateLevelMinOptionKey('A2')))
-          .selected,
-      isTrue,
-    );
-    expect(
-      tester
-          .widget<ChoiceChip>(find.byKey(eventCreateLevelMaxOptionKey('A2')))
-          .selected,
-      isTrue,
+      find.byKey(eventCreateLevelRangeOptionKey('A2', 'A2')),
+      findsOneWidget,
     );
 
-    await tester.tap(find.byKey(eventCreateLevelDoneButtonKey));
+    await tester.tap(find.byKey(eventCreateLevelRangeOptionKey('A2', 'A2')));
     await tester.pumpAndSettle();
 
     expect(_levelSelectorText('A2'), findsOneWidget);
     expect(drafts.map(_levelDraftValue), ['B1:C1', 'A2:A2']);
   });
 
-  testWidgets('keeps level range ordered when min is above max',
-      (tester) async {
+  testWidgets('level dropdown supports C2 only range', (tester) async {
     final drafts = <EventCreateLevelDraft>[];
 
     await tester.pumpWidget(
@@ -780,30 +768,24 @@ void main() {
 
     await tester.tap(find.byKey(eventCreateLevelSelectorKey));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(eventCreateLevelMinOptionKey('C2')));
+
+    expect(
+      find.byKey(eventCreateLevelRangeOptionKey('C2', 'C2')),
+      findsOneWidget,
+    );
+
+    await tester.ensureVisible(
+      find.byKey(eventCreateLevelRangeOptionKey('C2', 'C2')),
+    );
     await tester.pumpAndSettle();
-
-    expect(
-      tester
-          .widget<ChoiceChip>(find.byKey(eventCreateLevelMinOptionKey('C2')))
-          .selected,
-      isTrue,
-    );
-    expect(
-      tester
-          .widget<ChoiceChip>(find.byKey(eventCreateLevelMaxOptionKey('C2')))
-          .selected,
-      isTrue,
-    );
-
-    await tester.tap(find.byKey(eventCreateLevelDoneButtonKey));
+    await tester.tap(find.byKey(eventCreateLevelRangeOptionKey('C2', 'C2')));
     await tester.pumpAndSettle();
 
     expect(_levelSelectorText('C2'), findsOneWidget);
     expect(drafts.map(_levelDraftValue), ['B1:C1', 'C2:C2']);
   });
 
-  testWidgets('shows missing city selector and quick city chips',
+  testWidgets('shows missing city selector and opens city dropdown',
       (tester) async {
     await tester.pumpWidget(
       _buildTestApp(
@@ -819,14 +801,26 @@ void main() {
     expect(find.text('Город'), findsOneWidget);
     expect(_citySelectorText('Выберите город'), findsOneWidget);
     expect(
-      find.text('Выберите город события или нажмите один из вариантов ниже.'),
+      find.text('Выберите город события из списка.'),
       findsOneWidget,
     );
-    expect(find.byKey(eventCreateCityChipKey(_moscowCity)), findsOneWidget);
-    expect(find.byKey(eventCreateCityChipKey(_newYorkCity)), findsOneWidget);
+    expect(find.byKey(eventCreateCityOptionKey(_moscowCity)), findsNothing);
+    expect(find.byKey(eventCreateCityOptionKey(_newYorkCity)), findsNothing);
+
+    await _ensureVisibleInForm(
+      tester,
+      find.byKey(eventCreateCitySelectorKey),
+    );
+    await tester.tap(find.byKey(eventCreateCitySelectorKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventCreateCitySheetKey), findsNothing);
+    expect(find.byKey(eventCreateCityOptionKey(_moscowCity)), findsOneWidget);
+    expect(find.byKey(eventCreateCityOptionKey(_newYorkCity)), findsOneWidget);
   });
 
-  testWidgets('uses country hint to order city chips', (tester) async {
+  testWidgets('uses country hint to order city dropdown options',
+      (tester) async {
     currentUserDocument = _userFixture(
       uid: 'country-hint-user',
       data: const {
@@ -844,12 +838,47 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await _ensureVisibleInForm(
+      tester,
+      find.byKey(eventCreateCitySelectorKey),
+    );
+    await tester.tap(find.byKey(eventCreateCitySelectorKey));
+    await tester.pumpAndSettle();
+
     expect(
-      _widgetIndex(tester, find.byKey(eventCreateCityChipKey(_newYorkCity))),
+      _widgetIndex(tester, find.byKey(eventCreateCityOptionKey(_newYorkCity))),
       lessThan(
-        _widgetIndex(tester, find.byKey(eventCreateCityChipKey(_moscowCity))),
+        _widgetIndex(tester, find.byKey(eventCreateCityOptionKey(_moscowCity))),
       ),
     );
+  });
+
+  testWidgets('uses country-only profile data as default city draft',
+      (tester) async {
+    final drafts = <EventCreateCityDraft>[];
+    currentUserDocument = _userFixture(
+      uid: 'country-only-create-user',
+      data: const {
+        'Country_NS': {'code': 'US'},
+      },
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          onCityDraftChanged: drafts.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_citySelectorText('Нью-Йорк · United States'), findsOneWidget);
+    expect(find.text('Выберите город события из списка.'), findsNothing);
+    expect(drafts.map(_cityDraftValue), [
+      'US:new_york:America/New_York:profile',
+    ]);
   });
 
   testWidgets('uses resolved profile city as default submit draft',
@@ -919,7 +948,7 @@ void main() {
     expect(drafts, isEmpty);
   });
 
-  testWidgets('waits for current user document before showing city chips',
+  testWidgets('waits for current user document before enabling city dropdown',
       (tester) async {
     currentUser = _TestAuthUser('loading-profile-user');
 
@@ -934,8 +963,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(_citySelectorText('Загрузка городов...'), findsOneWidget);
-    expect(find.byKey(eventCreateCityChipKey(_moscowCity)), findsNothing);
-    expect(find.byKey(eventCreateCityChipKey(_newYorkCity)), findsNothing);
+    expect(find.byKey(eventCreateCityOptionKey(_moscowCity)), findsNothing);
+    expect(find.byKey(eventCreateCityOptionKey(_newYorkCity)), findsNothing);
   });
 
   testWidgets('updates city selector when profile city arrives later',
@@ -1029,30 +1058,7 @@ void main() {
     expect(drafts, isEmpty);
   });
 
-  testWidgets('selects city chip and emits submit draft', (tester) async {
-    final drafts = <EventCreateCityDraft>[];
-
-    await tester.pumpWidget(
-      _buildTestApp(
-        home: EventCreateWidget(
-          languageCatalogOverride: _languageCatalog,
-          cityCatalogOverride: _cityCatalog,
-          onCityDraftChanged: drafts.add,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.ensureVisible(find.byKey(eventCreateCityChipKey(_moscowCity)));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(eventCreateCityChipKey(_moscowCity)));
-    await tester.pumpAndSettle();
-
-    expect(_citySelectorText('Москва · Россия'), findsOneWidget);
-    expect(drafts.map(_cityDraftValue), ['RU:moscow:Europe/Moscow:static']);
-  });
-
-  testWidgets('opens city sheet and selects manual city search result',
+  testWidgets('selects city dropdown option and emits submit draft',
       (tester) async {
     final drafts = <EventCreateCityDraft>[];
 
@@ -1073,18 +1079,47 @@ void main() {
     );
     await tester.tap(find.byKey(eventCreateCitySelectorKey));
     await tester.pumpAndSettle();
+    await tester
+        .ensureVisible(find.byKey(eventCreateCityOptionKey(_moscowCity)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventCreateCityOptionKey(_moscowCity)));
+    await tester.pumpAndSettle();
 
-    expect(find.byKey(eventCreateCitySheetKey), findsOneWidget);
-    expect(find.text('Поиск города'), findsOneWidget);
+    expect(_citySelectorText('Москва · Россия'), findsOneWidget);
+    expect(drafts.map(_cityDraftValue), ['RU:moscow:Europe/Moscow:static']);
+  });
 
-    await tester.enterText(find.byKey(eventCreateCitySearchFieldKey), 'rome');
+  testWidgets('opens city dropdown and selects city option', (tester) async {
+    final drafts = <EventCreateCityDraft>[];
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+          onCityDraftChanged: drafts.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _ensureVisibleInForm(
+      tester,
+      find.byKey(eventCreateCitySelectorKey),
+    );
+    await tester.tap(find.byKey(eventCreateCitySelectorKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventCreateCitySheetKey), findsNothing);
+    expect(find.byKey(eventCreateCityOptionKey(_romeCity)), findsOneWidget);
+    await tester.ensureVisible(find.byKey(eventCreateCityOptionKey(_romeCity)));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(eventCreateCityOptionKey(_romeCity)));
     await tester.pumpAndSettle();
 
     expect(find.byKey(eventCreateCitySheetKey), findsNothing);
     expect(_citySelectorText('Рим · Italia'), findsOneWidget);
-    expect(drafts.map(_cityDraftValue), ['IT:rome:Europe/Rome:manual']);
+    expect(drafts.map(_cityDraftValue), ['IT:rome:Europe/Rome:static']);
   });
 
   testWidgets('edit mode city selection does not update recent city store',
@@ -1116,7 +1151,7 @@ void main() {
     );
     await tester.tap(find.byKey(eventCreateCitySelectorKey));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(eventCreateCitySearchFieldKey), 'rome');
+    await tester.ensureVisible(find.byKey(eventCreateCityOptionKey(_romeCity)));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(eventCreateCityOptionKey(_romeCity)));
     await tester.pumpAndSettle();
@@ -1916,7 +1951,7 @@ void main() {
     await tester.tap(find.byKey(eventDetailBackButtonKey));
     await tester.pumpAndSettle();
 
-    expect(router.getCurrentLocation(), '/');
+    expect(router.getCurrentLocation(), '/events');
     expect(find.byType(EventCreateWidget), findsNothing);
     expect(find.text('Events home'), findsOneWidget);
   });

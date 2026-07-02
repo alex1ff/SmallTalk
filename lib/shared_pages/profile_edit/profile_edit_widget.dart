@@ -943,7 +943,7 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
       },
       child: Scaffold(
         key: scaffoldKey,
-        backgroundColor: const Color(0xFFFBFBFB),
+        backgroundColor: ExpatlioDesign.background,
         body: AuthUserStreamWidget(
           builder: (context) {
             if (!_hasSyncedUserSnapshot && currentUserDocument != null) {

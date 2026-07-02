@@ -8,7 +8,6 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'nav_bar_model.dart';
 export 'nav_bar_model.dart';
 
-const _chatIconAsset = 'assets/images/message-circle-01.svg';
 const _navBarBorderColor = Color(0xFFEBEBEB);
 
 class NavBarWidget extends StatefulWidget {
@@ -76,7 +75,7 @@ class _NavBarWidgetState extends State<NavBarWidget> {
           ),
         ),
         _NavBarDestination(
-          svgAsset: _chatIconAsset,
+          svgAsset: ExpatlioDesign.chatIconAsset,
           label: FFLocalizations.of(context).getVariableText(
             ruText: 'Чаты',
             enText: 'Chats',
@@ -108,7 +107,7 @@ class _NavBarWidgetState extends State<NavBarWidget> {
         ),
       ),
       _NavBarDestination(
-        svgAsset: _chatIconAsset,
+        svgAsset: ExpatlioDesign.chatIconAsset,
         label: FFLocalizations.of(context).getVariableText(
           ruText: 'Чаты',
           enText: 'Chats',
@@ -219,12 +218,12 @@ class _NavBarWidgetState extends State<NavBarWidget> {
         (35.0 - bottomInset).clamp(0.0, 35.0).toDouble();
 
     return Material(
-      color: ExpatlioDesign.card,
+      color: ExpatlioDesign.background,
       child: SafeArea(
         top: false,
         child: Container(
           decoration: const BoxDecoration(
-            color: ExpatlioDesign.card,
+            color: ExpatlioDesign.background,
             border: Border(
               top: BorderSide(
                 color: _navBarBorderColor,

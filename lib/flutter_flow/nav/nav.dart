@@ -275,6 +275,12 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
             builder: (context, params) => MyCallsWidget(),
           ),
           FFRoute(
+            name: EventHistoryWidget.routeName,
+            path: EventHistoryWidget.routePath,
+            requireAuth: true,
+            builder: (context, params) => EventHistoryWidget(),
+          ),
+          FFRoute(
             name: MyRewNSWidget.routeName,
             path: MyRewNSWidget.routePath,
             requireAuth: true,

@@ -320,7 +320,7 @@ class _LevelTick extends StatelessWidget {
                   : FlutterFlowTheme.of(context).secondaryBackground,
               shape: BoxShape.circle,
               border: Border.all(
-                color: isSelected ? ExpatlioDesign.primary : Colors.transparent,
+                color: isSelected ? ExpatlioDesign.border : Colors.transparent,
                 width: 6.0,
               ),
             ),

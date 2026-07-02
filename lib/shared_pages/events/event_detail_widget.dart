@@ -2,9 +2,9 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:timezone/timezone.dart' as timezone;
 
-import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/services/event_list_date_bounds.dart';
@@ -25,6 +25,8 @@ const ValueKey<String> eventDetailLanguageBadgeKey =
     ValueKey<String>('event_detail_language_badge');
 const ValueKey<String> eventDetailCanceledBannerKey =
     ValueKey<String>('event_detail_canceled_banner');
+const ValueKey<String> eventDetailIntroCardKey =
+    ValueKey<String>('event_detail_intro_card');
 const ValueKey<String> eventDetailTitleKey =
     ValueKey<String>('event_detail_title');
 const ValueKey<String> eventDetailDescriptionKey =
@@ -75,12 +77,33 @@ const ValueKey<String> eventDetailPrimaryCtaKey =
     ValueKey<String>('event_detail_primary_cta');
 const ValueKey<String> eventDetailChatCtaKey =
     ValueKey<String>('event_detail_chat_cta');
+const String _eventDetailFallbackRoutePath = '/events';
 
 const Color _eventDetailDestructiveCtaBackground = Color(0xFFB42318);
-const double _eventDetailContentBottomPadding =
-    ExpatlioDesign.buttonHeight * 2 +
-        ExpatlioDesign.space16 +
-        ExpatlioDesign.space24 * 3;
+const Color _eventDetailPageBackground = ExpatlioDesign.background;
+const Color _eventDetailCardBorder = Color(0xFFEBEBEB);
+const Color _eventDetailControlFill = Color(0xFFF2F2F3);
+const Color _eventDetailNeutralBadgeFill = Color(0xFFF1F1F2);
+const Color _eventDetailPrimaryBadgeFill = Color(0xFFEFE7FF);
+const Color _eventDetailMutedText = Color(0xFF8E8E93);
+const Color _eventDetailFreeSlotBorder = ExpatlioDesign.border;
+const double _eventDetailCardRadius = 18;
+const double _eventDetailContentHorizontalPadding = 18;
+const double _eventDetailSectionGap = 16;
+const double _eventDetailActionHeight = 48;
+const double _eventDetailButtonRadius = 16;
+const double _eventDetailCompactButtonRadius = 12;
+const double _eventDetailContentBottomPadding = _eventDetailActionHeight +
+    ExpatlioDesign.space16 * 2 +
+    ExpatlioDesign.space16;
+
+BoxDecoration _eventDetailCardDecoration() {
+  return BoxDecoration(
+    color: ExpatlioDesign.card,
+    borderRadius: BorderRadius.circular(_eventDetailCardRadius),
+    border: Border.all(color: _eventDetailCardBorder),
+  );
+}
 
 ValueKey<String> eventDetailParticipantTileKey(int index) =>
     ValueKey<String>('event_detail_participant_tile_$index');
@@ -135,7 +158,6 @@ class EventDetailWidget extends StatelessWidget {
     this.joinCtaState = EventDetailJoinCtaState.join,
     this.onPrimaryCtaPressed,
     this.onChatPressed,
-    this.onChatParticipantRequiredPressed,
   });
 
   final String eventId;
@@ -165,7 +187,6 @@ class EventDetailWidget extends StatelessWidget {
   final EventDetailJoinCtaState joinCtaState;
   final VoidCallback? onPrimaryCtaPressed;
   final VoidCallback? onChatPressed;
-  final VoidCallback? onChatParticipantRequiredPressed;
 
   static String routeName = 'eventDetail';
   static String routePath = '/events/:eventId';
@@ -198,13 +219,12 @@ class EventDetailWidget extends StatelessWidget {
     final isCanceled = joinCtaState == EventDetailJoinCtaState.canceled;
 
     return Scaffold(
-      backgroundColor: ExpatlioDesign.background,
+      backgroundColor: _eventDetailPageBackground,
       bottomNavigationBar: _EventDetailBottomActionBar(
         eventId: eventId,
         joinCtaState: joinCtaState,
         onPrimaryPressed: onPrimaryCtaPressed,
         onChatPressed: onChatPressed,
-        onChatParticipantRequiredPressed: onChatParticipantRequiredPressed,
       ),
       body: SafeArea(
         child: Column(
@@ -218,9 +238,9 @@ class EventDetailWidget extends StatelessWidget {
             Expanded(
               child: ListView(
                 padding: const EdgeInsetsDirectional.fromSTEB(
-                  ExpatlioDesign.space24,
-                  ExpatlioDesign.space24,
-                  ExpatlioDesign.space24,
+                  _eventDetailContentHorizontalPadding,
+                  ExpatlioDesign.space8,
+                  _eventDetailContentHorizontalPadding,
                   _eventDetailContentBottomPadding,
                 ),
                 children: [
@@ -231,92 +251,35 @@ class EventDetailWidget extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (levelRangeLabel.isNotEmpty ||
-                              languageLabel.isNotEmpty) ...[
-                            Wrap(
-                              spacing: ExpatlioDesign.space8,
-                              runSpacing: ExpatlioDesign.space8,
-                              children: [
-                                if (levelRangeLabel.isNotEmpty)
-                                  _EventDetailLevelRangeBadge(
-                                    label: levelRangeLabel,
-                                  ),
-                                if (languageLabel.isNotEmpty)
-                                  _EventDetailLanguageBadge(
-                                    label: languageLabel,
-                                  ),
-                              ],
-                            ),
-                            const SizedBox(height: ExpatlioDesign.space20),
-                          ],
-                          if (isCanceled) ...[
-                            const _EventDetailCanceledBanner(),
-                            const SizedBox(height: ExpatlioDesign.space20),
-                          ],
-                          Text(
-                            key: eventDetailTitleKey,
-                            titleLabel,
-                            softWrap: true,
-                            style: ExpatlioDesign.textStyle(
-                              context,
-                              size: 32,
-                              height: 1.18,
-                              weight: FontWeight.w700,
-                            ),
+                          _EventDetailIntroCard(
+                            levelRangeLabel: levelRangeLabel,
+                            languageLabel: languageLabel,
+                            isCanceled: isCanceled,
+                            titleLabel: titleLabel,
+                            descriptionText: descriptionText,
+                            fallbackText: showEventIdFallback ? eventId : null,
+                            showOrganizerControls: showOrganizerControls,
+                            onOrganizerEditPressed: onOrganizerEditPressed,
+                            onOrganizerCancelPressed: onOrganizerCancelPressed,
                           ),
-                          if (descriptionText.isNotEmpty) ...[
-                            const SizedBox(height: ExpatlioDesign.space16),
-                            Text(
-                              key: eventDetailDescriptionKey,
-                              descriptionText,
-                              softWrap: true,
-                              style: ExpatlioDesign.textStyle(
-                                context,
-                                color: ExpatlioDesign.muted,
-                                size: 18,
-                                height: 1.42,
-                                weight: FontWeight.w500,
-                              ),
-                            ),
-                          ] else if (showEventIdFallback) ...[
-                            const SizedBox(height: ExpatlioDesign.space8),
-                            Text(
-                              eventId,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: ExpatlioDesign.textStyle(
-                                context,
-                                color: ExpatlioDesign.muted,
-                                size: 14,
-                                weight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                          if (shouldShowDetails) ...[
-                            const SizedBox(height: ExpatlioDesign.space24),
-                            _EventDetailDetailsBlock(
-                              startsAt: startsAt,
-                              timeZoneId: timeZoneId,
-                              locationName: locationLabel,
-                            ),
-                          ],
                           if (organizerName.isNotEmpty) ...[
-                            const SizedBox(height: ExpatlioDesign.space24),
+                            const SizedBox(height: _eventDetailSectionGap),
                             _EventDetailOrganizerCard(
                               displayName: organizerName,
                               photoUrl: organizerPhotoUrl,
                               onMessagePressed: onOrganizerMessagePressed,
                             ),
                           ],
-                          if (showOrganizerControls) ...[
-                            const SizedBox(height: ExpatlioDesign.space24),
-                            _EventDetailOrganizerControls(
-                              onEditPressed: onOrganizerEditPressed,
-                              onCancelPressed: onOrganizerCancelPressed,
+                          if (shouldShowDetails) ...[
+                            const SizedBox(height: _eventDetailSectionGap),
+                            _EventDetailDetailsBlock(
+                              startsAt: startsAt,
+                              timeZoneId: timeZoneId,
+                              locationName: locationLabel,
                             ),
                           ],
                           if (participants.isNotEmpty || hasOccupancy) ...[
-                            const SizedBox(height: ExpatlioDesign.space24),
+                            const SizedBox(height: _eventDetailSectionGap),
                             _EventDetailParticipantsSection(
                               participants: participants,
                               participantsCount: resolvedParticipantsCount,
@@ -332,6 +295,113 @@ class EventDetailWidget extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _EventDetailIntroCard extends StatelessWidget {
+  const _EventDetailIntroCard({
+    required this.levelRangeLabel,
+    required this.languageLabel,
+    required this.isCanceled,
+    required this.titleLabel,
+    required this.descriptionText,
+    required this.fallbackText,
+    required this.showOrganizerControls,
+    required this.onOrganizerEditPressed,
+    required this.onOrganizerCancelPressed,
+  });
+
+  final String levelRangeLabel;
+  final String languageLabel;
+  final bool isCanceled;
+  final String titleLabel;
+  final String descriptionText;
+  final String? fallbackText;
+  final bool showOrganizerControls;
+  final VoidCallback? onOrganizerEditPressed;
+  final VoidCallback? onOrganizerCancelPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: eventDetailIntroCardKey,
+      width: double.infinity,
+      padding: const EdgeInsetsDirectional.fromSTEB(
+        14,
+        14,
+        14,
+        18,
+      ),
+      decoration: _eventDetailCardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (showOrganizerControls) ...[
+            _EventDetailOrganizerControls(
+              onEditPressed: onOrganizerEditPressed,
+              onCancelPressed: onOrganizerCancelPressed,
+            ),
+            const SizedBox(height: ExpatlioDesign.space12),
+          ],
+          if (levelRangeLabel.isNotEmpty || languageLabel.isNotEmpty) ...[
+            Wrap(
+              spacing: ExpatlioDesign.space8,
+              runSpacing: ExpatlioDesign.space8,
+              children: [
+                if (levelRangeLabel.isNotEmpty)
+                  _EventDetailLevelRangeBadge(label: levelRangeLabel),
+                if (languageLabel.isNotEmpty)
+                  _EventDetailLanguageBadge(label: languageLabel),
+              ],
+            ),
+            const SizedBox(height: 18),
+          ],
+          if (isCanceled) ...[
+            const _EventDetailCanceledBanner(),
+            const SizedBox(height: ExpatlioDesign.space20),
+          ],
+          Text(
+            key: eventDetailTitleKey,
+            titleLabel,
+            softWrap: true,
+            style: ExpatlioDesign.textStyle(
+              context,
+              size: 21,
+              height: 1.24,
+              weight: FontWeight.w700,
+            ),
+          ),
+          if (descriptionText.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Text(
+              key: eventDetailDescriptionKey,
+              descriptionText,
+              softWrap: true,
+              style: ExpatlioDesign.textStyle(
+                context,
+                color: _eventDetailMutedText,
+                size: 14,
+                height: 1.42,
+                weight: FontWeight.w400,
+              ),
+            ),
+          ] else if (fallbackText != null) ...[
+            const SizedBox(height: ExpatlioDesign.space8),
+            Text(
+              fallbackText!,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: ExpatlioDesign.textStyle(
+                context,
+                color: _eventDetailMutedText,
+                size: 13,
+                weight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -358,6 +428,7 @@ class _EventDetailLevelRangeBadge extends StatelessWidget {
         child: _EventDetailInfoBadge(
           icon: Icons.school_outlined,
           label: label,
+          isPrimary: true,
         ),
       ),
     );
@@ -385,6 +456,7 @@ class _EventDetailLanguageBadge extends StatelessWidget {
         child: _EventDetailInfoBadge(
           icon: Icons.translate,
           label: label,
+          isPrimary: false,
         ),
       ),
     );
@@ -395,28 +467,33 @@ class _EventDetailInfoBadge extends StatelessWidget {
   const _EventDetailInfoBadge({
     required this.icon,
     required this.label,
+    required this.isPrimary,
   });
 
   final IconData icon;
   final String label;
+  final bool isPrimary;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsetsDirectional.symmetric(
-        horizontal: ExpatlioDesign.space12,
-        vertical: ExpatlioDesign.space8,
+        horizontal: 9,
+        vertical: 5,
       ),
-      decoration: ExpatlioDesign.softPrimaryDecoration(
-        radius: ExpatlioDesign.radiusCapsule,
+      decoration: BoxDecoration(
+        color: isPrimary
+            ? _eventDetailPrimaryBadgeFill
+            : _eventDetailNeutralBadgeFill,
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
             icon,
-            color: ExpatlioDesign.primary,
-            size: 16,
+            color: isPrimary ? ExpatlioDesign.primary : ExpatlioDesign.text,
+            size: 14,
           ),
           const SizedBox(width: ExpatlioDesign.space4),
           Text(
@@ -425,8 +502,8 @@ class _EventDetailInfoBadge extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: ExpatlioDesign.textStyle(
               context,
-              color: ExpatlioDesign.primary,
-              size: 14,
+              color: isPrimary ? ExpatlioDesign.primary : ExpatlioDesign.text,
+              size: 12,
               weight: FontWeight.w700,
               height: 1,
             ),
@@ -461,11 +538,7 @@ class _EventDetailCanceledBanner extends StatelessWidget {
           decoration: BoxDecoration(
             color: _eventDetailDestructiveCtaBackground.withValues(alpha: 0.10),
             borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
-            border: Border.all(
-              color: _eventDetailDestructiveCtaBackground.withValues(
-                alpha: 0.32,
-              ),
-            ),
+            border: Border.all(color: ExpatlioDesign.border),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -553,7 +626,7 @@ class _EventDetailDetailsBlock extends StatelessWidget {
             timeZoneId: timeZoneId,
           ),
         ),
-        const SizedBox(height: ExpatlioDesign.space20),
+        const SizedBox(height: 14),
         _EventDetailDetailsRow(
           key: eventDetailTimeRowKey,
           icon: Icons.schedule,
@@ -565,8 +638,7 @@ class _EventDetailDetailsBlock extends StatelessWidget {
         ),
       ],
       if (shouldShowPlace) ...[
-        if (localStartsAt != null)
-          const SizedBox(height: ExpatlioDesign.space20),
+        if (localStartsAt != null) const SizedBox(height: 14),
         _EventDetailDetailsRow(
           key: eventDetailPlaceRowKey,
           icon: Icons.location_on_outlined,
@@ -581,10 +653,13 @@ class _EventDetailDetailsBlock extends StatelessWidget {
 
     return Container(
       key: eventDetailDetailsBlockKey,
-      padding: ExpatlioDesign.cardPaddingDirectional,
-      decoration: ExpatlioDesign.cardDecoration(
-        borderColor: ExpatlioDesign.separator,
+      padding: const EdgeInsetsDirectional.fromSTEB(
+        14,
+        16,
+        14,
+        16,
       ),
+      decoration: _eventDetailCardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: rows,
@@ -614,19 +689,20 @@ class _EventDetailDetailsRow extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              width: 48,
-              height: 48,
+              width: 34,
+              height: 34,
               alignment: Alignment.center,
-              decoration: ExpatlioDesign.softPrimaryDecoration(
-                radius: ExpatlioDesign.radiusMedium,
+              decoration: BoxDecoration(
+                color: _eventDetailPrimaryBadgeFill,
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
                 icon,
                 color: ExpatlioDesign.primary,
-                size: 24,
+                size: 17,
               ),
             ),
-            const SizedBox(width: ExpatlioDesign.space16),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -637,19 +713,19 @@ class _EventDetailDetailsRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: ExpatlioDesign.textStyle(
                       context,
-                      color: ExpatlioDesign.muted,
-                      size: 16,
+                      color: _eventDetailMutedText,
+                      size: 13,
                       weight: FontWeight.w500,
                     ),
                   ),
-                  const SizedBox(height: ExpatlioDesign.space4),
+                  const SizedBox(height: 3),
                   Text(
                     value,
                     softWrap: true,
                     style: ExpatlioDesign.textStyle(
                       context,
-                      size: 18,
-                      weight: FontWeight.w700,
+                      size: 14,
+                      weight: FontWeight.w600,
                     ),
                   ),
                 ],
@@ -691,46 +767,71 @@ class _EventDetailOrganizerCard extends StatelessWidget {
         child: _EventDetailOrganizerInfo(
           displayName: displayName,
           photoUrl: photoUrl,
-          label: label,
           subtitle: subtitle,
         ),
       ),
     );
-    final action = _EventDetailOrganizerMessageButton(
-      displayName: displayName,
-      onPressed: onMessagePressed,
-    );
+    final action = onMessagePressed == null
+        ? null
+        : _EventDetailOrganizerMessageButton(
+            displayName: displayName,
+            onPressed: onMessagePressed,
+          );
 
     return Container(
       key: eventDetailOrganizerCardKey,
-      padding: ExpatlioDesign.cardPaddingDirectional,
-      decoration: ExpatlioDesign.cardDecoration(
-        borderColor: ExpatlioDesign.separator,
+      padding: const EdgeInsetsDirectional.fromSTEB(
+        14,
+        14,
+        14,
+        14,
       ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          if (constraints.maxWidth < 360) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                info,
-                const SizedBox(height: ExpatlioDesign.space12),
-                action,
-              ],
-            );
-          }
+      decoration: _eventDetailCardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: ExpatlioDesign.textStyle(
+              context,
+              color: _eventDetailMutedText,
+              size: 13,
+              weight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 14),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              if (constraints.maxWidth < 340) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    info,
+                    if (action != null) ...[
+                      const SizedBox(height: ExpatlioDesign.space12),
+                      action,
+                    ],
+                  ],
+                );
+              }
 
-          return Row(
-            children: [
-              Expanded(child: info),
-              const SizedBox(width: ExpatlioDesign.space12),
-              SizedBox(
-                width: 144,
-                child: action,
-              ),
-            ],
-          );
-        },
+              return Row(
+                children: [
+                  Expanded(child: info),
+                  if (action != null) ...[
+                    const SizedBox(width: 10),
+                    SizedBox(
+                      width: 118,
+                      child: action,
+                    ),
+                  ],
+                ],
+              );
+            },
+          ),
+        ],
       ),
     );
   }
@@ -740,13 +841,11 @@ class _EventDetailOrganizerInfo extends StatelessWidget {
   const _EventDetailOrganizerInfo({
     required this.displayName,
     required this.photoUrl,
-    required this.label,
     required this.subtitle,
   });
 
   final String displayName;
   final String? photoUrl;
-  final String label;
   final String subtitle;
 
   @override
@@ -757,23 +856,11 @@ class _EventDetailOrganizerInfo extends StatelessWidget {
           displayName: displayName,
           photoUrl: photoUrl,
         ),
-        const SizedBox(width: ExpatlioDesign.space12),
+        const SizedBox(width: 14),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: ExpatlioDesign.textStyle(
-                  context,
-                  color: ExpatlioDesign.muted,
-                  size: 15,
-                  weight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: ExpatlioDesign.space8),
               Text(
                 key: eventDetailOrganizerNameKey,
                 displayName,
@@ -781,8 +868,8 @@ class _EventDetailOrganizerInfo extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: ExpatlioDesign.textStyle(
                   context,
-                  size: 19,
-                  weight: FontWeight.w700,
+                  size: 14,
+                  weight: FontWeight.w600,
                 ),
               ),
               const SizedBox(height: ExpatlioDesign.space4),
@@ -792,8 +879,8 @@ class _EventDetailOrganizerInfo extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: ExpatlioDesign.textStyle(
                   context,
-                  color: ExpatlioDesign.muted,
-                  size: 15,
+                  color: _eventDetailMutedText,
+                  size: 12,
                   weight: FontWeight.w500,
                 ),
               ),
@@ -832,30 +919,45 @@ class _EventDetailOrganizerMessageButton extends StatelessWidget {
       label: semanticsLabel,
       onTap: onPressed,
       child: ExcludeSemantics(
-        child: OutlinedButton.icon(
-          onPressed: onPressed,
-          icon: const Icon(
-            Icons.chat_bubble_outline,
-            size: 20,
-          ),
-          label: Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          style: OutlinedButton.styleFrom(
-            minimumSize: const Size(0, 48),
-            padding: const EdgeInsetsDirectional.symmetric(
-              horizontal: ExpatlioDesign.space12,
+        child: SizedBox(
+          height: 34,
+          child: OutlinedButton.icon(
+            onPressed: onPressed,
+            icon: SvgPicture.asset(
+              ExpatlioDesign.chatIconAsset,
+              width: 16,
+              height: 16,
+              colorFilter: const ColorFilter.mode(
+                ExpatlioDesign.text,
+                BlendMode.srcIn,
+              ),
             ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
+            label: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            side: BorderSide.none,
-            backgroundColor: ExpatlioDesign.secondarySystemFill,
-            foregroundColor: ExpatlioDesign.text,
-            disabledForegroundColor: ExpatlioDesign.disabled,
-            disabledBackgroundColor: ExpatlioDesign.tertiarySystemFill,
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(0, 34),
+              padding: const EdgeInsetsDirectional.symmetric(
+                horizontal: ExpatlioDesign.space12,
+              ),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              shape: RoundedRectangleBorder(
+                borderRadius:
+                    BorderRadius.circular(_eventDetailCompactButtonRadius),
+              ),
+              side: BorderSide.none,
+              backgroundColor: _eventDetailControlFill,
+              foregroundColor: ExpatlioDesign.text,
+              disabledForegroundColor: ExpatlioDesign.disabled,
+              disabledBackgroundColor: ExpatlioDesign.tertiarySystemFill,
+              textStyle: ExpatlioDesign.textStyle(
+                context,
+                size: 13,
+                weight: FontWeight.w600,
+              ),
+            ),
           ),
         ),
       ),
@@ -956,34 +1058,17 @@ class _EventDetailOrganizerControls extends StatelessWidget {
       isDestructive: true,
     );
 
-    return Container(
+    return LayoutBuilder(
       key: eventDetailOrganizerControlsKey,
-      padding: ExpatlioDesign.cardPaddingDirectional,
-      decoration: ExpatlioDesign.cardDecoration(
-        borderColor: ExpatlioDesign.separator,
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          if (constraints.maxWidth < 360) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                editButton,
-                const SizedBox(height: ExpatlioDesign.space12),
-                cancelButton,
-              ],
-            );
-          }
-
-          return Row(
-            children: [
-              Expanded(child: editButton),
-              const SizedBox(width: ExpatlioDesign.space12),
-              Expanded(child: cancelButton),
-            ],
-          );
-        },
-      ),
+      builder: (context, constraints) {
+        return Row(
+          children: [
+            Expanded(child: editButton),
+            const SizedBox(width: ExpatlioDesign.space8),
+            Expanded(child: cancelButton),
+          ],
+        );
+      },
     );
   }
 }
@@ -1014,7 +1099,7 @@ class _EventDetailOrganizerControlButton extends StatelessWidget {
         : ExpatlioDesign.disabled;
     final backgroundColor = isDestructive && enabled
         ? _eventDetailDestructiveCtaBackground.withValues(alpha: 0.10)
-        : ExpatlioDesign.secondarySystemBackground;
+        : _eventDetailControlFill;
 
     return Semantics(
       container: true,
@@ -1025,28 +1110,28 @@ class _EventDetailOrganizerControlButton extends StatelessWidget {
       child: ExcludeSemantics(
         child: TextButton.icon(
           onPressed: onPressed,
-          icon: Icon(icon, size: 20),
+          icon: Icon(icon, size: 17),
           label: Text(
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
           style: TextButton.styleFrom(
-            minimumSize: const Size(0, ExpatlioDesign.buttonHeight),
+            minimumSize: const Size(0, 36),
             padding: const EdgeInsetsDirectional.symmetric(
-              horizontal: ExpatlioDesign.space12,
+              horizontal: ExpatlioDesign.space8,
             ),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
+              borderRadius: BorderRadius.circular(_eventDetailButtonRadius),
             ),
             backgroundColor: backgroundColor,
-            disabledBackgroundColor: ExpatlioDesign.secondarySystemBackground,
+            disabledBackgroundColor: _eventDetailControlFill,
             foregroundColor: foregroundColor,
             disabledForegroundColor: ExpatlioDesign.disabled,
             textStyle: ExpatlioDesign.textStyle(
               context,
-              size: 16,
-              weight: FontWeight.w700,
+              size: 12,
+              weight: FontWeight.w600,
             ),
           ),
         ),
@@ -1079,13 +1164,32 @@ class _EventDetailParticipantsSection extends StatelessWidget {
             participantsCount: participantsCount,
             capacity: capacity!,
           );
+    final visibleOccupiedPlaceholderCount =
+        _eventDetailVisibleOccupiedPlaceholderCount(
+      participantsCount: participantsCount,
+      participantTileCount: participants.length,
+    );
+    final visibleFreeSlotCount = _eventDetailVisibleFreeSlotCount(
+      capacity: capacity,
+      occupiedTileCount: participants.length + visibleOccupiedPlaceholderCount,
+    );
+    final hasParticipantTiles = participants.isNotEmpty ||
+        visibleOccupiedPlaceholderCount > 0 ||
+        visibleFreeSlotCount > 0;
+    final freeSlotLabel = FFLocalizations.of(context).getVariableText(
+      ruText: 'Свободно',
+      enText: 'Free',
+    );
 
     return Container(
       key: eventDetailParticipantsSectionKey,
-      padding: ExpatlioDesign.cardPaddingDirectional,
-      decoration: ExpatlioDesign.cardDecoration(
-        borderColor: ExpatlioDesign.separator,
+      padding: const EdgeInsetsDirectional.fromSTEB(
+        14,
+        16,
+        14,
+        18,
       ),
+      decoration: _eventDetailCardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1102,7 +1206,7 @@ class _EventDetailParticipantsSection extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: ExpatlioDesign.textStyle(
                       context,
-                      size: 20,
+                      size: 15,
                       weight: FontWeight.w700,
                     ),
                   ),
@@ -1110,25 +1214,42 @@ class _EventDetailParticipantsSection extends StatelessWidget {
               ),
               if (occupancyLabel != null) ...[
                 const SizedBox(width: ExpatlioDesign.space12),
-                Flexible(
-                  child: _EventDetailOccupancyLabel(label: occupancyLabel),
-                ),
+                _EventDetailOccupancyLabel(label: occupancyLabel),
               ],
             ],
           ),
-          if (participants.isNotEmpty) ...[
-            const SizedBox(height: ExpatlioDesign.space20),
+          if (hasParticipantTiles) ...[
+            const SizedBox(height: 16),
             LayoutBuilder(
               builder: (context, constraints) {
-                final tileWidth = constraints.maxWidth < 360 ? 88.0 : 104.0;
+                const maxColumns = 5;
+                const spacing = 8.0;
+                final availableWidth = constraints.maxWidth;
+                final columns = maxColumns;
+                final rawTileWidth =
+                    (availableWidth - (spacing * (columns - 1))) / columns;
+                final tileWidth = rawTileWidth < 52 ? 52.0 : rawTileWidth;
                 return Wrap(
-                  spacing: ExpatlioDesign.space16,
-                  runSpacing: ExpatlioDesign.space20,
+                  spacing: spacing,
+                  runSpacing: ExpatlioDesign.space16,
                   children: [
                     for (var index = 0; index < participants.length; index += 1)
                       _EventDetailParticipantTile(
                         key: eventDetailParticipantTileKey(index),
                         participant: participants[index],
+                        width: tileWidth,
+                      ),
+                    for (var index = 0;
+                        index < visibleOccupiedPlaceholderCount;
+                        index += 1)
+                      _EventDetailOccupiedParticipantTile(
+                        width: tileWidth,
+                      ),
+                    for (var index = 0;
+                        index < visibleFreeSlotCount;
+                        index += 1)
+                      _EventDetailFreeParticipantTile(
+                        label: freeSlotLabel,
                         width: tileWidth,
                       ),
                   ],
@@ -1167,8 +1288,8 @@ class _EventDetailOccupancyLabel extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: ExpatlioDesign.textStyle(
             context,
-            color: ExpatlioDesign.muted,
-            size: 16,
+            color: _eventDetailMutedText,
+            size: 12,
             weight: FontWeight.w500,
           ),
         ),
@@ -1221,8 +1342,8 @@ class _EventDetailParticipantTile extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: ExpatlioDesign.textStyle(
                   context,
-                  color: ExpatlioDesign.muted,
-                  size: 15,
+                  color: _eventDetailMutedText,
+                  size: 13,
                   weight: FontWeight.w500,
                 ),
               ),
@@ -1234,13 +1355,190 @@ class _EventDetailParticipantTile extends StatelessWidget {
   }
 }
 
+class _EventDetailFreeParticipantTile extends StatelessWidget {
+  const _EventDetailFreeParticipantTile({
+    required this.label,
+    required this.width,
+  });
+
+  final String label;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    final semanticsLabel = FFLocalizations.of(context).getVariableText(
+      ruText: 'Свободное место',
+      enText: 'Free spot',
+    );
+
+    return Semantics(
+      label: semanticsLabel,
+      child: ExcludeSemantics(
+        child: SizedBox(
+          width: width,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const _EventDetailFreeSlotAvatar(),
+              const SizedBox(height: ExpatlioDesign.space8),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: ExpatlioDesign.textStyle(
+                  context,
+                  color: _eventDetailMutedText,
+                  size: 12,
+                  weight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EventDetailOccupiedParticipantTile extends StatelessWidget {
+  const _EventDetailOccupiedParticipantTile({
+    required this.width,
+  });
+
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = FFLocalizations.of(context).getVariableText(
+      ruText: 'Участник',
+      enText: 'Participant',
+    );
+    final semanticsLabel = FFLocalizations.of(context).getVariableText(
+      ruText: 'Участник',
+      enText: 'Participant',
+    );
+
+    return Semantics(
+      label: semanticsLabel,
+      child: ExcludeSemantics(
+        child: SizedBox(
+          width: width,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const _EventDetailOccupiedSlotAvatar(),
+              const SizedBox(height: ExpatlioDesign.space8),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: ExpatlioDesign.textStyle(
+                  context,
+                  color: _eventDetailMutedText,
+                  size: 12,
+                  weight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EventDetailOccupiedSlotAvatar extends StatelessWidget {
+  const _EventDetailOccupiedSlotAvatar();
+
+  static const double _dimension = 52;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: _dimension,
+      height: _dimension,
+      decoration: const BoxDecoration(
+        color: ExpatlioDesign.avatarFallbackBackground,
+        shape: BoxShape.circle,
+      ),
+      alignment: Alignment.center,
+      child: Icon(
+        Icons.person_outline,
+        color: ExpatlioDesign.avatarFallbackText,
+        size: 18,
+      ),
+    );
+  }
+}
+
+class _EventDetailFreeSlotAvatar extends StatelessWidget {
+  const _EventDetailFreeSlotAvatar();
+
+  static const double _dimension = 52;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox.square(
+      dimension: _dimension,
+      child: CustomPaint(
+        painter: const _EventDetailDashedCirclePainter(),
+        child: Icon(
+          Icons.person_outline,
+          color: ExpatlioDesign.systemGray3,
+          size: 20,
+        ),
+      ),
+    );
+  }
+}
+
+class _EventDetailDashedCirclePainter extends CustomPainter {
+  const _EventDetailDashedCirclePainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = _eventDetailFreeSlotBorder
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = 2;
+    final path = Path()
+      ..addOval(
+        Rect.fromLTWH(
+          1,
+          1,
+          size.width - 2,
+          size.height - 2,
+        ),
+      );
+
+    for (final metric in path.computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        canvas.drawPath(
+          metric.extractPath(distance, distance + 5),
+          paint,
+        );
+        distance += 10;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _EventDetailDashedCirclePainter oldDelegate) {
+    return false;
+  }
+}
+
 class _EventDetailParticipantAvatar extends StatelessWidget {
   const _EventDetailParticipantAvatar({
     required this.participant,
     required this.displayName,
   });
 
-  static const double _dimension = 64;
+  static const double _dimension = 52;
 
   final EventDetailParticipantViewModel participant;
   final String displayName;
@@ -1280,38 +1578,22 @@ class _EventDetailParticipantAvatar extends StatelessWidget {
   Widget _fallback(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(ExpatlioDesign.space12),
-      color: ExpatlioDesign.primary.withValues(alpha: 0.10),
+      color: ExpatlioDesign.avatarFallbackBackground,
       alignment: Alignment.center,
       child: FittedBox(
         fit: BoxFit.scaleDown,
         child: Text(
-          _initials(),
+          ExpatlioDesign.avatarInitial(displayName),
           maxLines: 1,
           style: ExpatlioDesign.textStyle(
             context,
-            color: ExpatlioDesign.primary,
-            size: 18,
+            color: ExpatlioDesign.avatarFallbackText,
+            size: 16,
             weight: FontWeight.w700,
           ),
         ),
       ),
     );
-  }
-
-  String _initials() {
-    final normalizedName = displayName.trim();
-    if (normalizedName.isEmpty) {
-      return '?';
-    }
-    final words = normalizedName
-        .split(RegExp(r'\s+'))
-        .where((word) => word.trim().isNotEmpty)
-        .toList(growable: false);
-    if (words.length >= 2) {
-      return '${words[0].characters.first}${words[1].characters.first}'
-          .toUpperCase();
-    }
-    return normalizedName.characters.take(2).toString().toUpperCase();
   }
 }
 
@@ -1321,33 +1603,31 @@ class _EventDetailBottomActionBar extends StatelessWidget {
     required this.joinCtaState,
     required this.onPrimaryPressed,
     required this.onChatPressed,
-    required this.onChatParticipantRequiredPressed,
   });
 
   final String eventId;
   final EventDetailJoinCtaState joinCtaState;
   final VoidCallback? onPrimaryPressed;
   final VoidCallback? onChatPressed;
-  final VoidCallback? onChatParticipantRequiredPressed;
 
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
       key: eventDetailBottomActionBarKey,
       decoration: const BoxDecoration(
-        color: ExpatlioDesign.card,
+        color: ExpatlioDesign.background,
         border: Border(
-          top: BorderSide(color: ExpatlioDesign.separator),
+          top: BorderSide(color: _eventDetailCardBorder),
         ),
       ),
       child: SafeArea(
         top: false,
         child: Padding(
           padding: const EdgeInsetsDirectional.fromSTEB(
-            ExpatlioDesign.space24,
-            ExpatlioDesign.space16,
-            ExpatlioDesign.space24,
-            ExpatlioDesign.space16,
+            _eventDetailContentHorizontalPadding,
+            ExpatlioDesign.space12,
+            _eventDetailContentHorizontalPadding,
+            ExpatlioDesign.space12,
           ),
           child: Align(
             alignment: AlignmentDirectional.center,
@@ -1361,20 +1641,22 @@ class _EventDetailBottomActionBar extends StatelessWidget {
                     state: joinCtaState,
                     onPressed: onPrimaryPressed,
                   );
-                  final chatCta = _EventDetailChatCta(
-                    onPressed: onChatPressed,
-                    onParticipantRequiredPressed:
-                        onChatParticipantRequiredPressed,
-                  );
+                  final chatCta = onChatPressed == null
+                      ? null
+                      : _EventDetailChatCta(
+                          onPressed: onChatPressed,
+                        );
 
-                  if (constraints.maxWidth < 360) {
+                  if (constraints.maxWidth < 320) {
                     return Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         primaryCta,
-                        const SizedBox(height: ExpatlioDesign.space12),
-                        chatCta,
+                        if (chatCta != null) ...[
+                          const SizedBox(height: ExpatlioDesign.space12),
+                          chatCta,
+                        ],
                       ],
                     );
                   }
@@ -1382,11 +1664,13 @@ class _EventDetailBottomActionBar extends StatelessWidget {
                   return Row(
                     children: [
                       Expanded(child: primaryCta),
-                      const SizedBox(width: ExpatlioDesign.space12),
-                      SizedBox(
-                        width: 120,
-                        child: chatCta,
-                      ),
+                      if (chatCta != null) ...[
+                        const SizedBox(width: ExpatlioDesign.space12),
+                        SizedBox(
+                          width: 78,
+                          child: chatCta,
+                        ),
+                      ],
                     ],
                   );
                 },
@@ -1543,15 +1827,15 @@ class _EventDetailPrimaryCtaState extends State<_EventDetailPrimaryCta> {
         child: TextButton(
           onPressed: effectiveOnPressed,
           style: TextButton.styleFrom(
-            minimumSize: const Size(0, ExpatlioDesign.buttonHeight),
+            minimumSize: const Size(0, _eventDetailActionHeight),
             padding: const EdgeInsetsDirectional.symmetric(
               horizontal: ExpatlioDesign.space16,
             ),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
+              borderRadius: BorderRadius.circular(_eventDetailButtonRadius),
             ),
             backgroundColor: backgroundColor,
-            disabledBackgroundColor: ExpatlioDesign.secondarySystemBackground,
+            disabledBackgroundColor: _eventDetailControlFill,
             foregroundColor: Colors.white,
             disabledForegroundColor: ExpatlioDesign.muted,
           ),
@@ -1577,8 +1861,8 @@ class _EventDetailPrimaryCtaState extends State<_EventDetailPrimaryCta> {
                         style: ExpatlioDesign.textStyle(
                           context,
                           color: textColor,
-                          size: 16,
-                          weight: FontWeight.w700,
+                          size: 15,
+                          weight: FontWeight.w600,
                         ),
                       ),
                     ),
@@ -1592,8 +1876,8 @@ class _EventDetailPrimaryCtaState extends State<_EventDetailPrimaryCta> {
                   style: ExpatlioDesign.textStyle(
                     context,
                     color: textColor,
-                    size: 16,
-                    weight: FontWeight.w700,
+                    size: 15,
+                    weight: FontWeight.w600,
                   ),
                 ),
         ),
@@ -1605,46 +1889,38 @@ class _EventDetailPrimaryCtaState extends State<_EventDetailPrimaryCta> {
 class _EventDetailChatCta extends StatelessWidget {
   const _EventDetailChatCta({
     required this.onPressed,
-    required this.onParticipantRequiredPressed,
   });
 
   final VoidCallback? onPressed;
-  final VoidCallback? onParticipantRequiredPressed;
 
   @override
   Widget build(BuildContext context) {
-    final enabled = onPressed != null;
-    final effectiveOnPressed =
-        enabled ? onPressed : onParticipantRequiredPressed;
-    final foregroundColor =
-        enabled ? ExpatlioDesign.text : ExpatlioDesign.disabled;
-    final backgroundColor = enabled
-        ? ExpatlioDesign.secondarySystemBackground
-        : ExpatlioDesign.secondarySystemBackground.withValues(alpha: 0.62);
+    final foregroundColor = ExpatlioDesign.text;
+    const backgroundColor = _eventDetailControlFill;
     final label = FFLocalizations.of(context).getVariableText(
       ruText: 'Чат',
       enText: 'Chat',
     );
-    final semanticsLabel = enabled
-        ? label
-        : FFLocalizations.of(context).getVariableText(
-            ruText: 'Чат доступен только участникам',
-            enText: 'Chat is available to participants only',
-          );
+    final semanticsLabel = label;
 
     return Semantics(
       key: eventDetailChatCtaKey,
       container: true,
       button: true,
-      enabled: enabled,
+      enabled: true,
       label: semanticsLabel,
       onTap: onPressed,
       child: ExcludeSemantics(
         child: TextButton.icon(
-          onPressed: effectiveOnPressed,
-          icon: Icon(
-            enabled ? Icons.chat_bubble_outline : Icons.lock_outline,
-            size: 20,
+          onPressed: onPressed,
+          icon: SvgPicture.asset(
+            ExpatlioDesign.chatIconAsset,
+            width: 20,
+            height: 20,
+            colorFilter: const ColorFilter.mode(
+              ExpatlioDesign.text,
+              BlendMode.srcIn,
+            ),
           ),
           label: Text(
             label,
@@ -1652,12 +1928,12 @@ class _EventDetailChatCta extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
           style: TextButton.styleFrom(
-            minimumSize: const Size(0, ExpatlioDesign.buttonHeight),
+            minimumSize: const Size(0, _eventDetailActionHeight),
             padding: const EdgeInsetsDirectional.symmetric(
-              horizontal: ExpatlioDesign.space12,
+              horizontal: 10,
             ),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
+              borderRadius: BorderRadius.circular(_eventDetailButtonRadius),
             ),
             backgroundColor: backgroundColor,
             disabledBackgroundColor: backgroundColor,
@@ -1665,8 +1941,8 @@ class _EventDetailChatCta extends StatelessWidget {
             disabledForegroundColor: foregroundColor,
             textStyle: ExpatlioDesign.textStyle(
               context,
-              size: 16,
-              weight: FontWeight.w700,
+              size: 15,
+              weight: FontWeight.w600,
             ),
           ),
         ),
@@ -1681,7 +1957,7 @@ class _EventDetailOrganizerAvatar extends StatelessWidget {
     required this.photoUrl,
   });
 
-  static const double _dimension = 56;
+  static const double _dimension = 44;
 
   final String displayName;
   final String? photoUrl;
@@ -1721,35 +1997,19 @@ class _EventDetailOrganizerAvatar extends StatelessWidget {
 
   Widget _fallback(BuildContext context) {
     return Container(
-      color: ExpatlioDesign.primary.withValues(alpha: 0.10),
+      color: ExpatlioDesign.avatarFallbackBackground,
       alignment: Alignment.center,
       child: Text(
-        _initials(),
+        ExpatlioDesign.avatarInitial(displayName),
         maxLines: 1,
         style: ExpatlioDesign.textStyle(
           context,
-          color: ExpatlioDesign.primary,
-          size: 17,
+          color: ExpatlioDesign.avatarFallbackText,
+          size: 16,
           weight: FontWeight.w700,
         ),
       ),
     );
-  }
-
-  String _initials() {
-    final normalizedName = displayName.trim();
-    if (normalizedName.isEmpty) {
-      return '?';
-    }
-    final words = normalizedName
-        .split(RegExp(r'\s+'))
-        .where((word) => word.trim().isNotEmpty)
-        .toList(growable: false);
-    if (words.length >= 2) {
-      return '${words[0].characters.first}${words[1].characters.first}'
-          .toUpperCase();
-    }
-    return normalizedName.characters.take(2).toString().toUpperCase();
   }
 }
 
@@ -1778,112 +2038,142 @@ class _EventDetailTopBar extends StatelessWidget {
       ruText: 'Пожаловаться на событие',
       enText: 'Report event',
     );
-    void handleBackPressed() => context.safePop();
+    void handleBackPressed() {
+      if (context.canPop()) {
+        context.pop();
+        return;
+      }
+
+      context.go(_eventDetailFallbackRoutePath);
+    }
 
     return SizedBox(
       key: eventDetailTopBarKey,
-      height: ExpatlioDesign.pageHeaderHeight,
-      child: Stack(
-        alignment: AlignmentDirectional.center,
-        children: [
-          PositionedDirectional(
-            start: 0,
-            child: Tooltip(
-              message: backLabel,
-              child: Semantics(
-                key: eventDetailBackButtonKey,
-                button: true,
-                label: backLabel,
-                onTap: handleBackPressed,
-                child: ExcludeSemantics(
-                  child: FlutterFlowIconButton(
-                    borderColor: Colors.transparent,
-                    borderRadius: 24,
-                    buttonSize: 48,
-                    icon: Icon(
-                      FFIcons.kchevronLeft,
-                      color: ExpatlioDesign.text,
-                      size: 24,
+      height: 52,
+      child: Padding(
+        padding: const EdgeInsetsDirectional.symmetric(
+          horizontal: _eventDetailContentHorizontalPadding,
+        ),
+        child: Stack(
+          alignment: AlignmentDirectional.center,
+          children: [
+            PositionedDirectional(
+              start: 0,
+              child: Tooltip(
+                message: backLabel,
+                child: Semantics(
+                  key: eventDetailBackButtonKey,
+                  button: true,
+                  label: backLabel,
+                  onTap: handleBackPressed,
+                  child: ExcludeSemantics(
+                    child: _EventDetailTopBarIconButton(
+                      icon: Icons.arrow_back,
+                      onPressed: handleBackPressed,
                     ),
-                    onPressed: handleBackPressed,
                   ),
                 ),
               ),
             ),
-          ),
-          Padding(
-            padding: EdgeInsetsDirectional.symmetric(
-              horizontal: showReportAction ? 112 : 64,
-            ),
-            child: Text(
-              FFLocalizations.of(context).getVariableText(
-                ruText: 'Событие',
-                enText: 'Event',
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: ExpatlioDesign.pageHeaderTitleStyle(context),
-            ),
-          ),
-          PositionedDirectional(
-            end: 0,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Tooltip(
-                  message: shareLabel,
-                  child: Semantics(
-                    key: eventDetailShareButtonKey,
-                    button: true,
-                    enabled: onSharePressed != null,
-                    label: shareLabel,
-                    onTap: onSharePressed,
-                    child: ExcludeSemantics(
-                      child: FlutterFlowIconButton(
-                        borderColor: Colors.transparent,
-                        borderRadius: 24,
-                        buttonSize: 48,
-                        disabledIconColor: ExpatlioDesign.disabled,
-                        icon: Icon(
-                          Icons.ios_share,
-                          color: ExpatlioDesign.text,
-                          size: 24,
-                        ),
-                        onPressed: onSharePressed,
-                      ),
-                    ),
+            Padding(
+              padding: const EdgeInsetsDirectional.symmetric(horizontal: 96),
+              child: Center(
+                child: Text(
+                  FFLocalizations.of(context).getVariableText(
+                    ruText: 'Событие',
+                    enText: 'Event',
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: ExpatlioDesign.textStyle(
+                    context,
+                    size: 17,
+                    weight: FontWeight.w700,
                   ),
                 ),
-                if (showReportAction)
+              ),
+            ),
+            PositionedDirectional(
+              end: 0,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   Tooltip(
-                    message: reportLabel,
+                    message: shareLabel,
                     child: Semantics(
-                      key: eventDetailReportButtonKey,
+                      key: eventDetailShareButtonKey,
                       button: true,
-                      enabled: onReportPressed != null,
-                      label: reportLabel,
-                      onTap: onReportPressed,
+                      enabled: onSharePressed != null,
+                      label: shareLabel,
+                      onTap: onSharePressed,
                       child: ExcludeSemantics(
-                        child: FlutterFlowIconButton(
-                          borderColor: Colors.transparent,
-                          borderRadius: 24,
-                          buttonSize: 48,
-                          disabledIconColor: ExpatlioDesign.disabled,
-                          icon: Icon(
-                            Icons.flag_outlined,
-                            color: ExpatlioDesign.text,
-                            size: 24,
-                          ),
-                          onPressed: onReportPressed,
+                        child: _EventDetailTopBarIconButton(
+                          icon: Icons.share_outlined,
+                          onPressed: onSharePressed,
                         ),
                       ),
                     ),
                   ),
-              ],
+                  if (showReportAction) ...[
+                    const SizedBox(width: 8),
+                    Tooltip(
+                      message: reportLabel,
+                      child: Semantics(
+                        key: eventDetailReportButtonKey,
+                        button: true,
+                        enabled: onReportPressed != null,
+                        label: reportLabel,
+                        onTap: onReportPressed,
+                        child: ExcludeSemantics(
+                          child: _EventDetailTopBarIconButton(
+                            icon: Icons.flag_outlined,
+                            onPressed: onReportPressed,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EventDetailTopBarIconButton extends StatelessWidget {
+  const _EventDetailTopBarIconButton({
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+
+    return Material(
+      color: _eventDetailControlFill,
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: SizedBox.square(
+        dimension: 36,
+        child: InkResponse(
+          onTap: onPressed,
+          radius: 18,
+          child: Center(
+            child: Icon(
+              icon,
+              color: enabled ? ExpatlioDesign.text : ExpatlioDesign.disabled,
+              size: 20,
             ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -1916,6 +2206,40 @@ DateTime _eventDetailLocalDateTime({
 
 bool _eventDetailHasOccupancy(int? capacity) {
   return capacity != null && capacity > 0;
+}
+
+int _eventDetailVisibleOccupiedPlaceholderCount({
+  required int participantsCount,
+  required int participantTileCount,
+}) {
+  final normalizedParticipantsCount =
+      participantsCount < 0 ? 0 : participantsCount;
+  final missingParticipants =
+      normalizedParticipantsCount - participantTileCount;
+  if (missingParticipants <= 0) {
+    return 0;
+  }
+  return missingParticipants > 10 ? 10 : missingParticipants;
+}
+
+int _eventDetailVisibleFreeSlotCount({
+  required int? capacity,
+  required int occupiedTileCount,
+}) {
+  if (capacity == null || occupiedTileCount <= 0) {
+    return 0;
+  }
+  final openSlots = capacity - occupiedTileCount;
+  if (openSlots <= 0) {
+    return 0;
+  }
+  final visibleCapacityLeft = 10 - occupiedTileCount;
+  if (visibleCapacityLeft <= 0) {
+    return 0;
+  }
+  final visibleOpenSlots =
+      openSlots < visibleCapacityLeft ? openSlots : visibleCapacityLeft;
+  return visibleOpenSlots > 10 ? 10 : visibleOpenSlots;
 }
 
 int _eventDetailResolvedParticipantsCount({

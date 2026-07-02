@@ -81,6 +81,83 @@ test(
 );
 
 test(
+  "loadSameDayRepeatCandidateIds allows the configured email pair to repeat",
+  async () => {
+    const requesterId = "uid-elena";
+    const repeatAllowedCandidateId = "uid-muratov";
+    const regularCompletedCandidateId = "uid-regular";
+    const dayKey = "2026-06-15";
+    const seenPaths = [];
+    const existingPaths = new Set([
+      `matchPairDailyCompletions/${dayKey}_uid-elena_uid-muratov`,
+      `matchPairDailyCompletions/${dayKey}_uid-elena_uid-regular`,
+    ]);
+    const db = createFakeRepeatLookupDb(existingPaths, seenPaths);
+
+    const result = await loadSameDayRepeatCandidateIds(
+      db,
+      requesterId,
+      [repeatAllowedCandidateId, regularCompletedCandidateId],
+      {
+        dayKey,
+        requesterEmail: "elena.alpatkina@gmail.com",
+        userEmailsById: {
+          [repeatAllowedCandidateId]: "nsk.muratov@gmail.com",
+          [regularCompletedCandidateId]: "regular@example.com",
+        },
+      },
+    );
+
+    assert.equal(result.emailPairBypassCandidateCount, 1);
+    assert.deepEqual(
+      Array.from(result.excludedCandidateIds).sort(),
+      [regularCompletedCandidateId],
+    );
+    assert.deepEqual(seenPaths, [
+      `matchPairDailyCompletions/${dayKey}_uid-elena_uid-regular`,
+    ]);
+  },
+);
+
+test(
+  "loadSameDayRepeatCandidateIds allows the configured uid pair to repeat",
+  async () => {
+    const requesterId = "XkRxUdqHTiM1MNDTJG4zb0wooay2";
+    const repeatAllowedCandidateId = "CI0E2yJBw1P0TicAWVLhHhLX6Yl2";
+    const regularCompletedCandidateId = "uid-regular";
+    const dayKey = "2026-06-16";
+    const seenPaths = [];
+    const allowedPairId = [requesterId, repeatAllowedCandidateId]
+      .sort()
+      .join("_");
+    const regularPairId = [requesterId, regularCompletedCandidateId]
+      .sort()
+      .join("_");
+    const existingPaths = new Set([
+      `matchPairDailyCompletions/${dayKey}_${allowedPairId}`,
+      `matchPairDailyCompletions/${dayKey}_${regularPairId}`,
+    ]);
+    const db = createFakeRepeatLookupDb(existingPaths, seenPaths);
+
+    const result = await loadSameDayRepeatCandidateIds(
+      db,
+      requesterId,
+      [repeatAllowedCandidateId, regularCompletedCandidateId],
+      {dayKey},
+    );
+
+    assert.equal(result.userIdPairBypassCandidateCount, 1);
+    assert.deepEqual(
+      Array.from(result.excludedCandidateIds).sort(),
+      [regularCompletedCandidateId],
+    );
+    assert.deepEqual(seenPaths, [
+      `matchPairDailyCompletions/${dayKey}_${regularPairId}`,
+    ]);
+  },
+);
+
+test(
   "loadSameDayRepeatCandidateIds short-circuits when the requester is allow-listed",
   async () => {
     const originalValue = process.env[MATCH_REPEAT_BYPASS_USER_IDS_ENV];

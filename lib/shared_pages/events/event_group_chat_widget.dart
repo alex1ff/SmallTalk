@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
@@ -28,8 +30,6 @@ const ValueKey<String> eventGroupChatSendButtonKey =
     ValueKey<String>('event_group_chat_send_button');
 const ValueKey<String> eventGroupChatSendErrorSnackBarKey =
     ValueKey<String>('event_group_chat_send_error_snack_bar');
-const ValueKey<String> eventGroupChatReadOnlySnackBarKey =
-    ValueKey<String>('event_group_chat_read_only_snack_bar');
 const ValueKey<String> eventGroupChatReportSuccessSnackBarKey =
     ValueKey<String>('event_group_chat_report_success_snack_bar');
 const ValueKey<String> eventGroupChatReportErrorSnackBarKey =
@@ -42,8 +42,6 @@ const ValueKey<String> eventGroupChatReportDismissButtonKey =
     ValueKey<String>('event_group_chat_report_dismiss_button');
 const ValueKey<String> eventGroupChatReportSubmitButtonKey =
     ValueKey<String>('event_group_chat_report_submit_button');
-const ValueKey<String> eventGroupChatCanceledReadOnlyBannerKey =
-    ValueKey<String>('event_group_chat_canceled_read_only_banner');
 
 ValueKey<String> eventGroupChatMessageBubbleKey(String messageId) =>
     ValueKey<String>('event_group_chat_message_bubble_$messageId');
@@ -67,8 +65,7 @@ ValueKey<String> eventGroupChatReportReasonKey(String reasonCode) =>
 ///
 /// The existing one-to-one chat UI is backed by conversation documents and
 /// direct message writes, while event chat is backed by event chat documents,
-/// participant access rules, read-only canceled state, and a trusted send
-/// callable.
+/// participant access rules, and a trusted send callable.
 class EventGroupChatWidget extends StatefulWidget {
   const EventGroupChatWidget({
     super.key,
@@ -101,24 +98,24 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
   final FocusNode _messageFocusNode = FocusNode();
   late Stream<EventChatsRecord?> _chatAccessStream;
   Stream<List<EventChatMessagesRecord>>? _messagesStream;
-  Future<EventChatAccessStateResult>? _accessStateFuture;
-  String? _accessStateCacheKey;
+  final List<_PendingEventChatMessage> _pendingMessages =
+      <_PendingEventChatMessage>[];
   int _chatAccessRevision = 0;
-  bool _isSending = false;
+  int _pendingMessageSerial = 0;
   bool _isReportingMessage = false;
 
   @override
   void initState() {
     super.initState();
     _chatAccessStream = _watchChatAccess();
+    _rememberInboxEvent(persist: true);
   }
 
   @override
   void didUpdateWidget(covariant EventGroupChatWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
     final accessChanged = oldWidget.eventId != widget.eventId ||
-        oldWidget.chatStream != widget.chatStream ||
-        oldWidget.accessStateInvoker != widget.accessStateInvoker;
+        oldWidget.chatStream != widget.chatStream;
     final messagesChanged = oldWidget.messagesStream != widget.messagesStream ||
         oldWidget.messageLimit != widget.messageLimit;
 
@@ -126,8 +123,8 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
       _chatAccessRevision += 1;
       _chatAccessStream = _watchChatAccess();
       _messagesStream = null;
-      _accessStateFuture = null;
-      _accessStateCacheKey = null;
+      _pendingMessages.clear();
+      _rememberInboxEvent(persist: true);
     } else if (messagesChanged) {
       _messagesStream = null;
     }
@@ -153,66 +150,92 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
         chatStream: widget.chatStream,
       );
 
-  String _accessStateKeyFor(EventChatsRecord chat) {
-    final updatedAtKey =
-        chat.updatedAt?.microsecondsSinceEpoch.toString() ?? 'missing';
-    return [
-      widget.eventId.trim(),
-      chat.reference.path,
-      updatedAtKey,
-    ].join('|');
-  }
-
-  Future<EventChatAccessStateResult> _loadAccessState(String cacheKey) {
-    if (_accessStateCacheKey != cacheKey || _accessStateFuture == null) {
-      _accessStateCacheKey = cacheKey;
-      _messagesStream = null;
-      _accessStateFuture = EventActionsRepository.getEventChatAccessState(
-        eventId: widget.eventId,
-        invoker: widget.accessStateInvoker,
-      );
-    }
-    return _accessStateFuture!;
-  }
-
-  void _clearAccessStateCacheIfCurrent(String cacheKey) {
-    if (_accessStateCacheKey == cacheKey) {
-      _accessStateCacheKey = null;
-      _accessStateFuture = null;
-    }
-  }
-
-  Future<void> _sendMessage({required bool isReadOnly}) async {
-    if (_isSending) {
+  void _rememberInboxEvent({bool persist = false}) {
+    late final String eventId;
+    try {
+      eventId = EventGroupChatRepository.chatReferenceForEventId(
+        widget.eventId,
+      ).id;
+    } on ArgumentError {
       return;
     }
+
+    EventGroupChatRepository.rememberInboxEventId(eventId);
+    if (persist) {
+      unawaited(_persistInboxEventId(eventId));
+    }
+  }
+
+  Future<void> _persistInboxEventId(String eventId) async {
+    final userRef = currentUserReference;
+    if (currentUserUid.trim().isEmpty || userRef == null) {
+      return;
+    }
+
+    try {
+      await userRef.update({
+        'eventChatInboxEventIds': FieldValue.arrayUnion([eventId]),
+        'hiddenChatKeys': FieldValue.arrayRemove(['event:$eventId']),
+      });
+    } catch (error) {
+      debugPrint(
+        'EventGroupChatWidget: failed to persist inbox event '
+        '$eventId: $error',
+      );
+    }
+  }
+
+  Future<void> _sendMessage() async {
     final text = _messageTextController.text.trim();
     if (text.isEmpty) {
       return;
     }
-    if (isReadOnly) {
-      _showReadOnlySnackBar();
-      return;
-    }
 
+    final eventId = widget.eventId.trim();
+    final previousValue = _messageTextController.value;
+    final pendingMessage = _createPendingMessage(text);
     setState(() {
-      _isSending = true;
+      _pendingMessages.add(pendingMessage);
     });
+    _messageTextController.clear();
 
     try {
-      await EventActionsRepository.sendEventChatMessage(
-        eventId: widget.eventId,
+      final result = await EventActionsRepository.sendEventChatMessage(
+        eventId: eventId,
         text: text,
         invoker: widget.sendMessageInvoker,
       );
-      if (!mounted) {
+      EventGroupChatRepository.rememberInboxEventId(eventId);
+      unawaited(_persistInboxEventId(eventId));
+      if (!mounted || widget.eventId.trim() != eventId) {
         return;
       }
-      _messageTextController.clear();
-      _messageFocusNode.unfocus();
+      setState(() {
+        final pendingIndex = _pendingMessages.indexWhere(
+          (message) => message.localId == pendingMessage.localId,
+        );
+        if (pendingIndex == -1) {
+          return;
+        }
+        _pendingMessages[pendingIndex] = pendingMessage.copyWith(
+          serverMessageId: result.messageId,
+        );
+      });
     } catch (error) {
-      if (!mounted) {
+      if (!mounted || widget.eventId.trim() != eventId) {
         return;
+      }
+      setState(() {
+        _pendingMessages.removeWhere(
+          (message) => message.localId == pendingMessage.localId,
+        );
+      });
+      if (_messageTextController.text.isEmpty) {
+        _messageTextController.value = previousValue.copyWith(
+          text: text,
+          selection: TextSelection.collapsed(offset: text.length),
+          composing: TextRange.empty,
+        );
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -222,15 +245,22 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
       );
       debugPrint(
         'EventGroupChatWidget: failed to send message for '
-        '${widget.eventId}: $error',
+        '$eventId: $error',
       );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSending = false;
-        });
-      }
     }
+  }
+
+  _PendingEventChatMessage _createPendingMessage(String text) {
+    final createdAt = DateTime.now();
+    final serial = _pendingMessageSerial++;
+    return _PendingEventChatMessage(
+      localId: 'pending-${createdAt.microsecondsSinceEpoch}-$serial',
+      senderId: currentUserUid.trim(),
+      senderDisplayName: currentUserDisplayName.trim(),
+      senderPhotoUrl: currentUserPhoto.trim(),
+      text: text,
+      createdAt: createdAt,
+    );
   }
 
   Future<void> _showReportMessageDialog(
@@ -316,20 +346,6 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
     }
   }
 
-  void _showReadOnlySnackBar() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        key: eventGroupChatReadOnlySnackBarKey,
-        content: Text(
-          FFLocalizations.of(context).getVariableText(
-            ruText: 'Чат доступен только для чтения.',
-            enText: 'This chat is read-only.',
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -375,54 +391,17 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
           return _accessDeniedState();
         }
 
-        final accessStateKey = _accessStateKeyFor(chat);
-        return FutureBuilder<EventChatAccessStateResult>(
-          key:
-              ValueKey<String>('event_group_chat_access_state_$accessStateKey'),
-          future: _loadAccessState(accessStateKey),
-          builder: (context, accessSnapshot) {
-            if (accessSnapshot.hasError) {
-              _clearAccessStateCacheIfCurrent(accessStateKey);
-              debugPrint(
-                'EventGroupChatWidget: access state error for '
-                '${widget.eventId}: ${accessSnapshot.error}',
-              );
-              return _accessDeniedState();
-            }
-
-            if (!accessSnapshot.hasData) {
-              return const Center(
-                child: SizedBox.square(
-                  key: eventGroupChatAccessLoadingKey,
-                  dimension: 28,
-                  child: CircularProgressIndicator(strokeWidth: 2.8),
-                ),
-              );
-            }
-
-            final accessState = accessSnapshot.data!;
-            final isCanceledReadOnly =
-                accessState.status == 'canceled' && accessState.readOnly;
-            return _buildMessagesContent(
-              isReadOnly: accessState.readOnly,
-              isCanceledReadOnly: isCanceledReadOnly,
-            );
-          },
-        );
+        return _buildMessagesContent();
       },
     );
   }
 
-  Widget _buildMessagesContent({
-    required bool isReadOnly,
-    required bool isCanceledReadOnly,
-  }) {
+  Widget _buildMessagesContent() {
     final messagesStream = _messagesStream ??= _watchMessages();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (isCanceledReadOnly) const _EventGroupChatCanceledReadOnlyBanner(),
         Expanded(
           child: StreamBuilder<List<EventChatMessagesRecord>>(
             stream: messagesStream,
@@ -451,7 +430,7 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
                 );
               }
 
-              final messages = snapshot.data!;
+              final messages = _displayMessages(snapshot.data!);
               if (messages.isEmpty) {
                 return _EventGroupChatStateMessage(
                   key: eventGroupChatMessagesEmptyKey,
@@ -478,22 +457,42 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
                   final message = messages[messages.length - 1 - index];
                   return _EventGroupChatMessageBubble(
                     message: message,
-                    onReportPressed: () => _showReportMessageDialog(message),
+                    onReportPressed: message.record == null
+                        ? null
+                        : () => _showReportMessageDialog(message.record!),
                   );
                 },
               );
             },
           ),
         ),
-        if (!isCanceledReadOnly)
-          _EventGroupChatComposer(
-            controller: _messageTextController,
-            focusNode: _messageFocusNode,
-            isSending: _isSending,
-            onSendPressed: () => _sendMessage(isReadOnly: isReadOnly),
-          ),
+        _EventGroupChatComposer(
+          controller: _messageTextController,
+          focusNode: _messageFocusNode,
+          onSendPressed: _sendMessage,
+        ),
       ],
     );
+  }
+
+  List<_EventGroupChatDisplayMessage> _displayMessages(
+    List<EventChatMessagesRecord> records,
+  ) {
+    final recordIds = records
+        .map((record) => record.reference.id)
+        .where((id) => id.trim().isNotEmpty)
+        .toSet();
+    final visiblePendingMessages = _pendingMessages.where((message) {
+      final serverMessageId = message.serverMessageId;
+      return serverMessageId == null || !recordIds.contains(serverMessageId);
+    });
+
+    return <_EventGroupChatDisplayMessage>[
+      for (final record in records)
+        _EventGroupChatDisplayMessage.record(record),
+      for (final message in visiblePendingMessages)
+        _EventGroupChatDisplayMessage.pending(message),
+    ];
   }
 
   Widget _accessDeniedState() {
@@ -507,85 +506,6 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
   }
 }
 
-class _EventGroupChatCanceledReadOnlyBanner extends StatelessWidget {
-  const _EventGroupChatCanceledReadOnlyBanner();
-
-  @override
-  Widget build(BuildContext context) {
-    final title = FFLocalizations.of(context).getVariableText(
-      ruText: 'Событие отменено',
-      enText: 'Event canceled',
-    );
-    final description = FFLocalizations.of(context).getVariableText(
-      ruText: 'Чат доступен только для чтения.',
-      enText: 'This chat is read-only.',
-    );
-
-    return Semantics(
-      key: eventGroupChatCanceledReadOnlyBannerKey,
-      container: true,
-      label: '$title. $description',
-      child: ExcludeSemantics(
-        child: Container(
-          margin: const EdgeInsetsDirectional.fromSTEB(
-            ExpatlioDesign.space16,
-            ExpatlioDesign.space8,
-            ExpatlioDesign.space16,
-            ExpatlioDesign.space8,
-          ),
-          padding: const EdgeInsetsDirectional.all(ExpatlioDesign.space12),
-          decoration: BoxDecoration(
-            color: ExpatlioDesign.danger.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(ExpatlioDesign.radiusSmall),
-            border: Border.all(
-              color: ExpatlioDesign.danger.withValues(alpha: 0.24),
-            ),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(
-                Icons.event_busy_outlined,
-                color: ExpatlioDesign.danger,
-                size: 20,
-              ),
-              const SizedBox(width: ExpatlioDesign.space8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: ExpatlioDesign.textStyle(
-                        context,
-                        color: ExpatlioDesign.text,
-                        size: 14,
-                        height: 1.2,
-                        weight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: ExpatlioDesign.space4),
-                    Text(
-                      description,
-                      style: ExpatlioDesign.textStyle(
-                        context,
-                        color: ExpatlioDesign.muted,
-                        size: 13,
-                        height: 1.25,
-                        weight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _EventChatMessageReportDialogResult {
   const _EventChatMessageReportDialogResult({
     required this.reasonCode,
@@ -594,6 +514,93 @@ class _EventChatMessageReportDialogResult {
 
   final String reasonCode;
   final String? details;
+}
+
+class _PendingEventChatMessage {
+  const _PendingEventChatMessage({
+    required this.localId,
+    required this.senderId,
+    required this.senderDisplayName,
+    required this.senderPhotoUrl,
+    required this.text,
+    required this.createdAt,
+    this.serverMessageId,
+  });
+
+  final String localId;
+  final String? serverMessageId;
+  final String senderId;
+  final String senderDisplayName;
+  final String senderPhotoUrl;
+  final String text;
+  final DateTime createdAt;
+
+  _PendingEventChatMessage copyWith({
+    String? serverMessageId,
+  }) =>
+      _PendingEventChatMessage(
+        localId: localId,
+        serverMessageId: serverMessageId ?? this.serverMessageId,
+        senderId: senderId,
+        senderDisplayName: senderDisplayName,
+        senderPhotoUrl: senderPhotoUrl,
+        text: text,
+        createdAt: createdAt,
+      );
+}
+
+class _EventGroupChatDisplayMessage {
+  const _EventGroupChatDisplayMessage._({
+    required this.id,
+    required this.senderId,
+    required this.senderDisplayName,
+    required this.senderPhotoUrl,
+    required this.text,
+    required this.createdAt,
+    required this.deletedAt,
+    required this.record,
+    required this.isPending,
+  });
+
+  factory _EventGroupChatDisplayMessage.record(
+    EventChatMessagesRecord record,
+  ) =>
+      _EventGroupChatDisplayMessage._(
+        id: record.reference.id,
+        senderId: record.senderId,
+        senderDisplayName: record.senderDisplayName,
+        senderPhotoUrl: record.senderPhotoUrl,
+        text: record.text,
+        createdAt: record.createdAt,
+        deletedAt: record.deletedAt,
+        record: record,
+        isPending: false,
+      );
+
+  factory _EventGroupChatDisplayMessage.pending(
+    _PendingEventChatMessage message,
+  ) =>
+      _EventGroupChatDisplayMessage._(
+        id: message.serverMessageId ?? message.localId,
+        senderId: message.senderId,
+        senderDisplayName: message.senderDisplayName,
+        senderPhotoUrl: message.senderPhotoUrl,
+        text: message.text,
+        createdAt: message.createdAt,
+        deletedAt: null,
+        record: null,
+        isPending: true,
+      );
+
+  final String id;
+  final String senderId;
+  final String senderDisplayName;
+  final String senderPhotoUrl;
+  final String text;
+  final DateTime? createdAt;
+  final DateTime? deletedAt;
+  final EventChatMessagesRecord? record;
+  final bool isPending;
 }
 
 class _EventChatMessageReportReasonOption {
@@ -677,7 +684,11 @@ class _EventChatMessageReportDialogState
                   ruText: 'Можно оставить пустым',
                   enText: 'Optional',
                 ),
-                border: const OutlineInputBorder(),
+                border: OutlineInputBorder(
+                  borderSide: const BorderSide(color: ExpatlioDesign.border),
+                  borderRadius:
+                      BorderRadius.circular(ExpatlioDesign.controlRadius),
+                ),
               ),
             ),
           ],
@@ -757,13 +768,11 @@ class _EventGroupChatComposer extends StatelessWidget {
   const _EventGroupChatComposer({
     required this.controller,
     required this.focusNode,
-    required this.isSending,
     required this.onSendPressed,
   });
 
   final TextEditingController controller;
   final FocusNode focusNode;
-  final bool isSending;
   final VoidCallback onSendPressed;
 
   @override
@@ -792,7 +801,6 @@ class _EventGroupChatComposer extends StatelessWidget {
                   key: eventGroupChatMessageInputKey,
                   controller: controller,
                   focusNode: focusNode,
-                  enabled: !isSending,
                   textCapitalization: TextCapitalization.sentences,
                   textInputAction: TextInputAction.send,
                   textAlignVertical: TextAlignVertical.center,
@@ -820,11 +828,9 @@ class _EventGroupChatComposer extends StatelessWidget {
                     key: eventGroupChatSendButtonKey,
                     borderRadius:
                         BorderRadius.circular(ExpatlioDesign.radiusMedium),
-                    onTap: isSending ? null : onSendPressed,
-                    child: Icon(
-                      isSending
-                          ? Icons.hourglass_top_rounded
-                          : Icons.send_rounded,
+                    onTap: onSendPressed,
+                    child: const Icon(
+                      Icons.send_rounded,
                       color: Colors.white,
                       size: 22,
                     ),
@@ -901,18 +907,20 @@ class _EventGroupChatMessageBubble extends StatelessWidget {
     required this.onReportPressed,
   });
 
-  final EventChatMessagesRecord message;
-  final VoidCallback onReportPressed;
+  final _EventGroupChatDisplayMessage message;
+  final VoidCallback? onReportPressed;
 
   @override
   Widget build(BuildContext context) {
-    final messageId = message.reference.id;
+    final messageId = message.id;
     final normalizedCurrentUserUid = currentUserUid.trim();
     final isCurrentUser = message.senderId.trim() == normalizedCurrentUserUid &&
         normalizedCurrentUserUid.isNotEmpty;
     final isDeleted = message.deletedAt != null;
-    final canReport =
-        normalizedCurrentUserUid.isNotEmpty && !isCurrentUser && !isDeleted;
+    final canReport = normalizedCurrentUserUid.isNotEmpty &&
+        !isCurrentUser &&
+        !isDeleted &&
+        onReportPressed != null;
     final bubbleColor = isDeleted
         ? ExpatlioDesign.secondarySystemBackground
         : isCurrentUser
@@ -951,8 +959,7 @@ class _EventGroupChatMessageBubble extends StatelessWidget {
         color: bubbleColor,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color:
-              isCurrentUser ? ExpatlioDesign.primary : ExpatlioDesign.separator,
+          color: ExpatlioDesign.border,
         ),
       ),
       child: Column(
@@ -1116,35 +1123,19 @@ class _EventGroupChatSenderAvatar extends StatelessWidget {
 
   Widget _fallback(BuildContext context) {
     return Container(
-      color: ExpatlioDesign.primary.withValues(alpha: 0.10),
+      color: ExpatlioDesign.avatarFallbackBackground,
       alignment: Alignment.center,
       child: Text(
-        _initials(),
+        ExpatlioDesign.avatarInitial(displayName),
         maxLines: 1,
         style: ExpatlioDesign.textStyle(
           context,
-          color: ExpatlioDesign.primary,
+          color: ExpatlioDesign.avatarFallbackText,
           size: 12,
           weight: FontWeight.w700,
         ),
       ),
     );
-  }
-
-  String _initials() {
-    final normalizedName = displayName.trim();
-    if (normalizedName.isEmpty) {
-      return '?';
-    }
-    final words = normalizedName
-        .split(RegExp(r'\s+'))
-        .where((word) => word.trim().isNotEmpty)
-        .toList(growable: false);
-    if (words.length >= 2) {
-      return '${words[0].characters.first}${words[1].characters.first}'
-          .toUpperCase();
-    }
-    return normalizedName.characters.take(2).toString().toUpperCase();
   }
 }
 

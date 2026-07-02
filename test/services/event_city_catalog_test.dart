@@ -76,6 +76,14 @@ void main() {
     expect(catalog.resolve('RU', 'unknown_city'), isNull);
   });
 
+  test('resolves the default city for a country code', () {
+    expect(catalog.defaultCityForCountryCode(' ru ')?.identity, 'RU:moscow');
+    expect(catalog.defaultCityForCountryCode('IT')?.identity, 'IT:rome');
+    expect(catalog.defaultCityForCountryCode('NL'), isNull);
+    expect(catalog.defaultCityForCountryCode('Russia'), isNull);
+    expect(catalog.defaultCityForCountryCode(null), isNull);
+  });
+
   test('searches names aliases and transliterations', () {
     expect(catalog.search('NYC').single.identity, 'US:new_york');
     expect(catalog.search('Roma').single.identity, 'IT:rome');

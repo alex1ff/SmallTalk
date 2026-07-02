@@ -131,9 +131,7 @@ class _FiltersWidgetState extends State<FiltersWidget> {
         decoration: BoxDecoration(
           color: selected ? theme.primary : theme.secondaryBackground,
           borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
-          border: Border.all(
-            color: selected ? theme.primary : theme.alternate,
-          ),
+          border: Border.all(color: ExpatlioDesign.border),
         ),
         child: Text(
           _levelLabel(context, level),

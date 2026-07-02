@@ -157,6 +157,127 @@ void main() {
     expect(find.byKey(eventDetailOrganizerControlsKey), findsNothing);
   });
 
+  testWidgets('maps active participant stream with organizer fallback',
+      (tester) async {
+    currentUser = _TestAuthUser('student-1');
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(
+                organizerId: 'organizer-1',
+                participantsCount: 2,
+              ),
+            ),
+          ),
+          participantSnapshotStream: (participantRef) =>
+              Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: participantRef,
+              data: _participantData(
+                userId: 'student-1',
+                status: 'left',
+              ),
+            ),
+          ),
+          participantsStream: (eventRef) =>
+              Stream<List<EventParticipantsRecord>>.value([
+            EventParticipantsRecord.getDocumentFromData(
+              _participantData(
+                userId: 'organizer-1',
+                status: 'active',
+                displayName: '',
+              ),
+              EventParticipantsRecord.createDoc(eventRef, id: 'organizer-1'),
+            ),
+            EventParticipantsRecord.getDocumentFromData(
+              _participantData(
+                userId: 'student-2',
+                status: 'active',
+                displayName: 'Марко Росси',
+                photoUrl: 'https://example.com/marco.png',
+              ),
+              EventParticipantsRecord.createDoc(eventRef, id: 'student-2'),
+            ),
+          ]),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Anastasia Ivanova'), findsWidgets);
+    expect(find.text('Марко Росси'), findsOneWidget);
+    expect(find.byKey(eventDetailParticipantTileKey(0)), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(eventDetailParticipantTileKey(0)),
+        matching: find.text('AI'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('opens organizer private chat before joining', (tester) async {
+    currentUser = _TestAuthUser('student-1');
+    String? functionName;
+    Map<String, dynamic>? payload;
+    String? openedConversationPath;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(organizerId: 'organizer-1'),
+            ),
+          ),
+          participantSnapshotStream: (participantRef) =>
+              Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: participantRef,
+              data: _participantData(
+                userId: 'student-1',
+                status: 'left',
+              ),
+            ),
+          ),
+          openOrganizerChatInvoker: (calledFunctionName, calledPayload) async {
+            functionName = calledFunctionName;
+            payload = calledPayload;
+            return <String, dynamic>{
+              'conversationId': 'organizer-1_student-1',
+              'conversationPath': 'conversations/organizer-1_student-1',
+            };
+          },
+          chatThreadOpener: (
+            context, {
+            required conversationRef,
+            initialConversation,
+          }) async {
+            openedConversationPath = conversationRef?.path;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailOrganizerMessageButtonKey), findsOneWidget);
+    expect(find.text('Присоединиться'), findsOneWidget);
+
+    await tester.tap(find.byKey(eventDetailOrganizerMessageButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(functionName, openEventOrganizerChatFunctionName);
+    expect(payload, <String, dynamic>{'eventId': 'event-1'});
+    expect(openedConversationPath, 'conversations/organizer-1_student-1');
+  });
+
   testWidgets('non-organizer reports event through callable', (tester) async {
     currentUser = _TestAuthUser('student-1');
     String? functionName;
@@ -755,16 +876,8 @@ void main() {
     await tester.pumpWidget(_buildRouterTestApp(router));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(eventDetailChatCtaKey));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-
+    expect(find.byKey(eventDetailChatCtaKey), findsNothing);
     expect(router.getCurrentLocation(), '/events/event-1');
-    expect(
-      find.byKey(eventDetailChatParticipantRequiredSnackBarKey),
-      findsOneWidget,
-    );
-    expect(find.text('Сначала присоединитесь к событию'), findsOneWidget);
     expect(find.byType(EventGroupChatWidget), findsNothing);
     expect(
       analyticsTracker.payloadsFor(
@@ -931,10 +1044,8 @@ void main() {
 
       primarySemantics =
           tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
-      final chatSemantics =
-          tester.getSemantics(find.byKey(eventDetailChatCtaKey));
       expect(primarySemantics.flagsCollection.isEnabled, isTrue);
-      expect(chatSemantics.flagsCollection.isEnabled, isFalse);
+      expect(find.byKey(eventDetailChatCtaKey), findsNothing);
     } finally {
       semanticsHandle.dispose();
     }
@@ -1360,15 +1471,8 @@ void main() {
     await tester.pumpWidget(_buildRouterTestApp(router));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(eventDetailChatCtaKey), warnIfMissed: false);
-    await tester.pumpAndSettle();
-
+    expect(find.byKey(eventDetailChatCtaKey), findsNothing);
     expect(router.getCurrentLocation(), '/events/event-1');
-    expect(
-      find.byKey(eventDetailChatParticipantRequiredSnackBarKey),
-      findsOneWidget,
-    );
-    expect(find.text('Сначала присоединитесь к событию'), findsOneWidget);
     expect(find.byType(EventGroupChatWidget), findsNothing);
     expect(
       analyticsTracker.payloadsFor(
@@ -1446,9 +1550,7 @@ void main() {
         ],
       );
 
-      final chatSemantics =
-          tester.getSemantics(find.byKey(eventDetailChatCtaKey));
-      expect(chatSemantics.flagsCollection.isEnabled, isFalse);
+      expect(find.byKey(eventDetailChatCtaKey), findsNothing);
     } finally {
       semanticsHandle.dispose();
     }
@@ -2616,6 +2718,7 @@ Map<String, dynamic> _eventData({
       'participantsCount': participantsCount,
       'organizerId': organizerId,
       'organizerDisplayName': 'Anastasia Ivanova',
+      'organizerPhotoUrl': 'https://example.com/anastasia.png',
       'status': status,
     };
 
@@ -2650,12 +2753,17 @@ Map<String, dynamic> _leaveEventResponse({
 Map<String, dynamic> _participantData({
   required String userId,
   required String status,
+  String displayName = 'Participant',
+  String? photoUrl,
+  DateTime? joinedAt,
 }) =>
     <String, dynamic>{
       'userId': userId,
-      'displayName': 'Participant',
+      'displayName': displayName,
+      if (photoUrl != null) 'photoUrl': photoUrl,
       'role': 'participant',
       'status': status,
+      if (joinedAt != null) 'joinedAt': joinedAt,
     };
 
 FirebaseFunctionsException _joinDomainError(

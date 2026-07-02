@@ -42,10 +42,10 @@ class ParticipantAvatar extends StatelessWidget {
       width: dimension,
       height: dimension,
       decoration: BoxDecoration(
-        color: ExpatlioDesign.primary.withValues(alpha: 0.12),
+        color: ExpatlioDesign.avatarFallbackBackground,
         shape: BoxShape.circle,
         border: Border.all(
-          color: ExpatlioDesign.background,
+          color: ExpatlioDesign.border,
           width: _borderWidth,
         ),
       ),
@@ -78,37 +78,18 @@ class _ParticipantAvatarFallback extends StatelessWidget {
   final String displayName;
   final double fontSize;
 
-  String _initials() {
-    final normalizedName = displayName.trim();
-    if (normalizedName.isEmpty) {
-      return '?';
-    }
-
-    final words = normalizedName
-        .split(RegExp(r'\s+'))
-        .where((word) => word.trim().isNotEmpty)
-        .toList(growable: false);
-    if (words.length >= 2) {
-      return '${words[0].characters.first}${words[1].characters.first}'
-          .toUpperCase();
-    }
-
-    final chars = normalizedName.characters;
-    return chars.take(2).toString().toUpperCase();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: ExpatlioDesign.primary.withValues(alpha: 0.12),
+      color: ExpatlioDesign.avatarFallbackBackground,
       alignment: Alignment.center,
       child: Text(
-        _initials(),
+        ExpatlioDesign.avatarInitial(displayName),
         maxLines: 1,
         textAlign: TextAlign.center,
         style: ExpatlioDesign.textStyle(
           context,
-          color: ExpatlioDesign.primary,
+          color: ExpatlioDesign.avatarFallbackText,
           size: fontSize,
           weight: FontWeight.w700,
         ),

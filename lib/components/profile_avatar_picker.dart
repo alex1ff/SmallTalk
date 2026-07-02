@@ -57,7 +57,8 @@ class ProfileAvatarPicker extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: ExpatlioDesign.primary,
                         shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2.5),
+                        border: Border.all(
+                            color: ExpatlioDesign.border, width: 2.5),
                         boxShadow: const [
                           BoxShadow(
                             blurRadius: 7.0,

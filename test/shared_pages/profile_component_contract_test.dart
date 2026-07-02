@@ -11,6 +11,8 @@ void main() {
     expect(source, contains("'/components/support_contact_menu.dart'"));
     expect(source, contains('ProfileDropdownMenuItem('));
     expect(source, contains('SupportContactMenu('));
+    expect(source, contains("ruText: 'Мои события'"));
+    expect(source, contains('EventHistoryWidget.routeName'));
     expect(source, isNot(contains('class _ProfileDropdownMenuItem')));
     expect(source, isNot(contains('class _SupportContactMenu')));
     expect(source, isNot(contains('class _SupportContactCard')));

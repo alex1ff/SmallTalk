@@ -297,4 +297,6 @@ test("direct call status source checks access and target role before live state"
   assert.ok(availabilityIndex > targetApprovalGateIndex);
   assert.match(source, /getReadOnlyUserVoipTokenState/);
   assert.match(source, /targetHasCallToken:\s*false/);
+  assert.match(source, /requesterEmail:\s*requesterData\.email/);
+  assert.match(source, /userEmailsById:\s*\{\[targetUserId\]:\s*targetData\.email\}/);
 });

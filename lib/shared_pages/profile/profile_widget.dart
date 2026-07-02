@@ -554,9 +554,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
         decoration: BoxDecoration(
           color: filled ? ExpatlioDesign.primary : ExpatlioDesign.mutedSurface,
           borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
-          border: Border.all(
-            color: filled ? ExpatlioDesign.primary : ExpatlioDesign.border,
-          ),
+          border: Border.all(color: ExpatlioDesign.border),
         ),
         child: Text(
           label,
@@ -709,7 +707,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: ExpatlioDesign.mutedSurface,
+        color: const Color(0xFFF2F2F2),
         borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
       ),
       padding: const EdgeInsets.all(ExpatlioDesign.itemSpacing),
@@ -1124,15 +1122,13 @@ class _ProfileWidgetState extends State<ProfileWidget> {
   }
 
   Widget _profileAvatar(BuildContext context, {double size = 88}) {
-    final displayName = currentUserDisplayName.trim();
-    final firstLetter =
-        displayName.isNotEmpty ? displayName[0].toUpperCase() : '?';
+    final firstLetter = ExpatlioDesign.avatarInitial(currentUserDisplayName);
 
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: ExpatlioDesign.mutedSurface,
+        color: ExpatlioDesign.avatarFallbackBackground,
         shape: BoxShape.circle,
         border: Border.all(color: ExpatlioDesign.border),
       ),
@@ -1154,6 +1150,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                 firstLetter,
                 style: ExpatlioDesign.textStyle(
                   context,
+                  color: ExpatlioDesign.avatarFallbackText,
                   size: 28,
                   weight: FontWeight.w700,
                 ),
@@ -2019,6 +2016,16 @@ class _ProfileWidgetState extends State<ProfileWidget> {
               _menuDivider(),
               _menuRow(
                 context,
+                icon: Icons.event_available_outlined,
+                label: FFLocalizations.of(context).getVariableText(
+                  ruText: 'Мои события',
+                  enText: 'My events',
+                ),
+                onTap: () => context.pushNamed(EventHistoryWidget.routeName),
+              ),
+              _menuDivider(),
+              _menuRow(
+                context,
                 icon: FFIcons.kuserCircle,
                 label: FFLocalizations.of(context).getText(
                   'uo96qs94' /* Черный список */,
@@ -2338,8 +2345,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                               borderRadius: BorderRadius.circular(
                                   ExpatlioDesign.cardRadius),
                               border: Border.all(
-                                color: FlutterFlowTheme.of(context)
-                                    .secondaryBackground,
+                                color: ExpatlioDesign.border,
                               ),
                             ),
                             child: Padding(
@@ -2355,8 +2361,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                           .secondaryBackground,
                                       shape: BoxShape.circle,
                                       border: Border.all(
-                                        color: FlutterFlowTheme.of(context)
-                                            .secondaryBackground,
+                                        color: ExpatlioDesign.border,
                                         width: 1,
                                       ),
                                     ),
@@ -3067,7 +3072,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                     thickness: 1,
                                     indent: 12,
                                     endIndent: 16,
-                                    color: Color(0xFFE7E7E8),
+                                    color: ExpatlioDesign.border,
                                   ),
                                   InkWell(
                                     splashColor: Colors.transparent,
@@ -3123,7 +3128,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                     thickness: 1,
                                     indent: 12,
                                     endIndent: 16,
-                                    color: Color(0xFFE7E7E8),
+                                    color: ExpatlioDesign.border,
                                   ),
                                   InkWell(
                                     splashColor: Colors.transparent,
@@ -3198,7 +3203,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                     thickness: 1,
                                     indent: 12,
                                     endIndent: 16,
-                                    color: Color(0xFFE7E7E8),
+                                    color: ExpatlioDesign.border,
                                   ),
                                   InkWell(
                                     splashColor: Colors.transparent,
@@ -3255,7 +3260,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                     thickness: 1,
                                     indent: 12,
                                     endIndent: 16,
-                                    color: Color(0xFFE7E7E8),
+                                    color: ExpatlioDesign.border,
                                   ),
                                   InkWell(
                                     splashColor: Colors.transparent,
@@ -3330,7 +3335,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                     thickness: 1,
                                     indent: 16,
                                     endIndent: 16,
-                                    color: Color(0xFFE7E7E8),
+                                    color: ExpatlioDesign.border,
                                   ),
                                   InkWell(
                                     splashColor: Colors.transparent,
@@ -3472,7 +3477,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                     thickness: 1,
                                     indent: 16,
                                     endIndent: 16,
-                                    color: Color(0xFFE7E7E8),
+                                    color: ExpatlioDesign.border,
                                   ),
                                   InkWell(
                                     splashColor: Colors.transparent,
@@ -3542,7 +3547,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                     thickness: 1,
                                     indent: 16,
                                     endIndent: 16,
-                                    color: Color(0xFFE7E7E8),
+                                    color: ExpatlioDesign.border,
                                   ),
                                   Container(
                                     height: 50,

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/chat_thread/open_chat_thread.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/shared_pages/events/event_detail_widget.dart';
 import '/shared_pages/events/event_edit_widget.dart';
@@ -26,8 +27,8 @@ const ValueKey<String> eventDetailJoinErrorSnackBarKey =
     ValueKey<String>('event_detail_join_error_snack_bar');
 const ValueKey<String> eventDetailLeaveErrorSnackBarKey =
     ValueKey<String>('event_detail_leave_error_snack_bar');
-const ValueKey<String> eventDetailChatParticipantRequiredSnackBarKey =
-    ValueKey<String>('event_detail_chat_participant_required_snack_bar');
+const ValueKey<String> eventDetailOrganizerChatErrorSnackBarKey =
+    ValueKey<String>('event_detail_organizer_chat_error_snack_bar');
 const ValueKey<String> eventDetailReportSuccessSnackBarKey =
     ValueKey<String>('event_detail_report_success_snack_bar');
 const ValueKey<String> eventDetailReportErrorSnackBarKey =
@@ -44,6 +45,12 @@ const ValueKey<String> eventDetailReportSubmitButtonKey =
 ValueKey<String> eventDetailReportReasonKey(String reasonCode) =>
     ValueKey<String>('event_detail_report_reason_$reasonCode');
 
+typedef EventChatThreadOpener = Future<void> Function(
+  BuildContext context, {
+  required DocumentReference? conversationRef,
+  ConversationsRecord? initialConversation,
+});
+
 class EventDetailRouteWidget extends StatefulWidget {
   const EventDetailRouteWidget({
     super.key,
@@ -54,6 +61,9 @@ class EventDetailRouteWidget extends StatefulWidget {
     this.leaveEventInvoker,
     this.reportEventInvoker,
     this.participantSnapshotStream,
+    this.participantsStream,
+    this.openOrganizerChatInvoker,
+    this.chatThreadOpener,
     this.analyticsTracker,
   });
 
@@ -64,6 +74,9 @@ class EventDetailRouteWidget extends StatefulWidget {
   final EventCallableInvoker? leaveEventInvoker;
   final EventCallableInvoker? reportEventInvoker;
   final EventParticipantSnapshotStream? participantSnapshotStream;
+  final EventActiveParticipantsStream? participantsStream;
+  final EventCallableInvoker? openOrganizerChatInvoker;
+  final EventChatThreadOpener? chatThreadOpener;
   final EventsAnalyticsTracker? analyticsTracker;
 
   @override
@@ -80,6 +93,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
   bool _isCanceling = false;
   bool _isJoining = false;
   bool _isLeaving = false;
+  bool _isOpeningOrganizerChat = false;
   bool _isReportingEvent = false;
   String? _locallyCanceledEventId;
   String? _locallyJoinedEventId;
@@ -121,6 +135,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       _participantActionGeneration += 1;
       _isLeaving = false;
       _isJoining = false;
+      _isOpeningOrganizerChat = false;
       _isReportingEvent = false;
     }
   }
@@ -309,6 +324,48 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
     }
   }
 
+  Future<void> _handleOrganizerMessage(EventsRecord event) async {
+    if (_isOpeningOrganizerChat) {
+      return;
+    }
+
+    setState(() {
+      _isOpeningOrganizerChat = true;
+    });
+    try {
+      final result = await EventActionsRepository.openEventOrganizerChat(
+        eventId: event.reference.id,
+        invoker: widget.openOrganizerChatInvoker,
+      );
+      if (!mounted) {
+        return;
+      }
+      final conversationRef = FirebaseFirestore.instance.doc(
+        result.conversationPath,
+      );
+      await (widget.chatThreadOpener ?? openChatThread)(
+        context,
+        conversationRef: conversationRef,
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          key: eventDetailOrganizerChatErrorSnackBarKey,
+          content: Text(eventActionFailureMessage(context, error)),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isOpeningOrganizerChat = false;
+        });
+      }
+    }
+  }
+
   Future<void> _showReportEventDialog(EventsRecord event) async {
     if (_isReportingEvent) {
       return;
@@ -381,20 +438,6 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         });
       }
     }
-  }
-
-  void _showChatParticipantRequiredSnackBar() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        key: eventDetailChatParticipantRequiredSnackBarKey,
-        content: Text(
-          FFLocalizations.of(context).getVariableText(
-            ruText: 'Сначала присоединитесь к событию',
-            enText: 'Join the event first',
-          ),
-        ),
-      ),
-    );
   }
 
   @override
@@ -510,65 +553,92 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
             final canOpenChat = eventId.trim().isNotEmpty &&
                 !isLocallyLeft &&
                 (isLocallyJoined || isActiveParticipant || canManage);
+            final canMessageOrganizer = currentUserUid.trim().isNotEmpty &&
+                event.organizerId.trim().isNotEmpty &&
+                event.organizerId.trim() != currentUserUid.trim() &&
+                isActive &&
+                !isCanceled &&
+                !_isOpeningOrganizerChat;
             final canAttemptReport = currentUserUid.trim().isNotEmpty &&
                 isActive &&
                 !isCanceled &&
                 event.organizerId.trim() != currentUserUid.trim();
 
-            return EventDetailWidget(
-              eventId: eventId,
-              showReportAction: canAttemptReport,
-              onReportPressed: canAttemptReport && !_isReportingEvent
-                  ? () => _showReportEventDialog(event)
-                  : null,
-              levelMin: event.levelMin,
-              levelMax: event.levelMax,
-              languageCode: event.languageCode,
-              languageNameEn: event.languageNameEn,
-              languageNameRu: event.languageNameRu,
-              title: event.title,
-              description: event.description,
-              organizerDisplayName: event.organizerDisplayName,
-              organizerPhotoUrl: event.organizerPhotoUrl,
-              showOrganizerControls: canManage && isActive && !isCanceled,
-              onOrganizerEditPressed: _isCanceling
-                  ? null
-                  : () {
-                      context.pushNamed(
-                        EventEditWidget.routeName,
-                        pathParameters: <String, String>{'eventId': eventId},
-                      );
-                    },
-              onOrganizerCancelPressed: _isCanceling || isCanceled
-                  ? null
-                  : () => _handleOrganizerCancel(event),
-              startsAt: event.startsAt,
-              timeZoneId: event.timeZoneId,
-              locationName: event.locationName,
-              participantsCount: participantsCount,
-              capacity: event.hasCapacity() ? event.capacity : null,
-              joinCtaState: joinCtaState,
-              onChatPressed: canOpenChat
-                  ? () {
-                      _trackEventChatOpened(event);
-                      context.pushNamed(
-                        EventGroupChatWidget.routeName,
-                        pathParameters: <String, String>{'eventId': eventId},
-                      );
-                    }
-                  : null,
-              onChatParticipantRequiredPressed:
-                  canOpenChat ? null : _showChatParticipantRequiredSnackBar,
-              onPrimaryCtaPressed: isActive && !_isJoining && !_isLeaving
-                  ? canJoin
-                      ? () => _handleJoin(event)
-                      : canLeave
-                          ? () => _handleLeave(
-                                event,
-                                isActiveParticipant: isActiveParticipant,
-                              )
-                          : null
-                  : null,
+            return StreamBuilder<List<EventParticipantsRecord>>(
+              stream: EventDetailRepository.watchActiveParticipants(
+                eventId: eventId,
+                participantsStream: widget.participantsStream,
+              ),
+              builder: (context, participantsSnapshot) {
+                final participantViewModels =
+                    _eventDetailParticipantViewModelsForRoute(
+                  event: event,
+                  participants: participantsSnapshot.data ??
+                      const <EventParticipantsRecord>[],
+                );
+
+                return EventDetailWidget(
+                  eventId: eventId,
+                  showReportAction: canAttemptReport,
+                  onReportPressed: canAttemptReport && !_isReportingEvent
+                      ? () => _showReportEventDialog(event)
+                      : null,
+                  levelMin: event.levelMin,
+                  levelMax: event.levelMax,
+                  languageCode: event.languageCode,
+                  languageNameEn: event.languageNameEn,
+                  languageNameRu: event.languageNameRu,
+                  title: event.title,
+                  description: event.description,
+                  organizerDisplayName: event.organizerDisplayName,
+                  organizerPhotoUrl: event.organizerPhotoUrl,
+                  onOrganizerMessagePressed: canMessageOrganizer
+                      ? () => _handleOrganizerMessage(event)
+                      : null,
+                  showOrganizerControls: canManage && isActive && !isCanceled,
+                  onOrganizerEditPressed: _isCanceling
+                      ? null
+                      : () {
+                          context.pushNamed(
+                            EventEditWidget.routeName,
+                            pathParameters: <String, String>{
+                              'eventId': eventId,
+                            },
+                          );
+                        },
+                  onOrganizerCancelPressed: _isCanceling || isCanceled
+                      ? null
+                      : () => _handleOrganizerCancel(event),
+                  startsAt: event.startsAt,
+                  timeZoneId: event.timeZoneId,
+                  locationName: event.locationName,
+                  participants: participantViewModels,
+                  participantsCount: participantsCount,
+                  capacity: event.hasCapacity() ? event.capacity : null,
+                  joinCtaState: joinCtaState,
+                  onChatPressed: canOpenChat
+                      ? () {
+                          _trackEventChatOpened(event);
+                          context.pushNamed(
+                            EventGroupChatWidget.routeName,
+                            pathParameters: <String, String>{
+                              'eventId': eventId,
+                            },
+                          );
+                        }
+                      : null,
+                  onPrimaryCtaPressed: isActive && !_isJoining && !_isLeaving
+                      ? canJoin
+                          ? () => _handleJoin(event)
+                          : canLeave
+                              ? () => _handleLeave(
+                                    event,
+                                    isActiveParticipant: isActiveParticipant,
+                                  )
+                              : null
+                      : null,
+                );
+              },
             );
           },
         );
@@ -850,7 +920,11 @@ class _EventReportDialogState extends State<_EventReportDialog> {
                   ruText: 'Можно оставить пустым',
                   enText: 'Optional',
                 ),
-                border: const OutlineInputBorder(),
+                border: OutlineInputBorder(
+                  borderSide: const BorderSide(color: ExpatlioDesign.border),
+                  borderRadius:
+                      BorderRadius.circular(ExpatlioDesign.controlRadius),
+                ),
               ),
             ),
           ],
@@ -925,6 +999,36 @@ List<_EventReportReasonOption> _eventReportReasonOptions(
       ),
     ),
   ];
+}
+
+List<EventDetailParticipantViewModel>
+    _eventDetailParticipantViewModelsForRoute({
+  required EventsRecord event,
+  required List<EventParticipantsRecord> participants,
+}) {
+  final organizerId = event.organizerId.trim();
+  final organizerDisplayName = event.organizerDisplayName.trim();
+  final organizerPhotoUrl = event.organizerPhotoUrl.trim();
+
+  return participants.map((participant) {
+    final isOrganizer =
+        organizerId.isNotEmpty && participant.userId.trim() == organizerId;
+    final displayName = participant.displayName.trim().isNotEmpty
+        ? participant.displayName.trim()
+        : isOrganizer
+            ? organizerDisplayName
+            : '';
+    final photoUrl = participant.photoUrl.trim().isNotEmpty
+        ? participant.photoUrl.trim()
+        : isOrganizer
+            ? organizerPhotoUrl
+            : '';
+
+    return EventDetailParticipantViewModel(
+      displayName: displayName,
+      photoUrl: photoUrl.isEmpty ? null : photoUrl,
+    );
+  }).toList(growable: false);
 }
 
 class _EventDetailRouteStateScaffold extends StatelessWidget {

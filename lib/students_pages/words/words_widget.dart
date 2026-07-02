@@ -184,9 +184,13 @@ class _WordsWidgetState extends State<WordsWidget> {
                                 ExpatlioDesign.space0,
                                 _contentBottomPadding(context),
                               ),
-                              child: EmptyWidget(
-                                txt:
-                                    'В этом разделе будут появляться слова, \nкоторые вы добавите во время занятий. \nСохраните первое слово, чтобы начать формировать свой личный словарь',
+                              child: Center(
+                                child: EmptyWidget(
+                                  shrinkWrap: true,
+                                  topPadding: ExpatlioDesign.space0,
+                                  txt:
+                                      'В этом разделе будут появляться слова, \nкоторые вы добавите во время занятий. \nСохраните первое слово, чтобы начать формировать свой личный словарь',
+                                ),
                               ),
                             );
                           }

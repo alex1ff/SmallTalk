@@ -158,8 +158,7 @@ class _FavWidgetState extends State<FavWidget> {
                               : null,
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: FlutterFlowTheme.of(context)
-                                .secondaryBackground,
+                            color: ExpatlioDesign.border,
                             width: 3.0,
                           ),
                         ),

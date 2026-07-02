@@ -244,9 +244,7 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                 : FlutterFlowTheme.of(context).primaryBackground,
             borderRadius: BorderRadius.circular(ExpatlioDesign.cardRadius),
             border: Border.all(
-              color: isSelected
-                  ? FlutterFlowTheme.of(context).primaryText
-                  : const Color(0xFFE6E6EB),
+              color: ExpatlioDesign.border,
               width: isSelected ? 1.5 : 1.0,
             ),
           ),

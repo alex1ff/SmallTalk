@@ -394,7 +394,11 @@ exports.getDirectCallStatus = functions.https.onCall(async (data, context) => {
     db,
     requesterId,
     [targetUserId],
-    {bypassUserIds: getRepeatBypassUserIds()},
+    {
+      bypassUserIds: getRepeatBypassUserIds(),
+      requesterEmail: requesterData.email || context.auth.token.email,
+      userEmailsById: {[targetUserId]: targetData.email},
+    },
   );
   if (repeatPreventionContext.excludedCandidateIds.has(targetUserId)) {
     status = buildDirectCallStatusDecision({

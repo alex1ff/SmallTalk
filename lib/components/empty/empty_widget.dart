@@ -9,9 +9,13 @@ class EmptyWidget extends StatefulWidget {
   const EmptyWidget({
     super.key,
     required this.txt,
+    this.shrinkWrap = false,
+    this.topPadding = ExpatlioDesign.space64,
   });
 
   final String? txt;
+  final bool shrinkWrap;
+  final double topPadding;
 
   @override
   State<EmptyWidget> createState() => _EmptyWidgetState();
@@ -44,13 +48,10 @@ class _EmptyWidgetState extends State<EmptyWidget> {
     return Container(
       decoration: BoxDecoration(),
       child: Padding(
-        padding: EdgeInsetsDirectional.fromSTEB(
-            ExpatlioDesign.space24,
-            ExpatlioDesign.space64,
-            ExpatlioDesign.space24,
-            ExpatlioDesign.space0),
+        padding: EdgeInsetsDirectional.fromSTEB(ExpatlioDesign.space24,
+            widget.topPadding, ExpatlioDesign.space24, ExpatlioDesign.space0),
         child: Column(
-          mainAxisSize: MainAxisSize.max,
+          mainAxisSize: widget.shrinkWrap ? MainAxisSize.min : MainAxisSize.max,
           children: [
             SizedBox(
               width: 104.0,

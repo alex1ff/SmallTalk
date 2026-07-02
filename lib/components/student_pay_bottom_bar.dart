@@ -24,7 +24,7 @@ class StudentPayBottomBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
-        color: ExpatlioDesign.card,
+        color: ExpatlioDesign.background,
         border: Border(
           top: BorderSide(color: ExpatlioDesign.border),
         ),

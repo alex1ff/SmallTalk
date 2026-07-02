@@ -47,6 +47,7 @@ export '/shared_pages/events/event_list_widget.dart' show EventListWidget;
 export '/shared_pages/events/event_detail_widget.dart' show EventDetailWidget;
 export '/shared_pages/events/event_detail_route_widget.dart'
     show EventDetailRouteWidget;
+export '/shared_pages/events/event_history_widget.dart' show EventHistoryWidget;
 export '/shared_pages/events/event_create_widget.dart'
     show EventCreateWidget, EventFormMode;
 export '/shared_pages/events/event_edit_widget.dart' show EventEditWidget;

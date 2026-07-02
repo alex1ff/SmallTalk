@@ -2464,9 +2464,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
           decoration: BoxDecoration(
             color: ExpatlioDesign.card,
             borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
-            border: Border.all(
-              color: ExpatlioDesign.primary.withValues(alpha: 0.16),
-            ),
+            border: Border.all(color: ExpatlioDesign.border),
             boxShadow: const [
               BoxShadow(
                 color: Color(0x0F000000),
@@ -2945,8 +2943,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
                               borderRadius: BorderRadius.circular(
                                   ExpatlioDesign.cardRadius),
                               border: Border.all(
-                                color: FlutterFlowTheme.of(context)
-                                    .secondaryBackground,
+                                color: ExpatlioDesign.border,
                               ),
                             ),
                             child: Padding(
@@ -2962,8 +2959,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
                                           .secondaryBackground,
                                       shape: BoxShape.circle,
                                       border: Border.all(
-                                        color: FlutterFlowTheme.of(context)
-                                            .secondaryBackground,
+                                        color: ExpatlioDesign.border,
                                         width: 1,
                                       ),
                                     ),
@@ -3104,7 +3100,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
                                       borderRadius: BorderRadius.circular(
                                           ExpatlioDesign.radiusMedium),
                                       border: Border.all(
-                                        color: Color(0xFFE0E3E7),
+                                        color: ExpatlioDesign.border,
                                         width: 1,
                                       ),
                                     ),
@@ -3938,9 +3934,8 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
                                                         .circular(ExpatlioDesign
                                                             .radiusExtraLarge),
                                                     border: Border.all(
-                                                      color: FlutterFlowTheme
-                                                              .of(context)
-                                                          .secondaryBackground,
+                                                      color:
+                                                          ExpatlioDesign.border,
                                                     ),
                                                   ),
                                                   child: Icon(
@@ -4012,9 +4007,8 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
                                                         .circular(ExpatlioDesign
                                                             .radiusExtraLarge),
                                                     border: Border.all(
-                                                      color: FlutterFlowTheme
-                                                              .of(context)
-                                                          .secondaryBackground,
+                                                      color:
+                                                          ExpatlioDesign.border,
                                                     ),
                                                   ),
                                                   child: Icon(

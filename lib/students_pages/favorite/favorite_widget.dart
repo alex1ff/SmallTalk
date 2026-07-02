@@ -10,9 +10,15 @@ import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/chat_call_event_presentation.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/shared_pages/chat_thread/open_chat_thread.dart';
+import '/shared_pages/events/event_group_chat_widget.dart';
+import '/services/event_group_chat_repository.dart';
 
 import 'favorite_model.dart';
 export 'favorite_model.dart';
+
+const double _favoriteChatAvatarSize = 52.0;
+const Color _favoriteChatDividerColor = Color(0xFFEBEBEB);
+const Color _favoriteChatDeleteBackground = Color(0xFFFF3B30);
 
 class FavoriteWidget extends StatefulWidget {
   const FavoriteWidget({super.key});
@@ -29,13 +35,22 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
   final scaffoldKey = GlobalKey<ScaffoldState>();
   static final Map<String, _ConversationsLoadState>
       _conversationStateCacheByUid = {};
+  static final Map<String, _EventChatsLoadState> _eventChatStateCacheByUid = {};
   static final Map<String, List<DocumentReference>> _friendsCacheByUid = {};
   static final Map<String, Future<UserPublicProfilesRecord?>>
       _userFutureCacheByUid = {};
   static final Map<String, UserPublicProfilesRecord> _userProfileCacheByUid =
       {};
+  static final Map<String, Future<EventsRecord?>> _eventFutureCacheByEventId =
+      {};
+  static final Map<String, EventsRecord> _eventCacheByEventId = {};
+  static final Map<String, Set<String>> _hiddenChatKeyOverridesByUid = {};
   String? _conversationsStreamUid;
   Stream<_ConversationsLoadState>? _conversationsStream;
+  String? _eventChatsStreamUid;
+  Stream<_EventChatsLoadState>? _eventChatsStream;
+  final Map<String, Stream<List<EventChatMessagesRecord>>>
+      _latestEventChatMessageStreams = {};
   int _selectedChatTabIndex = 0;
 
   Future<UserPublicProfilesRecord?> _getUserFuture(DocumentReference ref) {
@@ -58,6 +73,28 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
   UserPublicProfilesRecord? _cachedUserProfile(DocumentReference ref) =>
       _userProfileCacheByUid[ref.id];
 
+  Future<EventsRecord?> _getEventFuture(String eventId) {
+    return _eventFutureCacheByEventId.putIfAbsent(
+      eventId,
+      () => (() async {
+        final snapshot = await EventsRecord.collection.doc(eventId).get();
+        if (!snapshot.exists) {
+          return null;
+        }
+
+        final event = EventsRecord.fromSnapshot(snapshot);
+        _eventCacheByEventId[eventId] = event;
+        return event;
+      })()
+          .catchError((Object error, StackTrace stackTrace) {
+        _eventFutureCacheByEventId.remove(eventId);
+        throw error;
+      }),
+    );
+  }
+
+  EventsRecord? _cachedEvent(String eventId) => _eventCacheByEventId[eventId];
+
   List<DocumentReference> _friendsForCurrentUser(String currentUid) {
     final userDocument = currentUserDocument;
     if (userDocument == null) {
@@ -69,6 +106,69 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     );
     _friendsCacheByUid[currentUid] = friends;
     return friends;
+  }
+
+  Set<String> _hiddenChatKeysForCurrentUser(String currentUid) {
+    final keys = <String>{};
+    final rawKeys = currentUserDocument?.snapshotData['hiddenChatKeys'];
+    if (rawKeys is Iterable) {
+      for (final rawKey in rawKeys) {
+        if (rawKey is! String) {
+          continue;
+        }
+        final key = rawKey.trim();
+        if (key.isNotEmpty) {
+          keys.add(key);
+        }
+      }
+    }
+    keys.addAll(_hiddenChatKeyOverridesByUid[currentUid] ?? const <String>{});
+    for (final eventId in EventGroupChatRepository.rememberedInboxEventIds) {
+      keys.remove('event:$eventId');
+    }
+    return keys;
+  }
+
+  String _conversationHiddenKey(ConversationsRecord conversation) =>
+      'conversation:${conversation.reference.id}';
+
+  String _eventChatHiddenKey(EventChatsRecord chat) =>
+      'event:${EventGroupChatRepository.eventIdForChat(chat)}';
+
+  Future<void> _hideChat(BuildContext context, String hiddenKey) async {
+    final normalizedKey = hiddenKey.trim();
+    final uid = currentUserUid;
+    final userRef = currentUserReference;
+    if (uid.isEmpty || userRef == null || normalizedKey.isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _hiddenChatKeyOverridesByUid
+          .putIfAbsent(uid, () => <String>{})
+          .add(normalizedKey);
+    });
+
+    try {
+      await userRef.update({
+        'hiddenChatKeys': FieldValue.arrayUnion([normalizedKey]),
+      });
+    } catch (error) {
+      _hiddenChatKeyOverridesByUid[uid]?.remove(normalizedKey);
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              FFLocalizations.of(context).getVariableText(
+                ruText: 'Не удалось удалить чат',
+                enText: 'Could not delete chat',
+              ),
+            ),
+          ),
+        );
+      }
+    }
   }
 
   String _fallbackPartnerDisplayName(BuildContext context) {
@@ -197,6 +297,79 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
   ) =>
       _conversationStateCacheByUid[currentUid];
 
+  Stream<_EventChatsLoadState> _watchEventChatsForUser(String currentUid) {
+    if (currentUid.isEmpty) {
+      return Stream.value(const _EventChatsLoadState());
+    }
+
+    if (_eventChatsStreamUid == currentUid && _eventChatsStream != null) {
+      return _eventChatsStream!;
+    }
+
+    _eventChatsStreamUid = currentUid;
+    _eventChatsStream = EventGroupChatRepository.watchInboxChats(
+      currentUid: currentUid,
+      rememberedEventIdsStream: () =>
+          _watchSavedEventChatInboxEventIds(currentUid),
+    ).map((eventChats) {
+      final loadedState = _EventChatsLoadState(
+        eventChats: List<EventChatsRecord>.unmodifiable(eventChats),
+      );
+      _eventChatStateCacheByUid[currentUid] = loadedState;
+      return loadedState;
+    });
+    return _eventChatsStream!;
+  }
+
+  _EventChatsLoadState? _cachedEventChatsStateForUser(String currentUid) =>
+      _eventChatStateCacheByUid[currentUid];
+
+  Stream<List<String>> _watchSavedEventChatInboxEventIds(String currentUid) {
+    final userRef = currentUserReference;
+    if (currentUid.isEmpty || userRef == null) {
+      return Stream.value(const <String>[]);
+    }
+
+    return userRef.snapshots().map((snapshot) {
+      if (!snapshot.exists) {
+        return const <String>[];
+      }
+      return _eventChatInboxEventIdsFromData(snapshot.data());
+    });
+  }
+
+  List<String> _eventChatInboxEventIdsFromData(Object? data) {
+    if (data is! Map) {
+      return const <String>[];
+    }
+
+    final ids = <String>[];
+    final seen = <String>{};
+    final rawIds = data['eventChatInboxEventIds'];
+    if (rawIds is Iterable) {
+      for (final rawId in rawIds) {
+        if (rawId is! String) {
+          continue;
+        }
+        final id = rawId.trim();
+        if (id.isNotEmpty && seen.add(id)) {
+          ids.add(id);
+        }
+      }
+    }
+    return List<String>.unmodifiable(ids);
+  }
+
+  Stream<List<EventChatMessagesRecord>> _watchLatestEventChatMessage(
+    EventChatsRecord chat,
+  ) {
+    final eventId = EventGroupChatRepository.eventIdForChat(chat);
+    return _latestEventChatMessageStreams.putIfAbsent(
+      chat.reference.path,
+      () => EventGroupChatRepository.watchLatestMessage(eventId: eventId),
+    );
+  }
+
   DocumentReference? _otherParticipantRef(ConversationsRecord conversation) {
     final currentRef = currentUserReference;
     if (currentRef == null) {
@@ -259,6 +432,18 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     );
   }
 
+  void _openEventChat(EventChatsRecord chat) {
+    final eventId = EventGroupChatRepository.eventIdForChat(chat);
+    if (eventId.isEmpty) {
+      return;
+    }
+
+    context.pushNamed(
+      EventGroupChatWidget.routeName,
+      pathParameters: <String, String>{'eventId': eventId},
+    );
+  }
+
   String _conversationSubtitle(
       BuildContext context, ConversationsRecord conversation) {
     if (conversation.lastMessageType == kConversationMessageTypeCallEvent) {
@@ -279,6 +464,66 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
       ruText: 'Чат открыт',
       enText: 'Chat unlocked',
     );
+  }
+
+  String _eventChatTitle(BuildContext context, EventsRecord? event) {
+    final title = event?.title.trim() ?? '';
+    if (title.isNotEmpty) {
+      return title;
+    }
+
+    return FFLocalizations.of(context).getVariableText(
+      ruText: 'Чат события',
+      enText: 'Event chat',
+    );
+  }
+
+  String _eventChatSubtitle(
+    BuildContext context,
+    EventChatMessagesRecord? latestMessage,
+  ) {
+    if (latestMessage?.deletedAt != null) {
+      return FFLocalizations.of(context).getVariableText(
+        ruText: 'Сообщение удалено',
+        enText: 'Message deleted',
+      );
+    }
+
+    final text = latestMessage?.text.trim() ?? '';
+    if (text.isNotEmpty) {
+      return text;
+    }
+
+    return FFLocalizations.of(context).getVariableText(
+      ruText: 'Чат события',
+      enText: 'Event chat',
+    );
+  }
+
+  DateTime? _eventChatTimestamp(
+    EventChatsRecord chat,
+    EventChatMessagesRecord? latestMessage,
+  ) =>
+      latestMessage?.createdAt ?? chat.updatedAt ?? chat.createdAt;
+
+  List<_InboxChatItem> _buildInboxItems({
+    required List<ConversationsRecord> conversations,
+    required List<EventChatsRecord> eventChats,
+    required Set<String> hiddenChatKeys,
+  }) {
+    final items = <_InboxChatItem>[
+      for (final conversation in conversations)
+        if (!hiddenChatKeys.contains(_conversationHiddenKey(conversation)))
+          _InboxChatItem.conversation(conversation),
+      for (final eventChat in eventChats) _InboxChatItem.eventChat(eventChat),
+    ];
+    items.removeWhere((item) {
+      final eventChat = item.eventChat;
+      return eventChat != null &&
+          hiddenChatKeys.contains(_eventChatHiddenKey(eventChat));
+    });
+    items.sort(_compareInboxChatItems);
+    return items;
   }
 
   Widget _buildHeader(BuildContext context) {
@@ -354,6 +599,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     BuildContext context, {
     required ConversationsRecord conversation,
     required bool isFriend,
+    required VoidCallback onDelete,
   }) {
     final partnerRef = _otherParticipantRef(conversation);
     if (partnerRef == null) {
@@ -390,165 +636,371 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
             conversationIsUnreadForUser(conversation, currentUserUid);
         final subtitle = _conversationSubtitle(context, conversation);
 
-        return InkWell(
-          splashColor: Colors.transparent,
-          focusColor: Colors.transparent,
-          hoverColor: Colors.transparent,
-          highlightColor: Colors.transparent,
-          onTap: () => _openConversation(conversation),
-          child: Container(
-            width: double.infinity,
-            margin: EdgeInsets.zero,
-            decoration: BoxDecoration(
+        return _dismissibleChatCard(
+          keyValue: _conversationHiddenKey(conversation),
+          onDelete: onDelete,
+          child: InkWell(
+            splashColor: Colors.transparent,
+            focusColor: Colors.transparent,
+            hoverColor: Colors.transparent,
+            highlightColor: Colors.transparent,
+            onTap: () => _openConversation(conversation),
+            child: Container(
+              width: double.infinity,
+              margin: EdgeInsets.zero,
               color: Colors.transparent,
-              border: const Border(
-                bottom: BorderSide(color: ExpatlioDesign.separator),
-              ),
-            ),
-            child: Padding(
-              padding: const EdgeInsetsDirectional.fromSTEB(
-                ExpatlioDesign.pagePadding,
-                ExpatlioDesign.itemSpacing,
-                ExpatlioDesign.pagePadding,
-                ExpatlioDesign.itemSpacing,
-              ),
-              child: Row(
+              child: Column(
                 children: [
-                  Container(
-                    width: 52.0,
-                    height: 52.0,
-                    decoration: BoxDecoration(
-                      color: ExpatlioDesign.card,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: ExpatlioDesign.border),
-                      image: partnerPhotoUrl.isNotEmpty
-                          ? DecorationImage(
-                              fit: BoxFit.cover,
-                              image: CachedNetworkImageProvider(
-                                partnerPhotoUrl,
-                                maxWidth: 108,
-                                maxHeight: 108,
-                              ),
-                            )
-                          : null,
+                  Padding(
+                    padding: const EdgeInsetsDirectional.fromSTEB(
+                      ExpatlioDesign.pagePadding,
+                      ExpatlioDesign.itemSpacing,
+                      ExpatlioDesign.pagePadding,
+                      ExpatlioDesign.itemSpacing,
                     ),
-                    child: partnerPhotoUrl.isEmpty
-                        ? Center(
-                            child: Text(
-                              visiblePartnerDisplayName.characters.first
-                                  .toUpperCase(),
-                              style: ExpatlioDesign.textStyle(
-                                context,
-                                color: ExpatlioDesign.muted,
-                                size: 14.0,
-                                weight: FontWeight.w600,
-                              ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: _favoriteChatAvatarSize,
+                          height: _favoriteChatAvatarSize,
+                          decoration: BoxDecoration(
+                            color: partnerPhotoUrl.isEmpty
+                                ? ExpatlioDesign.avatarFallbackBackground
+                                : ExpatlioDesign.card,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: ExpatlioDesign.border),
+                            image: partnerPhotoUrl.isNotEmpty
+                                ? DecorationImage(
+                                    fit: BoxFit.cover,
+                                    image: CachedNetworkImageProvider(
+                                      partnerPhotoUrl,
+                                      maxWidth: 108,
+                                      maxHeight: 108,
+                                    ),
+                                  )
+                                : null,
+                          ),
+                          child: partnerPhotoUrl.isEmpty
+                              ? Center(
+                                  child: Text(
+                                    ExpatlioDesign.avatarInitial(
+                                        visiblePartnerDisplayName),
+                                    style: ExpatlioDesign.textStyle(
+                                      context,
+                                      color: ExpatlioDesign.avatarFallbackText,
+                                      size: 14.0,
+                                      weight: FontWeight.w600,
+                                    ),
+                                  ),
+                                )
+                              : null,
+                        ),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsetsDirectional.fromSTEB(
+                              ExpatlioDesign.itemSpacing,
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space0,
                             ),
-                          )
-                        : null,
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsetsDirectional.fromSTEB(
-                        ExpatlioDesign.itemSpacing,
-                        ExpatlioDesign.space0,
-                        ExpatlioDesign.space0,
-                        ExpatlioDesign.space0,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Row(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Row(
                                   children: [
-                                    Flexible(
-                                      child: Text(
-                                        visiblePartnerDisplayName,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: ExpatlioDesign.textStyle(
-                                          context,
-                                          size: 16.0,
-                                          weight: unread
-                                              ? FontWeight.w700
-                                              : FontWeight.w600,
-                                        ),
+                                    Expanded(
+                                      child: Row(
+                                        children: [
+                                          Flexible(
+                                            child: Text(
+                                              visiblePartnerDisplayName,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: ExpatlioDesign.textStyle(
+                                                context,
+                                                size: 16.0,
+                                                weight: unread
+                                                    ? FontWeight.w700
+                                                    : FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                          if (isFriend)
+                                            const Padding(
+                                              padding:
+                                                  EdgeInsetsDirectional.only(
+                                                      start: ExpatlioDesign
+                                                          .space8),
+                                              child: Icon(
+                                                Icons.star_rounded,
+                                                color: ExpatlioDesign.warning,
+                                                size: 18.0,
+                                              ),
+                                            ),
+                                        ],
                                       ),
                                     ),
-                                    if (isFriend)
-                                      const Padding(
-                                        padding: EdgeInsetsDirectional.only(
-                                            start: ExpatlioDesign.space8),
-                                        child: Icon(
-                                          Icons.star_rounded,
-                                          color: ExpatlioDesign.warning,
-                                          size: 18.0,
+                                    if (unread)
+                                      Container(
+                                        width: 8.0,
+                                        height: 8.0,
+                                        decoration: BoxDecoration(
+                                          color: FlutterFlowTheme.of(context)
+                                              .primary,
+                                          shape: BoxShape.circle,
                                         ),
                                       ),
                                   ],
                                 ),
-                              ),
-                              if (unread)
-                                Container(
-                                  width: 8.0,
-                                  height: 8.0,
-                                  decoration: BoxDecoration(
-                                    color: FlutterFlowTheme.of(context).primary,
-                                    shape: BoxShape.circle,
+                                const SizedBox(height: ExpatlioDesign.space4),
+                                Text(
+                                  subtitle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: ExpatlioDesign.textStyle(
+                                    context,
+                                    color: ExpatlioDesign.muted,
+                                    size: 14.0,
+                                    weight: FontWeight.w400,
                                   ),
                                 ),
-                            ],
-                          ),
-                          const SizedBox(height: ExpatlioDesign.space4),
-                          Text(
-                            subtitle,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: ExpatlioDesign.textStyle(
-                              context,
-                              color: ExpatlioDesign.muted,
-                              size: 14.0,
-                              weight: FontWeight.w400,
+                              ],
                             ),
                           ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsetsDirectional.only(
-                        start: ExpatlioDesign.space12),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          _formatInboxTimestamp(
-                            conversation.lastMessageAt ??
-                                conversation.unlockedAt,
-                          ),
-                          style: ExpatlioDesign.textStyle(
-                            context,
-                            color: ExpatlioDesign.inactive,
-                            size: 12.0,
-                            weight: FontWeight.w400,
-                          ),
                         ),
-                        const SizedBox(height: ExpatlioDesign.space8),
-                        Icon(
-                          Icons.chevron_right_rounded,
-                          color: ExpatlioDesign.inactive,
-                          size: 18.0,
+                        Padding(
+                          padding: const EdgeInsetsDirectional.only(
+                              start: ExpatlioDesign.space12),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                _formatInboxTimestamp(
+                                  conversation.lastMessageAt ??
+                                      conversation.unlockedAt,
+                                ),
+                                style: ExpatlioDesign.textStyle(
+                                  context,
+                                  color: ExpatlioDesign.inactive,
+                                  size: 12.0,
+                                  weight: FontWeight.w400,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
                   ),
+                  _chatDivider(),
                 ],
               ),
             ),
           ),
+        );
+      },
+    );
+  }
+
+  Widget _dismissibleChatCard({
+    required String keyValue,
+    required VoidCallback onDelete,
+    required Widget child,
+  }) {
+    return Dismissible(
+      key: ValueKey<String>('favorite_chat_$keyValue'),
+      direction: DismissDirection.endToStart,
+      dismissThresholds: const {
+        DismissDirection.endToStart: 0.34,
+      },
+      background: const SizedBox.shrink(),
+      secondaryBackground: Container(
+        color: _favoriteChatDeleteBackground,
+        alignment: AlignmentDirectional.centerEnd,
+        padding: const EdgeInsetsDirectional.only(
+          end: ExpatlioDesign.pagePadding,
+        ),
+        child: const Icon(
+          Icons.delete_outline_rounded,
+          color: Colors.white,
+          size: 24.0,
+        ),
+      ),
+      onDismissed: (_) => onDelete(),
+      child: child,
+    );
+  }
+
+  Widget _chatDivider() {
+    return const Padding(
+      padding: EdgeInsetsDirectional.only(
+        start: ExpatlioDesign.pagePadding +
+            _favoriteChatAvatarSize +
+            ExpatlioDesign.itemSpacing,
+        end: ExpatlioDesign.pagePadding,
+      ),
+      child: Divider(
+        height: 1.0,
+        thickness: 1.0,
+        color: _favoriteChatDividerColor,
+      ),
+    );
+  }
+
+  Widget _eventChatCard(
+    BuildContext context, {
+    required EventChatsRecord chat,
+    required VoidCallback onDelete,
+  }) {
+    final eventId = EventGroupChatRepository.eventIdForChat(chat);
+    if (eventId.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return FutureBuilder<EventsRecord?>(
+      future: _getEventFuture(eventId),
+      initialData: _cachedEvent(eventId),
+      builder: (context, eventSnapshot) {
+        if (eventSnapshot.hasError) {
+          debugPrint(
+            'FavoriteWidget: failed to load event $eventId: ${eventSnapshot.error}',
+          );
+        }
+
+        final event =
+            eventSnapshot.hasError ? _cachedEvent(eventId) : eventSnapshot.data;
+        final title = _eventChatTitle(context, event);
+
+        return StreamBuilder<List<EventChatMessagesRecord>>(
+          stream: _watchLatestEventChatMessage(chat),
+          builder: (context, messageSnapshot) {
+            if (messageSnapshot.hasError) {
+              debugPrint(
+                'FavoriteWidget: failed to load latest event chat message '
+                'for $eventId: ${messageSnapshot.error}',
+              );
+            }
+
+            final latestMessages = messageSnapshot.hasError
+                ? const <EventChatMessagesRecord>[]
+                : messageSnapshot.data ?? const <EventChatMessagesRecord>[];
+            final latestMessage =
+                latestMessages.isEmpty ? null : latestMessages.first;
+            final subtitle = _eventChatSubtitle(context, latestMessage);
+            final timestamp = _eventChatTimestamp(chat, latestMessage);
+
+            return _dismissibleChatCard(
+              keyValue: _eventChatHiddenKey(chat),
+              onDelete: onDelete,
+              child: InkWell(
+                splashColor: Colors.transparent,
+                focusColor: Colors.transparent,
+                hoverColor: Colors.transparent,
+                highlightColor: Colors.transparent,
+                onTap: () => _openEventChat(chat),
+                child: Container(
+                  width: double.infinity,
+                  margin: EdgeInsets.zero,
+                  color: Colors.transparent,
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsetsDirectional.fromSTEB(
+                          ExpatlioDesign.pagePadding,
+                          ExpatlioDesign.itemSpacing,
+                          ExpatlioDesign.pagePadding,
+                          ExpatlioDesign.itemSpacing,
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: _favoriteChatAvatarSize,
+                              height: _favoriteChatAvatarSize,
+                              alignment: Alignment.center,
+                              decoration: const BoxDecoration(
+                                color: ExpatlioDesign.avatarFallbackBackground,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.calendar_month_rounded,
+                                color: FlutterFlowTheme.of(context).primary,
+                                size: 20.0,
+                              ),
+                            ),
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsetsDirectional.fromSTEB(
+                                  ExpatlioDesign.itemSpacing,
+                                  ExpatlioDesign.space0,
+                                  ExpatlioDesign.space0,
+                                  ExpatlioDesign.space0,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            title,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: ExpatlioDesign.textStyle(
+                                              context,
+                                              size: 16.0,
+                                              weight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(
+                                        height: ExpatlioDesign.space4),
+                                    Text(
+                                      subtitle,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: ExpatlioDesign.textStyle(
+                                        context,
+                                        color: ExpatlioDesign.muted,
+                                        size: 14.0,
+                                        weight: FontWeight.w400,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsetsDirectional.only(
+                                  start: ExpatlioDesign.space12),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    _formatInboxTimestamp(timestamp),
+                                    style: ExpatlioDesign.textStyle(
+                                      context,
+                                      color: ExpatlioDesign.inactive,
+                                      size: 12.0,
+                                      weight: FontWeight.w400,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      _chatDivider(),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
         );
       },
     );
@@ -574,15 +1026,24 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     required bool conversationsLoadFailed,
     required bool conversationsAccessDenied,
     required List<ConversationsRecord> conversations,
+    required bool eventChatsLoadFailed,
+    required List<EventChatsRecord> eventChats,
     required List<DocumentReference> friends,
+    required Set<String> hiddenChatKeys,
   }) {
     final friendPaths = friends.map((reference) => reference.path).toSet();
+    final inboxItems = _buildInboxItems(
+      conversations: conversations,
+      eventChats: eventChats,
+      hiddenChatKeys: hiddenChatKeys,
+    );
 
-    if (conversationsLoading) {
+    if (conversationsLoading && inboxItems.isEmpty) {
       return const SizedBox.shrink();
     }
 
-    if (conversationsLoadFailed) {
+    if ((conversationsLoadFailed || eventChatsLoadFailed) &&
+        inboxItems.isEmpty) {
       return _buildInlineNotice(
         context,
         text: conversationsAccessDenied
@@ -597,7 +1058,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
       );
     }
 
-    if (conversations.isEmpty) {
+    if (inboxItems.isEmpty) {
       return _buildEmptyListState(
         context,
         text: FFLocalizations.of(context).getVariableText(
@@ -610,9 +1071,23 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     return ListView.builder(
       padding:
           const EdgeInsetsDirectional.only(bottom: ExpatlioDesign.space112),
-      itemCount: conversations.length,
+      itemCount: inboxItems.length,
       itemBuilder: (context, index) {
-        final conversation = conversations[index];
+        final item = inboxItems[index];
+        final conversation = item.conversation;
+        if (conversation == null) {
+          final eventChat = item.eventChat;
+          if (eventChat == null) {
+            return const SizedBox.shrink();
+          }
+
+          return _eventChatCard(
+            context,
+            chat: eventChat,
+            onDelete: () => _hideChat(context, _eventChatHiddenKey(eventChat)),
+          );
+        }
+
         return _conversationCard(
           context,
           conversation: conversation,
@@ -620,6 +1095,8 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
             conversation,
             friendPaths,
           ),
+          onDelete: () =>
+              _hideChat(context, _conversationHiddenKey(conversation)),
         );
       },
     );
@@ -631,14 +1108,17 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     required bool friendsLoading,
     required List<DocumentReference> friends,
     required List<ConversationsRecord> conversations,
+    required Set<String> hiddenChatKeys,
   }) {
     final friendPaths = friends.map((reference) => reference.path).toSet();
     final friendConversations = conversations
         .where(
-          (conversation) => _conversationPartnerIsFriendPathSet(
-            conversation,
-            friendPaths,
-          ),
+          (conversation) =>
+              _conversationPartnerIsFriendPathSet(
+                conversation,
+                friendPaths,
+              ) &&
+              !hiddenChatKeys.contains(_conversationHiddenKey(conversation)),
         )
         .toList();
 
@@ -664,6 +1144,10 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
         context,
         conversation: friendConversations[index],
         isFriend: true,
+        onDelete: () => _hideChat(
+          context,
+          _conversationHiddenKey(friendConversations[index]),
+        ),
       ),
     );
   }
@@ -782,44 +1266,71 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                     final conversations = conversationsState?.conversations ??
                         <ConversationsRecord>[];
 
-                    final showFriendsTab = _selectedChatTabIndex == 1;
+                    return StreamBuilder<_EventChatsLoadState>(
+                      stream: _watchEventChatsForUser(currentUid),
+                      initialData: _cachedEventChatsStateForUser(currentUid),
+                      builder: (context, eventChatsSnapshot) {
+                        if (eventChatsSnapshot.hasError) {
+                          debugPrint(
+                            'FavoriteWidget: event chats stream error: ${eventChatsSnapshot.error}',
+                          );
+                        }
 
-                    return Stack(
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        final eventChatsState = eventChatsSnapshot.data;
+                        final eventChatsLoadFailed =
+                            eventChatsSnapshot.hasError;
+                        final eventChats =
+                            eventChatsState?.eventChats ?? <EventChatsRecord>[];
+                        final hiddenChatKeys =
+                            _hiddenChatKeysForCurrentUser(currentUid);
+
+                        final showFriendsTab = _selectedChatTabIndex == 1;
+
+                        return Stack(
                           children: [
-                            SizedBox(
-                              height: MediaQuery.paddingOf(context).top + 56,
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                SizedBox(
+                                  height:
+                                      MediaQuery.paddingOf(context).top + 56,
+                                ),
+                                _buildChatsTabBar(context),
+                                Expanded(
+                                  child: showFriendsTab
+                                      ? _buildFriendsTabContent(
+                                          context,
+                                          conversationsLoading:
+                                              conversationsLoading,
+                                          friendsLoading:
+                                              !hasCurrentUserDocument &&
+                                                  !hasCachedFriends,
+                                          friends: friends,
+                                          conversations: conversations,
+                                          hiddenChatKeys: hiddenChatKeys,
+                                        )
+                                      : _buildMessagesTabContent(
+                                          context,
+                                          conversationsLoading:
+                                              conversationsLoading,
+                                          conversationsLoadFailed:
+                                              conversationsLoadFailed,
+                                          conversationsAccessDenied:
+                                              conversationsAccessDenied,
+                                          conversations: conversations,
+                                          eventChatsLoadFailed:
+                                              eventChatsLoadFailed,
+                                          eventChats: eventChats,
+                                          friends: friends,
+                                          hiddenChatKeys: hiddenChatKeys,
+                                        ),
+                                ),
+                              ],
                             ),
-                            _buildChatsTabBar(context),
-                            Expanded(
-                              child: showFriendsTab
-                                  ? _buildFriendsTabContent(
-                                      context,
-                                      conversationsLoading:
-                                          conversationsLoading,
-                                      friendsLoading: !hasCurrentUserDocument &&
-                                          !hasCachedFriends,
-                                      friends: friends,
-                                      conversations: conversations,
-                                    )
-                                  : _buildMessagesTabContent(
-                                      context,
-                                      conversationsLoading:
-                                          conversationsLoading,
-                                      conversationsLoadFailed:
-                                          conversationsLoadFailed,
-                                      conversationsAccessDenied:
-                                          conversationsAccessDenied,
-                                      conversations: conversations,
-                                      friends: friends,
-                                    ),
-                            ),
+                            _buildHeader(context),
                           ],
-                        ),
-                        _buildHeader(context),
-                      ],
+                        );
+                      },
                     );
                   },
                 );
@@ -838,4 +1349,64 @@ class _ConversationsLoadState {
   });
 
   final List<ConversationsRecord> conversations;
+}
+
+class _EventChatsLoadState {
+  const _EventChatsLoadState({
+    this.eventChats = const <EventChatsRecord>[],
+  });
+
+  final List<EventChatsRecord> eventChats;
+}
+
+class _InboxChatItem {
+  const _InboxChatItem._({
+    required this.sortAt,
+    required this.sortId,
+    this.conversation,
+    this.eventChat,
+  });
+
+  factory _InboxChatItem.conversation(ConversationsRecord conversation) {
+    return _InboxChatItem._(
+      conversation: conversation,
+      sortAt: conversation.lastMessageAt ?? conversation.unlockedAt,
+      sortId: conversation.lastMessageId ?? conversation.pairId,
+    );
+  }
+
+  factory _InboxChatItem.eventChat(EventChatsRecord eventChat) {
+    return _InboxChatItem._(
+      eventChat: eventChat,
+      sortAt: EventGroupChatRepository.inboxSortAt(eventChat),
+      sortId: EventGroupChatRepository.eventIdForChat(eventChat),
+    );
+  }
+
+  final ConversationsRecord? conversation;
+  final EventChatsRecord? eventChat;
+  final DateTime? sortAt;
+  final String sortId;
+}
+
+int _compareInboxChatItems(_InboxChatItem a, _InboxChatItem b) {
+  final sortAtCmp = _compareNullableDateTimesDescending(a.sortAt, b.sortAt);
+  if (sortAtCmp != 0) {
+    return sortAtCmp;
+  }
+
+  return b.sortId.compareTo(a.sortId);
+}
+
+int _compareNullableDateTimesDescending(DateTime? a, DateTime? b) {
+  if (a == null && b == null) {
+    return 0;
+  }
+  if (a == null) {
+    return 1;
+  }
+  if (b == null) {
+    return -1;
+  }
+  return b.compareTo(a);
 }

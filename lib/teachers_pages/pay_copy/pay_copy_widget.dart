@@ -506,8 +506,7 @@ class _PayCopyWidgetState extends State<PayCopyWidget>
                                 borderRadius: BorderRadius.circular(
                                     ExpatlioDesign.radiusExtraLarge),
                                 border: Border.all(
-                                  color: FlutterFlowTheme.of(context)
-                                      .secondaryBackground,
+                                  color: ExpatlioDesign.border,
                                 ),
                               ),
                               child: Padding(

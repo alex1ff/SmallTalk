@@ -12,6 +12,10 @@ void main() {
   });
 
   group('EventGroupChatRepository', () {
+    setUp(() {
+      EventGroupChatRepository.resetRememberedInboxEventIdsForTesting();
+    });
+
     test('normalizes event id and subscribes to chat metadata', () async {
       DocumentReference? capturedChatRef;
       final chat = EventChatsRecord.getDocumentFromData(
@@ -51,6 +55,135 @@ void main() {
       ]);
       expect(query.parameters['limit'], isNull);
       expect(query.parameters['startAfter'], isNull);
+    });
+
+    test('builds latest message query for inbox preview', () {
+      final chatRef = EventChatsRecord.collection.doc('event-1');
+      final query = EventGroupChatRepository.buildLatestMessageQuery(
+        EventChatMessagesRecord.collection(chatRef),
+      );
+
+      expect(query.parameters['orderBy'], [
+        [FieldPath.fromString('createdAt'), true],
+        [FieldPath.documentId, true],
+      ]);
+      expect(query.parameters['limit'], isNull);
+    });
+
+    test('builds inbox query from event chat read access', () {
+      final query = EventGroupChatRepository.buildInboxChatsQuery(
+        EventChatsRecord.collection,
+        'uid-1',
+      );
+      final where = query.parameters['where'] as List<dynamic>;
+
+      expect(where.toString(), contains('readAccessUserIds'));
+      expect(where.toString(), contains('uid-1'));
+      expect(where.toString(), contains('array-contains'));
+    });
+
+    test('loads inbox chats sorted by recency with event id fallback',
+        () async {
+      final older = EventChatsRecord.getDocumentFromData(
+        {
+          'eventId': 'event-old',
+          'readAccessUserIds': <String>['uid-1'],
+          'createdAt': DateTime.parse('2026-06-14T10:00:00Z'),
+          'updatedAt': DateTime.parse('2026-06-14T10:00:00Z'),
+        },
+        EventChatsRecord.collection.doc('event-old'),
+      );
+      final newer = EventChatsRecord.getDocumentFromData(
+        {
+          'readAccessUserIds': <String>['uid-1'],
+          'createdAt': DateTime.parse('2026-06-15T10:00:00Z'),
+          'updatedAt': DateTime.parse('2026-06-15T10:00:00Z'),
+        },
+        EventChatsRecord.collection.doc('event-new'),
+      );
+      final invalid = EventChatsRecord.getDocumentFromData(
+        {
+          'eventId': ' ',
+          'readAccessUserIds': <String>['uid-1'],
+        },
+        EventChatsRecord.collection.doc(' '),
+      );
+
+      final chats = await EventGroupChatRepository.watchInboxChats(
+        currentUid: ' uid-1 ',
+        chatsStream: () => Stream.value([older, newer, invalid]),
+      ).first;
+
+      expect(chats.map(EventGroupChatRepository.eventIdForChat), [
+        'event-new',
+        'event-old',
+      ]);
+    });
+
+    test('loads inbox chat from accessible event id without list query',
+        () async {
+      final chat = EventChatsRecord.getDocumentFromData(
+        {
+          'eventId': 'event-1',
+          'readAccessUserIds': <String>[],
+          'createdAt': DateTime.parse('2026-06-14T10:00:00Z'),
+          'updatedAt': DateTime.parse('2026-06-14T10:00:00Z'),
+        },
+        EventChatsRecord.collection.doc('event-1'),
+      );
+      final subscribedEventIds = <String>[];
+
+      final chats = await EventGroupChatRepository.watchInboxChats(
+        currentUid: 'uid-1',
+        eventIdsStream: () => Stream.value([' event-1 ']),
+        chatByEventIdStream: (eventId) {
+          subscribedEventIds.add(eventId);
+          return Stream<EventChatsRecord?>.value(chat);
+        },
+      ).firstWhere((eventChats) => eventChats.isNotEmpty);
+
+      expect(subscribedEventIds, ['event-1']);
+      expect(chats, [chat]);
+    });
+
+    test('loads remembered inbox event chat without history event id',
+        () async {
+      final chat = EventChatsRecord.getDocumentFromData(
+        {
+          'eventId': 'event-remembered',
+          'readAccessUserIds': <String>[],
+          'createdAt': DateTime.parse('2026-06-14T10:00:00Z'),
+          'updatedAt': DateTime.parse('2026-06-15T10:00:00Z'),
+        },
+        EventChatsRecord.collection.doc('event-remembered'),
+      );
+      final subscribedEventIds = <String>[];
+
+      EventGroupChatRepository.rememberInboxEventId(' event-remembered ');
+
+      final chats = await EventGroupChatRepository.watchInboxChats(
+        currentUid: 'uid-1',
+        eventIdsStream: () => Stream.value(const <String>[]),
+        chatByEventIdStream: (eventId) {
+          subscribedEventIds.add(eventId);
+          return Stream<EventChatsRecord?>.value(chat);
+        },
+      ).firstWhere((eventChats) => eventChats.isNotEmpty);
+
+      expect(subscribedEventIds, ['event-remembered']);
+      expect(chats, [chat]);
+    });
+
+    test('does not fail inbox when event id source fails', () async {
+      final chats = await EventGroupChatRepository.watchInboxChats(
+        currentUid: 'uid-1',
+        eventIdsStream: () => Stream<List<String>>.error(
+          StateError('event history unavailable'),
+        ),
+        chatByEventIdStream: (_) => const Stream<EventChatsRecord?>.empty(),
+      ).first;
+
+      expect(chats, isEmpty);
     });
 
     test('uses document snapshot cursor after createdAt and document id order',

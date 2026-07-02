@@ -447,11 +447,11 @@ Native */
                                                                     Level
                                                                         .Beginner
                                                                 ? ExpatlioDesign
-                                                                    .primary
+                                                                    .border
                                                                 : Colors
                                                                     .transparent,
                                                             ExpatlioDesign
-                                                                .primary,
+                                                                .border,
                                                           ),
                                                           width: 6.0,
                                                         ),
@@ -550,11 +550,11 @@ Native */
                                                                       Level
                                                                           .Basic
                                                                   ? ExpatlioDesign
-                                                                      .primary
+                                                                      .border
                                                                   : Colors
                                                                       .transparent,
                                                               ExpatlioDesign
-                                                                  .primary,
+                                                                  .border,
                                                             ),
                                                             width: 6.0,
                                                           ),
@@ -659,11 +659,11 @@ Native */
                                                                       Level
                                                                           .Intermediate
                                                                   ? ExpatlioDesign
-                                                                      .primary
+                                                                      .border
                                                                   : Colors
                                                                       .transparent,
                                                               ExpatlioDesign
-                                                                  .primary,
+                                                                  .border,
                                                             ),
                                                             width: 6.0,
                                                           ),
@@ -754,11 +754,11 @@ Native */
                                                             _model.level ==
                                                                     Level.Fluent
                                                                 ? ExpatlioDesign
-                                                                    .primary
+                                                                    .border
                                                                 : Colors
                                                                     .transparent,
                                                             ExpatlioDesign
-                                                                .primary,
+                                                                .border,
                                                           ),
                                                           width: 6.0,
                                                         ),

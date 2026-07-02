@@ -21,6 +21,7 @@ const sendEventChatMessageFunctionName = 'sendEventChatMessage';
 const getEventChatAccessStateFunctionName = 'getEventChatAccessState';
 const reportEventFunctionName = 'reportEvent';
 const reportEventChatMessageFunctionName = 'reportEventChatMessage';
+const openEventOrganizerChatFunctionName = 'openEventOrganizerChat';
 const eventReportDetailsMaxLength = 500;
 const eventReportReasonCodes = <String>{
   'spam',
@@ -183,6 +184,16 @@ class EventChatAccessStateResult {
   final String eventId;
   final String status;
   final bool readOnly;
+}
+
+class EventOrganizerChatResult {
+  const EventOrganizerChatResult({
+    required this.conversationId,
+    required this.conversationPath,
+  });
+
+  final String conversationId;
+  final String conversationPath;
 }
 
 class EventReportResult {
@@ -406,6 +417,22 @@ class EventActionsRepository {
       reportId: _requiredString(data, 'reportId'),
       status: status,
       reportedAt: _requiredIsoDateTime(data, 'reportedAt'),
+    );
+  }
+
+  static Future<EventOrganizerChatResult> openEventOrganizerChat({
+    required String eventId,
+    EventCallableInvoker? invoker,
+  }) async {
+    final responseData = await _callEventFunction(
+      openEventOrganizerChatFunctionName,
+      _eventIdPayload(eventId),
+      invoker: invoker,
+    );
+    final data = _responseMap(responseData);
+    return EventOrganizerChatResult(
+      conversationId: _requiredString(data, 'conversationId'),
+      conversationPath: _requiredString(data, 'conversationPath'),
     );
   }
 }

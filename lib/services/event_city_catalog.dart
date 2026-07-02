@@ -72,6 +72,29 @@ class EventCityCatalog {
     return null;
   }
 
+  EventCity? defaultCityForCountryCode(String? countryCode) {
+    final normalizedCountryCode = normalizeEventCountryCode(countryCode);
+    if (normalizedCountryCode == null) {
+      return null;
+    }
+
+    final matchingCities = cities
+        .where((city) => city.countryCode == normalizedCountryCode)
+        .toList();
+    if (matchingCities.isEmpty) {
+      return null;
+    }
+
+    matchingCities.sort((left, right) {
+      final priorityRank = right.priority.compareTo(left.priority);
+      if (priorityRank != 0) {
+        return priorityRank;
+      }
+      return left.identity.compareTo(right.identity);
+    });
+    return matchingCities.first;
+  }
+
   List<EventCity> popularCities({
     String? countryCodeHint,
     int? limit,

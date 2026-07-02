@@ -74,7 +74,7 @@ class _PopWidgetState extends State<PopWidget> {
           ],
           borderRadius: cardBorderRadius,
           border: Border.all(
-            color: ExpatlioDesign.background,
+            color: ExpatlioDesign.border,
           ),
         ),
         child: ClipRRect(

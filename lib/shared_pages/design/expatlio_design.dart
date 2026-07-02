@@ -6,11 +6,12 @@ class ExpatlioDesign {
   static const String fontFamily = 'sf pro display';
   static const String headingFontFamily = 'Cool';
   static const FontWeight headingFontWeight = FontWeight.normal;
+  static const String chatIconAsset = 'assets/images/message-circle-01.svg';
 
   static const Color systemBackground = Color(0xFFFFFFFF);
   static const Color secondarySystemBackground = Color(0xFFF2F2F7);
   static const Color tertiarySystemBackground = Color(0xFFFFFFFF);
-  static const Color systemGroupedBackground = Color(0xFFF2F2F7);
+  static const Color systemGroupedBackground = Color(0xFFFAFAFA);
   static const Color secondarySystemGroupedBackground = Color(0xFFFFFFFF);
   static const Color tertiarySystemGroupedBackground = Color(0xFFF2F2F7);
   static const Color label = Color(0xFF000000);
@@ -18,8 +19,8 @@ class ExpatlioDesign {
   static const Color tertiaryLabel = Color(0x4C3C3C43);
   static const Color quaternaryLabel = Color(0x2D3C3C43);
   static const Color placeholderText = Color(0x4C3C3C43);
-  static const Color separator = Color(0x493C3C43);
-  static const Color opaqueSeparator = Color(0xFFC6C6C8);
+  static const Color separator = Color(0xFFEBEBEB);
+  static const Color opaqueSeparator = Color(0xFFEBEBEB);
   static const Color systemFill = Color(0x33787880);
   static const Color secondarySystemFill = Color(0x28787880);
   static const Color tertiarySystemFill = Color(0x1E767680);
@@ -37,6 +38,8 @@ class ExpatlioDesign {
   static const Color systemBlue = Color(0xFF0088FF);
   static const Color background = systemGroupedBackground;
   static const Color card = secondarySystemGroupedBackground;
+  static const Color avatarFallbackBackground = Color(0xFFF5F5F5);
+  static const Color avatarFallbackText = Color(0xFF8C8C8C);
   static const Color text = label;
   static const Color muted = secondaryLabel;
   static const Color inactive = systemGray;
@@ -142,7 +145,7 @@ class ExpatlioDesign {
     return cardDecoration(radius: radius, borderColor: Colors.transparent);
   }
 
-  static BoxDecoration sheetDecoration({Color color = card}) {
+  static BoxDecoration sheetDecoration({Color color = background}) {
     return BoxDecoration(
       color: color,
       borderRadius:
@@ -155,6 +158,14 @@ class ExpatlioDesign {
       color: primary.withValues(alpha: 0.10),
       borderRadius: BorderRadius.circular(radius),
     );
+  }
+
+  static String avatarInitial(String displayName) {
+    final normalizedName = displayName.trim();
+    if (normalizedName.isEmpty) {
+      return '?';
+    }
+    return normalizedName.characters.first.toUpperCase();
   }
 
   static TextStyle formLabelStyle(BuildContext context) {
@@ -227,7 +238,7 @@ class ExpatlioDesign {
     return InputDecoration(
       isDense: true,
       filled: true,
-      fillColor: enabled ? mutedSurface : secondarySystemBackground,
+      fillColor: card,
       hintText: hintText,
       hintStyle: formTextStyle(context, enabled: false),
       constraints: maxLines > 1
@@ -252,15 +263,15 @@ class ExpatlioDesign {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: borderRadius,
-        borderSide: const BorderSide(color: primary, width: 1.5),
+        borderSide: const BorderSide(color: separator, width: 1.0),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: borderRadius,
-        borderSide: const BorderSide(color: danger, width: 1.0),
+        borderSide: const BorderSide(color: separator, width: 1.0),
       ),
       focusedErrorBorder: OutlineInputBorder(
         borderRadius: borderRadius,
-        borderSide: const BorderSide(color: danger, width: 1.4),
+        borderSide: const BorderSide(color: separator, width: 1.0),
       ),
       suffixIcon: suffixIcon,
       suffixIconColor: muted,
@@ -390,8 +401,8 @@ class ExpatlioDesign {
         ),
       ),
       bottomSheetTheme: const BottomSheetThemeData(
-        backgroundColor: card,
-        modalBackgroundColor: card,
+        backgroundColor: background,
+        modalBackgroundColor: background,
         surfaceTintColor: Colors.transparent,
         clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(
@@ -411,7 +422,7 @@ class ExpatlioDesign {
       inputDecorationTheme: InputDecorationThemeData(
         isDense: true,
         filled: true,
-        fillColor: mutedSurface,
+        fillColor: card,
         hintStyle: textTheme.bodyMedium?.copyWith(color: placeholderText),
         contentPadding: const EdgeInsetsDirectional.fromSTEB(
           ExpatlioDesign.space16,
@@ -425,15 +436,15 @@ class ExpatlioDesign {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(controlRadius),
-          borderSide: const BorderSide(color: primary, width: 1.5),
+          borderSide: const BorderSide(color: separator),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(controlRadius),
-          borderSide: const BorderSide(color: danger),
+          borderSide: const BorderSide(color: separator),
         ),
         focusedErrorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(controlRadius),
-          borderSide: const BorderSide(color: danger, width: 1.5),
+          borderSide: const BorderSide(color: separator),
         ),
         disabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(controlRadius),

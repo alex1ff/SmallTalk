@@ -19,8 +19,8 @@ class StudentPayPlanCard extends StatelessWidget {
   final VoidCallback onTap;
 
   static const _selectedBackground = Color(0xFFF3EEFF);
-  static const _cardBorder = Color(0xFFEBEBEB);
-  static const _unselectedIndicatorBorder = Color(0xFFE6E6E6);
+  static const _cardBorder = ExpatlioDesign.border;
+  static const _unselectedIndicatorBorder = ExpatlioDesign.border;
 
   @override
   Widget build(BuildContext context) {
@@ -35,7 +35,7 @@ class StudentPayPlanCard extends StatelessWidget {
           color: selected ? _selectedBackground : ExpatlioDesign.card,
           borderRadius: BorderRadius.circular(ExpatlioDesign.cardRadius),
           border: Border.all(
-            color: selected ? ExpatlioDesign.primary : _cardBorder,
+            color: _cardBorder,
             width: selected ? 2.0 : 1.0,
           ),
           boxShadow: [

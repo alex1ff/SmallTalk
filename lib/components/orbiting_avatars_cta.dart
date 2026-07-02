@@ -184,7 +184,7 @@ class _OrbitingAvatar extends StatelessWidget {
                 : ExpatlioDesign.card,
             shape: BoxShape.circle,
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.86),
+              color: ExpatlioDesign.border,
               width: 2.0,
             ),
           ),
@@ -231,14 +231,14 @@ class _OrbitingAvatar extends StatelessWidget {
 
   Widget _buildInitials(BuildContext context) {
     return ColoredBox(
-      color: avatar.muted ? ExpatlioDesign.mutedSurface : ExpatlioDesign.card,
+      color: ExpatlioDesign.avatarFallbackBackground,
       child: Center(
         child: Text(
-          avatar.initials,
+          ExpatlioDesign.avatarInitial(avatar.initials),
           maxLines: 1,
           style: ExpatlioDesign.textStyle(
             context,
-            color: avatar.muted ? ExpatlioDesign.muted : ExpatlioDesign.text,
+            color: ExpatlioDesign.avatarFallbackText,
             size: avatar.size < 40.0 ? 11.0 : 13.0,
             weight: FontWeight.w700,
           ),

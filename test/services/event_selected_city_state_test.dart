@@ -56,7 +56,7 @@ void main() {
       });
     });
 
-    test('keeps missing profile city locked while exposing country hint', () {
+    test('uses country hint default city when profile city is missing', () {
       final user = userFixture(
         data: {
           'uid': 'uid-missing-profile-city',
@@ -76,14 +76,15 @@ void main() {
 
       expect(state.profileStatus, EventCityResolutionStatus.missingProfileCity);
       expect(state.countryCodeHint, 'IT');
-      expect(state.selected, isNull);
-      expect(state.canLoadEvents, isFalse);
-      expect(state.needsCitySelection, isTrue);
+      expect(state.selected?.city.identity, 'IT:rome');
+      expect(state.selected?.source, EventCitySelectionSource.profile);
+      expect(state.canLoadEvents, isTrue);
+      expect(state.needsCitySelection, isFalse);
       expect(state.hasOutdatedProfileCity, isFalse);
-      expect(state.selectedFromProfile, isFalse);
+      expect(state.selectedFromProfile, isTrue);
     });
 
-    test('Country_NS alone does not unlock the Events list', () {
+    test('Country_NS alone unlocks Events with the default country city', () {
       final user = userFixture(
         data: {
           'uid': 'uid-country-only',
@@ -98,10 +99,11 @@ void main() {
 
       expect(state.profileStatus, EventCityResolutionStatus.missingProfileCity);
       expect(state.countryCodeHint, 'RU');
-      expect(state.selected, isNull);
-      expect(state.canLoadEvents, isFalse);
-      expect(state.needsCitySelection, isTrue);
-      expect(state.selectedFromProfile, isFalse);
+      expect(state.selected?.city.identity, 'RU:moscow');
+      expect(state.selected?.source, EventCitySelectionSource.profile);
+      expect(state.canLoadEvents, isTrue);
+      expect(state.needsCitySelection, isFalse);
+      expect(state.selectedFromProfile, isTrue);
       expect(state.selectedTemporarily, isFalse);
       expect(state.hasOutdatedProfileCity, isFalse);
     });
@@ -153,12 +155,34 @@ void main() {
       expect(user.hasProfileCity(), isFalse);
       expect(state.profileStatus, EventCityResolutionStatus.missingProfileCity);
       expect(state.countryCodeHint, 'RU');
+      expect(state.selected?.city.identity, 'RU:moscow');
+      expect(state.selected?.source, EventCitySelectionSource.profile);
+      expect(state.canLoadEvents, isTrue);
+      expect(state.needsCitySelection, isFalse);
+      expect(state.selectedFromProfile, isTrue);
+      expect(state.selectedTemporarily, isFalse);
+      expect(state.hasOutdatedProfileCity, isFalse);
+    });
+
+    test('country without catalog city stays locked', () {
+      final user = userFixture(
+        data: {
+          'uid': 'uid-country-without-event-city',
+          'Country_NS': {'code': 'NL'},
+        },
+      );
+
+      final state = resolveEventSelectedCityState(
+        user: user,
+        catalog: catalog,
+      );
+
+      expect(state.profileStatus, EventCityResolutionStatus.missingProfileCity);
+      expect(state.countryCodeHint, 'NL');
       expect(state.selected, isNull);
       expect(state.canLoadEvents, isFalse);
       expect(state.needsCitySelection, isTrue);
       expect(state.selectedFromProfile, isFalse);
-      expect(state.selectedTemporarily, isFalse);
-      expect(state.hasOutdatedProfileCity, isFalse);
     });
 
     test('does not unlock stale invalid or unknown profile cities', () {
@@ -291,8 +315,8 @@ void main() {
         user: user,
         catalog: catalog,
         temporarySelection: EventSelectedCityInput(
-          countryCode: 'US',
-          cityKey: 'new_york',
+          countryCode: 'IT',
+          cityKey: 'rome',
           source: EventCitySelectionSource.manual,
         ),
       );
@@ -302,14 +326,15 @@ void main() {
       );
 
       expect(temporaryState.canLoadEvents, isTrue);
-      expect(temporaryState.selected?.city.identity, 'US:new_york');
+      expect(temporaryState.selected?.city.identity, 'IT:rome');
       expect(temporaryState.selectedTemporarily, isTrue);
       expect(user.hasProfileCity(), isFalse);
       expect(nextState.profileStatus,
           EventCityResolutionStatus.missingProfileCity);
       expect(nextState.countryCodeHint, 'US');
-      expect(nextState.selected, isNull);
-      expect(nextState.canLoadEvents, isFalse);
+      expect(nextState.selected?.city.identity, 'US:new_york');
+      expect(nextState.selected?.source, EventCitySelectionSource.profile);
+      expect(nextState.canLoadEvents, isTrue);
     });
 
     test('manual temporary selection overrides a valid profile city', () {

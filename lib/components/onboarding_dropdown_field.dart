@@ -39,11 +39,7 @@ class OnboardingDropdownField extends StatelessWidget {
                     ? ExpatlioDesign.primary.withValues(alpha: 0.08)
                     : ExpatlioDesign.mutedSurface,
             borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
-            border: Border.all(
-              color: active
-                  ? ExpatlioDesign.primary.withValues(alpha: 0.22)
-                  : ExpatlioDesign.mutedSurface,
-            ),
+            border: Border.all(color: ExpatlioDesign.border),
           ),
           padding: const EdgeInsetsDirectional.fromSTEB(
               ExpatlioDesign.space16,

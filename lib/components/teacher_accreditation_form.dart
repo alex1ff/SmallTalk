@@ -299,9 +299,7 @@ class _TeacherAccreditationChoice extends StatelessWidget {
           color:
               selected ? ExpatlioDesign.primary : ExpatlioDesign.mutedSurface,
           borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
-          border: Border.all(
-            color: selected ? ExpatlioDesign.primary : ExpatlioDesign.border,
-          ),
+          border: Border.all(color: ExpatlioDesign.border),
         ),
         child: Text(
           label,

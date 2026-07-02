@@ -101,8 +101,7 @@ class ProfileReadOnlyField extends StatelessWidget {
                   color: const Color(0xFFFBFBFB),
                   borderRadius:
                       BorderRadius.circular(ExpatlioDesign.radiusMedium),
-                  border:
-                      Border.all(color: const Color(0xFFE7E7E7), width: 1.0),
+                  border: Border.all(color: ExpatlioDesign.border, width: 1.0),
                 ),
                 alignment: AlignmentDirectional.centerStart,
                 padding: const EdgeInsetsDirectional.fromSTEB(

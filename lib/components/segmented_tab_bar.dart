@@ -25,7 +25,7 @@ class ExpatlioSegmentedTabBar extends StatelessWidget {
       width: double.infinity,
       height: height,
       decoration: BoxDecoration(
-        color: ExpatlioDesign.mutedSurface,
+        color: const Color(0xFFF2F2F2),
         borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
       ),
       child: Padding(

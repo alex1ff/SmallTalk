@@ -13,13 +13,16 @@ import 'package:small_talk/flutter_flow/custom_icons.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/flutter_flow/nav/nav.dart';
 import 'package:small_talk/shared_pages/events/event_create_widget.dart';
+import 'package:small_talk/shared_pages/events/event_detail_widget.dart';
 import 'package:small_talk/shared_pages/events/event_group_chat_widget.dart';
 import 'package:small_talk/shared_pages/events/event_list_widget.dart';
+import 'package:small_talk/shared_pages/design/expatlio_design.dart';
 import 'package:small_talk/services/event_city_catalog.dart';
 import 'package:small_talk/services/event_city_chip_source.dart';
 import 'package:small_talk/services/event_city_selection_source.dart';
 import 'package:small_talk/services/event_selected_city_state.dart';
 import 'package:small_talk/services/event_list_date_bounds.dart';
+import 'package:small_talk/services/event_list_repository.dart';
 import 'package:small_talk/services/event_level_helper.dart';
 import 'package:small_talk/services/event_language_catalog.dart';
 import 'package:small_talk/services/events_analytics_service.dart';
@@ -119,6 +122,7 @@ void main() {
   });
 
   tearDown(() {
+    debugClearEventListCache();
     EventsAnalyticsService.defaultTracker = EventsAnalyticsService.instance;
     currentUser = null;
     currentUserDocument = null;
@@ -134,8 +138,17 @@ void main() {
     expect(title, findsOneWidget);
 
     final titleText = tester.widget<Text>(title);
-    expect(titleText.style?.fontSize, 34);
+    expect(titleText.style?.fontSize, 18);
     expect(titleText.style?.fontWeight, FontWeight.w700);
+  });
+
+  testWidgets('uses the app page background color', (tester) async {
+    await tester.pumpWidget(_buildTestApp());
+    await tester.pumpAndSettle();
+
+    final scaffold = tester.widget<Scaffold>(find.byType(Scaffold));
+
+    expect(scaffold.backgroundColor, ExpatlioDesign.background);
   });
 
   testWidgets('shows the create event button in the header', (tester) async {
@@ -144,9 +157,13 @@ void main() {
 
     expect(find.byKey(eventListCreateButtonKey), findsOneWidget);
     expect(find.byIcon(Icons.add_sharp), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(eventListCreateButtonKey)),
+      const Size.square(36),
+    );
   });
 
-  testWidgets('shows date filter chips with today selected by default',
+  testWidgets('shows date filter chips with no date selected by default',
       (tester) async {
     await tester.pumpWidget(_buildTestApp());
     await tester.pumpAndSettle();
@@ -155,16 +172,23 @@ void main() {
     expect(find.text('Завтра'), findsOneWidget);
     expect(find.text('На этой неделе'), findsOneWidget);
     expect(find.text('В этом месяце'), findsOneWidget);
-    expect(_dateFilterChip(tester, EventListDateFilter.today).selected, isTrue);
-    expect(_dateFilterChip(tester, EventListDateFilter.tomorrow).selected,
+    expect(_isDateFilterSelected(tester, EventListDateFilter.today), isFalse);
+    expect(
+        _isDateFilterSelected(tester, EventListDateFilter.tomorrow), isFalse);
+    expect(_isDateFilterSelected(tester, EventListDateFilter.currentWeek),
         isFalse);
-    expect(_dateFilterChip(tester, EventListDateFilter.currentWeek).selected,
+    expect(_isDateFilterSelected(tester, EventListDateFilter.currentMonth),
         isFalse);
-    expect(_dateFilterChip(tester, EventListDateFilter.currentMonth).selected,
-        isFalse);
+    expect(
+      _filterChipBackgroundColor(
+        tester,
+        _dateFilterFinder(EventListDateFilter.today),
+      ),
+      ExpatlioDesign.card,
+    );
   });
 
-  testWidgets('changes selected date filter when a date chip is tapped',
+  testWidgets('date filter chips select switch and clear one date',
       (tester) async {
     await tester.pumpWidget(_buildTestApp());
     await tester.pumpAndSettle();
@@ -172,18 +196,37 @@ void main() {
     await tester.tap(_dateFilterFinder(EventListDateFilter.tomorrow));
     await tester.pumpAndSettle();
 
+    expect(_isDateFilterSelected(tester, EventListDateFilter.today), isFalse);
+    expect(_isDateFilterSelected(tester, EventListDateFilter.tomorrow), isTrue);
     expect(
-        _dateFilterChip(tester, EventListDateFilter.today).selected, isFalse);
+      _filterChipTextColor(
+        tester,
+        _dateFilterFinder(EventListDateFilter.tomorrow),
+      ),
+      Colors.white,
+    );
     expect(
-        _dateFilterChip(tester, EventListDateFilter.tomorrow).selected, isTrue);
+      _filterChipBackgroundColor(
+        tester,
+        _dateFilterFinder(EventListDateFilter.tomorrow),
+      ),
+      ExpatlioDesign.primary,
+    );
 
     await tester.tap(_dateFilterFinder(EventListDateFilter.currentMonth));
     await tester.pumpAndSettle();
 
-    expect(_dateFilterChip(tester, EventListDateFilter.tomorrow).selected,
-        isFalse);
-    expect(_dateFilterChip(tester, EventListDateFilter.currentMonth).selected,
+    expect(
+        _isDateFilterSelected(tester, EventListDateFilter.tomorrow), isFalse);
+    expect(_isDateFilterSelected(tester, EventListDateFilter.currentMonth),
         isTrue);
+
+    await tester.tap(_dateFilterFinder(EventListDateFilter.currentMonth));
+    await tester.pumpAndSettle();
+
+    for (final filter in EventListDateFilter.values) {
+      expect(_isDateFilterSelected(tester, filter), isFalse);
+    }
   });
 
   testWidgets('tracks date filter selection only on user changes',
@@ -239,8 +282,12 @@ void main() {
     );
     for (final level in eventLevelRanks.keys) {
       expect(find.text(level), findsOneWidget);
-      expect(_levelFilterChip(tester, level).selected, isFalse);
+      expect(_isLevelFilterSelected(tester, level), isFalse);
     }
+    expect(
+      _filterChipBackgroundColor(tester, _levelFilterFinder('A1')),
+      ExpatlioDesign.card,
+    );
   });
 
   testWidgets('level filter chips select switch and clear one level',
@@ -251,21 +298,21 @@ void main() {
     await tester.tap(_levelFilterFinder('B2'));
     await tester.pumpAndSettle();
 
-    expect(_levelFilterChip(tester, 'B2').selected, isTrue);
-    expect(_levelFilterChip(tester, 'B1').selected, isFalse);
-    expect(_levelFilterChip(tester, 'C1').selected, isFalse);
+    expect(_isLevelFilterSelected(tester, 'B2'), isTrue);
+    expect(_isLevelFilterSelected(tester, 'B1'), isFalse);
+    expect(_isLevelFilterSelected(tester, 'C1'), isFalse);
 
     await tester.tap(_levelFilterFinder('C1'));
     await tester.pumpAndSettle();
 
-    expect(_levelFilterChip(tester, 'B2').selected, isFalse);
-    expect(_levelFilterChip(tester, 'C1').selected, isTrue);
+    expect(_isLevelFilterSelected(tester, 'B2'), isFalse);
+    expect(_isLevelFilterSelected(tester, 'C1'), isTrue);
 
     await tester.tap(_levelFilterFinder('C1'));
     await tester.pumpAndSettle();
 
     for (final level in eventLevelRanks.keys) {
-      expect(_levelFilterChip(tester, level).selected, isFalse);
+      expect(_isLevelFilterSelected(tester, level), isFalse);
     }
   });
 
@@ -325,7 +372,7 @@ void main() {
     for (final fixture in <Map<String, dynamic>>[
       const {},
       {
-        'Country_NS': {'code': 'RU'},
+        'Country_NS': {'code': 'NL'},
       },
       {
         'profileCity': _profileCityFixture(
@@ -375,7 +422,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Москва · Россия'), findsOneWidget);
+    expect(find.byKey(eventListCitySelectorKey), findsNothing);
+    expect(find.text('Москва · Россия'), findsNothing);
     expect(find.textContaining('RU:moscow'), findsNothing);
   });
 
@@ -413,10 +461,7 @@ void main() {
     expect(find.byKey(eventListCardActionsKey), findsOneWidget);
     expect(find.byKey(eventListCardChatCtaKey), findsNothing);
     expect(find.text('Чат'), findsNothing);
-    expect(
-      _widgetIndex(tester, card),
-      greaterThan(_widgetIndex(tester, find.byKey(eventListCitySelectorKey))),
-    );
+    expect(find.byKey(eventListCitySelectorKey), findsNothing);
   });
 
   testWidgets('shows explicit loading state after city is selected',
@@ -504,10 +549,149 @@ void main() {
     expect(capturedPageSize, 20);
     expect(capturedIsStream, isFalse);
     expect(capturedQueryBuilder, isNotNull);
+    final delegatedQuery = capturedQueryBuilder!(EventsRecord.collection);
+    final where = delegatedQuery.parameters['where'] as List<dynamic>;
+    _expectWhereCondition(
+        where, 'startsAt', '>=', DateTime.utc(2035, 6, 14, 9));
+    _expectWhereCondition(
+      where,
+      'startsAt',
+      '<',
+      DateTime.utc(9999, 12, 31),
+    );
     expect(find.byKey(eventListLoadingStateKey), findsNothing);
     expect(find.byKey(eventListEmptyStateKey), findsNothing);
     expect(find.text('Live loaded event'), findsOneWidget);
-    expect(find.text('Москва · Россия'), findsOneWidget);
+    expect(find.byKey(eventListCitySelectorKey), findsNothing);
+  });
+
+  testWidgets('reuses cached event cards when page is reopened',
+      (tester) async {
+    var calls = 0;
+    currentUserDocument = _userFixture(
+      uid: 'profile-city-cache-user',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+    final nowUtc = DateTime.utc(2035, 6, 14, 9);
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) async {
+      calls += 1;
+      return FFFirestorePage<EventsRecord>(
+        [
+          _eventsRecordFixture(
+            'cached-event',
+            title: 'Cached loaded event',
+            startsAt: DateTime.utc(2035, 6, 14, 15),
+          ),
+        ],
+        null,
+        null,
+      );
+    };
+
+    Widget buildList() => _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            nowUtcProvider: () => nowUtc,
+            eventPageLoader: pageLoader,
+          ),
+        );
+
+    await tester.pumpWidget(buildList());
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+    expect(find.text('Cached loaded event'), findsOneWidget);
+
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(buildList());
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+    expect(find.text('Cached loaded event'), findsOneWidget);
+  });
+
+  testWidgets('does not cache empty event list for default filters',
+      (tester) async {
+    var calls = 0;
+    currentUserDocument = _userFixture(
+      uid: 'profile-city-empty-cache-user',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+    final nowUtc = DateTime.utc(2035, 6, 14, 9);
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) async {
+      calls += 1;
+      if (calls == 1) {
+        return FFFirestorePage<EventsRecord>(const [], null, null);
+      }
+
+      return FFFirestorePage<EventsRecord>(
+        [
+          _eventsRecordFixture(
+            'fresh-event',
+            title: 'Fresh loaded event',
+            startsAt: DateTime.utc(2035, 6, 14, 15),
+          ),
+        ],
+        null,
+        null,
+      );
+    };
+
+    Widget buildList() => _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            nowUtcProvider: () => nowUtc,
+            eventPageLoader: pageLoader,
+          ),
+        );
+
+    await tester.pumpWidget(buildList());
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+    expect(find.byKey(eventListEmptyStateKey), findsOneWidget);
+
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(buildList());
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+    expect(find.text('Fresh loaded event'), findsOneWidget);
   });
 
   testWidgets('does not show loading state before city is selected',
@@ -922,7 +1106,7 @@ void main() {
     expect(_textInsideKey(eventListCardLevelRangeKey, 'B1-B1'), findsNothing);
   });
 
-  testWidgets('shows localized language badge from language code',
+  testWidgets('does not render language badge in event list cards',
       (tester) async {
     await tester.pumpWidget(
       _buildTestApp(
@@ -947,16 +1131,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(eventListCardLanguageBadgeKey), findsOneWidget);
-    expect(find.byIcon(Icons.translate), findsOneWidget);
-    expect(
-      _textInsideKey(eventListCardLanguageBadgeKey, 'Английский'),
-      findsOneWidget,
-    );
+    expect(find.byKey(eventListCardLanguageBadgeKey), findsNothing);
+    expect(find.byIcon(Icons.translate), findsNothing);
+    expect(find.byKey(eventListCardDateKey), findsOneWidget);
+    expect(find.byKey(eventListCardTimeKey), findsOneWidget);
   });
 
-  testWidgets('language badge uses current English locale catalog name',
-      (tester) async {
+  testWidgets('language badge stays hidden in English locale', (tester) async {
     await tester.pumpWidget(
       _buildTestApp(
         locale: const Locale('en'),
@@ -978,7 +1159,7 @@ void main() {
 
     expect(
       _textInsideKey(eventListCardLanguageBadgeKey, 'Spanish'),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
       _textInsideKey(eventListCardLanguageBadgeKey, 'Stale English'),
@@ -986,8 +1167,7 @@ void main() {
     );
   });
 
-  testWidgets('language badge falls back to denormalized name and raw code',
-      (tester) async {
+  testWidgets('language badge fallback text stays hidden', (tester) async {
     await tester.pumpWidget(
       _buildTestApp(
         home: EventListWidget(
@@ -1022,15 +1202,15 @@ void main() {
 
     expect(
       _textInsideKey(eventListCardLanguageBadgeKey, 'Фолбэк русский'),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
       _textInsideKey(eventListCardLanguageBadgeKey, 'custom-code'),
-      findsOneWidget,
+      findsNothing,
     );
   });
 
-  testWidgets('language badge falls back when catalog asset load fails',
+  testWidgets('event list does not load language catalog for hidden badge',
       (tester) async {
     final bundle = _FailingLanguageAssetBundle();
 
@@ -1059,14 +1239,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(bundle.languageCatalogLoadCount, 1);
+    expect(bundle.languageCatalogLoadCount, 0);
     expect(
       _textInsideKey(eventListCardLanguageBadgeKey, 'Фолбэк русский'),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
       _textInsideKey(eventListCardLanguageBadgeKey, 'legacy-code'),
-      findsOneWidget,
+      findsNothing,
     );
   });
 
@@ -1123,6 +1303,7 @@ void main() {
           ),
           eventCardsOverride: [
             _eventCardFixture(
+              participantsCount: 9,
               participants: const [
                 EventListParticipantViewModel(displayName: 'Marco Rossi'),
                 EventListParticipantViewModel(displayName: 'Лиза'),
@@ -1142,12 +1323,15 @@ void main() {
     expect(_participantAvatarFinder(0), findsOneWidget);
     expect(_participantAvatarFinder(1), findsOneWidget);
     expect(_participantAvatarFinder(2), findsOneWidget);
-    expect(_participantAvatarFinder(3), findsNothing);
+    expect(_participantAvatarFinder(3), findsOneWidget);
+    expect(_participantAvatarFinder(4), findsOneWidget);
+    expect(_participantAvatarFinder(5), findsOneWidget);
     expect(find.byKey(eventListParticipantOverflowKey), findsOneWidget);
+    expect(find.byIcon(Icons.person_outline), findsOneWidget);
     expect(find.text('MR'), findsOneWidget);
     expect(find.text('ЛИ'), findsOneWidget);
     expect(find.text('KE'), findsOneWidget);
-    expect(find.text('+2'), findsOneWidget);
+    expect(find.text('+3'), findsOneWidget);
   });
 
   testWidgets('participant avatar handles broken photo url with fallback',
@@ -1188,7 +1372,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('participant stack uses participants count beyond preview',
+  testWidgets('participant stack shows count-only participants before overflow',
       (tester) async {
     await tester.pumpWidget(
       _buildTestApp(
@@ -1223,13 +1407,12 @@ void main() {
     expect(_participantAvatarFinder(0), findsOneWidget);
     expect(_participantAvatarFinder(1), findsOneWidget);
     expect(_participantAvatarFinder(2), findsOneWidget);
-    expect(_participantAvatarFinder(3), findsNothing);
-    expect(find.byKey(eventListParticipantOverflowKey), findsOneWidget);
-    expect(find.text('+1'), findsOneWidget);
+    expect(_participantAvatarFinder(3), findsOneWidget);
+    expect(find.byKey(eventListParticipantOverflowKey), findsNothing);
+    expect(find.text('+1'), findsNothing);
   });
 
-  testWidgets('participant stack shows count-only overflow badge',
-      (tester) async {
+  testWidgets('participant stack shows count-only slots', (tester) async {
     await tester.pumpWidget(
       _buildTestApp(
         home: EventListWidget(
@@ -1255,9 +1438,10 @@ void main() {
 
     expect(find.byKey(eventListCardFooterKey), findsOneWidget);
     expect(find.byKey(eventListParticipantAvatarStackKey), findsOneWidget);
-    expect(_participantAvatarFinder(0), findsNothing);
-    expect(find.byKey(eventListParticipantOverflowKey), findsOneWidget);
-    expect(find.text('+2'), findsOneWidget);
+    expect(_participantAvatarFinder(0), findsOneWidget);
+    expect(_participantAvatarFinder(1), findsOneWidget);
+    expect(find.byKey(eventListParticipantOverflowKey), findsNothing);
+    expect(find.text('+2'), findsNothing);
   });
 
   testWidgets('shows event occupancy beside participant avatars',
@@ -1295,8 +1479,110 @@ void main() {
 
     expect(find.byKey(eventListCardFooterKey), findsOneWidget);
     expect(find.byKey(eventListParticipantAvatarStackKey), findsOneWidget);
+    for (var index = 0; index < 6; index += 1) {
+      expect(_participantAvatarFinder(index), findsOneWidget);
+    }
+    expect(find.byKey(eventListParticipantOverflowKey), findsOneWidget);
+    expect(find.text('+4'), findsOneWidget);
     expect(find.byKey(eventListCardOccupancyKey), findsOneWidget);
     expect(find.text('5/10 мест'), findsOneWidget);
+  });
+
+  testWidgets('count-only occupancy stack shows six slots before overflow',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: EventSelectedCity(
+            city: _cityFixture(
+              countryCode: 'RU',
+              cityKey: 'moscow',
+              cityNameRu: 'Москва',
+              cityNameEn: 'Moscow',
+              cityDisplayContext: 'Россия',
+            ),
+            source: EventCitySelectionSource.manual,
+          ),
+          eventCardsOverride: [
+            _eventCardFixture(
+              participantsCount: 1,
+              capacity: 10,
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    for (var index = 0; index < 6; index += 1) {
+      expect(_participantAvatarFinder(index), findsOneWidget);
+    }
+    expect(find.byKey(eventListParticipantOverflowKey), findsOneWidget);
+    expect(find.text('+4'), findsOneWidget);
+    expect(find.text('+1'), findsNothing);
+    expect(find.text('1/10 мест'), findsOneWidget);
+  });
+
+  testWidgets('loaded event uses organizer as first occupied avatar',
+      (tester) async {
+    currentUserDocument = _userFixture(
+      uid: 'organizer-preview-user',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+    final nowUtc = DateTime.utc(2035, 6, 14, 9);
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          nowUtcProvider: () => nowUtc,
+          eventPageLoader: (
+            collection,
+            recordBuilder, {
+            queryBuilder,
+            nextPageMarker,
+            required pageSize,
+            required isStream,
+          }) async {
+            return FFFirestorePage<EventsRecord>(
+              [
+                _eventsRecordFixture(
+                  'organizer-event',
+                  title: 'Organizer preview event',
+                  startsAt: DateTime.utc(2035, 6, 14, 15),
+                ),
+              ],
+              null,
+              null,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListParticipantAvatarStackKey), findsOneWidget);
+    expect(_participantAvatarFinder(0), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(eventListParticipantAvatarStackKey),
+        matching: find.text('АИ'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('+4'), findsOneWidget);
+    expect(find.text('+1'), findsNothing);
+    expect(find.text('1/10 мест'), findsOneWidget);
   });
 
   testWidgets('shows zero occupancy without empty avatar stack',
@@ -1432,6 +1718,10 @@ void main() {
 
     expect(find.byKey(eventListCardPrimaryCtaKey), findsOneWidget);
     expect(find.text('Присоединиться'), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(eventListCardPrimaryCtaKey)).height,
+      36,
+    );
     final semantics =
         tester.getSemantics(find.byKey(eventListCardPrimaryCtaKey));
     expect(semantics.flagsCollection.isButton, isTrue);
@@ -1537,11 +1827,50 @@ void main() {
 
     expect(find.byKey(eventListCardChatCtaKey), findsOneWidget);
     expect(find.text('Чат'), findsOneWidget);
-    expect(find.byIcon(Icons.lock_outline), findsOneWidget);
+    expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
     final semantics = tester.getSemantics(find.byKey(eventListCardChatCtaKey));
     expect(semantics.flagsCollection.isButton, isTrue);
     expect(semantics.flagsCollection.isEnabled, isFalse);
     expect(semantics.label, contains('Чат доступен только участникам'));
+  });
+
+  testWidgets('opens event detail when an event card is tapped',
+      (tester) async {
+    final router = GoRouter(
+      initialLocation: EventListWidget.routePath,
+      routes: [
+        GoRoute(
+          name: EventListWidget.routeName,
+          path: EventListWidget.routePath,
+          builder: (context, state) => EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: _selectedCityFixture(),
+            eventCardsOverride: [
+              _eventCardFixture(eventId: 'event-123'),
+            ],
+          ),
+        ),
+        GoRoute(
+          name: EventDetailWidget.routeName,
+          path: EventDetailWidget.routePath,
+          builder: (context, state) => EventDetailWidget(
+            eventId: state.pathParameters['eventId']!,
+            title: 'Detail page',
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildRouterTestApp(router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventListCardShellKey));
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), '/events/event-123');
+    expect(find.byType(EventDetailWidget), findsOneWidget);
+    expect(find.text('Detail page'), findsOneWidget);
   });
 
   testWidgets('opens event chat from participant card CTA', (tester) async {
@@ -1769,7 +2098,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Москва · Россия'), findsOneWidget);
+    expect(find.byKey(eventListCitySelectorKey), findsNothing);
+    expect(find.text('Москва · Россия'), findsNothing);
     expect(find.textContaining('Stored city'), findsNothing);
     expect(find.textContaining('Stored context'), findsNothing);
     expect(find.text('Выберите город'), findsNothing);
@@ -1824,7 +2154,7 @@ void main() {
     expect(analyticsTracker.payloadsFor('city_selected'), hasLength(1));
   });
 
-  testWidgets('does not select a city from country-only profile data',
+  testWidgets('uses country-only profile data as default events city',
       (tester) async {
     final analyticsTracker = _RecordingEventsAnalyticsTracker();
     currentUserDocument = _userFixture(
@@ -1844,18 +2174,27 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Выберите город'), findsOneWidget);
-    expect(find.text('Выберите город, чтобы увидеть события.'), findsOneWidget);
+    expect(find.byKey(eventListCitySelectorKey), findsNothing);
+    expect(find.text('Выберите город'), findsNothing);
+    expect(find.text('Выберите город, чтобы увидеть события.'), findsNothing);
     expect(find.text('Выберите город заново'), findsNothing);
     expect(find.textContaining('Сохранённый город больше недоступен'),
         findsNothing);
     expect(_citySelectorText('Москва · Россия'), findsNothing);
-    expect(find.byKey(eventListLoadingStateKey), findsNothing);
-    expect(find.byKey(eventListEmptyStateKey), findsNothing);
-    expect(find.byKey(eventListErrorStateKey), findsNothing);
-    expect(find.byKey(eventListCardShellKey), findsNothing);
-    expect(analyticsTracker.payloadsFor('event_list_opened'), isEmpty);
-    expect(analyticsTracker.payloadsFor('city_selected'), isEmpty);
+    expect(analyticsTracker.payloadsFor('event_list_opened'), [
+      <String, String>{
+        'countryCode': 'RU',
+        'cityKey': 'moscow',
+        'citySource': 'profile',
+      },
+    ]);
+    expect(analyticsTracker.payloadsFor('city_selected'), [
+      <String, String>{
+        'countryCode': 'RU',
+        'cityKey': 'moscow',
+        'citySource': 'profile',
+      },
+    ]);
   });
 
   testWidgets('does not select a city from preferredLocation profile data',
@@ -1937,7 +2276,7 @@ void main() {
   });
 
   testWidgets(
-      'shows missing-location city chips with recent before country-hinted static cities',
+      'opens city dropdown with recent before country-hinted static cities',
       (tester) async {
     SharedPreferences.setMockInitialValues({
       eventRecentCitySelectionsPrefsKey: const <String>[
@@ -1948,6 +2287,11 @@ void main() {
       uid: 'missing-city-chips-user',
       data: {
         'Country_NS': {'code': 'US'},
+        'profileCity': _profileCityFixture(
+          countryCode: 'US',
+          cityKey: 'new_york',
+          catalogVersion: 'old-version',
+        ).toMap(),
       },
     );
 
@@ -1958,14 +2302,17 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final rome = find.byKey(const ValueKey<String>('event_city_chip_IT_rome'));
-    final newYork =
-        find.byKey(const ValueKey<String>('event_city_chip_US_new_york'));
-    final moscow =
-        find.byKey(const ValueKey<String>('event_city_chip_RU_moscow'));
+    await tester.tap(find.byKey(eventListCitySelectorKey));
+    await tester.pumpAndSettle();
 
-    expect(find.text('Выберите город'), findsOneWidget);
-    expect(find.text('Выберите город, чтобы увидеть события.'), findsOneWidget);
+    final rome =
+        find.byKey(const ValueKey<String>('event_manual_city_option_IT_rome'));
+    final newYork = find
+        .byKey(const ValueKey<String>('event_manual_city_option_US_new_york'));
+    final moscow = find
+        .byKey(const ValueKey<String>('event_manual_city_option_RU_moscow'));
+
+    expect(find.text('Выберите город заново'), findsOneWidget);
     expect(rome, findsOneWidget);
     expect(newYork, findsOneWidget);
     expect(moscow, findsOneWidget);
@@ -1979,7 +2326,7 @@ void main() {
   });
 
   testWidgets(
-      'chip city selection unlocks events city state without profile save',
+      'dropdown city selection unlocks events city state without profile save',
       (tester) async {
     SharedPreferences.setMockInitialValues({
       eventRecentCitySelectionsPrefsKey: const <String>[
@@ -1998,11 +2345,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester
-        .tap(find.byKey(const ValueKey<String>('event_city_chip_IT_rome')));
+    await tester.tap(find.byKey(eventListCitySelectorKey));
+    await tester.pumpAndSettle();
+    await tester.tap(
+        find.byKey(const ValueKey<String>('event_manual_city_option_IT_rome')));
     await tester.pumpAndSettle();
 
-    expect(_citySelectorText('Рим · Italy'), findsOneWidget);
+    expect(_citySelectorText('Рим · Italy'), findsNothing);
+    expect(find.byKey(eventListCitySelectorKey), findsNothing);
     expect(find.text('Выберите город, чтобы увидеть события.'), findsNothing);
     expect(find.byKey(const ValueKey<String>('event_city_chip_IT_rome')),
         findsNothing);
@@ -2010,7 +2360,7 @@ void main() {
     expect(currentUserDocument!.hasProfileCity(), isFalse);
   });
 
-  testWidgets('tracks analytics after recent city chip selection',
+  testWidgets('tracks analytics after recent city dropdown selection',
       (tester) async {
     final analyticsTracker = _RecordingEventsAnalyticsTracker();
     SharedPreferences.setMockInitialValues({
@@ -2035,8 +2385,10 @@ void main() {
 
     expect(analyticsTracker.events, isEmpty);
 
-    await tester
-        .tap(find.byKey(const ValueKey<String>('event_city_chip_IT_rome')));
+    await tester.tap(find.byKey(eventListCitySelectorKey));
+    await tester.pumpAndSettle();
+    await tester.tap(
+        find.byKey(const ValueKey<String>('event_manual_city_option_IT_rome')));
     await tester.pumpAndSettle();
 
     expect(analyticsTracker.payloadsFor('city_selected'), [
@@ -2055,7 +2407,8 @@ void main() {
     ]);
   });
 
-  testWidgets('tracks city selected from static city chip', (tester) async {
+  testWidgets('tracks city selected from static city dropdown option',
+      (tester) async {
     final analyticsTracker = _RecordingEventsAnalyticsTracker();
     SharedPreferences.setMockInitialValues({});
     currentUserDocument = _userFixture(
@@ -2073,8 +2426,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester
-        .tap(find.byKey(const ValueKey<String>('event_city_chip_RU_moscow')));
+    await tester.tap(find.byKey(eventListCitySelectorKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find
+        .byKey(const ValueKey<String>('event_manual_city_option_RU_moscow')));
     await tester.pumpAndSettle();
 
     expect(analyticsTracker.payloadsFor('city_selected'), [
@@ -2086,8 +2441,7 @@ void main() {
     ]);
   });
 
-  testWidgets(
-      'opens manual city picker from selector without injected callback',
+  testWidgets('opens city dropdown from selector without injected callback',
       (tester) async {
     final fullCatalog = EventCityCatalog.fromJsonString(
       File(eventCityCatalogAssetPath).readAsStringSync(),
@@ -2112,9 +2466,11 @@ void main() {
 
     final searchField =
         find.byKey(const ValueKey<String>('event_manual_city_search_field'));
-    expect(searchField, findsOneWidget);
+    expect(searchField, findsNothing);
 
-    await tester.enterText(searchField, 'Тбилиси');
+    await tester.ensureVisible(
+      find.byKey(const ValueKey<String>('event_manual_city_option_GE_tbilisi')),
+    );
     await tester.pumpAndSettle();
 
     expect(
@@ -2148,14 +2504,15 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(_citySelectorText('Нью-Йорк · United States'), findsOneWidget);
+    expect(_citySelectorText('Нью-Йорк · United States'), findsNothing);
+    expect(find.byKey(eventListCitySelectorKey), findsNothing);
     expect(find.byKey(eventManualCitySearchFieldKey), findsNothing);
     expect(find.text('Выберите город, чтобы увидеть события.'), findsNothing);
     expect(find.byKey(eventListCardShellKey), findsOneWidget);
     expect(currentUserDocument!.hasProfileCity(), isFalse);
   });
 
-  testWidgets('tracks city selected from manual picker as manual source',
+  testWidgets('tracks city selected from dropdown as static source',
       (tester) async {
     final analyticsTracker = _RecordingEventsAnalyticsTracker();
     currentUserDocument = _userFixture(
@@ -2185,7 +2542,7 @@ void main() {
       <String, String>{
         'countryCode': 'US',
         'cityKey': 'new_york',
-        'citySource': 'manual',
+        'citySource': 'static',
       },
     ]);
   });
@@ -2321,7 +2678,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Нью-Йорк · United States'), findsOneWidget);
+    expect(find.text('Нью-Йорк · United States'), findsNothing);
+    expect(find.byKey(eventListCitySelectorKey), findsNothing);
     expect(find.text('Москва · Россия'), findsNothing);
     expect(find.text('Выберите город, чтобы увидеть события.'), findsNothing);
     expect(find.byKey(const ValueKey<String>('event_city_chip_RU_moscow')),
@@ -2483,20 +2841,61 @@ Finder _textInsideKey(ValueKey<String> key, String text) => find.descendant(
 Finder _dateFilterFinder(EventListDateFilter filter) =>
     find.byKey(ValueKey<String>('event_date_filter_${filter.name}'));
 
-ChoiceChip _dateFilterChip(
+bool _isDateFilterSelected(
   WidgetTester tester,
   EventListDateFilter filter,
 ) =>
-    tester.widget<ChoiceChip>(_dateFilterFinder(filter));
+    tester.getSemantics(_dateFilterFinder(filter)).flagsCollection.isSelected;
 
 Finder _levelFilterFinder(String level) =>
     find.byKey(ValueKey<String>('event_level_filter_$level'));
 
-ChoiceChip _levelFilterChip(
-  WidgetTester tester,
-  String level,
-) =>
-    tester.widget<ChoiceChip>(_levelFilterFinder(level));
+bool _isLevelFilterSelected(WidgetTester tester, String level) =>
+    tester.getSemantics(_levelFilterFinder(level)).flagsCollection.isSelected;
+
+Color? _filterChipTextColor(WidgetTester tester, Finder chipFinder) {
+  final text = tester.widget<Text>(
+    find.descendant(
+      of: chipFinder,
+      matching: find.byType(Text),
+    ),
+  );
+  return text.style?.color;
+}
+
+Color? _filterChipBackgroundColor(WidgetTester tester, Finder chipFinder) {
+  final container = tester.widget<Container>(
+    find.descendant(
+      of: chipFinder,
+      matching: find.byType(Container),
+    ),
+  );
+  final decoration = container.decoration;
+  return decoration is BoxDecoration ? decoration.color : null;
+}
+
+void _expectWhereCondition(
+  List<dynamic> conditions,
+  String field,
+  String operator,
+  Object? value,
+) {
+  final expectedField = FieldPath.fromString(field);
+  final hasCondition = conditions.any(
+    (condition) =>
+        condition is List<dynamic> &&
+        condition.length == 3 &&
+        condition[0] == expectedField &&
+        condition[1] == operator &&
+        condition[2] == value,
+  );
+
+  expect(
+    hasCondition,
+    isTrue,
+    reason: 'Expected where($field $operator $value).',
+  );
+}
 
 Finder _participantAvatarFinder(int index) =>
     find.byKey(ValueKey<String>('event_list_participant_avatar_$index'));

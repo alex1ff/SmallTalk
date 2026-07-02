@@ -296,6 +296,28 @@ void main() {
       expect(canceledResult.readOnly, true);
     });
 
+    test('opens organizer chat through the trusted callable', () async {
+      String? functionName;
+      Map<String, dynamic>? payload;
+
+      final result = await EventActionsRepository.openEventOrganizerChat(
+        eventId: ' event-1 ',
+        invoker: (calledFunctionName, calledPayload) async {
+          functionName = calledFunctionName;
+          payload = calledPayload;
+          return <String, dynamic>{
+            'conversationId': 'organizer-1_student-1',
+            'conversationPath': 'conversations/organizer-1_student-1',
+          };
+        },
+      );
+
+      expect(functionName, openEventOrganizerChatFunctionName);
+      expect(payload, <String, dynamic>{'eventId': 'event-1'});
+      expect(result.conversationId, 'organizer-1_student-1');
+      expect(result.conversationPath, 'conversations/organizer-1_student-1');
+    });
+
     test('reports an event through the trusted callable', () async {
       String? functionName;
       Map<String, dynamic>? payload;

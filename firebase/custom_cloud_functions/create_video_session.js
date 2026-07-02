@@ -331,6 +331,7 @@ exports.createVideoSession = functions
 
       const availableTutors = [];
       const tutorDetails = {};
+      const candidateEmailsById = {};
       let totalQueriedCandidates = 0;
       let directTutorInfo = null;
       let repeatPreventionContext = null;
@@ -357,6 +358,7 @@ exports.createVideoSession = functions
         }
 
         const tutorData = directTutorDoc.data() || {};
+        candidateEmailsById[directTutorId] = tutorData.email;
         const tutorRole = normalizeRole(tutorData.role);
         if (tutorRole !== "native_speaker" || directTutorId === requesterId) {
           if (directTutorId === requesterId) {
@@ -454,7 +456,11 @@ exports.createVideoSession = functions
           db,
           requesterId,
           [directTutorId],
-          {bypassUserIds: repeatBypassUserIds},
+          {
+            bypassUserIds: repeatBypassUserIds,
+            requesterEmail: requesterData.email || context.auth.token.email,
+            userEmailsById: candidateEmailsById,
+          },
         );
         if (repeatPreventionContext.excludedCandidateIds.has(directTutorId)) {
           tutorFilterStats.sameDayRepeat += 1;
@@ -554,12 +560,19 @@ exports.createVideoSession = functions
           };
         }
 
+        for (const [candidateId, doc] of candidateDocsById.entries()) {
+          candidateEmailsById[candidateId] = (doc.data() || {}).email;
+        }
 
         repeatPreventionContext = await loadSameDayRepeatCandidateIds(
           db,
           requesterId,
           Array.from(candidateDocsById.keys()),
-          {bypassUserIds: repeatBypassUserIds},
+          {
+            bypassUserIds: repeatBypassUserIds,
+            requesterEmail: requesterData.email || context.auth.token.email,
+            userEmailsById: candidateEmailsById,
+          },
         );
 
         for (const [tutorId, doc] of candidateDocsById.entries()) {
@@ -981,7 +994,11 @@ exports.createVideoSession = functions
             db,
             requesterId,
             availableTutors,
-            {bypassUserIds: repeatBypassUserIds},
+            {
+              bypassUserIds: repeatBypassUserIds,
+              requesterEmail: requesterData.email || context.auth.token.email,
+              userEmailsById: candidateEmailsById,
+            },
           );
         const finalAvailableTutors = filterRepeatCandidates(
           availableTutors,

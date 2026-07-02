@@ -87,6 +87,7 @@ test("deployment readiness fails missing critical functions", () => {
   assert.ok(missingIds.includes("getEventChatAccessState"));
   assert.ok(missingIds.includes("sendCustomEmailVerification"));
   assert.ok(missingIds.includes("submitReview"));
+  assert.ok(missingIds.includes("getEventHistory"));
   assert.ok(missingIds.includes("getCallHistory"));
 });
 
@@ -170,6 +171,36 @@ test("deployment readiness exposes event report callable", () => {
       deployScript,
       /functions:custom_cloud_functions:reportEventChatMessage\b/,
   );
+});
+
+test("deployment readiness exposes event history callable and index", () => {
+  const functionIds = new Set(REQUIRED_FUNCTIONS.map((item) => item.id));
+  const indexSource = fs.readFileSync(
+      path.join(__dirname, "index.js"),
+      "utf8",
+  );
+  const packageJson = JSON.parse(fs.readFileSync(
+      path.join(__dirname, "package.json"),
+      "utf8",
+  ));
+  const deployScript = packageJson.scripts["deploy:readiness-functions"];
+  const firestoreIndexes = JSON.parse(fs.readFileSync(
+      path.join(__dirname, "..", "firestore.indexes.json"),
+      "utf8",
+  ));
+  const hasParticipantsHistoryIndex = firestoreIndexes.indexes.some((index) =>
+    index.collectionGroup === "participants" &&
+      index.queryScope === "COLLECTION" &&
+      JSON.stringify(index.fields) === JSON.stringify([
+        {fieldPath: "userId", order: "ASCENDING"},
+        {fieldPath: "joinedAt", order: "DESCENDING"},
+      ]),
+  );
+
+  assert.ok(functionIds.has("getEventHistory"));
+  assert.match(indexSource, /exports\.getEventHistory\b/);
+  assert.match(deployScript, /functions:custom_cloud_functions:getEventHistory\b/);
+  assert.equal(hasParticipantsHistoryIndex, true);
 });
 
 test("deployment readiness exposes call history callable", () => {

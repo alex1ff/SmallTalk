@@ -127,7 +127,7 @@ class CallHistoryCard extends StatelessWidget {
       width: 48.0,
       height: 48.0,
       decoration: const BoxDecoration(
-        color: ExpatlioDesign.mutedSurface,
+        color: ExpatlioDesign.avatarFallbackBackground,
         shape: BoxShape.circle,
       ),
       child: photoUrl.isNotEmpty
@@ -145,10 +145,10 @@ class CallHistoryCard extends StatelessWidget {
             )
           : Center(
               child: Text(
-                displayName.characters.first.toUpperCase(),
+                ExpatlioDesign.avatarInitial(displayName),
                 style: ExpatlioDesign.textStyle(
                   context,
-                  color: ExpatlioDesign.muted,
+                  color: ExpatlioDesign.avatarFallbackText,
                   size: 14.0,
                   weight: FontWeight.w600,
                 ),

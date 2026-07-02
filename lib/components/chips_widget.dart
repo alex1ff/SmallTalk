@@ -75,11 +75,7 @@ class _ChipsWidgetState extends State<ChipsWidget> {
               ? ExpatlioDesign.primary.withValues(alpha: 0.10)
               : ExpatlioDesign.card,
           borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
-          border: Border.all(
-            color: widget.selected
-                ? ExpatlioDesign.primary
-                : ExpatlioDesign.border,
-          ),
+          border: Border.all(color: ExpatlioDesign.border),
         ),
         child: Padding(
           padding: EdgeInsetsDirectional.fromSTEB(
@@ -100,12 +96,7 @@ class _ChipsWidgetState extends State<ChipsWidget> {
                       : ExpatlioDesign.mutedSurface,
                   borderRadius:
                       BorderRadius.circular(ExpatlioDesign.radiusLarge),
-                  border: Border.all(
-                    color: widget.selected
-                        ? ExpatlioDesign.primary
-                        : ExpatlioDesign.border,
-                    width: 1.0,
-                  ),
+                  border: Border.all(color: ExpatlioDesign.border, width: 1.0),
                 ),
                 child: Align(
                   alignment: AlignmentDirectional(0.0, 0.0),

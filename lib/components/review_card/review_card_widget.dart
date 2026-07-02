@@ -230,25 +230,16 @@ class _ReviewAuthorAvatar extends StatelessWidget {
   final String displayName;
   final double size;
 
-  String _initial() {
-    final normalizedName = displayName.trim();
-    if (normalizedName.isEmpty) {
-      return '?';
-    }
-
-    return normalizedName.characters.first.toUpperCase();
-  }
-
   Widget _fallback(BuildContext context) {
     return Container(
-      color: ExpatlioDesign.primary.withValues(alpha: 0.10),
+      color: ExpatlioDesign.avatarFallbackBackground,
       alignment: Alignment.center,
       child: Text(
-        _initial(),
+        ExpatlioDesign.avatarInitial(displayName),
         maxLines: 1,
         style: ExpatlioDesign.textStyle(
           context,
-          color: ExpatlioDesign.primary,
+          color: ExpatlioDesign.avatarFallbackText,
           size: 16.0,
           weight: FontWeight.w700,
         ),

@@ -572,7 +572,7 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
             style: OutlinedButton.styleFrom(
               minimumSize: const Size.fromHeight(56.0),
               side: const BorderSide(
-                color: Color(0xFFFF3B30),
+                color: ExpatlioDesign.border,
               ),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),

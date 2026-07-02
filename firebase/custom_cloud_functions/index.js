@@ -106,6 +106,11 @@ exports.reportEvent = reportEvent.reportEvent;
 const reportEventChatMessage = require("./report_event_chat_message.js");
 exports.reportEventChatMessage =
   reportEventChatMessage.reportEventChatMessage;
+const getEventHistory = require("./get_event_history.js");
+exports.getEventHistory = getEventHistory.getEventHistory;
+const openEventOrganizerChat = require("./open_event_organizer_chat.js");
+exports.openEventOrganizerChat =
+  openEventOrganizerChat.openEventOrganizerChat;
 const requestWithdrawal = require("./request_withdrawal.js");
 exports.requestWithdrawal = requestWithdrawal.requestWithdrawal;
 const cleanupExpiredGifts = require("./cleanup_expired_gifts.js");

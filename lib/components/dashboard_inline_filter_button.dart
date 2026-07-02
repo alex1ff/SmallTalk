@@ -24,7 +24,6 @@ class DashboardInlineFilterButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final clearVisible = selected && onClear != null && !menuOpen;
-    final active = selected || menuOpen;
     final hasTitle = title.trim().isNotEmpty;
     final hasLabel = label.trim().isNotEmpty;
 
@@ -44,11 +43,7 @@ class DashboardInlineFilterButton extends StatelessWidget {
           decoration: BoxDecoration(
             color: ExpatlioDesign.card,
             borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
-            border: Border.all(
-              color: active
-                  ? ExpatlioDesign.primary.withValues(alpha: 0.22)
-                  : ExpatlioDesign.border,
-            ),
+            border: Border.all(color: ExpatlioDesign.border),
           ),
           child: Row(
             children: [

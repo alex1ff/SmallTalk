@@ -883,7 +883,7 @@ class _WoedWidgetState extends State<WoedWidget> {
                                 color: FlutterFlowTheme.of(context)
                                     .primaryBackground,
                                 border: Border.all(
-                                  color: Colors.white,
+                                  color: ExpatlioDesign.border,
                                   width: 0.5,
                                 ),
                               ),

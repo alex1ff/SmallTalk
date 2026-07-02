@@ -90,6 +90,7 @@ const REQUIRED_FUNCTIONS = [
   {id: "getEventChatAccessState", trigger: "callable"},
   {id: "reportEvent", trigger: "callable"},
   {id: "reportEventChatMessage", trigger: "callable"},
+  {id: "getEventHistory", trigger: "callable"},
   {id: "getCallHistory", trigger: "callable"},
   {id: "requestWithdrawal", trigger: "callable"},
   {id: "syncUserPublicProfile", trigger: "firestore"},

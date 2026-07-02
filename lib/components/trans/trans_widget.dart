@@ -306,7 +306,7 @@ class _TransWidgetState extends State<TransWidget> {
         color: ExpatlioDesign.card,
         borderRadius: BorderRadius.circular(ExpatlioDesign.cardRadius),
         border: Border.all(
-          color: ExpatlioDesign.background,
+          color: ExpatlioDesign.border,
         ),
       ),
       child: Padding(

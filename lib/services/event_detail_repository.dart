@@ -8,6 +8,10 @@ typedef EventDetailSnapshotStream = Stream<DocumentSnapshot> Function(
 typedef EventParticipantSnapshotStream = Stream<DocumentSnapshot> Function(
   DocumentReference participantRef,
 );
+typedef EventActiveParticipantsStream = Stream<List<EventParticipantsRecord>>
+    Function(
+  DocumentReference eventRef,
+);
 
 class EventDetailRepository {
   const EventDetailRepository._();
@@ -59,6 +63,16 @@ class EventDetailRepository {
       return EventParticipantsRecord.fromSnapshot(snapshot);
     });
   }
+
+  static Stream<List<EventParticipantsRecord>> watchActiveParticipants({
+    required String eventId,
+    EventActiveParticipantsStream? participantsStream,
+  }) {
+    final eventRef = eventReferenceForId(eventId);
+    final loader = participantsStream ?? _watchActiveParticipantRecords;
+
+    return loader(eventRef).map(_normalizedActiveParticipants);
+  }
 }
 
 String normalizeEventDetailId(String eventId) {
@@ -109,3 +123,43 @@ Stream<DocumentSnapshot> _watchParticipantSnapshot(
   DocumentReference participantRef,
 ) =>
     participantRef.snapshots();
+
+Stream<List<EventParticipantsRecord>> _watchActiveParticipantRecords(
+  DocumentReference eventRef,
+) =>
+    queryEventParticipantsRecord(
+      parent: eventRef,
+      queryBuilder: (participantsQuery) => participantsQuery
+          .where('status', isEqualTo: 'active')
+          .orderBy('joinedAt'),
+    );
+
+List<EventParticipantsRecord> _normalizedActiveParticipants(
+  List<EventParticipantsRecord> participants,
+) {
+  final activeParticipants = participants
+      .where((participant) => participant.status.trim() == 'active')
+      .toList(growable: false)
+    ..sort(_compareActiveParticipants);
+  return List.unmodifiable(activeParticipants);
+}
+
+int _compareActiveParticipants(
+  EventParticipantsRecord left,
+  EventParticipantsRecord right,
+) {
+  final leftJoinedAt = left.joinedAt;
+  final rightJoinedAt = right.joinedAt;
+  if (leftJoinedAt != null && rightJoinedAt != null) {
+    final joinedAtComparison = leftJoinedAt.compareTo(rightJoinedAt);
+    if (joinedAtComparison != 0) {
+      return joinedAtComparison;
+    }
+  } else if (leftJoinedAt != null) {
+    return -1;
+  } else if (rightJoinedAt != null) {
+    return 1;
+  }
+
+  return left.reference.id.compareTo(right.reference.id);
+}

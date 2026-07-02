@@ -267,6 +267,8 @@ test(
   assert.match(source, /requestId is required for search matching/);
   assert.doesNotMatch(source, /native_language_NS\.code/);
   assert.match(source, /loadSameDayRepeatCandidateIds\(\s*db,\s*requesterId,/);
+  assert.match(source, /requesterEmail:\s*requesterData\.email/);
+  assert.match(source, /userEmailsById:\s*candidateEmailsById/);
   assert.match(source, /const sessionPolicyFields = buildCreateSessionPolicyFields\(\);/);
   assert.match(source, /await deleteDailyRoom\(precreatedRoomName\)/);
   },

@@ -181,7 +181,7 @@ class _WordCardWidgetState extends State<WordCardWidget> {
                           borderRadius:
                               BorderRadius.circular(ExpatlioDesign.radiusSmall),
                           border: Border.all(
-                            color: ExpatlioDesign.muted,
+                            color: ExpatlioDesign.border,
                             width: 1.0,
                           ),
                         ),

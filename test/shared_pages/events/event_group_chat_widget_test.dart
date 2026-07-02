@@ -120,7 +120,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(eventGroupChatMessagesEmptyKey), findsOneWidget);
-    expect(find.byKey(eventGroupChatCanceledReadOnlyBannerKey), findsNothing);
     expect(find.text('Сообщений пока нет'), findsOneWidget);
   });
 
@@ -176,8 +175,9 @@ void main() {
     expect(messageStreamCalls, 0);
   });
 
-  testWidgets('blocks chat content when trusted access state is denied',
+  testWidgets('shows composer without trusted access state confirmation',
       (tester) async {
+    var accessCalls = 0;
     var messageStreamCalls = 0;
 
     await tester.pumpWidget(
@@ -186,6 +186,7 @@ void main() {
           eventId: 'event-123',
           chatStream: _allowedChatStream(),
           accessStateInvoker: (_, __) async {
+            accessCalls += 1;
             throw StateError('permission-denied');
           },
           messagesStream: (_) {
@@ -197,30 +198,23 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(eventGroupChatAccessDeniedKey), findsOneWidget);
-    expect(find.byKey(eventGroupChatMessageInputKey), findsNothing);
-    expect(messageStreamCalls, 0);
+    expect(find.byKey(eventGroupChatMessagesEmptyKey), findsOneWidget);
+    expect(find.byKey(eventGroupChatMessageInputKey), findsOneWidget);
+    expect(find.byKey(eventGroupChatSendButtonKey), findsOneWidget);
+    expect(accessCalls, 0);
+    expect(messageStreamCalls, 1);
   });
 
-  testWidgets('retries trusted access state after a rebuild', (tester) async {
+  testWidgets('does not call trusted access state after rebuild',
+      (tester) async {
     var accessCalls = 0;
-    var messageStreamCalls = 0;
     final chatStream = _allowedChatStream();
     Future<Object?> accessStateInvoker(
       String functionName,
       Map<String, dynamic> payload,
     ) async {
       accessCalls += 1;
-      if (accessCalls == 1) {
-        throw StateError('temporary network error');
-      }
-      expect(functionName, getEventChatAccessStateFunctionName);
-      expect(payload, <String, dynamic>{'eventId': 'event-123'});
-      return <String, dynamic>{
-        'eventId': 'event-123',
-        'status': 'active',
-        'readOnly': false,
-      };
+      throw StateError('access callable should not be used');
     }
 
     Widget buildSubject() => _buildTestApp(
@@ -228,26 +222,23 @@ void main() {
             eventId: 'event-123',
             chatStream: chatStream,
             accessStateInvoker: accessStateInvoker,
-            messagesStream: (_) {
-              messageStreamCalls += 1;
-              return Stream.value(const <EventChatMessagesRecord>[]);
-            },
+            messagesStream: (_) =>
+                Stream.value(const <EventChatMessagesRecord>[]),
           ),
         );
 
     await tester.pumpWidget(buildSubject());
     await tester.pumpAndSettle();
 
-    expect(find.byKey(eventGroupChatAccessDeniedKey), findsOneWidget);
-    expect(messageStreamCalls, 0);
+    expect(find.byKey(eventGroupChatMessagesEmptyKey), findsOneWidget);
+    expect(find.byKey(eventGroupChatMessageInputKey), findsOneWidget);
 
     await tester.pumpWidget(buildSubject());
     await tester.pumpAndSettle();
 
-    expect(accessCalls, 2);
+    expect(accessCalls, 0);
     expect(find.byKey(eventGroupChatMessagesEmptyKey), findsOneWidget);
     expect(find.byKey(eventGroupChatMessageInputKey), findsOneWidget);
-    expect(messageStreamCalls, 1);
   });
 
   testWidgets('does not reuse allowed access after event changes',
@@ -378,15 +369,15 @@ void main() {
     expect(find.text('Same timestamp B'), findsOneWidget);
   });
 
-  testWidgets('shows canceled event chat as read-only for eligible readers',
+  testWidgets('keeps composer available when access state would be read-only',
       (tester) async {
-    final semantics = tester.ensureSemantics();
     final chatRef = EventChatsRecord.collection.doc('event-123');
     final message = _messageFixture(
       chatRef: chatRef,
       messageId: 'message-1',
       text: 'До встречи!',
     );
+    var accessCalls = 0;
     var sendCalls = 0;
 
     await tester.pumpWidget(
@@ -394,10 +385,14 @@ void main() {
         home: EventGroupChatWidget(
           eventId: 'event-123',
           chatStream: _allowedChatStream(),
-          accessStateInvoker: _accessStateInvoker(
-            status: 'canceled',
-            readOnly: true,
-          ),
+          accessStateInvoker: (_, __) async {
+            accessCalls += 1;
+            return <String, dynamic>{
+              'eventId': 'event-123',
+              'status': 'canceled',
+              'readOnly': true,
+            };
+          },
           messagesStream: (_) => Stream.value(<EventChatMessagesRecord>[
             message,
           ]),
@@ -414,40 +409,21 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('До встречи!'), findsOneWidget);
-    expect(find.byKey(eventGroupChatCanceledReadOnlyBannerKey), findsOneWidget);
-    expect(
-      find.descendant(
-        of: find.byKey(eventGroupChatCanceledReadOnlyBannerKey),
-        matching: find.text('Событие отменено'),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(
-        of: find.byKey(eventGroupChatCanceledReadOnlyBannerKey),
-        matching: find.text('Чат доступен только для чтения.'),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      tester
-          .getSemantics(find.byKey(eventGroupChatCanceledReadOnlyBannerKey))
-          .label,
-      'Событие отменено. Чат доступен только для чтения.',
-    );
-    expect(find.byKey(eventGroupChatMessageInputKey), findsNothing);
-    expect(find.byKey(eventGroupChatSendButtonKey), findsNothing);
-    expect(sendCalls, 0);
-    semantics.dispose();
+    expect(find.byKey(eventGroupChatMessageInputKey), findsOneWidget);
+    expect(find.byKey(eventGroupChatSendButtonKey), findsOneWidget);
+    expect(accessCalls, 0);
+
+    await tester.enterText(find.byKey(eventGroupChatMessageInputKey), 'Привет');
+    await tester.tap(find.byKey(eventGroupChatSendButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(sendCalls, 1);
   });
 
-  testWidgets('does not use stale writable state while cancel state loads',
+  testWidgets('keeps composer visible when chat metadata updates',
       (tester) async {
     final chatController = StreamController<EventChatsRecord?>();
-    final activeAccess = Completer<Object?>();
-    final canceledAccess = Completer<Object?>();
     var accessCalls = 0;
-    var sendCalls = 0;
     addTearDown(chatController.close);
 
     await tester.pumpWidget(
@@ -455,24 +431,12 @@ void main() {
         home: EventGroupChatWidget(
           eventId: 'event-123',
           chatStream: (chatRef) => chatController.stream,
-          accessStateInvoker: (functionName, payload) async {
+          accessStateInvoker: (_, __) async {
             accessCalls += 1;
-            expect(functionName, getEventChatAccessStateFunctionName);
-            expect(payload, <String, dynamic>{'eventId': 'event-123'});
-            if (accessCalls == 1) {
-              return activeAccess.future;
-            }
-            return canceledAccess.future;
+            throw StateError('access callable should not be used');
           },
           messagesStream: (_) =>
               Stream.value(const <EventChatMessagesRecord>[]),
-          sendMessageInvoker: (_, __) async {
-            sendCalls += 1;
-            return <String, dynamic>{
-              'messageId': 'message-1',
-              'createdAt': '2026-06-14T12:00:00.000Z',
-            };
-          },
         ),
       ),
     );
@@ -484,14 +448,10 @@ void main() {
       ),
     );
     await tester.pump();
-    activeAccess.complete(<String, dynamic>{
-      'eventId': 'event-123',
-      'status': 'active',
-      'readOnly': false,
-    });
     await tester.pumpAndSettle();
 
     expect(find.byKey(eventGroupChatMessageInputKey), findsOneWidget);
+    expect(find.byKey(eventGroupChatSendButtonKey), findsOneWidget);
 
     chatController.add(
       _chatFixture(
@@ -500,33 +460,15 @@ void main() {
         updatedAt: DateTime.parse('2026-06-14T10:01:00Z'),
       ),
     );
-    for (var attempt = 0; attempt < 5 && accessCalls < 2; attempt += 1) {
-      await tester.pump();
-    }
-
-    expect(accessCalls, 2);
-    expect(find.byKey(eventGroupChatAccessLoadingKey), findsOneWidget);
-    expect(find.byKey(eventGroupChatCanceledReadOnlyBannerKey), findsNothing);
-    expect(find.byKey(eventGroupChatMessageInputKey), findsNothing);
-
-    canceledAccess.complete(<String, dynamic>{
-      'eventId': 'event-123',
-      'status': 'canceled',
-      'readOnly': true,
-    });
     await tester.pumpAndSettle();
 
-    expect(find.byKey(eventGroupChatCanceledReadOnlyBannerKey), findsOneWidget);
-    expect(find.byKey(eventGroupChatMessageInputKey), findsNothing);
-    expect(find.byKey(eventGroupChatSendButtonKey), findsNothing);
-    expect(sendCalls, 0);
+    expect(accessCalls, 0);
+    expect(find.byKey(eventGroupChatMessageInputKey), findsOneWidget);
+    expect(find.byKey(eventGroupChatSendButtonKey), findsOneWidget);
   });
 
-  testWidgets('ignores stale writable access result after cancel metadata',
-      (tester) async {
+  testWidgets('ignores access invoker while rendering chat', (tester) async {
     final chatController = StreamController<EventChatsRecord?>();
-    final activeAccess = Completer<Object?>();
-    final canceledAccess = Completer<Object?>();
     var accessCalls = 0;
     addTearDown(chatController.close);
 
@@ -535,14 +477,9 @@ void main() {
         home: EventGroupChatWidget(
           eventId: 'event-123',
           chatStream: (_) => chatController.stream,
-          accessStateInvoker: (functionName, payload) async {
+          accessStateInvoker: (_, __) async {
             accessCalls += 1;
-            expect(functionName, getEventChatAccessStateFunctionName);
-            expect(payload, <String, dynamic>{'eventId': 'event-123'});
-            if (accessCalls == 1) {
-              return activeAccess.future;
-            }
-            return canceledAccess.future;
+            throw StateError('access callable should not be used');
           },
           messagesStream: (_) =>
               Stream.value(const <EventChatMessagesRecord>[]),
@@ -556,12 +493,11 @@ void main() {
         eventId: 'event-123',
       ),
     );
-    for (var attempt = 0; attempt < 5 && accessCalls < 1; attempt += 1) {
-      await tester.pump();
-    }
+    await tester.pumpAndSettle();
 
-    expect(accessCalls, 1);
-    expect(find.byKey(eventGroupChatAccessLoadingKey), findsOneWidget);
+    expect(accessCalls, 0);
+    expect(find.byKey(eventGroupChatMessageInputKey), findsOneWidget);
+    expect(find.byKey(eventGroupChatSendButtonKey), findsOneWidget);
 
     chatController.add(
       _chatFixture(
@@ -570,31 +506,11 @@ void main() {
         updatedAt: DateTime.parse('2026-06-14T10:01:00Z'),
       ),
     );
-    for (var attempt = 0; attempt < 5 && accessCalls < 2; attempt += 1) {
-      await tester.pump();
-    }
-
-    expect(accessCalls, 2);
-    activeAccess.complete(<String, dynamic>{
-      'eventId': 'event-123',
-      'status': 'active',
-      'readOnly': false,
-    });
-    await tester.pump();
-
-    expect(find.byKey(eventGroupChatAccessLoadingKey), findsOneWidget);
-    expect(find.byKey(eventGroupChatMessageInputKey), findsNothing);
-
-    canceledAccess.complete(<String, dynamic>{
-      'eventId': 'event-123',
-      'status': 'canceled',
-      'readOnly': true,
-    });
     await tester.pumpAndSettle();
 
-    expect(find.byKey(eventGroupChatCanceledReadOnlyBannerKey), findsOneWidget);
-    expect(find.byKey(eventGroupChatMessageInputKey), findsNothing);
-    expect(find.byKey(eventGroupChatSendButtonKey), findsNothing);
+    expect(accessCalls, 0);
+    expect(find.byKey(eventGroupChatMessageInputKey), findsOneWidget);
+    expect(find.byKey(eventGroupChatSendButtonKey), findsOneWidget);
   });
 
   testWidgets('shows sender name and avatar fallback for event chat messages',
@@ -1062,6 +978,125 @@ void main() {
     expect(input.controller?.text, isEmpty);
   });
 
+  testWidgets('keeps composer active while send is pending', (tester) async {
+    currentUser = _TestAuthUser('uid-1', displayName: 'Марко');
+    final sendCompleter = Completer<Object?>();
+    addTearDown(() {
+      if (!sendCompleter.isCompleted) {
+        sendCompleter.complete(<String, dynamic>{
+          'messageId': 'message-1',
+          'createdAt': '2026-06-14T12:00:00.000Z',
+        });
+      }
+    });
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-123',
+          chatStream: _allowedChatStream(),
+          accessStateInvoker: _accessStateInvoker(),
+          messagesStream: (_) =>
+              Stream.value(const <EventChatMessagesRecord>[]),
+          sendMessageInvoker: (_, __) => sendCompleter.future,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(eventGroupChatMessageInputKey), 'Привет');
+    await tester.tap(find.byKey(eventGroupChatSendButtonKey));
+    await tester.pump();
+
+    expect(find.byKey(eventGroupChatMessagesEmptyKey), findsNothing);
+    expect(find.text('Привет'), findsOneWidget);
+    expect(find.text('Марко'), findsOneWidget);
+    expect(find.byIcon(Icons.flag_outlined), findsNothing);
+
+    final input = tester.widget<TextFormField>(
+      find.byKey(eventGroupChatMessageInputKey),
+    );
+    expect(input.controller?.text, isEmpty);
+    expect(find.byIcon(Icons.send_rounded), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(eventGroupChatMessageInputKey),
+      'Следующее',
+    );
+    final activeInput = tester.widget<TextFormField>(
+      find.byKey(eventGroupChatMessageInputKey),
+    );
+    expect(activeInput.enabled, isTrue);
+    expect(activeInput.controller?.text, 'Следующее');
+
+    sendCompleter.complete(<String, dynamic>{
+      'messageId': 'message-1',
+      'createdAt': '2026-06-14T12:00:00.000Z',
+    });
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('replaces optimistic event chat message with firestore message',
+      (tester) async {
+    currentUser = _TestAuthUser('uid-1', displayName: 'Марко');
+    final messagesController =
+        StreamController<List<EventChatMessagesRecord>>();
+    final sendCompleter = Completer<Object?>();
+    addTearDown(messagesController.close);
+    addTearDown(() {
+      if (!sendCompleter.isCompleted) {
+        sendCompleter.complete(<String, dynamic>{
+          'messageId': 'message-1',
+          'createdAt': '2026-06-14T12:00:00.000Z',
+        });
+      }
+    });
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-123',
+          chatStream: _allowedChatStream(),
+          accessStateInvoker: _accessStateInvoker(),
+          messagesStream: (_) => messagesController.stream,
+          sendMessageInvoker: (_, __) => sendCompleter.future,
+        ),
+      ),
+    );
+
+    messagesController.add(const <EventChatMessagesRecord>[]);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(eventGroupChatMessageInputKey), 'Привет');
+    await tester.tap(find.byKey(eventGroupChatSendButtonKey));
+    await tester.pump();
+
+    expect(find.text('Привет'), findsOneWidget);
+
+    sendCompleter.complete(<String, dynamic>{
+      'messageId': 'message-1',
+      'createdAt': '2026-06-14T12:00:00.000Z',
+    });
+    await tester.pump();
+
+    expect(find.text('Привет'), findsOneWidget);
+
+    messagesController.add(<EventChatMessagesRecord>[
+      _messageFixture(
+        chatRef: EventChatsRecord.collection.doc('event-123'),
+        messageId: 'message-1',
+        senderId: 'uid-1',
+        senderDisplayName: 'Марко',
+        text: 'Привет',
+      ),
+    ]);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventGroupChatMessageBubbleKey('message-1')),
+        findsOneWidget);
+    expect(find.text('Привет'), findsOneWidget);
+  });
+
   testWidgets('does not call send callable for blank event chat messages',
       (tester) async {
     var sendCalls = 0;
@@ -1118,6 +1153,10 @@ void main() {
     expect(find.byKey(eventGroupChatSendErrorSnackBarKey), findsOneWidget);
     expect(find.text('Не удалось выполнить действие. Попробуйте снова.'),
         findsOneWidget);
+    final input = tester.widget<TextFormField>(
+      find.byKey(eventGroupChatMessageInputKey),
+    );
+    expect(input.controller?.text, 'Привет');
   });
 
   testWidgets('shows error state when event chat messages fail to load',
@@ -1142,9 +1181,16 @@ void main() {
 }
 
 class _TestAuthUser extends BaseAuthUser {
-  _TestAuthUser(this._uid);
+  _TestAuthUser(
+    this._uid, {
+    String? displayName,
+    String? photoUrl,
+  })  : _displayName = displayName,
+        _photoUrl = photoUrl;
 
   final String _uid;
+  final String? _displayName;
+  final String? _photoUrl;
 
   @override
   bool get loggedIn => true;
@@ -1153,7 +1199,11 @@ class _TestAuthUser extends BaseAuthUser {
   bool get emailVerified => true;
 
   @override
-  AuthUserInfo get authUserInfo => AuthUserInfo(uid: _uid);
+  AuthUserInfo get authUserInfo => AuthUserInfo(
+        uid: _uid,
+        displayName: _displayName,
+        photoUrl: _photoUrl,
+      );
 
   @override
   Future<void> delete() async {}

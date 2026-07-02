@@ -188,43 +188,35 @@ class _NewWordWidgetState extends State<NewWordWidget> {
       return const SizedBox.shrink();
     }
 
-    final labelStyle = FlutterFlowTheme.of(context).bodyMedium.override(
-          fontFamily: 'sf pro display',
-          color: ExpatlioDesign.muted,
-          fontSize: 13.0,
-          letterSpacing: 0.0,
-          fontWeight: FontWeight.w600,
-        );
-    final valueStyle = FlutterFlowTheme.of(context).bodyMedium.override(
-          fontFamily: 'sf pro display',
-          fontSize: 16.0,
-          letterSpacing: 0.0,
-          fontWeight: FontWeight.w500,
-        );
+    final labelStyle = ExpatlioDesign.textStyle(
+      context,
+      color: ExpatlioDesign.muted,
+      size: 13.0,
+      weight: FontWeight.w600,
+    );
+    final valueStyle = ExpatlioDesign.textStyle(
+      context,
+      size: 16.0,
+      weight: FontWeight.w500,
+      height: 1.3,
+    );
 
     return Container(
       width: double.infinity,
-      decoration: BoxDecoration(
-        color: ExpatlioDesign.card,
-        borderRadius: BorderRadius.circular(ExpatlioDesign.cardRadius),
-        border: Border.all(
-          color: FlutterFlowTheme.of(context).alternate,
-          width: 0.8,
-        ),
+      decoration: ExpatlioDesign.cardDecoration(
+        radius: ExpatlioDesign.radiusLarge,
       ),
-      padding: const EdgeInsets.symmetric(
-          horizontal: ExpatlioDesign.space16, vertical: ExpatlioDesign.space12),
+      padding: const EdgeInsets.all(ExpatlioDesign.space16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             'Контекст',
-            style: FlutterFlowTheme.of(context).bodyMedium.override(
-                  fontFamily: 'sf pro display',
-                  fontSize: 15.0,
-                  letterSpacing: 0.0,
-                  fontWeight: FontWeight.w700,
-                ),
+            style: ExpatlioDesign.textStyle(
+              context,
+              size: 17.0,
+              weight: FontWeight.w700,
+            ),
           ),
           if (phraseContext != null) ...[
             const SizedBox(height: ExpatlioDesign.space12),
@@ -236,10 +228,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
             const SizedBox(height: ExpatlioDesign.space12),
             Text('Предложение', style: labelStyle),
             const SizedBox(height: ExpatlioDesign.space4),
-            Text(
-              sentenceContext,
-              style: valueStyle.copyWith(height: 1.3),
-            ),
+            Text(sentenceContext, style: valueStyle),
           ],
         ],
       ),
@@ -333,10 +322,9 @@ class _NewWordWidgetState extends State<NewWordWidget> {
     );
     final imageUrl = language?.ss ?? '';
 
-    return Container(
+    return SizedBox(
       width: 50.0,
       height: 50.0,
-      decoration: BoxDecoration(),
       child: Align(
         alignment: AlignmentDirectional(0.0, 0.0),
         child: imageUrl.isNotEmpty
@@ -368,6 +356,142 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                       fontWeight: FontWeight.normal,
                     ),
               ),
+      ),
+    );
+  }
+
+  String _partOfSpeechLabel(String pos) {
+    switch (pos) {
+      case 'noun':
+        return 'сущ';
+      case 'abjective':
+        return 'прил';
+      case 'participle':
+        return 'прич';
+      case 'verb':
+        return 'гл';
+      default:
+        return ' ';
+    }
+  }
+
+  Widget _buildSummaryRow(
+    BuildContext context, {
+    required String? languageCode,
+    required String fallbackLabel,
+    required Widget child,
+  }) {
+    return Row(
+      children: [
+        Padding(
+          padding: const EdgeInsetsDirectional.fromSTEB(
+            ExpatlioDesign.space8,
+            ExpatlioDesign.space0,
+            ExpatlioDesign.space0,
+            ExpatlioDesign.space0,
+          ),
+          child: _buildLanguageFlag(
+            languageCode,
+            fallbackLabel: fallbackLabel,
+          ),
+        ),
+        Expanded(child: child),
+      ],
+    );
+  }
+
+  Widget _buildSummaryCard(
+    BuildContext context, {
+    required String translationLanguageCode,
+  }) {
+    final sourceText = valueOrDefault<String>(widget.word, '-');
+    final translationText = _primaryTranslationText();
+    final rowTextStyle = ExpatlioDesign.textStyle(
+      context,
+      size: 17.0,
+      weight: FontWeight.w600,
+      height: 1.2,
+    );
+
+    return Padding(
+      padding: const EdgeInsetsDirectional.fromSTEB(
+        ExpatlioDesign.pagePadding,
+        ExpatlioDesign.space0,
+        ExpatlioDesign.pagePadding,
+        ExpatlioDesign.space0,
+      ),
+      child: Container(
+        decoration: ExpatlioDesign.cardDecoration(
+          radius: ExpatlioDesign.radiusLarge,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildSummaryRow(
+              context,
+              languageCode: widget.langCode,
+              fallbackLabel: '🌐',
+              child: Text(
+                sourceText,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: rowTextStyle,
+              ),
+            ),
+            const Divider(
+              height: 1.0,
+              thickness: 1.0,
+              indent: 56.0,
+              endIndent: ExpatlioDesign.space16,
+              color: ExpatlioDesign.separator,
+            ),
+            _buildSummaryRow(
+              context,
+              languageCode: translationLanguageCode,
+              fallbackLabel: '🌐',
+              child: _lookupLoaded
+                  ? Text(
+                      translationText.isNotEmpty ? translationText : sourceText,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: rowTextStyle,
+                    )
+                  : Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: Lottie.asset(
+                        'assets/jsons/Material_Wave_Loading_Animation.json',
+                        width: 44.67,
+                        height: 20.2,
+                        fit: BoxFit.cover,
+                        animate: true,
+                      ),
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFloatingActionButton({
+    required Widget child,
+    required VoidCallback onTap,
+  }) {
+    return Container(
+      width: 56.0,
+      height: 56.0,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
+        boxShadow: ExpatlioDesign.cardShadow,
+      ),
+      child: Material(
+        color: ExpatlioDesign.card,
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
+          onTap: onTap,
+          child: Center(child: child),
+        ),
       ),
     );
   }
@@ -408,12 +532,12 @@ class _NewWordWidgetState extends State<NewWordWidget> {
         }
       },
       child: AnimatedContainer(
-        duration: Duration(milliseconds: 200),
-        curve: Curves.elasticOut,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
         width: double.infinity,
         height: _model.size,
         decoration: ExpatlioDesign.sheetDecoration(
-          color: FlutterFlowTheme.of(context).primaryBackground,
+          color: ExpatlioDesign.background,
         ),
         child: Padding(
           padding: EdgeInsetsDirectional.fromSTEB(
@@ -451,23 +575,8 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                   Radius.circular(ExpatlioDesign.radiusNone),
                             ),
                             child: Container(
-                              decoration: BoxDecoration(
-                                color: FlutterFlowTheme.of(context)
-                                    .primaryBackground,
-                                borderRadius: BorderRadius.only(
-                                  bottomLeft: Radius.circular(
-                                      ExpatlioDesign.radiusNone),
-                                  bottomRight: Radius.circular(
-                                      ExpatlioDesign.radiusNone),
-                                  topLeft: Radius.circular(
-                                      ExpatlioDesign.radiusNone),
-                                  topRight: Radius.circular(
-                                      ExpatlioDesign.radiusNone),
-                                ),
-                                border: Border.all(
-                                  color: Colors.white,
-                                  width: 0.5,
-                                ),
+                              decoration: const BoxDecoration(
+                                color: ExpatlioDesign.background,
                               ),
                               child: LayoutBuilder(
                                 builder: (context, constraints) {
@@ -479,146 +588,10 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                       child: Column(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          Padding(
-                                            padding:
-                                                EdgeInsetsDirectional.fromSTEB(
-                                                    ExpatlioDesign.space8,
-                                                    ExpatlioDesign.space0,
-                                                    ExpatlioDesign.space8,
-                                                    ExpatlioDesign.space0),
-                                            child: Container(
-                                              decoration: BoxDecoration(
-                                                color:
-                                                    FlutterFlowTheme.of(context)
-                                                        .primaryBackground,
-                                                borderRadius:
-                                                    BorderRadius.circular(
-                                                        ExpatlioDesign
-                                                            .radiusExtraLarge),
-                                              ),
-                                              child: Column(
-                                                mainAxisSize: MainAxisSize.max,
-                                                children: [
-                                                  Row(
-                                                    mainAxisSize:
-                                                        MainAxisSize.max,
-                                                    children: [
-                                                      Padding(
-                                                        padding:
-                                                            EdgeInsetsDirectional
-                                                                .fromSTEB(
-                                                                    6.0,
-                                                                    0.0,
-                                                                    0.0,
-                                                                    0.0),
-                                                        child:
-                                                            _buildLanguageFlag(
-                                                          widget.langCode,
-                                                          fallbackLabel: '🌐',
-                                                        ),
-                                                      ),
-                                                      Text(
-                                                        '${valueOrDefault<String>(
-                                                          widget.word,
-                                                          '-',
-                                                        )} ',
-                                                        style: FlutterFlowTheme
-                                                                .of(context)
-                                                            .bodyMedium
-                                                            .override(
-                                                              fontFamily:
-                                                                  'sf pro display',
-                                                              fontSize: 17.0,
-                                                              letterSpacing:
-                                                                  0.0,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w600,
-                                                            ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  Divider(
-                                                    height: 1.0,
-                                                    thickness: 1.0,
-                                                    indent: 56.0,
-                                                    endIndent: 16.0,
-                                                    color: FlutterFlowTheme.of(
-                                                            context)
-                                                        .alternate,
-                                                  ),
-                                                  Row(
-                                                    mainAxisSize:
-                                                        MainAxisSize.max,
-                                                    children: [
-                                                      Padding(
-                                                        padding:
-                                                            EdgeInsetsDirectional
-                                                                .fromSTEB(
-                                                                    6.0,
-                                                                    0.0,
-                                                                    0.0,
-                                                                    0.0),
-                                                        child:
-                                                            _buildLanguageFlag(
-                                                          translationLanguageCode,
-                                                          fallbackLabel: '🌐',
-                                                        ),
-                                                      ),
-                                                      Builder(
-                                                        builder: (context) {
-                                                          if (_lookupLoaded) {
-                                                            final translationText =
-                                                                _primaryTranslationText();
-                                                            return Text(
-                                                              translationText
-                                                                      .isNotEmpty
-                                                                  ? translationText
-                                                                  : (widget
-                                                                          .word ??
-                                                                      ''),
-                                                              style: FlutterFlowTheme
-                                                                      .of(context)
-                                                                  .bodyMedium
-                                                                  .override(
-                                                                    fontFamily:
-                                                                        'sf pro display',
-                                                                    fontSize:
-                                                                        17.0,
-                                                                    letterSpacing:
-                                                                        0.0,
-                                                                    fontWeight:
-                                                                        FontWeight
-                                                                            .w600,
-                                                                  ),
-                                                            );
-                                                          } else {
-                                                            return Padding(
-                                                              padding:
-                                                                  EdgeInsetsDirectional
-                                                                      .fromSTEB(
-                                                                          0.0,
-                                                                          0.0,
-                                                                          0.0,
-                                                                          20.0),
-                                                              child:
-                                                                  Lottie.asset(
-                                                                'assets/jsons/Material_Wave_Loading_Animation.json',
-                                                                width: 44.67,
-                                                                height: 20.2,
-                                                                fit: BoxFit
-                                                                    .cover,
-                                                                animate: true,
-                                                              ),
-                                                            );
-                                                          }
-                                                        },
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
+                                          _buildSummaryCard(
+                                            context,
+                                            translationLanguageCode:
+                                                translationLanguageCode,
                                           ),
                                           if (_phraseContextText() != null ||
                                               _conversationSentenceText() !=
@@ -658,267 +631,251 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                             (_, __) => SizedBox(
                                                                 height:
                                                                     ExpatlioDesign
-                                                                        .space24),
+                                                                        .space12),
                                                         itemBuilder: (context,
                                                             wwwwIndex) {
                                                           final wwwwItem =
                                                               wwww[wwwwIndex];
-                                                          return Column(
-                                                            mainAxisSize:
-                                                                MainAxisSize
-                                                                    .max,
-                                                            crossAxisAlignment:
-                                                                CrossAxisAlignment
-                                                                    .start,
-                                                            children: [
-                                                              RichText(
-                                                                textScaler: MediaQuery.of(
-                                                                        context)
-                                                                    .textScaler,
-                                                                text: TextSpan(
-                                                                  children: [
-                                                                    TextSpan(
-                                                                      text: wwwwItem
-                                                                          .text,
-                                                                      style: FlutterFlowTheme.of(
-                                                                              context)
-                                                                          .bodyMedium
-                                                                          .override(
-                                                                            fontFamily:
-                                                                                'Cool',
-                                                                            fontSize:
-                                                                                22.0,
-                                                                            letterSpacing:
-                                                                                0.0,
-                                                                            fontWeight:
-                                                                                FontWeight.normal,
-                                                                          ),
-                                                                    ),
-                                                                    TextSpan(
-                                                                      text:
-                                                                          ' [${wwwwItem.ts}] ',
-                                                                      style:
-                                                                          TextStyle(
-                                                                        fontFamily:
-                                                                            'Cool',
-                                                                        color: FlutterFlowTheme.of(context)
-                                                                            .secondaryText,
-                                                                        fontWeight:
-                                                                            FontWeight.normal,
-                                                                        fontSize:
-                                                                            22.0,
-                                                                      ),
-                                                                    ),
-                                                                    TextSpan(
-                                                                      text: () {
-                                                                        if (wwwwItem.pos ==
-                                                                            'noun') {
-                                                                          return 'сущ';
-                                                                        } else if (wwwwItem.pos ==
-                                                                            'abjective') {
-                                                                          return 'прил';
-                                                                        } else if (wwwwItem.pos ==
-                                                                            'participle') {
-                                                                          return 'прич';
-                                                                        } else if (wwwwItem.pos ==
-                                                                            'verb') {
-                                                                          return 'гл';
-                                                                        } else {
-                                                                          return ' ';
-                                                                        }
-                                                                      }(),
-                                                                      style:
-                                                                          TextStyle(
-                                                                        fontFamily:
-                                                                            'Cool',
-                                                                        color: FlutterFlowTheme.of(context)
-                                                                            .secondaryText,
-                                                                        fontWeight:
-                                                                            FontWeight.normal,
-                                                                        fontSize:
-                                                                            22.0,
-                                                                        fontStyle:
-                                                                            FontStyle.italic,
-                                                                      ),
-                                                                    )
-                                                                  ],
-                                                                  style: FlutterFlowTheme.of(
+                                                          return Container(
+                                                            width:
+                                                                double.infinity,
+                                                            decoration:
+                                                                ExpatlioDesign
+                                                                    .cardDecoration(
+                                                              radius:
+                                                                  ExpatlioDesign
+                                                                      .radiusLarge,
+                                                            ),
+                                                            padding: EdgeInsets
+                                                                .all(ExpatlioDesign
+                                                                    .space16),
+                                                            child: Column(
+                                                              mainAxisSize:
+                                                                  MainAxisSize
+                                                                      .max,
+                                                              crossAxisAlignment:
+                                                                  CrossAxisAlignment
+                                                                      .start,
+                                                              children: [
+                                                                RichText(
+                                                                  textScaler: MediaQuery.of(
                                                                           context)
-                                                                      .bodyMedium
-                                                                      .override(
-                                                                        fontFamily:
-                                                                            'Cool',
-                                                                        color: Colors
-                                                                            .black,
-                                                                        fontSize:
-                                                                            22.0,
-                                                                        letterSpacing:
-                                                                            0.0,
-                                                                        fontWeight:
-                                                                            FontWeight.normal,
-                                                                      ),
-                                                                ),
-                                                              ),
-                                                              Builder(
-                                                                builder:
-                                                                    (context) {
-                                                                  final tr = wwwwItem
-                                                                      .tr
-                                                                      .toList()
-                                                                      .take(3)
-                                                                      .toList();
-
-                                                                  return ListView
-                                                                      .separated(
-                                                                    padding:
-                                                                        EdgeInsets
-                                                                            .zero,
-                                                                    primary:
-                                                                        false,
-                                                                    shrinkWrap:
-                                                                        true,
-                                                                    scrollDirection:
-                                                                        Axis.vertical,
-                                                                    itemCount: tr
-                                                                        .length,
-                                                                    separatorBuilder: (_,
-                                                                            __) =>
-                                                                        SizedBox(
-                                                                            height:
-                                                                                ExpatlioDesign.space8),
-                                                                    itemBuilder:
-                                                                        (context,
-                                                                            trIndex) {
-                                                                      final trItem =
-                                                                          tr[trIndex];
-                                                                      return Column(
-                                                                        mainAxisSize:
-                                                                            MainAxisSize.max,
-                                                                        crossAxisAlignment:
-                                                                            CrossAxisAlignment.start,
-                                                                        children: [
-                                                                          Padding(
-                                                                            padding: EdgeInsetsDirectional.fromSTEB(
-                                                                                ExpatlioDesign.space0,
-                                                                                ExpatlioDesign.space12,
-                                                                                ExpatlioDesign.space0,
-                                                                                ExpatlioDesign.space0),
-                                                                            child:
-                                                                                Builder(
-                                                                              builder: (context) {
-                                                                                final sssss = functions.syn(trItem.gen, trItem.text, trItem.syn.toList())?.toList() ?? [];
-
-                                                                                return Wrap(
-                                                                                  spacing: ExpatlioDesign.space4,
-                                                                                  runSpacing: ExpatlioDesign.space8,
-                                                                                  alignment: WrapAlignment.start,
-                                                                                  crossAxisAlignment: WrapCrossAlignment.start,
-                                                                                  direction: Axis.horizontal,
-                                                                                  runAlignment: WrapAlignment.start,
-                                                                                  verticalDirection: VerticalDirection.down,
-                                                                                  clipBehavior: Clip.none,
-                                                                                  children: List.generate(sssss.length, (sssssIndex) {
-                                                                                    final sssssItem = sssss[sssssIndex];
-                                                                                    return Container(
-                                                                                      height: 35.0,
-                                                                                      decoration: BoxDecoration(
-                                                                                        color: ExpatlioDesign.card,
-                                                                                        borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
-                                                                                      ),
-                                                                                      child: Padding(
-                                                                                        padding: EdgeInsetsDirectional.fromSTEB(ExpatlioDesign.space12, ExpatlioDesign.space0, ExpatlioDesign.space12, ExpatlioDesign.space0),
-                                                                                        child: Column(
-                                                                                          mainAxisSize: MainAxisSize.max,
-                                                                                          mainAxisAlignment: MainAxisAlignment.center,
-                                                                                          children: [
-                                                                                            RichText(
-                                                                                              textScaler: MediaQuery.of(context).textScaler,
-                                                                                              text: TextSpan(
-                                                                                                children: [
-                                                                                                  TextSpan(
-                                                                                                    text: sssssItem.text,
-                                                                                                    style: FlutterFlowTheme.of(context).bodyMedium.override(
-                                                                                                          fontFamily: 'sf pro display',
-                                                                                                          color: ExpatlioDesign.text,
-                                                                                                          fontSize: 15.0,
-                                                                                                          letterSpacing: 0.0,
-                                                                                                          fontWeight: FontWeight.w500,
-                                                                                                        ),
-                                                                                                  ),
-                                                                                                  TextSpan(
-                                                                                                    text: FFLocalizations.of(context).getText(
-                                                                                                      'wwfgr0mf' /*   */,
-                                                                                                    ),
-                                                                                                    style: TextStyle(),
-                                                                                                  ),
-                                                                                                  TextSpan(
-                                                                                                    text: sssssItem.gen,
-                                                                                                    style: TextStyle(
-                                                                                                      color: Color(0xFF727272),
-                                                                                                    ),
-                                                                                                  )
-                                                                                                ],
-                                                                                                style: FlutterFlowTheme.of(context).bodyMedium.override(
-                                                                                                      fontFamily: 'sf pro display',
-                                                                                                      fontSize: 16.0,
-                                                                                                      letterSpacing: 0.0,
-                                                                                                      fontWeight: FontWeight.normal,
-                                                                                                    ),
-                                                                                              ),
-                                                                                            ),
-                                                                                          ],
-                                                                                        ),
-                                                                                      ),
-                                                                                    );
-                                                                                  }),
-                                                                                );
-                                                                              },
+                                                                      .textScaler,
+                                                                  text:
+                                                                      TextSpan(
+                                                                    children: [
+                                                                      TextSpan(
+                                                                        text: wwwwItem
+                                                                            .text,
+                                                                        style: FlutterFlowTheme.of(context)
+                                                                            .bodyMedium
+                                                                            .override(
+                                                                              fontFamily: 'Cool',
+                                                                              fontSize: 22.0,
+                                                                              letterSpacing: 0.0,
+                                                                              fontWeight: FontWeight.normal,
                                                                             ),
-                                                                          ),
-                                                                          Padding(
-                                                                            padding: EdgeInsetsDirectional.fromSTEB(
-                                                                                ExpatlioDesign.space0,
-                                                                                ExpatlioDesign.space8,
-                                                                                ExpatlioDesign.space0,
-                                                                                ExpatlioDesign.space0),
-                                                                            child:
-                                                                                Container(
-                                                                              height: 17.0,
-                                                                              decoration: BoxDecoration(),
+                                                                      ),
+                                                                      TextSpan(
+                                                                        text:
+                                                                            ' [${wwwwItem.ts}] ',
+                                                                        style:
+                                                                            TextStyle(
+                                                                          fontFamily:
+                                                                              'Cool',
+                                                                          color:
+                                                                              FlutterFlowTheme.of(context).secondaryText,
+                                                                          fontWeight:
+                                                                              FontWeight.normal,
+                                                                          fontSize:
+                                                                              22.0,
+                                                                        ),
+                                                                      ),
+                                                                      TextSpan(
+                                                                        text: _partOfSpeechLabel(
+                                                                            wwwwItem.pos),
+                                                                        style:
+                                                                            TextStyle(
+                                                                          fontFamily:
+                                                                              'Cool',
+                                                                          color:
+                                                                              FlutterFlowTheme.of(context).secondaryText,
+                                                                          fontWeight:
+                                                                              FontWeight.normal,
+                                                                          fontSize:
+                                                                              22.0,
+                                                                          fontStyle:
+                                                                              FontStyle.italic,
+                                                                        ),
+                                                                      )
+                                                                    ],
+                                                                    style: FlutterFlowTheme.of(
+                                                                            context)
+                                                                        .bodyMedium
+                                                                        .override(
+                                                                          fontFamily:
+                                                                              'Cool',
+                                                                          color:
+                                                                              ExpatlioDesign.text,
+                                                                          fontSize:
+                                                                              22.0,
+                                                                          letterSpacing:
+                                                                              0.0,
+                                                                          fontWeight:
+                                                                              FontWeight.normal,
+                                                                        ),
+                                                                  ),
+                                                                ),
+                                                                Builder(
+                                                                  builder:
+                                                                      (context) {
+                                                                    final tr = wwwwItem
+                                                                        .tr
+                                                                        .toList()
+                                                                        .take(3)
+                                                                        .toList();
+
+                                                                    return ListView
+                                                                        .separated(
+                                                                      padding:
+                                                                          EdgeInsets
+                                                                              .zero,
+                                                                      primary:
+                                                                          false,
+                                                                      shrinkWrap:
+                                                                          true,
+                                                                      scrollDirection:
+                                                                          Axis.vertical,
+                                                                      itemCount:
+                                                                          tr.length,
+                                                                      separatorBuilder: (_,
+                                                                              __) =>
+                                                                          SizedBox(
+                                                                              height: ExpatlioDesign.space8),
+                                                                      itemBuilder:
+                                                                          (context,
+                                                                              trIndex) {
+                                                                        final trItem =
+                                                                            tr[trIndex];
+                                                                        return Column(
+                                                                          mainAxisSize:
+                                                                              MainAxisSize.max,
+                                                                          crossAxisAlignment:
+                                                                              CrossAxisAlignment.start,
+                                                                          children: [
+                                                                            Padding(
+                                                                              padding: EdgeInsetsDirectional.fromSTEB(ExpatlioDesign.space0, ExpatlioDesign.space12, ExpatlioDesign.space0, ExpatlioDesign.space0),
                                                                               child: Builder(
                                                                                 builder: (context) {
-                                                                                  final meanb = trItem.mean.toList();
+                                                                                  final sssss = functions.syn(trItem.gen, trItem.text, trItem.syn.toList())?.toList() ?? [];
 
-                                                                                  return ListView.builder(
-                                                                                    padding: EdgeInsets.zero,
-                                                                                    primary: false,
-                                                                                    shrinkWrap: true,
-                                                                                    scrollDirection: Axis.horizontal,
-                                                                                    itemCount: meanb.length,
-                                                                                    itemBuilder: (context, meanbIndex) {
-                                                                                      final meanbItem = meanb[meanbIndex];
-                                                                                      return Text(
-                                                                                        '${meanbItem.text}. ',
-                                                                                        style: FlutterFlowTheme.of(context).bodyMedium.override(
-                                                                                              fontFamily: 'sf pro display',
-                                                                                              color: Color(0xFF727272),
-                                                                                              fontSize: 15.0,
-                                                                                              letterSpacing: 0.0,
-                                                                                            ),
+                                                                                  return Wrap(
+                                                                                    spacing: ExpatlioDesign.space4,
+                                                                                    runSpacing: ExpatlioDesign.space8,
+                                                                                    alignment: WrapAlignment.start,
+                                                                                    crossAxisAlignment: WrapCrossAlignment.start,
+                                                                                    direction: Axis.horizontal,
+                                                                                    runAlignment: WrapAlignment.start,
+                                                                                    verticalDirection: VerticalDirection.down,
+                                                                                    clipBehavior: Clip.none,
+                                                                                    children: List.generate(sssss.length, (sssssIndex) {
+                                                                                      final sssssItem = sssss[sssssIndex];
+                                                                                      return Container(
+                                                                                        height: 35.0,
+                                                                                        decoration: BoxDecoration(
+                                                                                          color: ExpatlioDesign.background,
+                                                                                          borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
+                                                                                        ),
+                                                                                        child: Padding(
+                                                                                          padding: EdgeInsetsDirectional.fromSTEB(ExpatlioDesign.space12, ExpatlioDesign.space0, ExpatlioDesign.space12, ExpatlioDesign.space0),
+                                                                                          child: Column(
+                                                                                            mainAxisSize: MainAxisSize.max,
+                                                                                            mainAxisAlignment: MainAxisAlignment.center,
+                                                                                            children: [
+                                                                                              RichText(
+                                                                                                textScaler: MediaQuery.of(context).textScaler,
+                                                                                                text: TextSpan(
+                                                                                                  children: [
+                                                                                                    TextSpan(
+                                                                                                      text: sssssItem.text,
+                                                                                                      style: FlutterFlowTheme.of(context).bodyMedium.override(
+                                                                                                            fontFamily: 'sf pro display',
+                                                                                                            color: ExpatlioDesign.text,
+                                                                                                            fontSize: 15.0,
+                                                                                                            letterSpacing: 0.0,
+                                                                                                            fontWeight: FontWeight.w500,
+                                                                                                          ),
+                                                                                                    ),
+                                                                                                    TextSpan(
+                                                                                                      text: FFLocalizations.of(context).getText(
+                                                                                                        'wwfgr0mf' /*   */,
+                                                                                                      ),
+                                                                                                      style: TextStyle(),
+                                                                                                    ),
+                                                                                                    TextSpan(
+                                                                                                      text: sssssItem.gen,
+                                                                                                      style: TextStyle(
+                                                                                                        color: Color(0xFF727272),
+                                                                                                      ),
+                                                                                                    )
+                                                                                                  ],
+                                                                                                  style: FlutterFlowTheme.of(context).bodyMedium.override(
+                                                                                                        fontFamily: 'sf pro display',
+                                                                                                        fontSize: 16.0,
+                                                                                                        letterSpacing: 0.0,
+                                                                                                        fontWeight: FontWeight.normal,
+                                                                                                      ),
+                                                                                                ),
+                                                                                              ),
+                                                                                            ],
+                                                                                          ),
+                                                                                        ),
                                                                                       );
-                                                                                    },
+                                                                                    }),
                                                                                   );
                                                                                 },
                                                                               ),
                                                                             ),
-                                                                          ),
-                                                                        ],
-                                                                      );
-                                                                    },
-                                                                  );
-                                                                },
-                                                              ),
-                                                            ],
+                                                                            Padding(
+                                                                              padding: EdgeInsetsDirectional.fromSTEB(ExpatlioDesign.space0, ExpatlioDesign.space8, ExpatlioDesign.space0, ExpatlioDesign.space0),
+                                                                              child: Container(
+                                                                                height: 17.0,
+                                                                                decoration: BoxDecoration(),
+                                                                                child: Builder(
+                                                                                  builder: (context) {
+                                                                                    final meanb = trItem.mean.toList();
+
+                                                                                    return ListView.builder(
+                                                                                      padding: EdgeInsets.zero,
+                                                                                      primary: false,
+                                                                                      shrinkWrap: true,
+                                                                                      scrollDirection: Axis.horizontal,
+                                                                                      itemCount: meanb.length,
+                                                                                      itemBuilder: (context, meanbIndex) {
+                                                                                        final meanbItem = meanb[meanbIndex];
+                                                                                        return Text(
+                                                                                          '${meanbItem.text}. ',
+                                                                                          style: FlutterFlowTheme.of(context).bodyMedium.override(
+                                                                                                fontFamily: 'sf pro display',
+                                                                                                color: Color(0xFF727272),
+                                                                                                fontSize: 15.0,
+                                                                                                letterSpacing: 0.0,
+                                                                                              ),
+                                                                                        );
+                                                                                      },
+                                                                                    );
+                                                                                  },
+                                                                                ),
+                                                                              ),
+                                                                            ),
+                                                                          ],
+                                                                        );
+                                                                      },
+                                                                    );
+                                                                  },
+                                                                ),
+                                                              ],
+                                                            ),
                                                           );
                                                         },
                                                       );
@@ -993,13 +950,13 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                             return Container(
                                                               decoration:
                                                                   BoxDecoration(
-                                                                color: FlutterFlowTheme.of(
-                                                                        context)
-                                                                    .primaryBackground,
+                                                                color:
+                                                                    ExpatlioDesign
+                                                                        .card,
                                                                 borderRadius:
-                                                                    BorderRadius
-                                                                        .circular(
-                                                                            26.0),
+                                                                    BorderRadius.circular(
+                                                                        ExpatlioDesign
+                                                                            .radiusLarge),
                                                               ),
                                                               child: Padding(
                                                                 padding:
@@ -1024,7 +981,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                                             fontFamily:
                                                                                 'sf pro display',
                                                                             color:
-                                                                                Colors.black,
+                                                                                ExpatlioDesign.text,
                                                                             fontSize:
                                                                                 16.0,
                                                                             letterSpacing:
@@ -1078,9 +1035,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                         ]
                                             .addToStart(SizedBox(
                                                 height: ExpatlioDesign.space16))
-                                            .addToEnd(SizedBox(
-                                                height:
-                                                    ExpatlioDesign.space24)),
+                                            .addToEnd(SizedBox(height: 96.0)),
                                       ),
                                     ),
                                   );
@@ -1102,75 +1057,22 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Container(
-                              width: 60.0,
-                              height: 60.0,
-                              decoration: BoxDecoration(
-                                color: FlutterFlowTheme.of(context)
-                                    .primaryBackground,
-                                boxShadow: [
-                                  BoxShadow(
-                                    blurRadius: 7.0,
-                                    color: Color(0x0D2C2C2C),
-                                    offset: Offset(
-                                      0.0,
-                                      2.0,
-                                    ),
-                                  )
-                                ],
-                                shape: BoxShape.circle,
-                              ),
-                              child: Builder(
-                                builder: (context) {
-                                  if (_model.size >= 400.0) {
-                                    return InkWell(
-                                      splashColor: Colors.transparent,
-                                      focusColor: Colors.transparent,
-                                      hoverColor: Colors.transparent,
-                                      highlightColor: Colors.transparent,
-                                      onTap: () async {
-                                        _model.size = 250.0;
-                                        safeSetState(() {});
-                                      },
-                                      child: Stack(
-                                        alignment:
-                                            AlignmentDirectional(0.0, 0.0),
-                                        children: [
-                                          Icon(
-                                            FFIcons.kexpand01,
-                                            color: FlutterFlowTheme.of(context)
-                                                .primaryText,
-                                            size: 24.0,
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  } else {
-                                    return InkWell(
-                                      splashColor: Colors.transparent,
-                                      focusColor: Colors.transparent,
-                                      hoverColor: Colors.transparent,
-                                      highlightColor: Colors.transparent,
-                                      onTap: () async {
-                                        _model.size = 750.0;
-                                        safeSetState(() {});
-                                      },
-                                      child: Stack(
-                                        alignment:
-                                            AlignmentDirectional(0.0, 0.0),
-                                        children: [
-                                          Icon(
-                                            FFIcons.kexpand01,
-                                            color: FlutterFlowTheme.of(context)
-                                                .primaryText,
-                                            size: 24.0,
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  }
-                                },
-                              ),
+                            Builder(
+                              builder: (context) {
+                                final isExpanded = _model.size >= 400.0;
+                                return _buildFloatingActionButton(
+                                  child: Icon(
+                                    FFIcons.kexpand01,
+                                    color: ExpatlioDesign.text,
+                                    size: 22.0,
+                                  ),
+                                  onTap: () {
+                                    _model.size =
+                                        isExpanded ? collapsedSize : 750.0;
+                                    safeSetState(() {});
+                                  },
+                                );
+                              },
                             ),
                             if (_canManageDictionary)
                               StreamBuilder<List<UserWordsRecord>>(
@@ -1197,22 +1099,14 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                       snapshot.data!;
 
                                   return Container(
-                                    width: 60.0,
-                                    height: 60.0,
+                                    width: 56.0,
+                                    height: 56.0,
                                     decoration: BoxDecoration(
-                                      color: FlutterFlowTheme.of(context)
-                                          .primaryBackground,
-                                      boxShadow: [
-                                        BoxShadow(
-                                          blurRadius: 7.0,
-                                          color: Color(0x0D2C2C2C),
-                                          offset: Offset(
-                                            0.0,
-                                            2.0,
-                                          ),
-                                        )
-                                      ],
-                                      shape: BoxShape.circle,
+                                      color: ExpatlioDesign.card,
+                                      borderRadius: BorderRadius.circular(
+                                        ExpatlioDesign.radiusLarge,
+                                      ),
+                                      boxShadow: ExpatlioDesign.cardShadow,
                                     ),
                                     child: Builder(
                                       builder: (context) {
@@ -1262,8 +1156,9 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                 children: [
                                                   Icon(
                                                     FFIcons.kstar012,
-                                                    color: ExpatlioDesign.text,
-                                                    size: 24.0,
+                                                    color:
+                                                        ExpatlioDesign.primary,
+                                                    size: 22.0,
                                                   ),
                                                 ],
                                               ),
@@ -1348,7 +1243,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                                 Icon(
                                                   FFIcons.kstar01,
                                                   color: ExpatlioDesign.text,
-                                                  size: 24.0,
+                                                  size: 22.0,
                                                 ),
                                               ],
                                             ),

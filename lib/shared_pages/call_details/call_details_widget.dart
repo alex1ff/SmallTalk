@@ -495,7 +495,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
             color: theme.primaryBackground.withValues(alpha: 0.94),
             borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
             border: Border.all(
-              color: theme.primaryText.withValues(alpha: 0.08),
+              color: ExpatlioDesign.border,
               width: 1.0,
             ),
             boxShadow: const [

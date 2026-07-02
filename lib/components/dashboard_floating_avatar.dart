@@ -38,8 +38,6 @@ class DashboardFloatingAvatar extends StatelessWidget {
     };
   }
 
-  bool get _muted => tone == DashboardFloatingAvatarTone.muted;
-
   @override
   Widget build(BuildContext context) {
     final dimension = _dimension;
@@ -49,7 +47,7 @@ class DashboardFloatingAvatar extends StatelessWidget {
       width: dimension,
       height: dimension,
       decoration: BoxDecoration(
-        color: _muted ? ExpatlioDesign.mutedSurface : ExpatlioDesign.card,
+        color: ExpatlioDesign.avatarFallbackBackground,
         shape: BoxShape.circle,
         border: Border.all(color: ExpatlioDesign.border),
         boxShadow: const [
@@ -79,11 +77,11 @@ class DashboardFloatingAvatar extends StatelessWidget {
 
     return Center(
       child: Text(
-        initials,
+        ExpatlioDesign.avatarInitial(initials),
         maxLines: 1,
         style: ExpatlioDesign.textStyle(
           context,
-          color: _muted ? ExpatlioDesign.muted : ExpatlioDesign.text,
+          color: ExpatlioDesign.avatarFallbackText,
           size: dimension <= 38.0 ? 11.0 : 13.0,
           weight: FontWeight.w600,
         ),

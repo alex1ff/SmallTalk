@@ -113,6 +113,21 @@ EventSelectedCityState resolveEventSelectedCityState({
     );
   }
 
+  if (profileResult.status == EventCityResolutionStatus.missingProfileCity) {
+    final defaultCountryCity =
+        catalog.defaultCityForCountryCode(countryCodeHint);
+    if (defaultCountryCity != null) {
+      return EventSelectedCityState(
+        profileStatus: profileResult.status,
+        countryCodeHint: countryCodeHint,
+        selected: EventSelectedCity(
+          city: defaultCountryCity,
+          source: EventCitySelectionSource.profile,
+        ),
+      );
+    }
+  }
+
   return EventSelectedCityState(
     profileStatus: profileResult.status,
     countryCodeHint: countryCodeHint,

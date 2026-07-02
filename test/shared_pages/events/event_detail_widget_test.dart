@@ -83,6 +83,33 @@ void main() {
     );
     final topBarCenter = tester.getCenter(find.byKey(eventDetailTopBarKey));
     expect((titleCenter.dx - topBarCenter.dx).abs(), lessThan(1.0));
+
+    final topBarSize = tester.getSize(find.byKey(eventDetailTopBarKey));
+    expect(topBarSize.height, 52);
+
+    final backButtonSize = tester.getSize(find.byKey(eventDetailBackButtonKey));
+    final shareButtonSize =
+        tester.getSize(find.byKey(eventDetailShareButtonKey));
+    expect(backButtonSize, const Size(36, 36));
+    expect(shareButtonSize, const Size(36, 36));
+
+    final backIcon = tester.widget<Icon>(find.byIcon(Icons.arrow_back));
+    final shareIcon = tester.widget<Icon>(find.byIcon(Icons.share_outlined));
+    expect(backIcon.size, 20);
+    expect(shareIcon.size, 20);
+  });
+
+  testWidgets('uses the app page background color', (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: const EventDetailWidget(eventId: 'event-123'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final scaffold = tester.widget<Scaffold>(find.byType(Scaffold));
+
+    expect(scaffold.backgroundColor, ExpatlioDesign.background);
   });
 
   testWidgets('report action is shown only when enabled', (tester) async {
@@ -114,6 +141,10 @@ void main() {
     await tester.pump();
 
     expect(reportTapCount, 1);
+    expect(tester.getSize(find.byKey(eventDetailReportButtonKey)),
+        const Size(36, 36));
+    final reportIcon = tester.widget<Icon>(find.byIcon(Icons.flag_outlined));
+    expect(reportIcon.size, 20);
   });
 
   testWidgets('share action calls the injected callback once', (tester) async {
@@ -141,7 +172,7 @@ void main() {
     expect(shareTapCount, 1);
   });
 
-  testWidgets('renders sticky bottom action bar with disabled defaults',
+  testWidgets('renders sticky bottom action bar and hides unavailable chat',
       (tester) async {
     final semanticsHandle = tester.ensureSemantics();
 
@@ -155,22 +186,14 @@ void main() {
 
       expect(find.byKey(eventDetailBottomActionBarKey), findsOneWidget);
       expect(find.byKey(eventDetailPrimaryCtaKey), findsOneWidget);
-      expect(find.byKey(eventDetailChatCtaKey), findsOneWidget);
+      expect(find.byKey(eventDetailChatCtaKey), findsNothing);
       expect(find.text('Присоединиться'), findsOneWidget);
-      expect(find.text('Чат'), findsOneWidget);
-      expect(find.byIcon(Icons.lock_outline), findsOneWidget);
 
       final primarySemantics =
           tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
       expect(primarySemantics.flagsCollection.isButton, isTrue);
       expect(primarySemantics.flagsCollection.isEnabled, isFalse);
       expect(primarySemantics.label, 'Присоединиться');
-
-      final chatSemantics =
-          tester.getSemantics(find.byKey(eventDetailChatCtaKey));
-      expect(chatSemantics.flagsCollection.isButton, isTrue);
-      expect(chatSemantics.flagsCollection.isEnabled, isFalse);
-      expect(chatSemantics.label, contains('Чат доступен только участникам'));
     } finally {
       semanticsHandle.dispose();
     }
@@ -216,20 +239,13 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Join'), findsOneWidget);
-      expect(find.text('Chat'), findsOneWidget);
-      final chatSemantics =
-          tester.getSemantics(find.byKey(eventDetailChatCtaKey));
-      expect(
-        chatSemantics.label,
-        contains('Chat is available to participants only'),
-      );
+      expect(find.text('Chat'), findsNothing);
     } finally {
       semanticsHandle.dispose();
     }
   });
 
-  testWidgets('join CTA state keeps chat disabled for non-participants',
-      (tester) async {
+  testWidgets('join CTA state hides chat for non-participants', (tester) async {
     final semanticsHandle = tester.ensureSemantics();
     var joinTapCount = 0;
 
@@ -246,19 +262,13 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Присоединиться'), findsOneWidget);
-      expect(find.byIcon(Icons.lock_outline), findsOneWidget);
+      expect(find.byKey(eventDetailChatCtaKey), findsNothing);
 
       final primarySemantics =
           tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
       expect(primarySemantics.flagsCollection.isButton, isTrue);
       expect(primarySemantics.flagsCollection.isEnabled, isTrue);
       expect(primarySemantics.label, 'Присоединиться');
-
-      final chatSemantics =
-          tester.getSemantics(find.byKey(eventDetailChatCtaKey));
-      expect(chatSemantics.flagsCollection.isButton, isTrue);
-      expect(chatSemantics.flagsCollection.isEnabled, isFalse);
-      expect(chatSemantics.label, contains('Чат доступен только участникам'));
 
       await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
       await tester.pumpAndSettle();
@@ -466,7 +476,7 @@ void main() {
     expect(chatTapCount, 1);
   });
 
-  testWidgets('joined CTA state disables leave and chat without callbacks',
+  testWidgets('joined CTA state disables leave and hides chat without callback',
       (tester) async {
     final semanticsHandle = tester.ensureSemantics();
 
@@ -482,18 +492,13 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Покинуть'), findsOneWidget);
-      expect(find.byIcon(Icons.lock_outline), findsOneWidget);
+      expect(find.byKey(eventDetailChatCtaKey), findsNothing);
 
       final primarySemantics =
           tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
       expect(primarySemantics.flagsCollection.isButton, isTrue);
       expect(primarySemantics.flagsCollection.isEnabled, isFalse);
       expect(primarySemantics.label, contains('Вы участвуете'));
-
-      final chatSemantics =
-          tester.getSemantics(find.byKey(eventDetailChatCtaKey));
-      expect(chatSemantics.flagsCollection.isButton, isTrue);
-      expect(chatSemantics.flagsCollection.isEnabled, isFalse);
     } finally {
       semanticsHandle.dispose();
     }
@@ -588,7 +593,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text(testCase.label), findsOneWidget);
-        expect(find.byIcon(Icons.lock_outline), findsOneWidget);
+        expect(find.byKey(eventDetailChatCtaKey), findsNothing);
 
         final primarySemantics =
             tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
@@ -756,9 +761,10 @@ void main() {
       await tester.pumpWidget(
         _buildTestApp(
           locale: const Locale('en'),
-          home: const EventDetailWidget(
+          home: EventDetailWidget(
             eventId: 'event-123',
             joinCtaState: EventDetailJoinCtaState.canceled,
+            onChatPressed: () {},
           ),
         ),
       );
@@ -873,7 +879,7 @@ void main() {
     expect(find.byKey(eventDetailBottomActionBarKey), findsOneWidget);
     expect(find.byKey(eventDetailCanceledBannerKey), findsOneWidget);
     expect(find.byKey(eventDetailPrimaryCtaKey), findsOneWidget);
-    expect(find.byKey(eventDetailChatCtaKey), findsOneWidget);
+    expect(find.byKey(eventDetailChatCtaKey), findsNothing);
     expect(find.text('Событие отменено'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -1421,7 +1427,7 @@ void main() {
       find.bySemanticsLabel('Организатор: Анастасия Иванова. Ведущий встречи'),
       findsOneWidget,
     );
-    expect(find.byKey(eventDetailOrganizerMessageButtonKey), findsOneWidget);
+    expect(find.byKey(eventDetailOrganizerMessageButtonKey), findsNothing);
   });
 
   testWidgets('hides organizer card when organizer name is blank',
@@ -1483,6 +1489,10 @@ void main() {
 
     expect(find.byKey(eventDetailOrganizerMessageButtonKey), findsOneWidget);
     expect(find.text('Написать'), findsOneWidget);
+    final buttonSize = tester.getSize(
+      find.byKey(eventDetailOrganizerMessageButtonKey),
+    );
+    expect(buttonSize.height, 34);
 
     final buttonSemantics = tester.widget<Semantics>(
       find.byKey(eventDetailOrganizerMessageButtonKey),
@@ -1501,8 +1511,7 @@ void main() {
     expect(tapCount, 1);
   });
 
-  testWidgets(
-      'organizer message action is visible but disabled without callback',
+  testWidgets('organizer message action is hidden without callback',
       (tester) async {
     await tester.pumpWidget(
       _buildTestApp(
@@ -1514,13 +1523,32 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final buttonSemantics = tester.widget<Semantics>(
-      find.byKey(eventDetailOrganizerMessageButtonKey),
+    expect(find.byKey(eventDetailOrganizerMessageButtonKey), findsNothing);
+    expect(find.text('Написать'), findsNothing);
+  });
+
+  testWidgets('intro card keeps the full content width for short text',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: const SizedBox(
+          width: 390,
+          child: EventDetailWidget(
+            eventId: 'event-123',
+            title: 'Ыа',
+            description: 'ываыва',
+          ),
+        ),
+      ),
     );
-    expect(buttonSemantics.properties.button, isTrue);
-    expect(buttonSemantics.properties.enabled, isFalse);
-    expect(buttonSemantics.properties.onTap, isNull);
-    expect(find.text('Написать'), findsOneWidget);
+    await tester.pumpAndSettle();
+
+    final introWidth =
+        tester.getSize(find.byKey(eventDetailIntroCardKey)).width;
+    final detailsWidth =
+        tester.getSize(find.byKey(eventDetailBottomActionBarKey)).width;
+    expect(introWidth, greaterThan(330));
+    expect(introWidth, lessThanOrEqualTo(detailsWidth));
   });
 
   testWidgets('hides organizer controls by default', (tester) async {
@@ -1877,6 +1905,48 @@ void main() {
     semanticsHandle.dispose();
   });
 
+  testWidgets('participants grid fits at most five avatars per row',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: const EventDetailWidget(
+          eventId: 'event-123',
+          participantsCount: 6,
+          capacity: 10,
+          participants: [
+            EventDetailParticipantViewModel(displayName: 'One'),
+            EventDetailParticipantViewModel(displayName: 'Two'),
+            EventDetailParticipantViewModel(displayName: 'Three'),
+            EventDetailParticipantViewModel(displayName: 'Four'),
+            EventDetailParticipantViewModel(displayName: 'Five'),
+            EventDetailParticipantViewModel(displayName: 'Six'),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final firstRowTop =
+        tester.getTopLeft(find.byKey(eventDetailParticipantTileKey(0))).dy;
+    for (var index = 1; index < 5; index += 1) {
+      expect(
+        tester.getTopLeft(find.byKey(eventDetailParticipantTileKey(index))).dy,
+        firstRowTop,
+      );
+    }
+    expect(
+      tester.getTopLeft(find.byKey(eventDetailParticipantTileKey(5))).dy,
+      greaterThan(firstRowTop),
+    );
+
+    final firstTileSize =
+        tester.getSize(find.byKey(eventDetailParticipantTileKey(0)));
+    expect(firstTileSize.width, greaterThanOrEqualTo(58));
+  });
+
   testWidgets('hides participant section for an empty participant list',
       (tester) async {
     await tester.pumpWidget(
@@ -2199,6 +2269,43 @@ void main() {
 
     expect(find.byType(EventDetailWidget), findsNothing);
     expect(find.text('Open detail'), findsOneWidget);
+  });
+
+  testWidgets('back action opens events list when detail cannot pop',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp.router(
+        locale: const Locale('ru'),
+        supportedLocales: _supportedLocales,
+        localizationsDelegates: _localizationsDelegates,
+        routerConfig: GoRouter(
+          initialLocation: '/events/event-123',
+          routes: [
+            GoRoute(
+              path: '/events',
+              builder: (context, state) => const Scaffold(
+                body: Text('Events list'),
+              ),
+            ),
+            GoRoute(
+              path: EventDetailWidget.routePath,
+              builder: (context, state) => EventDetailWidget(
+                eventId: state.pathParameters['eventId']!,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(EventDetailWidget), findsOneWidget);
+
+    await tester.tap(find.byKey(eventDetailBackButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(EventDetailWidget), findsNothing);
+    expect(find.text('Events list'), findsOneWidget);
   });
 
   testWidgets('direct detail route can render canceled presentation state',

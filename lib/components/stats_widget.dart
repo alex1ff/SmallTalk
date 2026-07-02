@@ -215,8 +215,7 @@ class _StatsWidgetState extends State<StatsWidget> {
                                       borderRadius: BorderRadius.circular(
                                           ExpatlioDesign.radiusMedium),
                                       border: Border.all(
-                                        color: FlutterFlowTheme.of(context)
-                                            .secondaryBackground,
+                                        color: ExpatlioDesign.border,
                                       ),
                                     ),
                                   ),
@@ -270,8 +269,7 @@ class _StatsWidgetState extends State<StatsWidget> {
                                       borderRadius: BorderRadius.circular(
                                           ExpatlioDesign.radiusMedium),
                                       border: Border.all(
-                                        color: FlutterFlowTheme.of(context)
-                                            .secondaryBackground,
+                                        color: ExpatlioDesign.border,
                                       ),
                                     ),
                                     child: Icon(
@@ -331,8 +329,7 @@ class _StatsWidgetState extends State<StatsWidget> {
                                       borderRadius: BorderRadius.circular(
                                           ExpatlioDesign.radiusMedium),
                                       border: Border.all(
-                                        color: FlutterFlowTheme.of(context)
-                                            .secondaryBackground,
+                                        color: ExpatlioDesign.border,
                                       ),
                                     ),
                                     child: Icon(

@@ -263,9 +263,7 @@ class NativeSpeakerOnboardingAccreditationStep extends StatelessWidget {
                     color: ExpatlioDesign.card,
                     borderRadius:
                         BorderRadius.circular(ExpatlioDesign.cardRadius),
-                    border: Border.all(
-                      color: FlutterFlowTheme.of(context).alternate,
-                    ),
+                    border: Border.all(color: ExpatlioDesign.border),
                   ),
                   child: Row(
                     children: [
@@ -387,9 +385,7 @@ class _NativeSpeakerAccreditationChoice extends StatelessWidget {
         decoration: BoxDecoration(
           color: selected ? theme.primaryText : theme.primaryBackground,
           borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
-          border: Border.all(
-            color: selected ? theme.primaryText : theme.alternate,
-          ),
+          border: Border.all(color: ExpatlioDesign.border),
         ),
         child: Text(
           label,
@@ -431,7 +427,7 @@ class _NativeSpeakerEvidenceFileTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: theme.primaryBackground,
         borderRadius: BorderRadius.circular(ExpatlioDesign.cardRadius),
-        border: Border.all(color: theme.alternate),
+        border: Border.all(color: ExpatlioDesign.border),
       ),
       child: Row(
         children: [
