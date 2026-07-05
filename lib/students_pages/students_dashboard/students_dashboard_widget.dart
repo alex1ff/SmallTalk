@@ -104,12 +104,13 @@ class StudentsDashboardWidget extends StatefulWidget {
       debugGetSessionTokensRequest;
   static StudentCallNavigator? debugAutoOpenSessionNavigator;
   static bool debugDisableAutoOpenSessionNavigation = false;
-  static const Duration startSearchRequestTimeout = Duration(seconds: 10);
+  static const Duration startSearchRequestTimeout = Duration(seconds: 25);
   static const Duration heartbeatSearchInterval = Duration(seconds: 30);
   static const Duration heartbeatSearchRequestTimeout = Duration(seconds: 10);
   static const Duration stopSearchRequestTimeout = Duration(seconds: 10);
   static const Duration acceptCallRequestTimeout = Duration(seconds: 20);
   static const Duration activeSearchRecoveryRetryDelay = Duration(seconds: 2);
+  static const int activeSearchRecoveryMaxAttemptsAfterFailure = 3;
 
   static String routeName = 'Students_Dashboard';
   static String routePath = '/studentsDashboard';
@@ -669,24 +670,40 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       return false;
     }
 
-    try {
-      final state = await _readDashboardActiveSearchRecoveryState(userId);
-      if (!mounted ||
-          _currentSearchUserId() != userId ||
-          !state.canResumeUnboundSearch) {
+    for (var attempt = 0;
+        attempt <
+            StudentsDashboardWidget.activeSearchRecoveryMaxAttemptsAfterFailure;
+        attempt += 1) {
+      if (attempt > 0) {
+        await Future<void>.delayed(
+          StudentsDashboardWidget.activeSearchRecoveryRetryDelay,
+        );
+      }
+      if (!mounted || _currentSearchUserId() != userId) {
         return false;
       }
 
-      _resumeRecoveredUnboundSearch(state);
-      return true;
-    } catch (error, stackTrace) {
-      debugPrint(
-        'StudentsDashboard: failed to recover search after start failure: '
-        '$error',
-      );
-      debugPrintStack(stackTrace: stackTrace);
-      return false;
+      try {
+        final state = await _readDashboardActiveSearchRecoveryState(userId);
+        if (!mounted || _currentSearchUserId() != userId) {
+          return false;
+        }
+        if (!state.canResumeUnboundSearch) {
+          continue;
+        }
+
+        _resumeRecoveredUnboundSearch(state);
+        return true;
+      } catch (error, stackTrace) {
+        debugPrint(
+          'StudentsDashboard: failed to recover search after start failure: '
+          '$error',
+        );
+        debugPrintStack(stackTrace: stackTrace);
+      }
     }
+
+    return false;
   }
 
   Future<bool> _canRestoreRecoveredConnectionSession({
