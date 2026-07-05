@@ -49,6 +49,7 @@ class ExpatlioDesign {
   static const Color primary = Color(0xFF7430E8);
   static const Color primaryPressed = Color(0xFF5F24C8);
   static const Color primaryEnd = primary;
+  static const Color ownMessageBubble = Color(0xFFEDE4FA);
   static const Color danger = systemRed;
   static const Color orange = systemOrange;
   static const Color success = systemGreen;

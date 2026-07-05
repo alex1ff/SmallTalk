@@ -7,6 +7,7 @@ import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/chat_message_bubble_style.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/services/event_action_error_mapper.dart';
 import '/services/event_actions_repository.dart';
@@ -922,18 +923,12 @@ class _EventGroupChatMessageBubble extends StatelessWidget {
         !isCurrentUser &&
         !isDeleted &&
         onReportPressed != null;
-    final bubbleColor = isDeleted
-        ? ExpatlioDesign.secondarySystemBackground
-        : isCurrentUser
-            ? ExpatlioDesign.primary
-            : ExpatlioDesign.card;
-    final textColor = isDeleted
-        ? ExpatlioDesign.muted
-        : isCurrentUser
-            ? Colors.white
-            : ExpatlioDesign.text;
-    final senderNameColor =
-        isDeleted || !isCurrentUser ? ExpatlioDesign.primary : Colors.white;
+    final bubbleColor = chatMessageBubbleColor(
+      isCurrentUser: isCurrentUser,
+      isDeleted: isDeleted,
+    );
+    final textColor = chatMessageTextColor(isDeleted: isDeleted);
+    final senderNameColor = chatMessageSenderNameColor();
     final text = message.text.trim();
     final messageText = isDeleted
         ? FFLocalizations.of(context).getVariableText(

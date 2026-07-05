@@ -109,6 +109,28 @@ void main() {
       expect(presentation.tone, ChatCallEventTone.normal);
     });
 
+    testWidgets('uses call timestamps when stored duration is missing',
+        (tester) async {
+      final now = DateTime(2026, 5, 30, 10);
+      final presentation = await _readWithContext(
+        tester,
+        (context) => buildChatCallEventPresentation(
+          context,
+          message: _callMessage(
+            outcome: kConversationCallOutcomeCompleted,
+            callerId: 'student',
+            callStartedAt: DateTime(2026, 5, 30, 9, 40, 58),
+            callEndedAt: DateTime(2026, 5, 30, 9, 42),
+            callDurationSeconds: 0,
+          ),
+          currentUserUid: 'student',
+          now: now,
+        ),
+      );
+
+      expect(presentation.details, contains('1:02 min'));
+    });
+
     testWidgets('formats inbound missed calls as alerts', (tester) async {
       final now = DateTime(2026, 5, 30, 10);
       final presentation = await _readWithContext(

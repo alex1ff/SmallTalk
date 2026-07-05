@@ -312,6 +312,41 @@ void main() {
     expect(find.text('Всем привет!'), findsOneWidget);
   });
 
+  testWidgets('renders own event chat messages with the shared lavender color',
+      (tester) async {
+    currentUser = _TestAuthUser('uid-1');
+    final chatRef = EventChatsRecord.collection.doc('event-123');
+    final message = _messageFixture(
+      chatRef: chatRef,
+      messageId: 'message-1',
+      senderId: 'uid-1',
+      text: 'Моё сообщение',
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-123',
+          chatStream: _allowedChatStream(),
+          accessStateInvoker: _accessStateInvoker(),
+          messagesStream: (_) => Stream.value(<EventChatMessagesRecord>[
+            message,
+          ]),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final bubble = tester.widget<Container>(
+      find.byKey(eventGroupChatMessageBubbleKey('message-1')),
+    );
+    final decoration = bubble.decoration as BoxDecoration;
+    final text = tester.widget<Text>(find.text('Моё сообщение'));
+
+    expect(decoration.color, const Color(0xFFEDE4FA));
+    expect(text.style?.color, Colors.black);
+  });
+
   testWidgets('renders chronological repository messages with newest at bottom',
       (tester) async {
     final chatRef = EventChatsRecord.collection.doc('event-123');

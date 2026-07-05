@@ -27,6 +27,7 @@ import 'package:flutter/services.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import '/services/voip_service.dart';
 import '/components/interactive_caption_text.dart';
+import '/shared_pages/chat_message_bubble_style.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import 'deepgram_credential_exception.dart';
 import 'session_limit_ui.dart' as session_limit_ui;
@@ -5538,11 +5539,12 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   Widget _buildChatMessageBubble(_ChatMessage message) {
     final bubbleColor = message.isLocal
-        ? const Color(0xFF2F80ED)
+        ? chatMessageBubbleColor(isCurrentUser: true)
         : Colors.white.withValues(alpha: 0.10);
     final bubbleAlignment =
         message.isLocal ? Alignment.centerRight : Alignment.centerLeft;
     final labelColor = Colors.white.withValues(alpha: 0.66);
+    final textColor = message.isLocal ? chatMessageTextColor() : Colors.white;
 
     return Align(
       alignment: bubbleAlignment,
@@ -5579,8 +5581,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                     vertical: ExpatlioDesign.space12),
                 child: Text(
                   message.text,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: textColor,
                     fontSize: 15.0,
                     height: 1.35,
                   ),

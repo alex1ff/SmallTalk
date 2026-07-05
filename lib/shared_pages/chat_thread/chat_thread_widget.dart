@@ -11,6 +11,7 @@ import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/call_details/call_details_widget.dart';
 import '/shared_pages/chat_call_event_presentation.dart';
+import '/shared_pages/chat_message_bubble_style.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/components/chat_call_event_card.dart';
 import 'chat_thread_formatters.dart';
@@ -542,9 +543,8 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     required bool isCurrentUser,
     required bool isReadByPartner,
   }) {
-    final bubbleColor =
-        isCurrentUser ? ExpatlioDesign.primary : ExpatlioDesign.card;
-    final textColor = isCurrentUser ? Colors.white : ExpatlioDesign.text;
+    final bubbleColor = chatMessageBubbleColor(isCurrentUser: isCurrentUser);
+    final textColor = chatMessageTextColor();
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -621,8 +621,9 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                             isReadByPartner
                                 ? Icons.done_all_rounded
                                 : Icons.done_rounded,
-                            color: textColor.withValues(
-                                alpha: isReadByPartner ? 0.88 : 0.45),
+                            color: chatMessageReadReceiptColor(
+                              isReadByPartner: isReadByPartner,
+                            ),
                             size: 14.0,
                           ),
                         ],

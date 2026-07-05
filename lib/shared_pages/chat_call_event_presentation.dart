@@ -89,9 +89,28 @@ String formatChatCallEventDetails(
               ruText: '0 сек.',
               enText: '0 sec.',
             )
-          : formatDurationLabel(context, message.callDurationSeconds);
+          : formatDurationLabel(
+              context,
+              resolveChatCallEventDurationSeconds(message),
+            );
 
   return '$startedAtLabel • $durationLabel';
+}
+
+int resolveChatCallEventDurationSeconds(MessagesRecord message) {
+  final storedDurationSeconds = message.callDurationSeconds;
+  if (storedDurationSeconds > 0) {
+    return storedDurationSeconds;
+  }
+
+  final startedAt = message.callStartedAt;
+  final endedAt = message.callEndedAt ?? message.createdAt;
+  if (startedAt == null || endedAt == null) {
+    return 0;
+  }
+
+  final diff = endedAt.difference(startedAt).inSeconds;
+  return diff > 0 ? diff : 0;
 }
 
 IconData chatCallEventIcon({
