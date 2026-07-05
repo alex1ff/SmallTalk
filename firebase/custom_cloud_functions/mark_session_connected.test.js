@@ -440,6 +440,9 @@ test("Daily verified presence promotes connecting sessions to active", () => {
     sessionData: acceptedSession({
       status: "connecting",
       dailyRoomName: "room-a",
+      sessionPolicy: {
+        effectiveLimitSeconds: 300,
+      },
       joinDeadlineAt: {
         toMillis: () => nowMillis + 60 * 1000,
       },
@@ -458,6 +461,10 @@ test("Daily verified presence promotes connecting sessions to active", () => {
   assert.equal(decision.ok, true);
   assert.equal(decision.update.status, "active");
   assert.equal(decision.update.startedAt, serverTimestamp);
+  assert.equal(
+    decision.update.expiresAt.toDate().toISOString(),
+    "2026-05-26T10:05:00.000Z",
+  );
   assert.equal(decision.response.connectedMarked, true);
 });
 

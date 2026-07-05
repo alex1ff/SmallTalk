@@ -1,6 +1,7 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const {
+  buildAcceptedSessionPolicyState,
   getAcceptedSessionCredentialParticipantIds,
   isAcceptedSessionCredentialParticipant,
   isCredentialSessionJoinable,
@@ -244,8 +245,11 @@ function buildDailyPresenceConnectedDecision({
     };
   }
 
+  const activePolicyState =
+    buildAcceptedSessionPolicyState(sessionData, nowMillis);
   const update = {
     status: VIDEO_SESSION_STATUS.ACTIVE,
+    expiresAt: admin.firestore.Timestamp.fromDate(activePolicyState.expiresAt),
     sessionMetadata: {
       ...sessionMetadata,
       callConnectedAt: serverTimestamp,
@@ -260,6 +264,9 @@ function buildDailyPresenceConnectedDecision({
 
   if (!sessionData.startedAt) {
     update.startedAt = serverTimestamp;
+  }
+  if (activePolicyState.sessionPolicy) {
+    update.sessionPolicy = activePolicyState.sessionPolicy;
   }
 
   return {

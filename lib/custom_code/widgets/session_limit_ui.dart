@@ -16,7 +16,7 @@ bool shouldUseSessionLimitCountdown({
   required Map<String, dynamic>? sessionPolicy,
 }) {
   final normalizedStatus = (sessionStatus ?? '').trim().toLowerCase();
-  if (normalizedStatus != 'active' && normalizedStatus != 'connecting') {
+  if (normalizedStatus != 'active') {
     return false;
   }
   return expiresAt != null && sessionPolicy != null && sessionPolicy.isNotEmpty;

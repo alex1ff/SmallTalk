@@ -3,6 +3,7 @@ const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const {defineSecret} = require("firebase-functions/params");
 const {
+  buildAcceptedSessionPolicyState,
   getAcceptedSessionCredentialParticipantIds,
   isAcceptedSessionCredentialParticipant,
   isCredentialSessionStatus,
@@ -398,11 +399,24 @@ function buildDailyWebhookSessionUpdate({
     }
   }
 
+  const isFirstConnectedMarker =
+    hasVerifiedDailyPresence && !sessionMetadata.callConnectedAt;
+  const activePolicyState = isFirstConnectedMarker ?
+    buildAcceptedSessionPolicyState(sessionData, connectedAtMillis) :
+    null;
   const update = {
     sessionMetadata: nextMetadata,
   };
   if (hasVerifiedDailyPresence) {
     update.status = VIDEO_SESSION_STATUS.ACTIVE;
+  }
+  if (isFirstConnectedMarker) {
+    update.expiresAt = admin.firestore.Timestamp.fromDate(
+      activePolicyState.expiresAt,
+    );
+    if (activePolicyState.sessionPolicy) {
+      update.sessionPolicy = activePolicyState.sessionPolicy;
+    }
   }
   if (hasVerifiedDailyPresence && !sessionData.startedAt) {
     update.startedAt = connectedAt;

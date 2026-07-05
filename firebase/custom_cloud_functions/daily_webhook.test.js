@@ -439,6 +439,9 @@ test("Daily webhook promotes connecting sessions to active after both join", () 
     event,
     sessionData: activeSession({
       status: "connecting",
+      sessionPolicy: {
+        effectiveLimitSeconds: 300,
+      },
       joinDeadlineAt: {
         toMillis: () => NOW_MILLIS + 60 * 1000,
       },
@@ -460,6 +463,10 @@ test("Daily webhook promotes connecting sessions to active after both join", () 
 
   assert.equal(decision.ok, true);
   assert.equal(decision.update.status, "active");
+  assert.equal(
+    decision.update.expiresAt.toDate().toISOString(),
+    "2026-05-26T12:05:08.000Z",
+  );
   assert.equal(decision.connectedMarked, true);
 });
 
@@ -662,6 +669,8 @@ test("Daily webhook evidence never overwrites existing connected marker", () => 
   assert.equal(decision.ok, true);
   assert.equal(decision.connectedMarked, false);
   assert.equal(Object.hasOwn(decision.update, "startedAt"), false);
+  assert.equal(Object.hasOwn(decision.update, "expiresAt"), false);
+  assert.equal(Object.hasOwn(decision.update, "sessionPolicy"), false);
   assert.equal(
     decision.update.sessionMetadata.callConnectedAt,
     existingConnectedAt,
