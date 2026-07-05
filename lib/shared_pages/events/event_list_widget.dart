@@ -1226,6 +1226,7 @@ EventListCardViewModel? _eventListCardFromRecord(
     participants: _eventListParticipantsForRecord(
       event,
       currentUserId: currentUserId,
+      currentUserParticipant: currentUserParticipant,
       activeParticipants: activeParticipants,
     ),
     participantsCount: participantsCount,
@@ -1266,13 +1267,14 @@ bool _eventListParticipantIsActiveForUser(
 List<EventListParticipantViewModel> _eventListParticipantsForRecord(
   EventsRecord event, {
   required String currentUserId,
+  EventParticipantsRecord? currentUserParticipant,
   List<EventParticipantsRecord> activeParticipants =
       const <EventParticipantsRecord>[],
 }) {
   final viewerUserId = currentUserId.trim();
-  final participantViewModels = activeParticipants
-      .where((participant) => participant.status.trim() == eventStatusActive)
-      .map((participant) {
+  EventListParticipantViewModel participantViewModel(
+    EventParticipantsRecord participant,
+  ) {
     final participantUserId = _eventListParticipantUserId(participant);
     final isOrganizer = event.organizerId.trim().isNotEmpty &&
         participantUserId == event.organizerId.trim();
@@ -1305,28 +1307,72 @@ List<EventListParticipantViewModel> _eventListParticipantsForRecord(
       displayName: resolvedDisplayName,
       photoUrl: photoUrl.isEmpty ? null : photoUrl,
     );
-  }).toList(growable: false);
-  if (participantViewModels.isNotEmpty) {
-    return participantViewModels;
   }
+
+  final participantViewModels = activeParticipants
+      .where((participant) => participant.status.trim() == eventStatusActive)
+      .map(participantViewModel)
+      .toList();
 
   final displayName = event.organizerDisplayName.trim();
   final photoUrl =
       event.hasOrganizerPhotoUrl() ? event.organizerPhotoUrl.trim() : null;
   final participantsCount =
       event.hasParticipantsCount() ? event.participantsCount : 0;
-  if (participantsCount <= 0 &&
-      displayName.isEmpty &&
-      (photoUrl == null || photoUrl.isEmpty)) {
+  if (participantViewModels.isEmpty &&
+      (participantsCount > 0 ||
+          displayName.isNotEmpty ||
+          (photoUrl != null && photoUrl.isNotEmpty))) {
+    participantViewModels.add(
+      EventListParticipantViewModel(
+        userId: event.organizerId.trim(),
+        displayName: displayName,
+        photoUrl: photoUrl,
+      ),
+    );
+  }
+
+  if (_eventListParticipantIsActiveForUser(
+        currentUserParticipant,
+        eventReference: event.reference,
+        userId: viewerUserId,
+      ) &&
+      !participantViewModels.any(
+        (participant) => participant.userId.trim() == viewerUserId,
+      )) {
+    participantViewModels.add(participantViewModel(currentUserParticipant!));
+    _eventListKeepParticipantVisible(
+      participantViewModels,
+      userId: viewerUserId,
+      visibleLimit: _eventListParticipantPreviewLimit,
+    );
+  }
+
+  if (participantViewModels.isEmpty) {
     return const <EventListParticipantViewModel>[];
   }
-  return [
-    EventListParticipantViewModel(
-      userId: event.organizerId.trim(),
-      displayName: displayName,
-      photoUrl: photoUrl,
-    ),
-  ];
+  return List.unmodifiable(participantViewModels);
+}
+
+void _eventListKeepParticipantVisible(
+  List<EventListParticipantViewModel> participants, {
+  required String userId,
+  required int visibleLimit,
+}) {
+  final normalizedUserId = userId.trim();
+  if (normalizedUserId.isEmpty ||
+      visibleLimit <= 0 ||
+      participants.length <= visibleLimit) {
+    return;
+  }
+  final index = participants.indexWhere(
+    (participant) => participant.userId.trim() == normalizedUserId,
+  );
+  if (index < visibleLimit || index < 0) {
+    return;
+  }
+  final participant = participants.removeAt(index);
+  participants.insert(visibleLimit - 1, participant);
 }
 
 String _eventListParticipantUserId(EventParticipantsRecord participant) {

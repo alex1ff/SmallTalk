@@ -1836,6 +1836,223 @@ void main() {
   );
 
   testWidgets(
+    'loaded joined event appends current user avatar when preview omits it',
+    (tester) async {
+      currentUser = _TestAuthUser('student-joined-preview');
+      currentUserDocument = _userFixture(
+        uid: 'student-joined-preview',
+        data: {
+          'display_name': 'Марко Росси',
+          'photo_url': '',
+          'profileCity': _profileCityFixture(
+            countryCode: 'RU',
+            cityKey: 'moscow',
+            catalogVersion: _catalog.catalogVersion,
+          ).toMap(),
+        },
+      );
+      final nowUtc = DateTime.utc(2035, 6, 14, 9);
+
+      EventParticipantsRecord participantRecord(
+        DocumentReference eventRef, {
+        required String userId,
+        required String displayName,
+        required String role,
+        required DateTime joinedAt,
+      }) {
+        return EventParticipantsRecord.getDocumentFromData(
+          createEventParticipantsRecordData(
+            userId: userId,
+            displayName: displayName,
+            role: role,
+            status: eventStatusActive,
+            joinedAt: joinedAt,
+          ),
+          EventParticipantsRecord.createDoc(eventRef, id: userId),
+        );
+      }
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            nowUtcProvider: () => nowUtc,
+            eventPageLoader: (
+              collection,
+              recordBuilder, {
+              queryBuilder,
+              nextPageMarker,
+              required pageSize,
+              required isStream,
+            }) async {
+              return FFFirestorePage<EventsRecord>(
+                [
+                  _eventsRecordFixture(
+                    'joined-preview-event',
+                    title: 'Joined preview event',
+                    startsAt: DateTime.utc(2035, 6, 14, 15),
+                  ),
+                ],
+                null,
+                null,
+              );
+            },
+            currentUserParticipantLoader: (eventRef, userId) async {
+              return participantRecord(
+                eventRef,
+                userId: userId,
+                displayName: 'Участник',
+                role: 'participant',
+                joinedAt: DateTime.utc(2035, 6, 14, 10),
+              );
+            },
+            activeParticipantsLoader: (eventRef) async {
+              return [
+                participantRecord(
+                  eventRef,
+                  userId: 'organizer-user',
+                  displayName: 'Анастасия Иванова',
+                  role: 'organizer',
+                  joinedAt: DateTime.utc(2035, 6, 14, 8),
+                ),
+              ];
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Вы участвуете'), findsOneWidget);
+      expect(_participantAvatarFinder(0), findsOneWidget);
+      expect(_participantAvatarFinder(1), findsOneWidget);
+      expect(
+        find.descendant(
+          of: _participantAvatarFinder(1),
+          matching: find.text('М'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: _participantAvatarFinder(1),
+          matching: find.byIcon(Icons.person_outline),
+        ),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'loaded joined event keeps current user avatar visible when preview is full',
+    (tester) async {
+      currentUser = _TestAuthUser('student-visible-preview');
+      currentUserDocument = _userFixture(
+        uid: 'student-visible-preview',
+        data: {
+          'display_name': 'Марко Росси',
+          'photo_url': '',
+          'profileCity': _profileCityFixture(
+            countryCode: 'RU',
+            cityKey: 'moscow',
+            catalogVersion: _catalog.catalogVersion,
+          ).toMap(),
+        },
+      );
+      final nowUtc = DateTime.utc(2035, 6, 14, 9);
+
+      EventParticipantsRecord participantRecord(
+        DocumentReference eventRef, {
+        required String userId,
+        required String displayName,
+        required String role,
+        required DateTime joinedAt,
+      }) {
+        return EventParticipantsRecord.getDocumentFromData(
+          createEventParticipantsRecordData(
+            userId: userId,
+            displayName: displayName,
+            role: role,
+            status: eventStatusActive,
+            joinedAt: joinedAt,
+          ),
+          EventParticipantsRecord.createDoc(eventRef, id: userId),
+        );
+      }
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            nowUtcProvider: () => nowUtc,
+            eventPageLoader: (
+              collection,
+              recordBuilder, {
+              queryBuilder,
+              nextPageMarker,
+              required pageSize,
+              required isStream,
+            }) async {
+              return FFFirestorePage<EventsRecord>(
+                [
+                  _eventsRecordFixture(
+                    'full-preview-event',
+                    title: 'Full preview event',
+                    startsAt: DateTime.utc(2035, 6, 14, 15),
+                  ),
+                ],
+                null,
+                null,
+              );
+            },
+            currentUserParticipantLoader: (eventRef, userId) async {
+              return participantRecord(
+                eventRef,
+                userId: userId,
+                displayName: 'Участник',
+                role: 'participant',
+                joinedAt: DateTime.utc(2035, 6, 14, 14),
+              );
+            },
+            activeParticipantsLoader: (eventRef) async {
+              return [
+                participantRecord(
+                  eventRef,
+                  userId: 'organizer-user',
+                  displayName: 'Анастасия Иванова',
+                  role: 'organizer',
+                  joinedAt: DateTime.utc(2035, 6, 14, 8),
+                ),
+                for (var index = 1; index <= 5; index += 1)
+                  participantRecord(
+                    eventRef,
+                    userId: 'student-$index',
+                    displayName: 'Student $index',
+                    role: 'participant',
+                    joinedAt: DateTime.utc(2035, 6, 14, 8 + index),
+                  ),
+              ];
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Вы участвуете'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(eventListParticipantAvatarStackKey),
+          matching: find.text('М'),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
     'marks loaded event as joined when current user is active participant',
     (tester) async {
       currentUser = _TestAuthUser('student-joined-user');
