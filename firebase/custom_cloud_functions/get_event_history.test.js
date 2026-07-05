@@ -55,9 +55,10 @@ async function assertRejectsHttpsError(promiseFactory, code, domainCode) {
   });
 }
 
-function createFakeFirestore(seed = {}) {
+function createFakeFirestore(seed = {}, options = {}) {
   const store = new Map(Object.entries(seed));
   const collectionGroupCalls = [];
+  const getAllCalls = [];
 
   const makeSnapshot = (docPath) => {
     const data = store.get(docPath);
@@ -130,6 +131,16 @@ function createFakeFirestore(seed = {}) {
     },
     async get() {
       collectionGroupCalls.push({collectionId, filters, orders, limitCount});
+      const queryError = options.collectionGroupErrorForCall &&
+        options.collectionGroupErrorForCall({
+          collectionId,
+          filters,
+          orders,
+          limitCount,
+        });
+      if (queryError) {
+        throw queryError;
+      }
       let docs = [...store.entries()]
           .filter(([docPath]) => matchesCollectionGroup(docPath, collectionId))
           .map(([docPath]) => makeSnapshot(docPath));
@@ -163,11 +174,12 @@ function createFakeFirestore(seed = {}) {
       return makeCollectionGroupQuery(collectionId);
     },
     async getAll(...refs) {
+      getAllCalls.push(refs.map((ref) => ref.path));
       return Promise.all(refs.map((ref) => ref.get()));
     },
   };
 
-  return {db, collectionGroupCalls, store};
+  return {db, collectionGroupCalls, getAllCalls, store};
 }
 
 function matchesCollectionGroup(docPath, collectionId) {
@@ -374,6 +386,69 @@ test("getEventHistoryHandler returns sorted eligible event history", async () =>
     limitCount: 15,
   });
 });
+
+test("getEventHistoryHandler falls back when participant history index is missing",
+    async () => {
+      const now = new Date("2026-06-16T10:00:00.000Z");
+      const missingIndexError = new Error("The query requires an index");
+      missingIndexError.code = 9;
+      missingIndexError.details = "The query requires an index.";
+      const {db, collectionGroupCalls, getAllCalls} = createFakeFirestore({
+        "events/fourth-joined": event({
+          title: "Fourth joined",
+          startsAt: timestamp("2026-06-17T10:00:00.000Z"),
+        }),
+        "events/newest-joined": event({
+          title: "Newest joined",
+          startsAt: timestamp("2026-06-18T10:00:00.000Z"),
+        }),
+        "events/third-joined": event({
+          title: "Third joined",
+          startsAt: timestamp("2026-06-19T10:00:00.000Z"),
+        }),
+        "events/second-joined": event({
+          title: "Second joined",
+          startsAt: timestamp("2026-06-20T10:00:00.000Z"),
+        }),
+        "events/fourth-joined/participants/student-1": participant({
+          joinedAt: timestamp("2026-06-11T10:00:00.000Z"),
+        }),
+        "events/newest-joined/participants/student-1": participant({
+          joinedAt: timestamp("2026-06-14T10:00:00.000Z"),
+        }),
+        "events/third-joined/participants/student-1": participant({
+          joinedAt: timestamp("2026-06-12T10:00:00.000Z"),
+        }),
+        "events/second-joined/participants/student-1": participant({
+          joinedAt: timestamp("2026-06-13T10:00:00.000Z"),
+        }),
+      }, {
+        collectionGroupErrorForCall: ({orders}) =>
+          orders.length > 0 ? missingIndexError : null,
+      });
+
+      const result = await getEventHistoryHandler(
+          {limit: 1},
+          {auth: {uid: "student-1"}},
+          {db, now},
+      );
+
+      assert.deepEqual(result.items.map((item) => item.eventId), [
+        "newest-joined",
+      ]);
+      assert.deepEqual(getAllCalls, [[
+        "events/newest-joined",
+        "events/second-joined",
+        "events/third-joined",
+      ]]);
+      assert.deepEqual(
+          collectionGroupCalls.map((call) => call.orders),
+          [
+            [{field: "joinedAt", direction: "desc"}],
+            [],
+          ],
+      );
+    });
 
 test("getEventHistoryHandler includes canceled events for organizers", async () => {
   const {db} = createFakeFirestore({

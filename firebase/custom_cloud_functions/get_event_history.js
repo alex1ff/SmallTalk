@@ -114,6 +114,54 @@ function timestampToIso(value) {
   return millis === null ? null : new Date(millis).toISOString();
 }
 
+function compareParticipantDocsByJoinedAtDesc(left, right) {
+  const leftMillis = timestampToMillis((left.data() || {}).joinedAt) || 0;
+  const rightMillis = timestampToMillis((right.data() || {}).joinedAt) || 0;
+  const joinedAtComparison = rightMillis - leftMillis;
+  if (joinedAtComparison !== 0) {
+    return joinedAtComparison;
+  }
+  return String(right.ref && right.ref.path || "")
+      .localeCompare(String(left.ref && left.ref.path || ""));
+}
+
+function isMissingFirestoreIndexError(err) {
+  const details = String(err && (err.details || err.message) || "");
+  return err && err.code === 9 && /requires an index/i.test(details);
+}
+
+async function loadParticipantHistoryDocs({db, uid, participantQueryLimit}) {
+  const baseQuery = db
+      .collectionGroup("participants")
+      .where("userId", "==", uid);
+
+  try {
+    const participantSnapshot = await baseQuery
+        .orderBy("joinedAt", "desc")
+        .limit(participantQueryLimit)
+        .get();
+    return Array.isArray(participantSnapshot.docs) ?
+      participantSnapshot.docs :
+      [];
+  } catch (err) {
+    if (!isMissingFirestoreIndexError(err)) {
+      throw err;
+    }
+    console.warn(
+        "getEventHistory participant history index missing; using fallback",
+        {uid},
+    );
+  }
+
+  const fallbackSnapshot = await baseQuery.get();
+  const fallbackDocs = Array.isArray(fallbackSnapshot.docs) ?
+    fallbackSnapshot.docs :
+    [];
+  return fallbackDocs
+      .sort(compareParticipantDocsByJoinedAtDesc)
+      .slice(0, participantQueryLimit);
+}
+
 function eventReferenceForParticipantSnapshot(db, participantDoc) {
   const parentEventRef = participantDoc.ref &&
     participantDoc.ref.parent &&
@@ -289,15 +337,11 @@ async function getEventHistory({
       Math.max(limit * PARTICIPANT_QUERY_MULTIPLIER, limit),
       MAX_PARTICIPANT_QUERY_LIMIT,
   );
-  const participantSnapshot = await db
-      .collectionGroup("participants")
-      .where("userId", "==", uid)
-      .orderBy("joinedAt", "desc")
-      .limit(participantQueryLimit)
-      .get();
-  const participantDocs = Array.isArray(participantSnapshot.docs) ?
-    participantSnapshot.docs :
-    [];
+  const participantDocs = await loadParticipantHistoryDocs({
+    db,
+    uid,
+    participantQueryLimit,
+  });
   const entries = [];
   const eventRefs = [];
   const seenEventPaths = new Set();

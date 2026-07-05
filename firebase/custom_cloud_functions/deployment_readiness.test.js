@@ -194,6 +194,7 @@ test("deployment readiness exposes event history callable and index", () => {
       JSON.stringify(index.fields) === JSON.stringify([
         {fieldPath: "userId", order: "ASCENDING"},
         {fieldPath: "joinedAt", order: "DESCENDING"},
+        {fieldPath: "__name__", order: "DESCENDING"},
       ]),
   );
 
