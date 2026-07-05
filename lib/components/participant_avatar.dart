@@ -23,7 +23,7 @@ class ParticipantAvatar extends StatelessWidget {
 
   double get _borderWidth {
     return switch (size) {
-      ParticipantAvatarSize.hero => 0.0,
+      ParticipantAvatarSize.hero => 1.0,
     };
   }
 
@@ -43,6 +43,9 @@ class ParticipantAvatar extends StatelessWidget {
       height: dimension,
       decoration: BoxDecoration(
         color: ExpatlioDesign.avatarFallbackBackground,
+        shape: BoxShape.circle,
+      ),
+      foregroundDecoration: BoxDecoration(
         shape: BoxShape.circle,
         border: Border.all(
           color: ExpatlioDesign.border,

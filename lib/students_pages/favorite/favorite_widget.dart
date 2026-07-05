@@ -17,8 +17,38 @@ import 'favorite_model.dart';
 export 'favorite_model.dart';
 
 const double _favoriteChatAvatarSize = 52.0;
+const double _favoriteChatTimestampWidth = 74.0;
 const Color _favoriteChatDividerColor = Color(0xFFEBEBEB);
 const Color _favoriteChatDeleteBackground = Color(0xFFFF3B30);
+
+String formatFavoriteInboxTimestamp(DateTime? timestamp, {DateTime? now}) {
+  if (timestamp == null) {
+    return '';
+  }
+
+  final localTime = timestamp.toLocal();
+  final localNow = (now ?? DateTime.now()).toLocal();
+  final sameDay = DateTime(
+        localNow.year,
+        localNow.month,
+        localNow.day,
+      ) ==
+      DateTime(
+        localTime.year,
+        localTime.month,
+        localTime.day,
+      );
+
+  if (sameDay) {
+    return DateFormat('HH:mm').format(localTime);
+  }
+
+  if (localTime.year == localNow.year) {
+    return DateFormat('MM/dd').format(localTime);
+  }
+
+  return DateFormat('MM/dd/yy').format(localTime);
+}
 
 class FavoriteWidget extends StatefulWidget {
   const FavoriteWidget({super.key});
@@ -459,29 +489,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
   }
 
   String _formatInboxTimestamp(DateTime? timestamp) {
-    if (timestamp == null) {
-      return '';
-    }
-
-    final locale = FFLocalizations.of(context).languageCode;
-    final localTime = timestamp.toLocal();
-    final today = DateTime.now();
-    final sameDay = DateTime(
-          today.year,
-          today.month,
-          today.day,
-        ) ==
-        DateTime(
-          localTime.year,
-          localTime.month,
-          localTime.day,
-        );
-
-    if (sameDay) {
-      return DateFormat.jm(locale).format(localTime);
-    }
-
-    return DateFormat('d MMM, HH:mm', locale).format(localTime);
+    return formatFavoriteInboxTimestamp(timestamp);
   }
 
   Future<void> _openConversation(ConversationsRecord conversation) async {
@@ -819,7 +827,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                           ),
                         ),
                         SizedBox(
-                          width: 54.0,
+                          width: _favoriteChatTimestampWidth,
                           child: Padding(
                             padding: const EdgeInsetsDirectional.only(
                               start: ExpatlioDesign.space12,
@@ -833,6 +841,10 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                                     conversation.lastMessageAt ??
                                         conversation.unlockedAt,
                                   ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.clip,
+                                  softWrap: false,
+                                  textAlign: TextAlign.end,
                                   style: ExpatlioDesign.textStyle(
                                     context,
                                     color: ExpatlioDesign.inactive,
@@ -983,9 +995,11 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                               width: _favoriteChatAvatarSize,
                               height: _favoriteChatAvatarSize,
                               alignment: Alignment.center,
-                              decoration: const BoxDecoration(
+                              decoration: BoxDecoration(
                                 color: ExpatlioDesign.avatarFallbackBackground,
                                 shape: BoxShape.circle,
+                                border:
+                                    Border.all(color: ExpatlioDesign.border),
                               ),
                               child: Icon(
                                 Icons.calendar_month_rounded,
@@ -1037,23 +1051,30 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                                 ),
                               ),
                             ),
-                            Padding(
-                              padding: const EdgeInsetsDirectional.only(
-                                  start: ExpatlioDesign.space12),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Text(
-                                    _formatInboxTimestamp(timestamp),
-                                    style: ExpatlioDesign.textStyle(
-                                      context,
-                                      color: ExpatlioDesign.inactive,
-                                      size: 12.0,
-                                      weight: FontWeight.w400,
+                            SizedBox(
+                              width: _favoriteChatTimestampWidth,
+                              child: Padding(
+                                padding: const EdgeInsetsDirectional.only(
+                                    start: ExpatlioDesign.space12),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      _formatInboxTimestamp(timestamp),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.clip,
+                                      softWrap: false,
+                                      textAlign: TextAlign.end,
+                                      style: ExpatlioDesign.textStyle(
+                                        context,
+                                        color: ExpatlioDesign.inactive,
+                                        size: 12.0,
+                                        weight: FontWeight.w400,
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
                           ],
@@ -1442,29 +1463,32 @@ class _UnreadCountBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final label = count > 99 ? '99+' : count.toString();
+    final badgeDiameter = switch (label.length) {
+      1 => 20.0,
+      2 => 24.0,
+      _ => 30.0,
+    };
 
-    return Container(
-      constraints: const BoxConstraints(
-        minWidth: 20.0,
-        minHeight: 20.0,
-      ),
-      padding: EdgeInsetsDirectional.symmetric(
-        horizontal: count > 9 ? 6.0 : 0.0,
-      ),
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: FlutterFlowTheme.of(context).primary,
-        borderRadius: BorderRadius.circular(999.0),
-      ),
-      child: Text(
-        label,
-        textAlign: TextAlign.center,
-        style: ExpatlioDesign.textStyle(
-          context,
-          color: Colors.white,
-          size: 12.0,
-          weight: FontWeight.w700,
-          height: 1.0,
+    return SizedBox.square(
+      dimension: badgeDiameter,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: FlutterFlowTheme.of(context).primary,
+          shape: BoxShape.circle,
+        ),
+        child: Center(
+          child: Text(
+            label,
+            maxLines: 1,
+            textAlign: TextAlign.center,
+            style: ExpatlioDesign.textStyle(
+              context,
+              color: Colors.white,
+              size: label.length > 2 ? 11.0 : 12.0,
+              weight: FontWeight.w700,
+              height: 1.0,
+            ),
+          ),
         ),
       ),
     );

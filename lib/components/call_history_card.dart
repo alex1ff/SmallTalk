@@ -130,6 +130,12 @@ class CallHistoryCard extends StatelessWidget {
         color: ExpatlioDesign.avatarFallbackBackground,
         shape: BoxShape.circle,
       ),
+      foregroundDecoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.fromBorderSide(
+          BorderSide(color: ExpatlioDesign.border),
+        ),
+      ),
       child: photoUrl.isNotEmpty
           ? ClipOval(
               child: CachedNetworkImage(

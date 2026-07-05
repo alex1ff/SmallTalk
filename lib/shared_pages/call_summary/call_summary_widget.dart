@@ -546,6 +546,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
       decoration: BoxDecoration(
         color: ExpatlioDesign.avatarFallbackBackground,
         shape: BoxShape.circle,
+        border: Border.all(color: ExpatlioDesign.border),
         image: photoUrl.isNotEmpty
             ? DecorationImage(
                 fit: BoxFit.cover,

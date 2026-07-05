@@ -1098,7 +1098,15 @@ class _EventGroupChatSenderAvatar extends StatelessWidget {
       width: _dimension,
       height: _dimension,
       clipBehavior: Clip.antiAlias,
-      decoration: const BoxDecoration(shape: BoxShape.circle),
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+      ),
+      foregroundDecoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.fromBorderSide(
+          BorderSide(color: ExpatlioDesign.border),
+        ),
+      ),
       child: normalizedPhotoUrl.isEmpty
           ? _fallback(context)
           : CachedNetworkImage(

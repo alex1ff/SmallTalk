@@ -33,7 +33,17 @@ class ProfileAvatarPicker extends StatelessWidget {
                         if (currentUserPhoto.isEmpty) {
                           return const _ProfileAvatarPlaceholder();
                         }
-                        return ClipOval(
+                        return Container(
+                          clipBehavior: Clip.antiAlias,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                          ),
+                          foregroundDecoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.fromBorderSide(
+                              BorderSide(color: ExpatlioDesign.border),
+                            ),
+                          ),
                           child: CachedNetworkImage(
                             imageUrl: currentUserPhoto,
                             fit: BoxFit.cover,

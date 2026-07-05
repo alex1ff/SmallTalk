@@ -1810,7 +1810,15 @@ class _EventOrganizerAvatar extends StatelessWidget {
       width: _eventListOrganizerAvatarSize,
       height: _eventListOrganizerAvatarSize,
       clipBehavior: Clip.antiAlias,
-      decoration: const BoxDecoration(shape: BoxShape.circle),
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+      ),
+      foregroundDecoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.fromBorderSide(
+          BorderSide(color: ExpatlioDesign.border),
+        ),
+      ),
       child: normalizedPhotoUrl.isEmpty
           ? _fallback(context)
           : CachedNetworkImage(
@@ -2476,6 +2484,7 @@ class _EventParticipantAvatarPlaceholder extends StatelessWidget {
       decoration: BoxDecoration(
         color: ExpatlioDesign.card,
         shape: BoxShape.circle,
+        border: Border.all(color: ExpatlioDesign.border, width: 1),
       ),
       child: DecoratedBox(
         decoration: BoxDecoration(
@@ -2515,6 +2524,7 @@ class _EventParticipantOverflowBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: ExpatlioDesign.avatarFallbackBackground,
         shape: BoxShape.circle,
+        border: Border.all(color: ExpatlioDesign.border, width: 1),
       ),
       child: Text(
         '+$count',

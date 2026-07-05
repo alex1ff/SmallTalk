@@ -1448,6 +1448,9 @@ class _EventDetailOccupiedSlotAvatar extends StatelessWidget {
       decoration: const BoxDecoration(
         color: ExpatlioDesign.avatarFallbackBackground,
         shape: BoxShape.circle,
+        border: Border.fromBorderSide(
+          BorderSide(color: ExpatlioDesign.border),
+        ),
       ),
       alignment: Alignment.center,
       child: Icon(
@@ -1537,7 +1540,15 @@ class _EventDetailParticipantAvatar extends StatelessWidget {
       width: _dimension,
       height: _dimension,
       clipBehavior: Clip.antiAlias,
-      decoration: const BoxDecoration(shape: BoxShape.circle),
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+      ),
+      foregroundDecoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.fromBorderSide(
+          BorderSide(color: ExpatlioDesign.border),
+        ),
+      ),
       child: normalizedPhotoUrl.isEmpty
           ? _fallback(context)
           : CachedNetworkImage(
@@ -1967,7 +1978,15 @@ class _EventDetailOrganizerAvatar extends StatelessWidget {
       width: _dimension,
       height: _dimension,
       clipBehavior: Clip.antiAlias,
-      decoration: const BoxDecoration(shape: BoxShape.circle),
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+      ),
+      foregroundDecoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.fromBorderSide(
+          BorderSide(color: ExpatlioDesign.border),
+        ),
+      ),
       child: normalizedPhotoUrl.isEmpty
           ? _fallback(context)
           : CachedNetworkImage(

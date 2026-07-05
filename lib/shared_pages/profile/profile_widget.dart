@@ -1132,6 +1132,10 @@ class _ProfileWidgetState extends State<ProfileWidget> {
         shape: BoxShape.circle,
         border: Border.all(color: ExpatlioDesign.border),
       ),
+      foregroundDecoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: ExpatlioDesign.border),
+      ),
       child: currentUserPhoto.isNotEmpty
           ? ClipOval(
               child: CachedNetworkImage(
