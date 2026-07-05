@@ -7,6 +7,7 @@ const {
 
 const DAILY_COMPLETIONS_COLLECTION = "matchPairDailyCompletions";
 const MATCH_REPEAT_BYPASS_USER_IDS_ENV = "MATCH_REPEAT_BYPASS_USER_IDS";
+const MATCH_REPEAT_PREVENTION_ENABLED = false;
 const MAX_GET_ALL_CHUNK_SIZE = 300;
 const DEFAULT_REPEAT_BYPASS_USER_ID_PAIRS = [
   [
@@ -182,6 +183,19 @@ function buildSameDayRepeatLookupPlan(
     new Set(candidateIds.map((value) => normalizeUserId(value)).filter(Boolean)),
   );
 
+  if (!MATCH_REPEAT_PREVENTION_ENABLED) {
+    return {
+      dayKey,
+      globalBypassApplied: true,
+      requesterBypassApplied: false,
+      testerBypassCandidateCount: 0,
+      userIdPairBypassCandidateCount: 0,
+      emailPairBypassCandidateCount: 0,
+      refs: [],
+      refCandidateIds: [],
+    };
+  }
+
   if (!normalizedRequesterId) {
     return {
       dayKey,
@@ -281,6 +295,7 @@ function buildRepeatResultFromSnapshots(plan, snapshots) {
   return {
     dayKey: plan.dayKey,
     excludedCandidateIds,
+    globalBypassApplied: Boolean(plan.globalBypassApplied),
     requesterBypassApplied: plan.requesterBypassApplied,
     testerBypassCandidateCount: plan.testerBypassCandidateCount,
     userIdPairBypassCandidateCount: plan.userIdPairBypassCandidateCount,
@@ -350,6 +365,9 @@ function buildRepeatPreventionLogContext(repeatPreventionContext) {
 
   return {
     dayKey: repeatPreventionContext.dayKey,
+    globalBypassApplied: Boolean(
+      repeatPreventionContext.globalBypassApplied,
+    ),
     requesterBypassApplied: repeatPreventionContext.requesterBypassApplied,
     testerBypassCandidateCount:
       repeatPreventionContext.testerBypassCandidateCount,

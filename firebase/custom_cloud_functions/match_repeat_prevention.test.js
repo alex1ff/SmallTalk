@@ -37,7 +37,7 @@ function createFakeRepeatLookupDb(existingPaths, seenPaths) {
 }
 
 test(
-  "loadSameDayRepeatCandidateIds excludes completed candidates and skips tester bypass candidates",
+  "loadSameDayRepeatCandidateIds temporarily allows all completed candidates",
   async () => {
     const requesterId = "student-a";
     const completedCandidateId = "teacher-b";
@@ -67,21 +67,16 @@ test(
     );
 
     assert.equal(result.dayKey, dayKey);
+    assert.equal(result.globalBypassApplied, true);
     assert.equal(result.requesterBypassApplied, false);
-    assert.equal(result.testerBypassCandidateCount, 1);
-    assert.deepEqual(
-      Array.from(result.excludedCandidateIds).sort(),
-      [completedCandidateId],
-    );
-    assert.deepEqual(seenPaths.sort(), [
-      `matchPairDailyCompletions/${dayKey}_student-a_teacher-b`,
-      `matchPairDailyCompletions/${dayKey}_student-a_teacher-c`,
-    ]);
+    assert.equal(result.testerBypassCandidateCount, 0);
+    assert.deepEqual(Array.from(result.excludedCandidateIds), []);
+    assert.deepEqual(seenPaths, []);
   },
 );
 
 test(
-  "loadSameDayRepeatCandidateIds allows the configured email pair to repeat",
+  "loadSameDayRepeatCandidateIds ignores email pair bypass while global bypass is active",
   async () => {
     const requesterId = "uid-elena";
     const repeatAllowedCandidateId = "uid-muratov";
@@ -108,19 +103,15 @@ test(
       },
     );
 
-    assert.equal(result.emailPairBypassCandidateCount, 1);
-    assert.deepEqual(
-      Array.from(result.excludedCandidateIds).sort(),
-      [regularCompletedCandidateId],
-    );
-    assert.deepEqual(seenPaths, [
-      `matchPairDailyCompletions/${dayKey}_uid-elena_uid-regular`,
-    ]);
+    assert.equal(result.globalBypassApplied, true);
+    assert.equal(result.emailPairBypassCandidateCount, 0);
+    assert.deepEqual(Array.from(result.excludedCandidateIds), []);
+    assert.deepEqual(seenPaths, []);
   },
 );
 
 test(
-  "loadSameDayRepeatCandidateIds allows the configured uid pair to repeat",
+  "loadSameDayRepeatCandidateIds ignores uid pair bypass while global bypass is active",
   async () => {
     const requesterId = "XkRxUdqHTiM1MNDTJG4zb0wooay2";
     const repeatAllowedCandidateId = "CI0E2yJBw1P0TicAWVLhHhLX6Yl2";
@@ -146,19 +137,15 @@ test(
       {dayKey},
     );
 
-    assert.equal(result.userIdPairBypassCandidateCount, 1);
-    assert.deepEqual(
-      Array.from(result.excludedCandidateIds).sort(),
-      [regularCompletedCandidateId],
-    );
-    assert.deepEqual(seenPaths, [
-      `matchPairDailyCompletions/${dayKey}_${regularPairId}`,
-    ]);
+    assert.equal(result.globalBypassApplied, true);
+    assert.equal(result.userIdPairBypassCandidateCount, 0);
+    assert.deepEqual(Array.from(result.excludedCandidateIds), []);
+    assert.deepEqual(seenPaths, []);
   },
 );
 
 test(
-  "loadSameDayRepeatCandidateIds short-circuits when the requester is allow-listed",
+  "loadSameDayRepeatCandidateIds short-circuits before requester allow-list while global bypass is active",
   async () => {
     const originalValue = process.env[MATCH_REPEAT_BYPASS_USER_IDS_ENV];
     process.env[MATCH_REPEAT_BYPASS_USER_IDS_ENV] = " requester-a , qa-user ";
@@ -181,8 +168,9 @@ test(
         ["teacher-b", "teacher-c"],
       );
 
-      assert.equal(result.requesterBypassApplied, true);
-      assert.equal(result.testerBypassCandidateCount, 2);
+      assert.equal(result.globalBypassApplied, true);
+      assert.equal(result.requesterBypassApplied, false);
+      assert.equal(result.testerBypassCandidateCount, 0);
       assert.deepEqual(Array.from(result.excludedCandidateIds), []);
       assert.equal(getAllCalled, false);
     } finally {

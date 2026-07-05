@@ -2324,7 +2324,7 @@ test("collectMatchCandidatePool filters search lifecycle exclusions", async () =
   assert.equal(result.stats.teacherCandidates, 1);
 });
 
-test("collectMatchCandidatePool scans past same-day repeat history", async () => {
+test("collectMatchCandidatePool temporarily allows same-day repeat history", async () => {
   const dayKey = "2026-01-01";
   const db = fakeDb({
     studentRequestDocs: [
@@ -2382,10 +2382,8 @@ test("collectMatchCandidatePool scans past same-day repeat history", async () =>
 
   assert.deepEqual(
     result.candidates.map((candidate) => candidate.userId),
-    ["teacher-ok", "student-ok"],
+    ["teacher-repeat", "student-repeat"],
   );
-  assert.equal(result.stats.studentRequestsScanned, 2);
-  assert.equal(result.stats.teacherUsersScanned, 2);
   assert.equal(result.stats.studentCandidates, 1);
   assert.equal(result.stats.teacherCandidates, 1);
 });
