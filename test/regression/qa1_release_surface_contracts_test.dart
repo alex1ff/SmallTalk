@@ -40,6 +40,9 @@ void main() {
           isNot(contains('initialData: const _ConversationsLoadState()')));
       expect(source, contains('_conversationStateCacheByUid'));
       expect(source, contains('_cachedConversationsStateForUser(currentUid)'));
+      expect(source, contains('_watchConversationUnreadCount'));
+      expect(source, contains('_ConversationUnreadBadge'));
+      expect(source, isNot(contains('width: 8.0')));
       expect(source, isNot(contains('_buildMessagesLoadingList')));
       expect(source, isNot(contains('_conversationLoadingCard')));
       expect(source, contains('_conversationsStreamUid'));

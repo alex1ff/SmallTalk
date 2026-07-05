@@ -51,6 +51,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
   Stream<_EventChatsLoadState>? _eventChatsStream;
   final Map<String, Stream<List<EventChatMessagesRecord>>>
       _latestEventChatMessageStreams = {};
+  final Map<String, Stream<int>> _conversationUnreadCountStreams = {};
   int _selectedChatTabIndex = 0;
 
   Future<UserPublicProfilesRecord?> _getUserFuture(DocumentReference ref) {
@@ -367,6 +368,65 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     return _latestEventChatMessageStreams.putIfAbsent(
       chat.reference.path,
       () => EventGroupChatRepository.watchLatestMessage(eventId: eventId),
+    );
+  }
+
+  Stream<int> _watchConversationUnreadCount(ConversationsRecord conversation) {
+    final currentUid = currentUserUid;
+    if (currentUid.isEmpty ||
+        !conversationIsUnreadForUser(conversation, currentUid)) {
+      return Stream<int>.value(0);
+    }
+
+    final readAt = conversationReadAtForUser(conversation, currentUid);
+    final unreadAt = conversation.lastUnreadMessageAt ??
+        conversation.lastMessageAt ??
+        conversation.unlockedAt;
+    final cacheKey = [
+      conversation.reference.path,
+      currentUid,
+      readAt?.microsecondsSinceEpoch ?? 0,
+      unreadAt?.microsecondsSinceEpoch ?? 0,
+    ].join('|');
+
+    return _conversationUnreadCountStreams.putIfAbsent(
+      cacheKey,
+      () => queryMessagesRecord(
+        parent: conversation.reference,
+        queryBuilder: (messagesQuery) {
+          var query = messagesQuery;
+          if (readAt != null) {
+            query = query.where('createdAt', isGreaterThan: readAt);
+          }
+          return query.orderBy('createdAt', descending: true);
+        },
+        limit: 100,
+      ).map((messages) {
+        var unreadCount = 0;
+        for (final message in messages) {
+          final createdAt = message.createdAt;
+          if (createdAt == null) {
+            continue;
+          }
+          if (readAt != null && !createdAt.isAfter(readAt)) {
+            continue;
+          }
+          if (message.senderId == currentUid || messageIsCallEvent(message)) {
+            continue;
+          }
+          unreadCount += 1;
+        }
+        if (unreadCount <= 0 &&
+            conversationIsUnreadForUser(conversation, currentUid)) {
+          return 1;
+        }
+        return unreadCount;
+      }).handleError((Object error, StackTrace stackTrace) {
+        debugPrint(
+          'FavoriteWidget: failed to load unread count for '
+          '${conversation.reference.path}: $error',
+        );
+      }),
     );
   }
 
@@ -740,16 +800,6 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                                         ],
                                       ),
                                     ),
-                                    if (unread)
-                                      Container(
-                                        width: 8.0,
-                                        height: 8.0,
-                                        decoration: BoxDecoration(
-                                          color: FlutterFlowTheme.of(context)
-                                              .primary,
-                                          shape: BoxShape.circle,
-                                        ),
-                                      ),
                                   ],
                                 ),
                                 const SizedBox(height: ExpatlioDesign.space4),
@@ -768,26 +818,41 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                             ),
                           ),
                         ),
-                        Padding(
-                          padding: const EdgeInsetsDirectional.only(
-                              start: ExpatlioDesign.space12),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                _formatInboxTimestamp(
-                                  conversation.lastMessageAt ??
-                                      conversation.unlockedAt,
+                        SizedBox(
+                          width: 54.0,
+                          child: Padding(
+                            padding: const EdgeInsetsDirectional.only(
+                              start: ExpatlioDesign.space12,
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  _formatInboxTimestamp(
+                                    conversation.lastMessageAt ??
+                                        conversation.unlockedAt,
+                                  ),
+                                  style: ExpatlioDesign.textStyle(
+                                    context,
+                                    color: ExpatlioDesign.inactive,
+                                    size: 12.0,
+                                    weight: FontWeight.w400,
+                                  ),
                                 ),
-                                style: ExpatlioDesign.textStyle(
-                                  context,
-                                  color: ExpatlioDesign.inactive,
-                                  size: 12.0,
-                                  weight: FontWeight.w400,
-                                ),
-                              ),
-                            ],
+                                if (unread) ...[
+                                  const SizedBox(
+                                    height: ExpatlioDesign.space8,
+                                  ),
+                                  _ConversationUnreadBadge(
+                                    unreadCountStream:
+                                        _watchConversationUnreadCount(
+                                      conversation,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
                           ),
                         ),
                       ],
@@ -1337,6 +1402,69 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
               },
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ConversationUnreadBadge extends StatelessWidget {
+  const _ConversationUnreadBadge({
+    required this.unreadCountStream,
+  });
+
+  final Stream<int> unreadCountStream;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<int>(
+      stream: unreadCountStream,
+      initialData: 1,
+      builder: (context, snapshot) {
+        final count = snapshot.data ?? 1;
+        if (count <= 0) {
+          return const SizedBox.shrink();
+        }
+
+        return _UnreadCountBadge(count: count);
+      },
+    );
+  }
+}
+
+class _UnreadCountBadge extends StatelessWidget {
+  const _UnreadCountBadge({
+    required this.count,
+  });
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = count > 99 ? '99+' : count.toString();
+
+    return Container(
+      constraints: const BoxConstraints(
+        minWidth: 20.0,
+        minHeight: 20.0,
+      ),
+      padding: EdgeInsetsDirectional.symmetric(
+        horizontal: count > 9 ? 6.0 : 0.0,
+      ),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: FlutterFlowTheme.of(context).primary,
+        borderRadius: BorderRadius.circular(999.0),
+      ),
+      child: Text(
+        label,
+        textAlign: TextAlign.center,
+        style: ExpatlioDesign.textStyle(
+          context,
+          color: Colors.white,
+          size: 12.0,
+          weight: FontWeight.w700,
+          height: 1.0,
         ),
       ),
     );

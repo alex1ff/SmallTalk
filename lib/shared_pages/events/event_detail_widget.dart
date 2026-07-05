@@ -1217,7 +1217,8 @@ class _EventDetailParticipantsSection extends StatelessWidget {
               ),
               if (occupancyLabel != null) ...[
                 const SizedBox(width: ExpatlioDesign.space12),
-                Flexible(
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 120),
                   child: _EventDetailOccupancyLabel(label: occupancyLabel),
                 ),
               ],

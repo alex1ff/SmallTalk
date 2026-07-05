@@ -1192,6 +1192,71 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets(
+      'student dashboard resumes created search when start response is lost',
+      (tester) async {
+    const userId = 'student-lost-start-response-test';
+    const recoveredRequestId = 'request-lost-start-response-test';
+    setActiveStudent(userId);
+    var recoveryReadCount = 0;
+    final heartbeatPayloads = <Map<String, dynamic>>[];
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSearchRecoveryReader: (requestedUserId) async {
+            expect(requestedUserId, userId);
+            recoveryReadCount += 1;
+            if (recoveryReadCount == 1) {
+              return activeSearchRecoveryState(
+                userId: userId,
+                requestId: 'request-no-startup-recovery-test',
+                exists: false,
+              );
+            }
+            return activeSearchRecoveryState(
+              userId: userId,
+              requestId: recoveredRequestId,
+              expiresAt: DateTime.now().add(const Duration(minutes: 5)),
+            );
+          },
+          startSearchRequest: (_) async {
+            throw TimeoutException('start response lost');
+          },
+          heartbeatSearchRequest: (payload) async {
+            heartbeatPayloads.add(Map<String, dynamic>.from(payload));
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.idle();
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+    await tester.idle();
+    await tester.pump();
+
+    expect(find.text('Ищем собеседника'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsOneWidget);
+    expect(find.text('Не удалось начать поиск'), findsNothing);
+    expect(heartbeatPayloads, [
+      <String, dynamic>{
+        'requestId': recoveredRequestId,
+        'appState': 'foreground',
+      },
+    ]);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('student dashboard stops queued start after request id arrives',
       (tester) async {
     setActiveStudent('student-stop-queued-start-search-test');

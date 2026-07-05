@@ -445,6 +445,10 @@
         {
           "fieldPath": "joinedAt",
           "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
         }
       ]
     },

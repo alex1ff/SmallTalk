@@ -416,6 +416,7 @@ test("firestore indexes contain event history participants collection group inde
       JSON.stringify(index.fields) === JSON.stringify([
         {fieldPath: "userId", order: "ASCENDING"},
         {fieldPath: "joinedAt", order: "DESCENDING"},
+        {fieldPath: "__name__", order: "DESCENDING"},
       ]),
   );
 

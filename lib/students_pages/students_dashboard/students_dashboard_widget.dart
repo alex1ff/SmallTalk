@@ -612,31 +612,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       }
 
       if (state.canResumeUnboundSearch) {
-        final requestId = state.requestId;
-        if (requestId == null) {
-          return;
-        }
-
-        final remainingSearchDuration = state.remainingSearchDuration();
-        _clearActiveSearchRecoveryRetryTimer();
-        _clearSearchTimeoutTimer();
-        _clearSearchHeartbeatTimer();
-        safeSetState(() {
-          _searchState = StudentDashboardSearchState.searching;
-          _searchErrorReason = null;
-          _matchedSearchSessionId = null;
-          _recoveredConnectionSessionId = null;
-          _suppressedActiveSessionId = null;
-          _suppressedActiveSearchUserId = null;
-          _isStartingSearch = false;
-        });
-        if (remainingSearchDuration <= Duration.zero) {
-          _startSearchTimeoutTimer(remainingSearchDuration, requestId);
-          return;
-        }
-        _startSearchTimeoutTimer(remainingSearchDuration);
-        _startSearchHeartbeatTimer(requestId);
-        unawaited(_sendSearchHeartbeat(requestId));
+        _resumeRecoveredUnboundSearch(state);
       }
       return;
     } catch (error, stackTrace) {
@@ -656,6 +632,60 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       debugPrintStack(stackTrace: stackTrace);
     } finally {
       _activeSearchRecoveryInFlight = false;
+    }
+  }
+
+  void _resumeRecoveredUnboundSearch(ActiveSearchRecoveryState state) {
+    final requestId = state.requestId;
+    if (requestId == null) {
+      return;
+    }
+
+    final remainingSearchDuration = state.remainingSearchDuration();
+    _clearActiveSearchRecoveryRetryTimer();
+    _clearSearchTimeoutTimer();
+    _clearSearchHeartbeatTimer();
+    safeSetState(() {
+      _searchState = StudentDashboardSearchState.searching;
+      _searchErrorReason = null;
+      _matchedSearchSessionId = null;
+      _recoveredConnectionSessionId = null;
+      _suppressedActiveSessionId = null;
+      _suppressedActiveSearchUserId = null;
+      _isStartingSearch = false;
+    });
+    if (remainingSearchDuration <= Duration.zero) {
+      _startSearchTimeoutTimer(remainingSearchDuration, requestId);
+      return;
+    }
+    _startSearchTimeoutTimer(remainingSearchDuration);
+    _startSearchHeartbeatTimer(requestId);
+    unawaited(_sendSearchHeartbeat(requestId));
+  }
+
+  Future<bool> _recoverStartSearchRequestAfterFailure() async {
+    final userId = _currentSearchUserId();
+    if (userId == null || !mounted) {
+      return false;
+    }
+
+    try {
+      final state = await _readDashboardActiveSearchRecoveryState(userId);
+      if (!mounted ||
+          _currentSearchUserId() != userId ||
+          !state.canResumeUnboundSearch) {
+        return false;
+      }
+
+      _resumeRecoveredUnboundSearch(state);
+      return true;
+    } catch (error, stackTrace) {
+      debugPrint(
+        'StudentsDashboard: failed to recover search after start failure: '
+        '$error',
+      );
+      debugPrintStack(stackTrace: stackTrace);
+      return false;
     }
   }
 
@@ -2337,6 +2367,8 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     });
     _clearSearchTimeoutTimer();
 
+    var startSearchRequestSent = false;
+    var startSearchResponseReceived = false;
     try {
       if (!await _ensureStartSearchAccess(
         hasActiveCallSession: hasActiveCallSession,
@@ -2356,9 +2388,11 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
         _suppressedActiveSearchUserId = null;
       });
 
+      startSearchRequestSent = true;
       final startSearchData = await _startActiveSearchRequest(
         currentUserDocument!,
       );
+      startSearchResponseReceived = true;
       final requestId = _normalizedResponseString(startSearchData, 'requestId');
       if (requestId == null) {
         throw Exception('startSearch did not return requestId');
@@ -2410,11 +2444,16 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
         _scheduleStudentTeacherWaitingPage(sessionId);
       }
     } on Exception catch (error, stackTrace) {
-      _logStartSearchFailure(error, stackTrace);
       if (_stopSearchWhenStartCompletes) {
         _stopSearchWhenStartCompletes = false;
         return;
       }
+      if (startSearchRequestSent &&
+          !startSearchResponseReceived &&
+          await _recoverStartSearchRequestAfterFailure()) {
+        return;
+      }
+      _logStartSearchFailure(error, stackTrace);
       if (mounted) {
         _setSearchError(StudentDashboardSearchErrorReason.searchUnavailable);
       }

@@ -2055,6 +2055,14 @@ void main() {
         find.bySemanticsLabel(RegExp('Заполненность: 5/10 мест')),
         findsOneWidget,
       );
+      final sectionRight =
+          tester.getTopRight(find.byKey(eventDetailParticipantsSectionKey)).dx;
+      final occupancyRight =
+          tester.getTopRight(find.byKey(eventDetailOccupancyKey)).dx;
+      expect(
+        sectionRight - occupancyRight,
+        moreOrLessEquals(14.0, epsilon: 1.0),
+      );
     } finally {
       semanticsHandle.dispose();
     }

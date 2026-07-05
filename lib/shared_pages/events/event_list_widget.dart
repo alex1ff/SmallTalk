@@ -1225,6 +1225,7 @@ EventListCardViewModel? _eventListCardFromRecord(
     locationName: event.locationName,
     participants: _eventListParticipantsForRecord(
       event,
+      currentUserId: currentUserId,
       activeParticipants: activeParticipants,
     ),
     participantsCount: participantsCount,
@@ -1264,29 +1265,43 @@ bool _eventListParticipantIsActiveForUser(
 
 List<EventListParticipantViewModel> _eventListParticipantsForRecord(
   EventsRecord event, {
+  required String currentUserId,
   List<EventParticipantsRecord> activeParticipants =
       const <EventParticipantsRecord>[],
 }) {
+  final viewerUserId = currentUserId.trim();
   final participantViewModels = activeParticipants
       .where((participant) => participant.status.trim() == eventStatusActive)
       .map((participant) {
+    final participantUserId = _eventListParticipantUserId(participant);
     final isOrganizer = event.organizerId.trim().isNotEmpty &&
-        participant.userId.trim() == event.organizerId.trim();
+        participantUserId == event.organizerId.trim();
+    final isCurrentUser =
+        viewerUserId.isNotEmpty && participantUserId == viewerUserId;
     final displayName = _eventListVisibleParticipantDisplayName(
       participant.displayName,
     );
+    final currentDisplayName = isCurrentUser
+        ? _eventListVisibleParticipantDisplayName(currentUserDisplayName)
+        : '';
     final resolvedDisplayName = displayName.isNotEmpty
         ? displayName
-        : isOrganizer
-            ? event.organizerDisplayName.trim()
-            : '';
-    final photoUrl = participant.photoUrl.trim().isNotEmpty
-        ? participant.photoUrl.trim()
-        : isOrganizer && event.hasOrganizerPhotoUrl()
-            ? event.organizerPhotoUrl.trim()
-            : '';
+        : currentDisplayName.isNotEmpty
+            ? currentDisplayName
+            : isOrganizer
+                ? event.organizerDisplayName.trim()
+                : '';
+    final participantPhotoUrl = participant.photoUrl.trim();
+    final currentPhotoUrl = isCurrentUser ? currentUserPhoto.trim() : '';
+    final photoUrl = participantPhotoUrl.isNotEmpty
+        ? participantPhotoUrl
+        : currentPhotoUrl.isNotEmpty
+            ? currentPhotoUrl
+            : isOrganizer && event.hasOrganizerPhotoUrl()
+                ? event.organizerPhotoUrl.trim()
+                : '';
     return EventListParticipantViewModel(
-      userId: participant.userId.trim(),
+      userId: participantUserId,
       displayName: resolvedDisplayName,
       photoUrl: photoUrl.isEmpty ? null : photoUrl,
     );
@@ -1312,6 +1327,11 @@ List<EventListParticipantViewModel> _eventListParticipantsForRecord(
       photoUrl: photoUrl,
     ),
   ];
+}
+
+String _eventListParticipantUserId(EventParticipantsRecord participant) {
+  final userId = participant.userId.trim();
+  return userId.isNotEmpty ? userId : participant.reference.id.trim();
 }
 
 String _eventListVisibleParticipantDisplayName(String displayName) {
