@@ -2004,6 +2004,7 @@ void main() {
 
       expect(source, contains("'В друзья'"));
       expect(source, contains("'Убрать из друзей'"));
+      expect(source, contains("'Будет удалён из списка друзей'"));
       expect(source, contains("ruText: 'Больше не соединять сегодня'"));
       expect(source, contains('Color(0xFFFFF1F1)'));
       expect(source, contains('Color(0xFFFF8A8A)'));

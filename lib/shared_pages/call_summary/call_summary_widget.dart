@@ -438,7 +438,7 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
               : FlutterFlowTheme.of(context).primaryBackground,
           borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
           border: Border.all(
-            color: ExpatlioDesign.border,
+            color: isActive ? activeBorderColor : ExpatlioDesign.border,
           ),
         ),
         child: Padding(
@@ -769,18 +769,26 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                     _buildSummaryActionButton(
                                       context,
                                       isActive: effectiveFav,
-                                      icon: Icons.person_add_alt_1_rounded,
+                                      icon: effectiveFav
+                                          ? Icons.person_remove_alt_1_rounded
+                                          : Icons.person_add_alt_1_rounded,
                                       title: FFLocalizations.of(context)
                                           .getVariableText(
-                                        ruText: 'В друзья',
-                                        enText: 'Add to friends',
+                                        ruText: effectiveFav
+                                            ? 'Убрать из друзей'
+                                            : 'В друзья',
+                                        enText: effectiveFav
+                                            ? 'Remove from friends'
+                                            : 'Add to friends',
                                       ),
                                       subtitle: FFLocalizations.of(context)
                                           .getVariableText(
-                                        ruText:
-                                            'Появится в вашем списке друзей',
-                                        enText:
-                                            'Will appear in your friends list',
+                                        ruText: effectiveFav
+                                            ? 'Будет удалён из списка друзей'
+                                            : 'Появится в вашем списке друзей',
+                                        enText: effectiveFav
+                                            ? 'Will be removed from your friends list'
+                                            : 'Will appear in your friends list',
                                       ),
                                       activeBackgroundColor:
                                           const Color(0xFFF5F0FF),
@@ -815,10 +823,11 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                             'We will not suggest them until tomorrow',
                                       ),
                                       activeBackgroundColor:
-                                          const Color(0xFFF4F4F6),
-                                      activeIconColor: ExpatlioDesign.text,
+                                          const Color(0xFFFFF1F1),
+                                      activeIconColor:
+                                          FlutterFlowTheme.of(context).error,
                                       activeBorderColor:
-                                          const Color(0xFFB7B7C2),
+                                          const Color(0xFFFF8A8A),
                                       onTap: () {
                                         _model.skipToday = !_model.skipToday;
                                         safeSetState(() {});
