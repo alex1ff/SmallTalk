@@ -723,6 +723,24 @@ void main() {
       expect(emptyStateSource, contains('ConstrainedBox'));
     });
 
+    test('call chat composer keeps input field dark', () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final composerSource =
+          _curlyBlockSource(source, 'Widget _buildChatComposer()');
+
+      expect(composerSource, contains('filled: true,'));
+      expect(
+        composerSource,
+        contains('fillColor: Colors.white.withValues(alpha: 0.08),'),
+      );
+      expect(
+        composerSource,
+        contains('focusedBorder: const OutlineInputBorder('),
+      );
+      expect(composerSource, contains('borderSide: BorderSide.none,'));
+    });
+
     test('Deepgram caption failures are visible and persisted safely', () {
       final source =
           _source('lib/custom_code/widgets/minimal_daily_widget.dart');
@@ -1984,8 +2002,11 @@ void main() {
       final source =
           _source('lib/shared_pages/call_summary/call_summary_widget.dart');
 
-      expect(source, contains("ruText: 'В друзья'"));
+      expect(source, contains("'В друзья'"));
+      expect(source, contains("'Убрать из друзей'"));
       expect(source, contains("ruText: 'Больше не соединять сегодня'"));
+      expect(source, contains('Color(0xFFFFF1F1)'));
+      expect(source, contains('Color(0xFFFF8A8A)'));
       expect(source, contains("ruText: 'Добавить в чёрный список'"));
       expect(source, contains("ruText: 'Оставить отзыв'"));
       expect(source, isNot(contains("ruText: 'Открыть чат'")));

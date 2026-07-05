@@ -5665,7 +5665,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                           color: Colors.white,
                           fontSize: 15.0,
                         ),
+                        cursorColor: Colors.white,
                         decoration: InputDecoration(
+                          filled: true,
+                          fillColor: Colors.white.withValues(alpha: 0.08),
                           hintText: hasRemoteParticipant
                               ? 'Написать сообщение'
                               : 'Ожидаем собеседника...',
@@ -5673,7 +5676,30 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                             color: Colors.white.withValues(alpha: 0.42),
                             fontSize: 15.0,
                           ),
-                          border: InputBorder.none,
+                          border: const OutlineInputBorder(
+                            borderRadius: BorderRadius.all(
+                              Radius.circular(ExpatlioDesign.radiusLarge),
+                            ),
+                            borderSide: BorderSide.none,
+                          ),
+                          enabledBorder: const OutlineInputBorder(
+                            borderRadius: BorderRadius.all(
+                              Radius.circular(ExpatlioDesign.radiusLarge),
+                            ),
+                            borderSide: BorderSide.none,
+                          ),
+                          focusedBorder: const OutlineInputBorder(
+                            borderRadius: BorderRadius.all(
+                              Radius.circular(ExpatlioDesign.radiusLarge),
+                            ),
+                            borderSide: BorderSide.none,
+                          ),
+                          disabledBorder: const OutlineInputBorder(
+                            borderRadius: BorderRadius.all(
+                              Radius.circular(ExpatlioDesign.radiusLarge),
+                            ),
+                            borderSide: BorderSide.none,
+                          ),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: ExpatlioDesign.space12,
                             vertical: ExpatlioDesign.space12,
