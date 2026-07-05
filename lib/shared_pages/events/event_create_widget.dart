@@ -2951,7 +2951,7 @@ List<EventLevelRange> _eventCreateLevelRangeOptions() {
   final levels = eventLevelRanks.keys.toList(growable: false);
   return [
     for (var minIndex = 0; minIndex < levels.length; minIndex += 1)
-      for (var maxIndex = minIndex; maxIndex < levels.length; maxIndex += 1)
+      for (var maxIndex = minIndex + 1; maxIndex < levels.length; maxIndex += 1)
         eventLevelRange(
           levelMin: levels[minIndex],
           levelMax: levels[maxIndex],

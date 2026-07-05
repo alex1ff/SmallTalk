@@ -725,14 +725,11 @@ void main() {
     expect(drafts.map(_levelDraftValue), ['B1:C1', 'A2:B2']);
   });
 
-  testWidgets('level dropdown supports same-level range', (tester) async {
-    final drafts = <EventCreateLevelDraft>[];
-
+  testWidgets('level dropdown omits same-level ranges', (tester) async {
     await tester.pumpWidget(
       _buildTestApp(
         home: EventCreateWidget(
           languageCatalogOverride: _languageCatalog,
-          onLevelDraftChanged: drafts.add,
         ),
       ),
     );
@@ -742,18 +739,20 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.byKey(eventCreateLevelRangeOptionKey('A2', 'A2')),
-      findsOneWidget,
+      find.byKey(eventCreateLevelRangeOptionKey('A1', 'A1')),
+      findsNothing,
     );
-
-    await tester.tap(find.byKey(eventCreateLevelRangeOptionKey('A2', 'A2')));
-    await tester.pumpAndSettle();
-
-    expect(_levelSelectorText('A2'), findsOneWidget);
-    expect(drafts.map(_levelDraftValue), ['B1:C1', 'A2:A2']);
+    expect(
+      find.byKey(eventCreateLevelRangeOptionKey('A2', 'A2')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(eventCreateLevelRangeOptionKey('C2', 'C2')),
+      findsNothing,
+    );
   });
 
-  testWidgets('level dropdown supports C2 only range', (tester) async {
+  testWidgets('level dropdown supports ranges ending with C2', (tester) async {
     final drafts = <EventCreateLevelDraft>[];
 
     await tester.pumpWidget(
@@ -771,18 +770,22 @@ void main() {
 
     expect(
       find.byKey(eventCreateLevelRangeOptionKey('C2', 'C2')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(eventCreateLevelRangeOptionKey('C1', 'C2')),
       findsOneWidget,
     );
 
     await tester.ensureVisible(
-      find.byKey(eventCreateLevelRangeOptionKey('C2', 'C2')),
+      find.byKey(eventCreateLevelRangeOptionKey('C1', 'C2')),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(eventCreateLevelRangeOptionKey('C2', 'C2')));
+    await tester.tap(find.byKey(eventCreateLevelRangeOptionKey('C1', 'C2')));
     await tester.pumpAndSettle();
 
-    expect(_levelSelectorText('C2'), findsOneWidget);
-    expect(drafts.map(_levelDraftValue), ['B1:C1', 'C2:C2']);
+    expect(_levelSelectorText('C1-C2'), findsOneWidget);
+    expect(drafts.map(_levelDraftValue), ['B1:C1', 'C1:C2']);
   });
 
   testWidgets('shows missing city selector and opens city dropdown',
