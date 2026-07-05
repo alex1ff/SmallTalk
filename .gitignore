@@ -9,8 +9,12 @@ node_modules/
 build/
 android/build/
 ios/Flutter/ephemeral/
+.playwright-cli/
+output/
 
 # Firebase local artifacts
+.firebase/
+firebase/.firebase/
 firestore-debug.log
 firebase-debug.log
 firebase/*.log
