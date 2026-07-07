@@ -436,7 +436,7 @@
     },
     {
       "collectionGroup": "participants",
-      "queryScope": "COLLECTION",
+      "queryScope": "COLLECTION_GROUP",
       "fields": [
         {
           "fieldPath": "userId",

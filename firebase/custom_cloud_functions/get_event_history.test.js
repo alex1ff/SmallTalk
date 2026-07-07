@@ -487,7 +487,7 @@ test("firestore indexes contain event history participants collection group inde
   ));
   const hasParticipantsHistoryIndex = indexes.indexes.some((index) =>
     index.collectionGroup === "participants" &&
-      index.queryScope === "COLLECTION" &&
+      index.queryScope === "COLLECTION_GROUP" &&
       JSON.stringify(index.fields) === JSON.stringify([
         {fieldPath: "userId", order: "ASCENDING"},
         {fieldPath: "joinedAt", order: "DESCENDING"},
