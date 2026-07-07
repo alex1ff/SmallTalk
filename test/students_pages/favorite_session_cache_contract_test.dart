@@ -51,4 +51,38 @@ void main() {
     );
     expect(source, isNot(contains('_inboxItemsCacheByUid')));
   });
+
+  test('favorite inbox uses cached chat sources as first stream data', () {
+    final source = File('lib/students_pages/favorite/favorite_widget.dart')
+        .readAsStringSync();
+
+    expect(
+      source,
+      contains('initialData: _cachedConversationsStateForUser(currentUid)'),
+    );
+    expect(
+      source,
+      contains('initialData: _cachedEventChatsStateForUser(currentUid)'),
+    );
+    expect(
+      source,
+      matches(
+        RegExp(
+          r'final conversationsLoading =\s*'
+          r'conversationsSnapshot\.connectionState ==\s*'
+          r'ConnectionState\.waiting &&\s*'
+          r'conversationsState == null &&\s*'
+          r'!conversationsSnapshot\.hasError;',
+        ),
+      ),
+    );
+    expect(
+      source,
+      isNot(contains('initialData: const _ConversationsLoadState()')),
+    );
+    expect(
+      source,
+      isNot(contains('initialData: const _EventChatsLoadState()')),
+    );
+  });
 }
