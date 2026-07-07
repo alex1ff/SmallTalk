@@ -28,10 +28,29 @@ void main() {
     expect(pageSource, isNot(contains('AppLoadingIndicator')));
     expect(pageSource, contains('initialData: _model.cachedWords'));
     expect(pageSource, contains('initialData: _model.cachedWordReviews'));
-    expect(modelSource, contains('static List<UserWordsRecord>? _cachedWords'));
+    expect(
+      pageSource,
+      contains('WordsModel.shouldCacheStreamSnapshot(reviewSnapshot)'),
+    );
+    expect(
+      pageSource,
+      contains('WordsModel.shouldCacheStreamSnapshot(snapshot)'),
+    );
     expect(
       modelSource,
-      contains('static List<WordReviewsRecord>? _cachedWordReviews'),
+      contains('UxSessionLoadedResultCache<List<UserWordsRecord>>'),
+    );
+    expect(
+      modelSource,
+      contains('UxSessionLoadedResultCache<List<WordReviewsRecord>>'),
+    );
+    expect(
+      modelSource,
+      isNot(contains('static List<UserWordsRecord>? _cachedWords')),
+    );
+    expect(
+      modelSource,
+      isNot(contains('static List<WordReviewsRecord>? _cachedWordReviews')),
     );
   });
 

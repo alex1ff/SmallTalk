@@ -131,7 +131,7 @@ class _WordsWidgetState extends State<WordsWidget> {
           initialData: _model.cachedWordReviews,
           builder: (context, reviewSnapshot) {
             final reviews = reviewSnapshot.data ?? const <WordReviewsRecord>[];
-            if (reviewSnapshot.hasData) {
+            if (WordsModel.shouldCacheStreamSnapshot(reviewSnapshot)) {
               _model.cacheWordReviews(reviews);
             }
             final dueCount = _dueWordsCount(reviews);
@@ -172,7 +172,9 @@ class _WordsWidgetState extends State<WordsWidget> {
                           if (words == null) {
                             return const SizedBox.shrink();
                           }
-                          _model.cacheWords(words);
+                          if (WordsModel.shouldCacheStreamSnapshot(snapshot)) {
+                            _model.cacheWords(words);
+                          }
 
                           if (words.isEmpty) {
                             return Padding(
