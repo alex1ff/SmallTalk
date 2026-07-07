@@ -12,6 +12,8 @@ import '/shared_pages/design/expatlio_design.dart';
 import '/shared_pages/chat_thread/open_chat_thread.dart';
 import '/shared_pages/events/event_group_chat_widget.dart';
 import '/services/event_group_chat_repository.dart';
+import '/services/ux_loading_state.dart';
+import '/services/ux_session_loaded_result_cache.dart';
 
 import 'favorite_model.dart';
 export 'favorite_model.dart';
@@ -63,9 +65,12 @@ class FavoriteWidget extends StatefulWidget {
 class _FavoriteWidgetState extends State<FavoriteWidget> {
   late FavoriteModel _model;
   final scaffoldKey = GlobalKey<ScaffoldState>();
-  static final Map<String, _ConversationsLoadState>
-      _conversationStateCacheByUid = {};
-  static final Map<String, _EventChatsLoadState> _eventChatStateCacheByUid = {};
+  static final UxSessionLoadedResultCache<_ConversationsLoadState>
+      _conversationStateCacheByUid =
+      UxSessionLoadedResultCache<_ConversationsLoadState>();
+  static final UxSessionLoadedResultCache<_EventChatsLoadState>
+      _eventChatStateCacheByUid =
+      UxSessionLoadedResultCache<_EventChatsLoadState>();
   static final Map<String, List<DocumentReference>> _friendsCacheByUid = {};
   static final Map<String, Future<UserPublicProfilesRecord?>>
       _userFutureCacheByUid = {};
@@ -317,16 +322,28 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
           loadedConversations,
         ),
       );
-      _conversationStateCacheByUid[currentUid] = loadedState;
+      _conversationStateCacheByUid.write(
+        UxLoadedResult<_ConversationsLoadState>.data(
+          dataKey: _conversationStateCacheKey(currentUid),
+          data: loadedState,
+        ),
+      );
       return loadedState;
     });
     return _conversationsStream!;
   }
 
+  Object _conversationStateCacheKey(String currentUid) => [
+        'favoriteConversations',
+        currentUid,
+      ];
+
   _ConversationsLoadState? _cachedConversationsStateForUser(
     String currentUid,
   ) =>
-      _conversationStateCacheByUid[currentUid];
+      _conversationStateCacheByUid
+          .read(_conversationStateCacheKey(currentUid))
+          ?.data;
 
   Stream<_EventChatsLoadState> _watchEventChatsForUser(String currentUid) {
     if (currentUid.isEmpty) {
@@ -346,14 +363,26 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
       final loadedState = _EventChatsLoadState(
         eventChats: List<EventChatsRecord>.unmodifiable(eventChats),
       );
-      _eventChatStateCacheByUid[currentUid] = loadedState;
+      _eventChatStateCacheByUid.write(
+        UxLoadedResult<_EventChatsLoadState>.data(
+          dataKey: _eventChatsStateCacheKey(currentUid),
+          data: loadedState,
+        ),
+      );
       return loadedState;
     });
     return _eventChatsStream!;
   }
 
+  Object _eventChatsStateCacheKey(String currentUid) => [
+        'favoriteEventChats',
+        currentUid,
+      ];
+
   _EventChatsLoadState? _cachedEventChatsStateForUser(String currentUid) =>
-      _eventChatStateCacheByUid[currentUid];
+      _eventChatStateCacheByUid
+          .read(_eventChatsStateCacheKey(currentUid))
+          ?.data;
 
   Stream<List<String>> _watchSavedEventChatInboxEventIds(String currentUid) {
     final userRef = currentUserReference;
