@@ -15,6 +15,7 @@ import '/services/event_group_chat_repository.dart';
 import '/services/ux_loading_state.dart';
 import '/services/ux_session_loaded_result_cache.dart';
 
+import 'favorite_chat_source_state.dart';
 import 'favorite_model.dart';
 export 'favorite_model.dart';
 
@@ -1358,23 +1359,24 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
 
                 final friends = _friendsForCurrentUser(currentUid);
 
-                return StreamBuilder<_ConversationsLoadState>(
+                return FavoriteChatSourceBuilder<_ConversationsLoadState>(
+                  sourceId: 'conversations',
+                  currentUid: currentUid,
                   stream: _watchConversationsForUser(currentUid),
-                  initialData: _cachedConversationsStateForUser(currentUid),
-                  builder: (context, conversationsSnapshot) {
+                  cachedState: _cachedConversationsStateForUser(currentUid),
+                  builder: (context, conversationsSnapshot,
+                      conversationsResolution) {
                     if (conversationsSnapshot.hasError) {
                       debugPrint(
                         'FavoriteWidget: conversations stream error: ${conversationsSnapshot.error}',
                       );
                     }
 
-                    final conversationsState = conversationsSnapshot.data;
+                    final conversationsState =
+                        conversationsResolution.displayState;
                     final conversationsError = conversationsSnapshot.error;
                     final conversationsLoading =
-                        conversationsSnapshot.connectionState ==
-                                ConnectionState.waiting &&
-                            conversationsState == null &&
-                            !conversationsSnapshot.hasError;
+                        conversationsResolution.isInitialLoading;
                     final conversationsLoadFailed =
                         conversationsSnapshot.hasError;
                     final conversationsAccessDenied =
@@ -1383,22 +1385,23 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                     final conversations = conversationsState?.conversations ??
                         <ConversationsRecord>[];
 
-                    return StreamBuilder<_EventChatsLoadState>(
+                    return FavoriteChatSourceBuilder<_EventChatsLoadState>(
+                      sourceId: 'event-chats',
+                      currentUid: currentUid,
                       stream: _watchEventChatsForUser(currentUid),
-                      initialData: _cachedEventChatsStateForUser(currentUid),
-                      builder: (context, eventChatsSnapshot) {
+                      cachedState: _cachedEventChatsStateForUser(currentUid),
+                      builder:
+                          (context, eventChatsSnapshot, eventChatsResolution) {
                         if (eventChatsSnapshot.hasError) {
                           debugPrint(
                             'FavoriteWidget: event chats stream error: ${eventChatsSnapshot.error}',
                           );
                         }
 
-                        final eventChatsState = eventChatsSnapshot.data;
+                        final eventChatsState =
+                            eventChatsResolution.displayState;
                         final eventChatsLoading =
-                            eventChatsSnapshot.connectionState ==
-                                    ConnectionState.waiting &&
-                                eventChatsState == null &&
-                                !eventChatsSnapshot.hasError;
+                            eventChatsResolution.isInitialLoading;
                         final eventChatsLoadFailed =
                             eventChatsSnapshot.hasError;
                         final eventChats =

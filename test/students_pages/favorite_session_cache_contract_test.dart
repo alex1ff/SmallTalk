@@ -58,31 +58,19 @@ void main() {
 
     expect(
       source,
-      contains('initialData: _cachedConversationsStateForUser(currentUid)'),
+      contains('cachedState: _cachedConversationsStateForUser(currentUid)'),
     );
     expect(
       source,
-      contains('initialData: _cachedEventChatsStateForUser(currentUid)'),
+      contains('cachedState: _cachedEventChatsStateForUser(currentUid)'),
     );
     expect(
       source,
-      matches(
-        RegExp(
-          r'final conversationsLoading =\s*'
-          r'conversationsSnapshot\.connectionState ==\s*'
-          r'ConnectionState\.waiting &&\s*'
-          r'conversationsState == null &&\s*'
-          r'!conversationsSnapshot\.hasError;',
-        ),
-      ),
+      isNot(contains('cachedState: const _ConversationsLoadState()')),
     );
     expect(
       source,
-      isNot(contains('initialData: const _ConversationsLoadState()')),
-    );
-    expect(
-      source,
-      isNot(contains('initialData: const _EventChatsLoadState()')),
+      isNot(contains('cachedState: const _EventChatsLoadState()')),
     );
   });
 
@@ -90,18 +78,6 @@ void main() {
     final source = File('lib/students_pages/favorite/favorite_widget.dart')
         .readAsStringSync();
 
-    expect(
-      source,
-      matches(
-        RegExp(
-          r'final eventChatsLoading =\s*'
-          r'eventChatsSnapshot\.connectionState ==\s*'
-          r'ConnectionState\.waiting &&\s*'
-          r'eventChatsState == null &&\s*'
-          r'!eventChatsSnapshot\.hasError;',
-        ),
-      ),
-    );
     expect(
       source,
       contains(
