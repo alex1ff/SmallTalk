@@ -593,6 +593,202 @@ void main() {
     expect(find.byKey(eventListCitySelectorKey), findsNothing);
   });
 
+  testWidgets('keeps loaded event cards visible when refresh fails',
+      (tester) async {
+    var calls = 0;
+    currentUserDocument = _userFixture(
+      uid: 'profile-city-refresh-error-user',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+          eventPageLoader: (
+            collection,
+            recordBuilder, {
+            queryBuilder,
+            nextPageMarker,
+            required pageSize,
+            required isStream,
+          }) async {
+            calls += 1;
+            if (calls == 2) {
+              throw StateError('network');
+            }
+            return FFFirestorePage<EventsRecord>(
+              [
+                _eventsRecordFixture(
+                  calls == 1 ? 'loaded-before-refresh' : 'loaded-after-retry',
+                  title: calls == 1
+                      ? 'Loaded before refresh'
+                      : 'Loaded after retry',
+                  startsAt: DateTime.utc(2035, 6, 14, 15),
+                ),
+              ],
+              null,
+              null,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+    expect(find.text('Loaded before refresh'), findsOneWidget);
+
+    await tester.tap(_dateFilterFinder(EventListDateFilter.today));
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(find.byKey(eventListErrorStateKey), findsOneWidget);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+    expect(find.text('Loaded before refresh'), findsOneWidget);
+
+    await tester.tap(find.byKey(eventListErrorRetryButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(calls, 3);
+    expect(find.byKey(eventListErrorStateKey), findsNothing);
+    expect(find.text('Loaded after retry'), findsOneWidget);
+  });
+
+  testWidgets('keeps confirmed empty events visible when refresh fails',
+      (tester) async {
+    var calls = 0;
+    currentUser = _TestAuthUser('events-empty-refresh-error-user');
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: _selectedCityFixture(),
+          nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+          eventPageLoader: (
+            collection,
+            recordBuilder, {
+            queryBuilder,
+            nextPageMarker,
+            required pageSize,
+            required isStream,
+          }) async {
+            calls += 1;
+            if (calls > 1) {
+              throw StateError('network');
+            }
+            return FFFirestorePage<EventsRecord>(const [], null, null);
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+    expect(find.byKey(eventListEmptyStateKey), findsOneWidget);
+
+    await tester.tap(_dateFilterFinder(EventListDateFilter.today));
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(find.byKey(eventListErrorStateKey), findsOneWidget);
+    expect(find.byKey(eventListEmptyStateKey), findsOneWidget);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+  });
+
+  testWidgets('reloads real event cards after injected cards are removed',
+      (tester) async {
+    var calls = 0;
+    currentUser = _TestAuthUser('events-source-boundary-user');
+    currentUserDocument = _userFixture(
+      uid: 'events-source-boundary-user',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) async {
+      calls += 1;
+      return FFFirestorePage<EventsRecord>(
+        [
+          _eventsRecordFixture(
+            'source-boundary-event-$calls',
+            title: 'Real loaded event $calls',
+            startsAt: DateTime.utc(2035, 6, 14, 15),
+          ),
+        ],
+        null,
+        null,
+      );
+    };
+
+    Widget buildList({
+      List<EventListCardViewModel>? eventCardsOverride,
+    }) =>
+        _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: _selectedCityFixture(),
+            nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+            eventPageLoader: pageLoader,
+            currentUserParticipantLoader: (_, __) async => null,
+            eventCardsOverride: eventCardsOverride,
+          ),
+        );
+
+    await tester.pumpWidget(buildList());
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+    expect(find.text('Real loaded event 1'), findsOneWidget);
+
+    await tester.pumpWidget(
+      buildList(
+        eventCardsOverride: [
+          _eventCardFixture(title: 'Injected event'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+    expect(find.text('Injected event'), findsOneWidget);
+    expect(find.text('Real loaded event 1'), findsNothing);
+
+    await tester.pumpWidget(buildList());
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(find.text('Real loaded event 2'), findsOneWidget);
+    expect(find.text('Injected event'), findsNothing);
+    expect(find.text('Real loaded event 1'), findsNothing);
+  });
+
   testWidgets('reuses cached event cards when page is reopened',
       (tester) async {
     var calls = 0;
@@ -872,8 +1068,10 @@ void main() {
     expect(find.byKey(eventListCardShellKey), findsNothing);
   });
 
-  testWidgets('error state takes priority over provided event cards',
+  testWidgets('error state stays visible above provided event cards',
       (tester) async {
+    var retryCount = 0;
+
     await tester.pumpWidget(
       _buildTestApp(
         home: EventListWidget(
@@ -882,6 +1080,7 @@ void main() {
           initialSelectedCity: _selectedCityFixture(),
           eventCardsOverride: [_eventCardFixture(title: 'Реальное событие')],
           eventListErrorMessage: 'События временно недоступны.',
+          onRetryEventsPressed: () => retryCount += 1,
         ),
       ),
     );
@@ -889,8 +1088,13 @@ void main() {
 
     expect(find.byKey(eventListErrorStateKey), findsOneWidget);
     expect(find.byKey(eventListEmptyStateKey), findsNothing);
-    expect(find.byKey(eventListCardShellKey), findsNothing);
-    expect(find.text('Реальное событие'), findsNothing);
+    expect(find.byKey(eventListCardShellKey), findsOneWidget);
+    expect(find.text('Реальное событие'), findsOneWidget);
+
+    await tester.tap(find.byKey(eventListErrorRetryButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(retryCount, 1);
   });
 
   testWidgets('shows empty state when selected city has no event cards',

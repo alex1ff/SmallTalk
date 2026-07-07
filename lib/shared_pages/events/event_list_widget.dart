@@ -11,6 +11,7 @@ import 'package:timezone/timezone.dart' as timezone;
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/components/empty/empty_widget.dart';
+import '/components/ux_error_state.dart';
 import '/components/profile_dropdown_menu_item.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/events/event_create_widget.dart';
@@ -261,6 +262,7 @@ class _EventListWidgetState extends State<EventListWidget> {
   String? _lastTrackedCitySelectedKey;
   _EventListLoadKey? _eventListLoadKey;
   Future<List<EventListCardViewModel>>? _eventCardsFuture;
+  _EventListLoadedCards? _lastLoadedCards;
 
   @override
   void initState() {
@@ -285,13 +287,15 @@ class _EventListWidgetState extends State<EventListWidget> {
       _cityChipsFuture = null;
       _cityChipsCatalog = null;
     }
-    if (oldWidget.eventPageLoader != widget.eventPageLoader ||
+    if (oldWidget.eventCardsOverride != widget.eventCardsOverride ||
+        oldWidget.eventPageLoader != widget.eventPageLoader ||
         oldWidget.currentUserParticipantLoader !=
             widget.currentUserParticipantLoader ||
         oldWidget.activeParticipantsLoader != widget.activeParticipantsLoader ||
         oldWidget.nowUtcProvider != widget.nowUtcProvider) {
       _eventListLoadKey = null;
       _eventCardsFuture = null;
+      _lastLoadedCards = null;
     }
   }
 
@@ -320,6 +324,7 @@ class _EventListWidgetState extends State<EventListWidget> {
             final hasEventListError = widget.eventListErrorMessage != null;
             final eventCards =
                 widget.eventCardsOverride ?? const <EventListCardViewModel>[];
+            final hasVisibleEventCards = eventCards.isNotEmpty;
             final eventCardsFuture =
                 widget.eventCardsOverride == null && !hasEventListError
                     ? _eventCardsFutureForSelectedState(selectedState)
@@ -441,34 +446,83 @@ class _EventListWidgetState extends State<EventListWidget> {
                                 const SizedBox(height: ExpatlioDesign.space16),
                                 if (widget.isLoadingEvents)
                                   const _EventListLoadingState()
-                                else if (hasEventListError)
+                                else if (hasEventListError) ...[
                                   _EventListErrorState(
                                     message: widget.eventListErrorMessage,
                                     onRetryPressed: widget.onRetryEventsPressed,
-                                  )
-                                else if (eventCardsFuture != null)
+                                    compact: hasVisibleEventCards,
+                                  ),
+                                  if (hasVisibleEventCards) ...[
+                                    const SizedBox(
+                                      height: ExpatlioDesign.space12,
+                                    ),
+                                    _EventListCards(
+                                      eventCards: eventCards,
+                                      selectedCity: selectedState?.selected,
+                                      canOpenEventCardChat:
+                                          _canOpenEventCardChat,
+                                      openEventCardDetail: _openEventCardDetail,
+                                      openEventCardChat: _openEventCardChat,
+                                      showParticipantRequiredSnackBar: () =>
+                                          _showEventListChatParticipantRequiredSnackBar(
+                                        context,
+                                      ),
+                                    ),
+                                  ],
+                                ] else if (eventCardsFuture != null)
                                   FutureBuilder<List<EventListCardViewModel>>(
                                     future: eventCardsFuture,
                                     builder: (context, eventsSnapshot) {
+                                      final activeLoadKey = _eventListLoadKey;
+                                      final previousCards =
+                                          _previousCardsForActiveKey(
+                                        activeLoadKey,
+                                      );
                                       if (eventsSnapshot.connectionState !=
                                           ConnectionState.done) {
+                                        if (previousCards != null) {
+                                          return _EventListPreviousCardsState(
+                                            cards: previousCards.cards,
+                                            selectedCity:
+                                                selectedState?.selected,
+                                            canOpenEventCardChat:
+                                                _canOpenEventCardChat,
+                                            openEventCardDetail:
+                                                _openEventCardDetail,
+                                            openEventCardChat:
+                                                _openEventCardChat,
+                                            showParticipantRequiredSnackBar: () =>
+                                                _showEventListChatParticipantRequiredSnackBar(
+                                              context,
+                                            ),
+                                          );
+                                        }
                                         return const _EventListLoadingState();
                                       }
                                       if (eventsSnapshot.hasError) {
+                                        if (previousCards != null) {
+                                          return _EventListPreviousCardsState(
+                                            cards: previousCards.cards,
+                                            selectedCity:
+                                                selectedState?.selected,
+                                            errorMessage: null,
+                                            onRetryPressed:
+                                                _retryEventCardsLoad,
+                                            canOpenEventCardChat:
+                                                _canOpenEventCardChat,
+                                            openEventCardDetail:
+                                                _openEventCardDetail,
+                                            openEventCardChat:
+                                                _openEventCardChat,
+                                            showParticipantRequiredSnackBar: () =>
+                                                _showEventListChatParticipantRequiredSnackBar(
+                                              context,
+                                            ),
+                                          );
+                                        }
                                         return _EventListErrorState(
                                           message: null,
-                                          onRetryPressed: () {
-                                            setState(() {
-                                              final key = _eventListLoadKey;
-                                              if (key != null) {
-                                                _eventListCardsCache.remove(
-                                                  key,
-                                                );
-                                              }
-                                              _eventListLoadKey = null;
-                                              _eventCardsFuture = null;
-                                            });
-                                          },
+                                          onRetryPressed: _retryEventCardsLoad,
                                         );
                                       }
 
@@ -569,18 +623,61 @@ class _EventListWidgetState extends State<EventListWidget> {
               nowUtc: normalizedNowUtc,
             )
           : null;
-      _eventCardsFuture = cachedCards == null
-          ? _loadEventCards(
-              selected: selected,
-              key: key,
-              localDateRange: localDateRange,
-              nowUtc: normalizedNowUtc,
-              selectedLevel: _selectedLevel,
-              currentUserId: viewerUserId,
-            )
-          : Future.value(cachedCards);
+      _eventCardsFuture = (cachedCards == null
+              ? _loadEventCards(
+                  selected: selected,
+                  key: key,
+                  localDateRange: localDateRange,
+                  nowUtc: normalizedNowUtc,
+                  selectedLevel: _selectedLevel,
+                  currentUserId: viewerUserId,
+                )
+              : Future.value(cachedCards))
+          .then((cards) {
+        if (_eventListLoadKey == key) {
+          _rememberLoadedCards(key, cards);
+        }
+        return cards;
+      });
     }
     return _eventCardsFuture;
+  }
+
+  void _rememberLoadedCards(
+    _EventListLoadKey? key,
+    List<EventListCardViewModel> cards,
+  ) {
+    if (key == null) {
+      return;
+    }
+    _lastLoadedCards = _EventListLoadedCards(
+      key: key,
+      cards: List<EventListCardViewModel>.unmodifiable(cards),
+    );
+  }
+
+  _EventListLoadedCards? _previousCardsForActiveKey(_EventListLoadKey? key) {
+    final previous = _lastLoadedCards;
+    if (key == null || previous == null) {
+      return null;
+    }
+    // List filters and city changes are compatible stale content; account
+    // changes are not.
+    if (previous.key.currentUserId != key.currentUserId) {
+      return null;
+    }
+    return previous;
+  }
+
+  void _retryEventCardsLoad() {
+    setState(() {
+      final key = _eventListLoadKey;
+      if (key != null) {
+        _eventListCardsCache.remove(key);
+      }
+      _eventListLoadKey = null;
+      _eventCardsFuture = null;
+    });
   }
 
   Future<List<EventListCardViewModel>> _loadEventCards({
@@ -1015,6 +1112,73 @@ class _EventListCards extends StatelessWidget {
       ],
     );
   }
+}
+
+class _EventListPreviousCardsState extends StatelessWidget {
+  const _EventListPreviousCardsState({
+    required this.cards,
+    required this.selectedCity,
+    required this.canOpenEventCardChat,
+    required this.openEventCardDetail,
+    required this.openEventCardChat,
+    required this.showParticipantRequiredSnackBar,
+    this.errorMessage,
+    this.onRetryPressed,
+  });
+
+  final List<EventListCardViewModel> cards;
+  final EventSelectedCity? selectedCity;
+  final String? errorMessage;
+  final VoidCallback? onRetryPressed;
+  final bool Function(EventListCardViewModel event) canOpenEventCardChat;
+  final ValueChanged<EventListCardViewModel> openEventCardDetail;
+  final void Function({
+    required EventListCardViewModel event,
+    required EventSelectedCity? selectedCity,
+  }) openEventCardChat;
+  final VoidCallback showParticipantRequiredSnackBar;
+
+  @override
+  Widget build(BuildContext context) {
+    final errorState = errorMessage == null && onRetryPressed == null
+        ? null
+        : _EventListErrorState(
+            message: errorMessage,
+            onRetryPressed: onRetryPressed,
+            compact: true,
+          );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (errorState != null) ...[
+          errorState,
+          const SizedBox(height: ExpatlioDesign.space12),
+        ],
+        if (cards.isEmpty)
+          const _EventListEmptyState()
+        else
+          _EventListCards(
+            eventCards: cards,
+            selectedCity: selectedCity,
+            canOpenEventCardChat: canOpenEventCardChat,
+            openEventCardDetail: openEventCardDetail,
+            openEventCardChat: openEventCardChat,
+            showParticipantRequiredSnackBar: showParticipantRequiredSnackBar,
+          ),
+      ],
+    );
+  }
+}
+
+class _EventListLoadedCards {
+  const _EventListLoadedCards({
+    required this.key,
+    required this.cards,
+  });
+
+  final _EventListLoadKey key;
+  final List<EventListCardViewModel> cards;
 }
 
 class _EventListLoadKey {
@@ -1459,10 +1623,12 @@ class _EventListErrorState extends StatelessWidget {
   const _EventListErrorState({
     required this.message,
     required this.onRetryPressed,
+    this.compact = false,
   });
 
   final String? message;
   final VoidCallback? onRetryPressed;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -1486,121 +1652,34 @@ class _EventListErrorState extends StatelessWidget {
     final description =
         normalizedMessage.isEmpty ? fallbackMessage : normalizedMessage;
 
-    return Semantics(
-      key: eventListErrorStateKey,
-      container: true,
-      explicitChildNodes: true,
-      liveRegion: true,
-      label: '$title. $description',
-      child: Container(
-        padding: const EdgeInsetsDirectional.fromSTEB(
-          ExpatlioDesign.space24,
-          ExpatlioDesign.space32,
-          ExpatlioDesign.space24,
-          ExpatlioDesign.space32,
-        ),
-        decoration: ExpatlioDesign.cardDecoration(
-          borderColor: _eventListBorderColor,
-        ),
-        child: Column(
-          children: [
-            ExcludeSemantics(
-              child: Column(
-                children: [
-                  Container(
-                    width: 56,
-                    height: 56,
-                    decoration: BoxDecoration(
-                      color: ExpatlioDesign.danger.withValues(alpha: 0.10),
-                      borderRadius: BorderRadius.circular(
-                        ExpatlioDesign.radiusCapsule,
-                      ),
-                    ),
-                    alignment: Alignment.center,
-                    child: const Icon(
-                      Icons.refresh,
-                      color: ExpatlioDesign.danger,
-                      size: 28,
-                    ),
-                  ),
-                  const SizedBox(height: ExpatlioDesign.space16),
-                  Text(
-                    title,
-                    textAlign: TextAlign.center,
-                    style: ExpatlioDesign.textStyle(
-                      context,
-                      size: 20,
-                      weight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: ExpatlioDesign.space8),
-                  Text(
-                    description,
-                    textAlign: TextAlign.center,
-                    style: ExpatlioDesign.textStyle(
-                      context,
-                      color: ExpatlioDesign.muted,
-                      size: 15,
-                      height: 1.36,
-                    ),
-                  ),
-                ],
-              ),
+    return UxErrorState(
+      stateKey: eventListErrorStateKey,
+      title: title,
+      message: description,
+      semanticsLabel: '$title. $description',
+      retryLabel: retryLabel,
+      retrySemanticsLabel: retrySemanticsLabel,
+      retryButtonKey: eventListErrorRetryButtonKey,
+      onRetry: onRetryPressed,
+      contained: true,
+      borderColor: _eventListBorderColor,
+      maxWidth: double.infinity,
+      showIcon: !compact,
+      padding: compact
+          ? const EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space16,
+              ExpatlioDesign.space16,
+              ExpatlioDesign.space16,
+              ExpatlioDesign.space16,
+            )
+          : const EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space24,
+              ExpatlioDesign.space32,
+              ExpatlioDesign.space24,
+              ExpatlioDesign.space32,
             ),
-            const SizedBox(height: ExpatlioDesign.space20),
-            ConstrainedBox(
-              constraints: const BoxConstraints(
-                minWidth: 160,
-                minHeight: 48,
-              ),
-              child: Semantics(
-                key: eventListErrorRetryButtonKey,
-                container: true,
-                button: true,
-                enabled: onRetryPressed != null,
-                label: retrySemanticsLabel,
-                onTap: onRetryPressed,
-                child: ExcludeSemantics(
-                  child: TextButton.icon(
-                    onPressed: onRetryPressed,
-                    style: TextButton.styleFrom(
-                      minimumSize: const Size(160, 48),
-                      padding: const EdgeInsetsDirectional.symmetric(
-                        horizontal: ExpatlioDesign.space16,
-                        vertical: ExpatlioDesign.space12,
-                      ),
-                      foregroundColor: Colors.white,
-                      disabledForegroundColor: ExpatlioDesign.muted,
-                      backgroundColor: ExpatlioDesign.primary,
-                      disabledBackgroundColor:
-                          ExpatlioDesign.secondarySystemBackground,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(
-                          ExpatlioDesign.buttonRadius,
-                        ),
-                      ),
-                    ),
-                    icon: const Icon(Icons.refresh, size: 20),
-                    label: Text(
-                      retryLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: ExpatlioDesign.textStyle(
-                        context,
-                        color: onRetryPressed == null
-                            ? ExpatlioDesign.muted
-                            : Colors.white,
-                        size: 16,
-                        weight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+      titleSize: compact ? 17.0 : 20.0,
+      retryMinHeight: compact ? 44.0 : 48.0,
     );
   }
 }

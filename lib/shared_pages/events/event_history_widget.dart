@@ -4,6 +4,8 @@ import 'package:timezone/timezone.dart' as timezone;
 import '/components/app_loading_indicator.dart';
 import '/components/basic_page_header.dart';
 import '/components/empty/empty_widget.dart';
+import '/components/ux_error_state.dart';
+import '/auth/firebase_auth/auth_util.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/services/event_history_repository.dart';
 import '/services/event_level_helper.dart';
@@ -52,34 +54,92 @@ class EventHistoryWidget extends StatefulWidget {
 
 class _EventHistoryWidgetState extends State<EventHistoryWidget> {
   Future<EventHistoryResult>? _historyFuture;
+  EventHistoryResult? _lastLoadedResult;
+  Object? _historyError;
+  late String _historyOwnerUserId;
+  int _historyRequestSerial = 0;
 
   @override
   void initState() {
     super.initState();
-    _historyFuture = _loadHistory();
+    _historyOwnerUserId = _currentHistoryOwnerUserId();
+    _historyFuture = _startHistoryLoad();
   }
 
   @override
   void didUpdateWidget(covariant EventHistoryWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.historyLoader != widget.historyLoader) {
-      _historyFuture = _loadHistory();
+      _resetHistoryStateForOwner(_currentHistoryOwnerUserId());
     }
   }
 
-  Future<EventHistoryResult> _loadHistory() {
-    final loader = widget.historyLoader;
-    if (loader != null) {
-      return loader();
+  String _currentHistoryOwnerUserId() => currentUserUid.trim();
+
+  void _syncHistoryOwner() {
+    final ownerUserId = _currentHistoryOwnerUserId();
+    if (ownerUserId == _historyOwnerUserId) {
+      return;
     }
-    return EventHistoryRepository.loadEventHistory(
-      limit: eventHistoryMaxLimit,
-    );
+    _resetHistoryStateForOwner(ownerUserId);
+  }
+
+  void _resetHistoryStateForOwner(String ownerUserId) {
+    _historyOwnerUserId = ownerUserId;
+    _lastLoadedResult = null;
+    _historyError = null;
+    _historyFuture = _startHistoryLoad(ownerUserId: ownerUserId);
+  }
+
+  Future<EventHistoryResult> _startHistoryLoad({
+    String? ownerUserId,
+    bool deferred = false,
+  }) {
+    final effectiveOwnerUserId = ownerUserId ?? _historyOwnerUserId;
+    final requestId = ++_historyRequestSerial;
+    if (deferred) {
+      return Future<EventHistoryResult>.delayed(
+        Duration.zero,
+        () => _loadHistory(requestId, effectiveOwnerUserId),
+      );
+    }
+    return _loadHistory(requestId, effectiveOwnerUserId);
+  }
+
+  Future<EventHistoryResult> _loadHistory(
+    int requestId,
+    String ownerUserId,
+  ) async {
+    final loader = widget.historyLoader;
+    try {
+      final result = loader != null
+          ? await loader()
+          : await EventHistoryRepository.loadEventHistory(
+              limit: eventHistoryMaxLimit,
+            );
+      if (requestId == _historyRequestSerial &&
+          ownerUserId == _historyOwnerUserId) {
+        _historyError = null;
+        _lastLoadedResult = result;
+      }
+      return result;
+    } catch (error) {
+      final isActiveRequest = requestId == _historyRequestSerial &&
+          ownerUserId == _historyOwnerUserId;
+      if (isActiveRequest) {
+        _historyError = error;
+      }
+      final lastLoadedResult = _lastLoadedResult;
+      if (isActiveRequest && lastLoadedResult != null) {
+        return lastLoadedResult;
+      }
+      rethrow;
+    }
   }
 
   void _reloadHistory() {
     setState(() {
-      _historyFuture = _loadHistory();
+      _historyFuture = _startHistoryLoad(deferred: true);
     });
   }
 
@@ -127,6 +187,14 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done ||
             _historyFuture == null) {
+          final lastLoadedResult = _lastLoadedResult;
+          if (lastLoadedResult != null) {
+            final items = lastLoadedResult.items;
+            if (items.isEmpty) {
+              return _buildHistoryEmpty(context);
+            }
+            return _buildHistoryList(context, items);
+          }
           return const Center(
             key: eventHistoryLoadingKey,
             child: AppLoadingIndicator(),
@@ -134,48 +202,132 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
         }
 
         if (snapshot.hasError) {
+          final lastLoadedResult = _lastLoadedResult;
+          if (lastLoadedResult != null) {
+            return _buildPreviousHistoryWithError(
+              context,
+              items: lastLoadedResult.items,
+            );
+          }
           return _EventHistoryErrorState(onRetry: _reloadHistory);
         }
 
         final items = snapshot.data?.items ?? const <EventHistoryItem>[];
+        final shouldShowInlineError = _historyError != null && items.isNotEmpty;
         if (items.isEmpty) {
-          return Center(
-            key: eventHistoryEmptyKey,
-            child: SizedBox(
-              height: 500.0,
-              child: EmptyWidget(
-                txt: FFLocalizations.of(context).getVariableText(
-                  ruText:
-                      'Здесь появятся события, к которым вы присоединились или которые организовали.',
-                  enText: 'Events you joined or organized will appear here.',
-                ),
-              ),
-            ),
+          return _buildHistoryEmpty(
+            context,
+            leading: _historyError == null
+                ? null
+                : _EventHistoryErrorState(
+                    onRetry: _reloadHistory,
+                    compact: true,
+                  ),
           );
         }
 
-        final contentTopPadding = MediaQuery.paddingOf(context).top +
-            BasicPageHeader.height +
-            ExpatlioDesign.sectionSpacing;
+        return _buildHistoryList(
+          context,
+          items,
+          leading: shouldShowInlineError
+              ? _EventHistoryErrorState(
+                  onRetry: _reloadHistory,
+                  compact: true,
+                )
+              : null,
+        );
+      },
+    );
+  }
 
-        return ListView.separated(
-          key: eventHistoryListKey,
-          padding: EdgeInsets.fromLTRB(
-            ExpatlioDesign.pagePadding,
-            contentTopPadding,
-            ExpatlioDesign.pagePadding,
-            ExpatlioDesign.pageBottomSpacing,
+  Widget _buildPreviousHistoryWithError(
+    BuildContext context, {
+    required List<EventHistoryItem> items,
+  }) {
+    final errorState = _EventHistoryErrorState(
+      onRetry: _reloadHistory,
+      compact: true,
+    );
+    if (items.isEmpty) {
+      return _buildHistoryEmpty(context, leading: errorState);
+    }
+    return _buildHistoryList(
+      context,
+      items,
+      leading: errorState,
+    );
+  }
+
+  Widget _buildHistoryEmpty(
+    BuildContext context, {
+    Widget? leading,
+  }) {
+    final emptyState = Center(
+      key: eventHistoryEmptyKey,
+      child: SizedBox(
+        height: 500.0,
+        child: EmptyWidget(
+          txt: FFLocalizations.of(context).getVariableText(
+            ruText:
+                'Здесь появятся события, к которым вы присоединились или которые организовали.',
+            enText: 'Events you joined or organized will appear here.',
           ),
-          itemCount: items.length,
-          separatorBuilder: (_, __) =>
-              const SizedBox(height: ExpatlioDesign.space12),
-          itemBuilder: (context, index) {
-            final item = items[index];
-            return _EventHistoryCard(
-              item: item,
-              onTap: () => _openEvent(item),
-            );
-          },
+        ),
+      ),
+    );
+
+    if (leading == null) {
+      return emptyState;
+    }
+
+    final contentTopPadding = MediaQuery.paddingOf(context).top +
+        BasicPageHeader.height +
+        ExpatlioDesign.sectionSpacing;
+    return ListView(
+      padding: EdgeInsets.fromLTRB(
+        ExpatlioDesign.pagePadding,
+        contentTopPadding,
+        ExpatlioDesign.pagePadding,
+        ExpatlioDesign.pageBottomSpacing,
+      ),
+      children: [
+        leading,
+        const SizedBox(height: ExpatlioDesign.space12),
+        emptyState,
+      ],
+    );
+  }
+
+  Widget _buildHistoryList(
+    BuildContext context,
+    List<EventHistoryItem> items, {
+    Widget? leading,
+  }) {
+    final contentTopPadding = MediaQuery.paddingOf(context).top +
+        BasicPageHeader.height +
+        ExpatlioDesign.sectionSpacing;
+    final itemCount = items.length + (leading == null ? 0 : 1);
+
+    return ListView.separated(
+      key: eventHistoryListKey,
+      padding: EdgeInsets.fromLTRB(
+        ExpatlioDesign.pagePadding,
+        contentTopPadding,
+        ExpatlioDesign.pagePadding,
+        ExpatlioDesign.pageBottomSpacing,
+      ),
+      itemCount: itemCount,
+      separatorBuilder: (_, __) =>
+          const SizedBox(height: ExpatlioDesign.space12),
+      itemBuilder: (context, index) {
+        if (leading != null && index == 0) {
+          return leading;
+        }
+        final itemIndex = leading == null ? index : index - 1;
+        final item = items[itemIndex];
+        return _EventHistoryCard(
+          item: item,
+          onTap: () => _openEvent(item),
         );
       },
     );
@@ -183,96 +335,83 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        FocusScope.of(context).unfocus();
-        FocusManager.instance.primaryFocus?.unfocus();
+    return AuthUserStreamWidget(
+      builder: (context) {
+        _syncHistoryOwner();
+        return GestureDetector(
+          onTap: () {
+            FocusScope.of(context).unfocus();
+            FocusManager.instance.primaryFocus?.unfocus();
+          },
+          child: Scaffold(
+            backgroundColor: ExpatlioDesign.background,
+            body: Stack(
+              children: [
+                _buildBody(context),
+                _buildHeader(context),
+              ],
+            ),
+          ),
+        );
       },
-      child: Scaffold(
-        backgroundColor: ExpatlioDesign.background,
-        body: Stack(
-          children: [
-            _buildBody(context),
-            _buildHeader(context),
-          ],
-        ),
-      ),
     );
   }
 }
 
 class _EventHistoryErrorState extends StatelessWidget {
-  const _EventHistoryErrorState({required this.onRetry});
+  const _EventHistoryErrorState({
+    required this.onRetry,
+    this.compact = false,
+  });
 
   final VoidCallback onRetry;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
+    final title = FFLocalizations.of(context).getVariableText(
+      ruText: 'Не удалось загрузить события',
+      enText: 'Could not load events',
+    );
+    final message = FFLocalizations.of(context).getVariableText(
+      ruText: 'Проверьте подключение и попробуйте еще раз.',
+      enText: 'Check your connection and try again.',
+    );
+    final retryLabel = FFLocalizations.of(context).getVariableText(
+      ruText: 'Повторить',
+      enText: 'Retry',
+    );
+    final retrySemanticsLabel = FFLocalizations.of(context).getVariableText(
+      ruText: 'Повторить загрузку событий',
+      enText: 'Retry loading events',
+    );
+
+    final state = UxErrorState(
+      stateKey: eventHistoryErrorKey,
+      title: title,
+      message: message,
+      retryLabel: retryLabel,
+      retrySemanticsLabel: retrySemanticsLabel,
+      retryButtonKey: eventHistoryErrorRetryButtonKey,
+      onRetry: onRetry,
+      showIcon: false,
+      contained: compact,
+      maxWidth: double.infinity,
+      padding: compact
+          ? const EdgeInsetsDirectional.all(ExpatlioDesign.space16)
+          : const EdgeInsetsDirectional.all(ExpatlioDesign.space0),
+      titleSize: 17.0,
+      retryMinHeight: 44.0,
+    );
+
+    if (compact) {
+      return state;
+    }
+
     return Center(
-      key: eventHistoryErrorKey,
       child: Padding(
         padding: const EdgeInsets.all(ExpatlioDesign.pagePadding),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              FFLocalizations.of(context).getVariableText(
-                ruText: 'Не удалось загрузить события',
-                enText: 'Could not load events',
-              ),
-              textAlign: TextAlign.center,
-              style: ExpatlioDesign.textStyle(
-                context,
-                size: 17.0,
-                weight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: ExpatlioDesign.space8),
-            Text(
-              FFLocalizations.of(context).getVariableText(
-                ruText: 'Проверьте подключение и попробуйте еще раз.',
-                enText: 'Check your connection and try again.',
-              ),
-              textAlign: TextAlign.center,
-              style: ExpatlioDesign.textStyle(
-                context,
-                color: ExpatlioDesign.muted,
-                size: 15.0,
-              ),
-            ),
-            const SizedBox(height: ExpatlioDesign.space16),
-            SizedBox(
-              height: 44.0,
-              child: ElevatedButton.icon(
-                key: eventHistoryErrorRetryButtonKey,
-                onPressed: onRetry,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: ExpatlioDesign.primary,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      ExpatlioDesign.controlRadius,
-                    ),
-                  ),
-                ),
-                icon: const Icon(Icons.refresh_rounded, size: 18.0),
-                label: Text(
-                  FFLocalizations.of(context).getVariableText(
-                    ruText: 'Повторить',
-                    enText: 'Retry',
-                  ),
-                  style: ExpatlioDesign.textStyle(
-                    context,
-                    color: Colors.white,
-                    size: 15.0,
-                    weight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
+        child: state,
       ),
     );
   }

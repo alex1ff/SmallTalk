@@ -1,9 +1,13 @@
 import 'dart:async';
 
+import 'package:firebase_auth_platform_interface/firebase_auth_platform_interface.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:small_talk/auth/firebase_auth/auth_util.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/services/event_history_repository.dart';
 import 'package:small_talk/services/event_list_date_bounds.dart';
@@ -29,15 +33,91 @@ Widget _buildTestApp({required Widget home}) {
   );
 }
 
+class _TestFirebaseAuthPlatform extends FirebaseAuthPlatform {
+  _TestFirebaseAuthPlatform({FirebaseApp? app}) : super(appInstance: app);
+
+  UserPlatform? _currentUser;
+
+  @override
+  FirebaseAuthPlatform delegateFor({required FirebaseApp app}) {
+    return _TestFirebaseAuthPlatform(app: app).._currentUser = _currentUser;
+  }
+
+  @override
+  FirebaseAuthPlatform setInitialValues({
+    PigeonUserDetails? currentUser,
+    String? languageCode,
+  }) {
+    this.languageCode = languageCode;
+    return this;
+  }
+
+  @override
+  UserPlatform? get currentUser => _currentUser;
+
+  @override
+  set currentUser(UserPlatform? userPlatform) {
+    _currentUser = userPlatform;
+  }
+
+  @override
+  String? languageCode;
+
+  @override
+  Stream<UserPlatform?> authStateChanges() =>
+      const Stream<UserPlatform?>.empty();
+
+  @override
+  Stream<UserPlatform?> idTokenChanges() => const Stream<UserPlatform?>.empty();
+
+  @override
+  Stream<UserPlatform?> userChanges() => const Stream<UserPlatform?>.empty();
+}
+
+class _TestAuthUser extends BaseAuthUser {
+  _TestAuthUser(this._uid);
+
+  final String _uid;
+
+  @override
+  bool get loggedIn => true;
+
+  @override
+  bool get emailVerified => true;
+
+  @override
+  AuthUserInfo get authUserInfo => AuthUserInfo(uid: _uid);
+
+  @override
+  Future<void> delete() async {}
+
+  @override
+  Future<void> updateEmail(String email) async {}
+
+  @override
+  Future<void> updatePassword(String newPassword) async {}
+
+  @override
+  Future<void> sendEmailVerification() async {}
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
+    setupFirebaseCoreMocks();
+    await Firebase.initializeApp();
+    FirebaseAuthPlatform.instance = _TestFirebaseAuthPlatform();
     await initializeDateFormatting('ru');
     await initializeDateFormatting('en');
     initializeEventListTimeZones();
     await FFLocalizations.initialize();
+  });
+
+  tearDown(() {
+    currentUser = null;
+    currentUserDocument = null;
   });
 
   testWidgets('shows loading while event history is pending', (tester) async {
@@ -178,6 +258,115 @@ void main() {
 
     expect(calls, 2);
     expect(find.byKey(eventHistoryListKey), findsOneWidget);
+  });
+
+  testWidgets('keeps previous history visible when refresh fails',
+      (tester) async {
+    var calls = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventHistoryWidget(
+          historyLoader: () async {
+            calls += 1;
+            if (calls > 1) {
+              throw StateError('network');
+            }
+            return historyResult(
+              items: <EventHistoryItem>[
+                historyItem(title: 'Разговорный клуб'),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventHistoryListKey), findsOneWidget);
+    expect(find.text('Разговорный клуб'), findsOneWidget);
+
+    await tester.tap(find.byKey(eventHistoryRefreshButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(find.byKey(eventHistoryErrorKey), findsOneWidget);
+    expect(find.byKey(eventHistoryListKey), findsOneWidget);
+    expect(find.text('Разговорный клуб'), findsOneWidget);
+  });
+
+  testWidgets('keeps previous empty history visible when refresh fails',
+      (tester) async {
+    var calls = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventHistoryWidget(
+          historyLoader: () async {
+            calls += 1;
+            if (calls > 1) {
+              throw StateError('network');
+            }
+            return historyResult(items: const <EventHistoryItem>[]);
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventHistoryEmptyKey), findsOneWidget);
+
+    await tester.tap(find.byKey(eventHistoryRefreshButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(find.byKey(eventHistoryErrorKey), findsOneWidget);
+    expect(find.byKey(eventHistoryEmptyKey), findsOneWidget);
+    expect(find.textContaining('Здесь появятся события'), findsOneWidget);
+  });
+
+  testWidgets('does not reuse previous history after user changes',
+      (tester) async {
+    var calls = 0;
+    currentUser = _TestAuthUser('user-a');
+
+    Future<EventHistoryResult> loadHistory() async {
+      calls += 1;
+      if (currentUserUid == 'user-a') {
+        return historyResult(
+          items: <EventHistoryItem>[
+            historyItem(title: 'История пользователя A'),
+          ],
+        );
+      }
+      throw StateError('network');
+    }
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventHistoryWidget(
+          historyLoader: loadHistory,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+    expect(find.text('История пользователя A'), findsOneWidget);
+
+    currentUser = _TestAuthUser('user-b');
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventHistoryWidget(
+          historyLoader: loadHistory,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(find.byKey(eventHistoryErrorKey), findsOneWidget);
+    expect(find.text('История пользователя A'), findsNothing);
   });
 }
 
