@@ -1141,6 +1141,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     required bool conversationsLoadFailed,
     required bool conversationsAccessDenied,
     required List<ConversationsRecord> conversations,
+    required bool eventChatsLoading,
     required bool eventChatsLoadFailed,
     required List<EventChatsRecord> eventChats,
     required List<DocumentReference> friends,
@@ -1152,8 +1153,9 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
       eventChats: eventChats,
       hiddenChatKeys: hiddenChatKeys,
     );
+    final messagesInitialLoading = conversationsLoading || eventChatsLoading;
 
-    if (conversationsLoading && inboxItems.isEmpty) {
+    if (messagesInitialLoading && inboxItems.isEmpty) {
       return const SizedBox.shrink();
     }
 
@@ -1392,6 +1394,11 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                         }
 
                         final eventChatsState = eventChatsSnapshot.data;
+                        final eventChatsLoading =
+                            eventChatsSnapshot.connectionState ==
+                                    ConnectionState.waiting &&
+                                eventChatsState == null &&
+                                !eventChatsSnapshot.hasError;
                         final eventChatsLoadFailed =
                             eventChatsSnapshot.hasError;
                         final eventChats =
@@ -1433,6 +1440,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                                           conversationsAccessDenied:
                                               conversationsAccessDenied,
                                           conversations: conversations,
+                                          eventChatsLoading: eventChatsLoading,
                                           eventChatsLoadFailed:
                                               eventChatsLoadFailed,
                                           eventChats: eventChats,

@@ -85,4 +85,39 @@ void main() {
       isNot(contains('initialData: const _EventChatsLoadState()')),
     );
   });
+
+  test('favorite inbox does not show empty before chat sources load', () {
+    final source = File('lib/students_pages/favorite/favorite_widget.dart')
+        .readAsStringSync();
+
+    expect(
+      source,
+      matches(
+        RegExp(
+          r'final eventChatsLoading =\s*'
+          r'eventChatsSnapshot\.connectionState ==\s*'
+          r'ConnectionState\.waiting &&\s*'
+          r'eventChatsState == null &&\s*'
+          r'!eventChatsSnapshot\.hasError;',
+        ),
+      ),
+    );
+    expect(
+      source,
+      contains(
+        'final messagesInitialLoading = conversationsLoading || eventChatsLoading;',
+      ),
+    );
+    expect(
+      source,
+      contains('if (messagesInitialLoading && inboxItems.isEmpty)'),
+    );
+
+    final loadingGuardIndex =
+        source.indexOf('if (messagesInitialLoading && inboxItems.isEmpty)');
+    final emptyGuardIndex = source.indexOf('if (inboxItems.isEmpty)');
+    expect(loadingGuardIndex, isNonNegative);
+    expect(emptyGuardIndex, isNonNegative);
+    expect(loadingGuardIndex, lessThan(emptyGuardIndex));
+  });
 }
