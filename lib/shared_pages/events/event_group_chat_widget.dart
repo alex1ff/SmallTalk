@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
+import '/components/ux_empty_state.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/chat_message_bubble_style.dart';
@@ -863,40 +864,35 @@ class _EventGroupChatStateMessage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final title = FFLocalizations.of(context).getVariableText(
+      ruText: titleRu,
+      enText: titleEn,
+    );
+    final message = FFLocalizations.of(context).getVariableText(
+      ruText: messageRu,
+      enText: messageEn,
+    );
+
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(ExpatlioDesign.space24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              FFLocalizations.of(context).getVariableText(
-                ruText: titleRu,
-                enText: titleEn,
-              ),
-              textAlign: TextAlign.center,
-              style: ExpatlioDesign.textStyle(
-                context,
-                size: 22,
-                weight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: ExpatlioDesign.space8),
-            Text(
-              FFLocalizations.of(context).getVariableText(
-                ruText: messageRu,
-                enText: messageEn,
-              ),
-              textAlign: TextAlign.center,
-              style: ExpatlioDesign.textStyle(
-                context,
-                color: ExpatlioDesign.muted,
-                size: 15,
-                height: 1.35,
-                weight: FontWeight.w500,
-              ),
-            ),
-          ],
+      child: UxEmptyState(
+        title: title,
+        message: message,
+        shrinkWrap: true,
+        showImage: false,
+        topPadding: ExpatlioDesign.space0,
+        semanticsLabel: '$title. $message',
+        liveRegion: true,
+        titleStyle: ExpatlioDesign.textStyle(
+          context,
+          size: 22,
+          weight: FontWeight.w700,
+        ),
+        messageStyle: ExpatlioDesign.textStyle(
+          context,
+          color: ExpatlioDesign.muted,
+          size: 15,
+          height: 1.35,
+          weight: FontWeight.w500,
         ),
       ),
     );
