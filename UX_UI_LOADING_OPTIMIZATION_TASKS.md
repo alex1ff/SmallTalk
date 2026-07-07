@@ -320,7 +320,7 @@ Retry behavior:
 ## UX Phase 1: Shared Loading Patterns
 
 - [x] Сделать общий helper/model для экранов со списками и состояниями загрузки.
-- [ ] Добавить общий паттерн `previousData + refreshing indicator`.
+- [x] Добавить общий паттерн `previousData + refreshing indicator`.
 - [ ] Унифицировать empty state через общий компонент приложения.
 - [ ] Унифицировать error state для списков: ошибка поверх старых данных или компактный retry-блок.
 - [ ] Убрать лишние skeleton-экраны там, где уже есть cached/previous data.
