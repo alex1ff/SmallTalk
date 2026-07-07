@@ -10,7 +10,7 @@
 - [x] Запретить показ empty state до завершения первой реальной загрузки данных.
 - [x] Запретить замену уже показанного контента на большой loader при refresh.
 - [x] Зафиксировать правило: error state не стирает старые данные, если они уже были показаны.
-- [ ] Проверить стабильные размеры карточек, строк, аватаров, бейджей, кнопок и нижних панелей.
+- [x] Проверить стабильные размеры карточек, строк, аватаров, бейджей, кнопок и нижних панелей.
 
 ### Audit 2026-07-07: Content Drop Points
 
@@ -275,6 +275,48 @@ Retry behavior:
 - Retry из `errorWithoutData` может показывать compact/page-level loading, потому что данных еще нет.
 - Повторная ошибка не должна дублировать banners бесконечно; обновляется один стабильный error slot.
 
+### Rule 2026-07-07: Stable Layout Dimensions
+
+Все экраны с данными должны иметь стабильную геометрию после первого рендера shell. Загрузка, refresh, ошибка, optimistic update, догрузка public profiles/avatars/unread/stats/reviews не должны менять высоту строк, карточек, нижних панелей и основных блоков.
+
+Общие правила:
+
+- Каждый повторяемый item задает стабильный layout contract: avatar slot, title/subtitle area, meta area, action area, divider inset, min/max height.
+- Loader/placeholder/error для элемента занимает тот же slot, что и готовое значение.
+- Длинный текст обрезается/переносится внутри заранее выделенной области и не раздвигает кнопки, badges, avatars или bottom bars.
+- Догрузка изображения, инициалов, иконки, unread count или participant profile не меняет размер контейнера.
+- Empty/error/loading state внутри списка не должен менять высоту header/filter/bottom bar.
+- Safe area и keyboard inset не создают "дырки". Внутренняя высота bottom action/input bar фиксирована отдельно от `SafeArea.bottom`; keyboard двигает панель через `viewInsets.bottom`, без double padding и без изменения высоты самой панели.
+
+Размерные контракты по компонентам:
+
+- `Avatar`: фиксированный диаметр для контекста; фото, инициалы, иконка-заглушка и loading placeholder используют один и тот же circle size. Fallback text не влияет на размер.
+- `Participant avatar stack`: фиксированный диаметр, overlap, max visible count и `+N` slot. Для известных participant refs показывается previous known visible set или стабильный fallback avatar/initial slot; загрузка public profile не добавляет и не удаляет slot. Нельзя показывать blank slot без содержимого.
+- `Chat row`: фиксированная высота строки, avatar slot, time/unread slot и divider inset. Unread badge имеет fixed min size и не двигает время/текст при переходе `0 -> 1 -> 99+`.
+- `Chat message bubble`: bubble, timestamp/status, retry action и sending/sent/failed indicator имеют стабильные slots. Optimistic send меняет status slot, но не пересобирает и не сдвигает соседние сообщения.
+- `Event card`: стабильная структура header/body/meta/participants/actions. Join/leave/loading/error меняют состояние кнопки и счетчика, но не высоту карточки.
+- `Dictionary row`: строка имеет min/max height, divider вместо отдельных карточек, max lines/ellipsis для original и translation. Длинный текст остается внутри выделенных областей и не раздувает строку без заданного лимита.
+- `Buttons`: action buttons имеют фиксированную высоту, стабильный horizontal padding и отдельные slots для icon/spinner/text. Loading/disabled/sending state не меняет размер кнопки и не заменяет текст на spinner с другой шириной.
+- `Badges/chips`: active/inactive state меняет цвет, но не размер. Chips имеют stable min height/width, icon/count/text slots и не reflow из-за async label/count.
+- `Bottom bars`: navigation bar, event action bar, chat input bar и repeat panel имеют фиксированную внутреннюю высоту плюс safe area. Состояния loading/sending/disabled не меняют высоту.
+- `Chat composer`: fixed min height, bounded max height; multiline text scrolls inside field after maxLines. Send button keeps fixed slot; attachment/retry/status icons do not alter bar height.
+- `Payments`: package/tariff cards, price text, purchase CTA/bottom bar, cards rows and transactions rows reserve stable slots for loading/error/price/status.
+- `Secondary list rows`: reviews, call history, blacklist/friends, event history and payout operations use fixed avatar/meta/action/divider slots.
+- `Public profile/detail sections`: native speaker profile, event edit preload shell, review sections and call detail sections reserve stable section heights or min/max constraints while secondary data loads.
+
+Ключевые проверки:
+
+- `Чаты`: строки чатов, unread badge, avatar, divider и swipe/delete action остаются стабильными при новых сообщениях и удалении.
+- `Страница чата`: message bubbles, input bar и send button не прыгают при отправке, ошибке, клавиатуре и safe area.
+- `События`: карточки не меняют высоту при догрузке участников, join/leave, ошибке профиля участника или смене фильтра.
+- `Страница события`: блоки organizer, date/time/place, participants grid и sticky bottom bar сохраняют размеры при reconnect.
+- `Словарь`: строки слов разделены divider, repeat panel не обрезает счетчик на больших числах.
+- `Профиль`: avatar, email card, progress cards и tariff blocks не меняют размер при догрузке stats/subscription.
+- `Платежи`: package/tariff cards, price slot, purchase bottom bar, payout cards and transactions rows не меняют размер при загрузке цен, карт и операций.
+- `Вторичные списки`: reviews, call history, event history, blacklist/friends and native speaker profile sections keep row/card geometry during loading/error/empty transitions.
+- `Формы с preload`: edit-preload form shell keeps field/dropdown/button dimensions while existing data loads.
+- `Звонки`: waiting/call/detail/summary actions и review блоки не меняют основной layout при async state.
+
 ## UX Phase 1: Shared Loading Patterns
 
 - [ ] Сделать общий helper/model для экранов со списками и состояниями загрузки.
@@ -318,7 +360,7 @@ Retry behavior:
 - [ ] Зафиксировать высоту и структуру карточки события.
 - [ ] Не менять размеры карточки при догрузке участников и аватаров.
 - [ ] Подтягивать public profiles участников заранее для видимых карточек.
-- [ ] Не показывать пустые заглушки участников, если профиль еще грузится.
+- [ ] Не показывать blank-заглушки участников: для известных participant refs использовать стабильный fallback avatar/initial slot до загрузки профиля.
 - [ ] Join/leave на карточке делать optimistic: кнопка, счетчик мест и участники меняются сразу.
 - [ ] При ошибке join/leave откатывать optimistic-состояние и показывать короткую ошибку.
 
@@ -329,7 +371,7 @@ Retry behavior:
 - [ ] Join/leave на странице события делать optimistic.
 - [ ] Сразу менять CTA, счетчик мест и список участников после join/leave.
 - [ ] Подтягивать public profiles участников параллельно с participant snapshot.
-- [ ] Не показывать пустую заглушку участника, если уже был известен его профиль.
+- [ ] Не показывать blank-заглушку участника: если профиль уже был известен, сохранять его; если известен только ref, показывать стабильный fallback avatar/initial slot.
 - [ ] Зафиксировать размеры блоков организатора, даты/времени/места и участников.
 - [ ] Sticky bottom action bar не должен прыгать при обновлении данных.
 - [ ] Ошибка обновления detail не должна стирать уже показанное событие.
@@ -353,6 +395,15 @@ Retry behavior:
 
 ## UX Phase 8: Verification
 
+- [ ] Добавить widget/golden проверки стабильных размеров через `getSize`/позиции для ключевых компонентов.
+- [ ] Добавить widget/golden проверку chat row: unread `0/1/99+`, avatar/time/divider не меняют позиции.
+- [ ] Добавить widget/golden проверку chat message bubble: `sending/sent/failed/retry`, timestamp/status/retry slots не меняют размер bubble и позиции соседних сообщений.
+- [ ] Добавить widget/golden проверку event card: loading/loaded/error participant profiles, join/leave и filter refresh не меняют высоту карточки.
+- [ ] Добавить widget/golden проверку dictionary row: длинный original/translation не слипается и не выходит за min/max height.
+- [ ] Добавить widget/golden проверку repeat panel: большие counts не обрезают CTA и не меняют высоту панели.
+- [ ] Добавить widget/golden проверку profile blocks: avatar/email/progress/tariff cards сохраняют размеры при loading/error.
+- [ ] Добавить widget/golden проверку bottom bars: chat composer/event action/repeat panel не получают double safe-area padding и не меняют внутреннюю высоту при keyboard inset.
+- [ ] Добавить widget/golden проверку payments: price/package/tariff/purchase bar/cards/transactions rows сохраняют slots при loading/error.
 - [ ] Добавить widget-тесты на отсутствие empty state во время первой загрузки.
 - [ ] Добавить widget-тест: пустой Firestore cache snapshot без server confirmation/marker не показывает empty.
 - [ ] Добавить widget-тест: `conversations + eventChats`, где один stream pending, не показывает empty.
