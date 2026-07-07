@@ -5,7 +5,7 @@
 ## UX Phase 0: Audit And Rules
 
 - [x] Пройти основные экраны и зафиксировать места, где контент пропадает при обновлении.
-- [ ] Составить список экранов с full-screen loader после первого успешного рендера.
+- [x] Составить список экранов с full-screen loader после первого успешного рендера.
 - [ ] Зафиксировать единые состояния загрузки: `initialLoading`, `refreshing`, `hasData`, `empty`, `errorWithData`, `errorWithoutData`.
 - [ ] Запретить показ empty state до завершения первой реальной загрузки данных.
 - [ ] Запретить замену уже показанного контента на большой loader при refresh.
@@ -20,7 +20,7 @@ Included route matrix:
 
 - Student tabs: `StudentsDashboardWidget`, `WordsWidget`, `FavoriteWidget`, `ProfileWidget`, `EventListWidget`.
 - Teacher tabs: `DashboardNSWidget`, `FavoriteWidget`, `ProfileWidget`, `EventListWidget`.
-- Events routes: list, detail, create/edit when loading existing data, group chat, event history.
+- Events routes: list, detail, edit when loading existing data, group chat, event history.
 - Chat routes: conversations list, private chat thread, event group chat.
 - Dictionary routes: words list, word detail, flashcard review.
 - Call routes: waiting/search call, active video call, call details, call summary/review.
@@ -31,7 +31,7 @@ Excluded route matrix:
 
 - Auth and onboarding routes: excluded because they are not post-login data-list UX surfaces.
 - Static/legal/info pages: excluded because they do not load changing user data.
-- Pure edit/create forms without remote preload, including `ProfileEditWidget`: excluded because there is no existing content list/detail to preserve during refresh.
+- Pure create/edit forms without remote preload, including `ProfileEditWidget` and `EventCreateWidget`: excluded because there is no existing content list/detail to preserve during refresh.
 
 Trigger types: `cold start`, `refresh/reconnect`, `filter change`, `retry`, `return to screen`, `async section update`.
 
@@ -59,8 +59,8 @@ Trigger types: `cold start`, `refresh/reconnect`, `filter change`, `retry`, `ret
   Trigger: `cold start`, `retry`, `return to screen`. Body заменяется `AppLoadingIndicator`, error state или empty state; список полностью пропадает при retry/возврате.
 - Мои отзывы студента: `lib/students_pages/my_rew/my_rew_widget.dart -> build -> !snapshot.hasData / filtered rew.isEmpty`.
   Trigger: `cold start`, `filter change`, `return to screen`. До данных возвращается отдельный `Scaffold` со `SpinKitCircle`, а после фильтрации пустой список заменяется `EmptyWidget`.
-- Мои отзывы преподавателя: `lib/teachers_pages/my_rew_n_s/my_rew_n_s_widget.dart -> build -> !snapshot.hasData / empty`.
-  Trigger: `cold start`, `return to screen`. До данных возвращается fullscreen `SpinKitCircle`, затем строится список или empty state.
+- Мои отзывы преподавателя: `lib/teachers_pages/my_rew_n_s/my_rew_n_s_widget.dart -> build -> loggedIn && currentUserDocument == null / !canAccessTeacherSurfaces / !snapshot.hasData / empty`.
+  Trigger: `cold start`, `refresh/reconnect`, `return to screen`. До профиля возвращается fullscreen `CircularProgressIndicator`, при недоступной teacher-surface ветке экран заменяется сообщением/редиректом, до отзывов возвращается fullscreen `SpinKitCircle`, затем строится список или empty state.
 - Словарь: `lib/students_pages/words/words_widget.dart -> build -> words == null / words.isEmpty`.
   Trigger: `cold start`, `refresh/reconnect`. Words stream уже использует `initialData` из cache, но если `words == null`, возвращается пустой `SizedBox`; empty state заменяет список.
 - Карточки повторения: `lib/students_pages/flashcard/flashcard_widget.dart -> build -> snapshot.hasError / !snapshot.hasData / entries.isEmpty`.
@@ -75,22 +75,57 @@ Trigger types: `cold start`, `refresh/reconnect`, `filter change`, `retry`, `ret
   Trigger: `cold start`, `refresh/reconnect`, `return to screen`. Список заменяется loading, error или empty state.
 - Ожидание/поиск звонка: `lib/students_pages/waiting_for_teacher_page/waiting_for_teacher_page_widget.dart -> build/_buildStatusBody -> sessionId == null && !_createFailed / isLoading || status == null`.
   Trigger: `cold start`, `refresh/reconnect`, `async section update`. Экран поиска/дозвона показывает loading status body до получения sessionId и может менять основной статусный блок при ошибке создания или обновлении статуса сессии.
-- Детали звонка: `lib/shared_pages/call_details/call_details_widget.dart -> _buildCaptionLogsSection/_buildReviewSection/_buildStoredReview -> waiting/hasError/empty`.
-  Trigger: `cold start`, `refresh/reconnect`, `async section update`. Caption logs stream и review-секция имеют отдельные loading/error/empty ветки, поэтому уже открытая деталка может менять блоки субтитров и review state независимо от основного контента.
+- Детали звонка: `lib/shared_pages/call_details/call_details_widget.dart -> build/_buildCaptionLogsSection/_buildReviewSection/_buildStoredReview -> videoDocRef == null / snapshot.hasError / !snapshot.hasData / missing session / !participant.isParticipant / waiting/hasError/empty`.
+  Trigger: `cold start`, `refresh/reconnect`, `return to screen`, `async section update`. Основной session stream заменяет body на loading/unavailable state; caption logs stream и review-секция имеют отдельные loading/error/empty ветки, поэтому уже открытая деталка может менять блоки субтитров и review state независимо от основного контента.
 - Активный звонок: `lib/shared_pages/video_call_page/video_call_page_widget.dart -> build -> videoCallPageVideoSessionsRecord == null && !hasInitialJoinCredentials`.
   Trigger: `cold start`, `refresh/reconnect`. Session stream показывает loading/media permission state; внутри страницы есть отдельные async-состояния readiness/permission.
 - Итог звонка и отзыв после звонка: `lib/shared_pages/call_summary/call_summary_widget.dart -> build/_buildReviewSection/_buildStoredReview -> profile future waiting / pair review future waiting / review stream waiting`.
-  Trigger: `cold start`, `return to screen`, `async section update`. Post-call summary и review submission могут прыгать между loading, формой и сохраненным отзывом.
-- Черный список: `lib/shared_pages/black_list/black_list_widget.dart -> build -> ListView itemBuilder/FutureBuilder -> snapshot.connectionState == waiting`.
-  Trigger: `cold start`, `return to screen`, `async section update`. Каждый пользователь внутри списка грузится отдельно; на ожидании конкретной строки показывается `SpinKitCircle` вместо стабильной строки.
+  Trigger: `cold start`, `return to screen`, `async section update`. Profile future на ожидании возвращает пустой body, а review submission может прыгать между loading, формой и сохраненным отзывом.
+- Черный список: `lib/shared_pages/black_list/black_list_widget.dart -> build/AuthUserStreamWidget/ListView itemBuilder/FutureBuilder -> currentUserDocument?.blockedUsers ?? [] / snapshot.connectionState == waiting`.
+  Trigger: `cold start`, `refresh/reconnect`, `return to screen`, `async section update`. Пока user document не пришел, список считается пустым и может показать empty state раньше реальной загрузки; каждый пользователь внутри списка грузится отдельно, на ожидании конкретной строки показывается `SpinKitCircle` вместо стабильной строки.
 - Профиль собеседника: `lib/students_pages/native_speaker_page/native_speaker_page_widget.dart -> build / stats FutureBuilder / _buildReviewsSection -> profile waiting / stats !hasData / reviews !hasData`.
   Trigger: `cold start`, `refresh/reconnect`, `async section update`. Основной public profile stream заменяет весь экран loader-ом; stats/reviews внутри страницы показывают отдельные `SpinKitCircle`.
 - Оплата студента: `lib/students_pages/pay/pay_widget.dart -> _loadPackages/_priceFor/build -> _isLoadingPackages`.
   Trigger: `cold start`, `retry`, `async section update`. Цены показывают `Загрузка...`, CTA получает `isLoading`, покупка блокируется; тарифы и нижняя purchase-панель скачут между loading/недоступно/ценой.
-- Карты выплат преподавателя: `lib/teachers_pages/pay_copy/pay_copy_widget.dart -> build -> cards StreamBuilder -> !snapshot.hasData`.
-  Trigger: `cold start`, `refresh/reconnect`, `async section update`. Cards stream использует отдельный loading spinner, поэтому секция карт скачет независимо от остального экрана.
+- Выплаты преподавателя: `lib/teachers_pages/pay_copy/pay_copy_widget.dart -> build -> loggedIn && currentUserDocument == null / !canAccessTeacherSurfaces / cards StreamBuilder !snapshot.hasData`.
+  Trigger: `cold start`, `refresh/reconnect`, `return to screen`, `async section update`. До профиля возвращается fullscreen `CircularProgressIndicator`, при недоступной teacher-surface ветке экран заменяется сообщением/редиректом; cards stream использует отдельный loading spinner, поэтому секция карт скачет независимо от остального экрана.
 - Операции выплат преподавателя: `lib/teachers_pages/pay_copy/pay_copy_widget.dart -> build -> transactions StreamBuilder -> !snapshot.hasData / transactions.isEmpty`.
   Trigger: `cold start`, `refresh/reconnect`, `async section update`. Transactions stream использует отдельный loading spinner, а empty state заменяет список операций.
+
+### Audit 2026-07-07: Full-Screen Loaders After First Render
+
+Критерий: fullscreen/page-level loader - это состояние, где `Scaffold`, body экрана или почти весь основной экран заменяется большим loader/state scaffold. Повторный вход на экран или новый mount после уже успешного показа считается повторным рендером. Локальные spinner-ы внутри строки, карточки или отдельного блока в этот список не входят.
+
+Экраны с fullscreen/page-level loader, который может повториться после первого успешного показа данных:
+
+- `Страница события`: `lib/shared_pages/events/event_detail_route_widget.dart -> build -> snapshot.connectionState == waiting`. При stream reconnect, retry или повторном входе весь detail заменяется `_EventDetailRouteStateScaffold` с loader-ом.
+- `Редактирование события`: `lib/shared_pages/events/event_edit_widget.dart -> build -> snapshot.connectionState != done`. При повторном входе или retry форма заменяется `_EventEditStateScaffold` с loader-ом.
+- `Мои события`: `lib/shared_pages/events/event_history_widget.dart -> _buildBody -> snapshot.connectionState != done`. При retry или возвращении на экран body заменяется `AppLoadingIndicator`.
+- `Личный чат`: `lib/shared_pages/chat_thread/chat_thread_widget.dart -> build -> conversation snapshot waiting / messages !hasData`. При reconnect или повторном входе экран чата либо список сообщений заменяется большим loader-ом.
+- `Чат события`: `lib/shared_pages/events/event_group_chat_widget.dart -> _buildChatContent/_buildMessagesContent -> access waiting / messages waiting`. При reconnect или возврате основной чат-контент заменяется center loader-ом.
+- `Профиль`: `lib/shared_pages/profile/profile_widget.dart -> _redesignedBuild -> loggedIn && currentUserDocument == null`. При auth/user stream reconnect основной экран профиля заменяется fullscreen `CircularProgressIndicator.adaptive`.
+- `Главная студента`: `lib/students_pages/students_dashboard/students_dashboard_widget.dart -> build -> currentUserUid.isEmpty || currentUserDocument == null`. При auth/user stream reconnect весь dashboard заменяется `_buildLoadingState`.
+- `Главная преподавателя`: `lib/teachers_pages/dashboard_n_s/dashboard_n_s_widget.dart -> build -> loggedIn && currentUserDocument == null`. При auth/user stream reconnect весь dashboard заменяется fullscreen `CircularProgressIndicator.adaptive`.
+- `История звонков`: `lib/shared_pages/my_calls/my_calls_widget.dart -> build -> currentUserDocument == null / !snapshot.hasData`. При reconnect или повторном входе список заменяется `_buildLoadingState`.
+- `Ожидание/поиск звонка`: `lib/students_pages/waiting_for_teacher_page/waiting_for_teacher_page_widget.dart -> build/_buildStatusBody -> sessionId == null && !_createFailed / isLoading || status == null`. При старте, reconnect или новом mount весь body заменяется статусным loading screen.
+- `Детали звонка`: `lib/shared_pages/call_details/call_details_widget.dart -> build -> !snapshot.hasData`. При session stream reconnect body заменяется `_buildLoadingState`; при error/missing/forbidden body заменяется unavailable state.
+- `Активный звонок`: `lib/shared_pages/video_call_page/video_call_page_widget.dart -> build -> session record null / media permission future waiting`. При session reconnect или permission check весь call screen заменяется `_buildMediaPermissionState`.
+- `Профиль собеседника`: `lib/students_pages/native_speaker_page/native_speaker_page_widget.dart -> build -> profile stream waiting`. При reconnect или возврате весь public profile заменяется fullscreen `SpinKitCircle`.
+- `Мои отзывы студента`: `lib/students_pages/my_rew/my_rew_widget.dart -> build -> !snapshot.hasData`. При повторном входе экран заменяется отдельным `Scaffold` со fullscreen `SpinKitCircle`.
+- `Мои отзывы преподавателя`: `lib/teachers_pages/my_rew_n_s/my_rew_n_s_widget.dart -> build -> loggedIn && currentUserDocument == null / !snapshot.hasData`. При user stream reconnect или повторном входе экран заменяется fullscreen loader-ом.
+- `Выплаты преподавателя`: `lib/teachers_pages/pay_copy/pay_copy_widget.dart -> build -> loggedIn && currentUserDocument == null`. При user stream reconnect экран выплат заменяется fullscreen `CircularProgressIndicator.adaptive`.
+- `Детальная слова`: `lib/students_pages/words/word_detail_widget.dart -> build -> word == null`. При отсутствии stream/cache данных body заменяется `AppLoadingIndicator`.
+- `Повторение слов`: `lib/students_pages/flashcard/flashcard_widget.dart -> build -> !snapshot.hasData`. При повторном входе review screen заменяется center `SpinKitCircle`.
+
+Экраны с большими content-area loader-ами, но не fullscreen:
+
+- `Список событий`: `lib/shared_pages/events/event_list_widget.dart -> build -> isLoadingEvents / eventCardsFuture not done`. Меняется список/контентная область под фильтрами, а не весь экран.
+- `Список чатов`: `lib/students_pages/favorite/favorite_widget.dart -> _buildMessagesTabContent/_buildFriendsTabContent -> conversationsLoading || friendsLoading`. Сейчас вместо большого loader-а часто возвращается пустой `SizedBox`, но UX-проблема та же: уже видимый список может исчезнуть.
+- `Черный список`: `lib/shared_pages/black_list/black_list_widget.dart -> itemBuilder FutureBuilder waiting`. Loader находится в строках списка; отдельный риск - преждевременный empty state до прихода `currentUserDocument`.
+- `Профиль`, прогресс/статистика: `lib/shared_pages/profile/profile_widget.dart -> _progressSection -> words/stats stream`. Это секционные изменения: нули и пустые значения показываются вместо stable previous data.
+- `Итог звонка`: `lib/shared_pages/call_summary/call_summary_widget.dart -> build -> profile future waiting`. На ожидании возвращается пустой body без loader-а; review-секция грузится отдельно.
+- `Оплата студента`: `lib/students_pages/pay/pay_widget.dart -> _isLoadingPackages`. Loader выражен через тексты цен, disabled CTA и нижнюю панель, а не через fullscreen state.
+- `Карты/операции выплат преподавателя`: `lib/teachers_pages/pay_copy/pay_copy_widget.dart -> cards/transactions StreamBuilder !snapshot.hasData`. После основного route loader-а секции карт и операций грузятся отдельно и могут менять высоту.
 
 ## UX Phase 1: Shared Loading Patterns
 
