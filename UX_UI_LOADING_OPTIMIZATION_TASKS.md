@@ -323,7 +323,7 @@ Retry behavior:
 - [x] Добавить общий паттерн `previousData + refreshing indicator`.
 - [x] Унифицировать empty state через общий компонент приложения.
 - [x] Унифицировать error state для списков: ошибка поверх старых данных или компактный retry-блок.
-- [ ] Убрать лишние skeleton-экраны там, где уже есть cached/previous data.
+- [x] Убрать лишние skeleton-экраны там, где уже есть cached/previous data.
 - [ ] Добавить локальный in-memory cache для данных, которые нужны только на время сессии.
 
 ## UX Phase 2: Chats List

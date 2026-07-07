@@ -12,6 +12,7 @@ import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/components/empty/empty_widget.dart';
 import '/components/ux_error_state.dart';
+import '/components/ux_refreshing_indicator_overlay.dart';
 import '/components/profile_dropdown_menu_item.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/events/event_create_widget.dart';
@@ -262,6 +263,7 @@ class _EventListWidgetState extends State<EventListWidget> {
   String? _lastTrackedCitySelectedKey;
   _EventListLoadKey? _eventListLoadKey;
   Future<List<EventListCardViewModel>>? _eventCardsFuture;
+  List<EventListCardViewModel>? _eventCardsFutureInitialCards;
   _EventListLoadedCards? _lastLoadedCards;
 
   @override
@@ -295,6 +297,7 @@ class _EventListWidgetState extends State<EventListWidget> {
         oldWidget.nowUtcProvider != widget.nowUtcProvider) {
       _eventListLoadKey = null;
       _eventCardsFuture = null;
+      _eventCardsFutureInitialCards = null;
       _lastLoadedCards = null;
     }
   }
@@ -315,6 +318,7 @@ class _EventListWidgetState extends State<EventListWidget> {
       builder: (context) {
         return FutureBuilder<EventCityCatalog>(
           future: _cityCatalogFuture,
+          initialData: widget.cityCatalogOverride,
           builder: (context, snapshot) {
             final catalog = snapshot.data;
             final selectedState = _resolveVisibleSelectedCityState(
@@ -444,9 +448,24 @@ class _EventListWidgetState extends State<EventListWidget> {
                               ],
                               if (canShowEventCards) ...[
                                 const SizedBox(height: ExpatlioDesign.space16),
-                                if (widget.isLoadingEvents)
-                                  const _EventListLoadingState()
-                                else if (hasEventListError) ...[
+                                if (widget.isLoadingEvents) ...[
+                                  if (hasVisibleEventCards)
+                                    _EventListPreviousCardsState(
+                                      cards: eventCards,
+                                      selectedCity: selectedState?.selected,
+                                      isRefreshing: true,
+                                      canOpenEventCardChat:
+                                          _canOpenEventCardChat,
+                                      openEventCardDetail: _openEventCardDetail,
+                                      openEventCardChat: _openEventCardChat,
+                                      showParticipantRequiredSnackBar: () =>
+                                          _showEventListChatParticipantRequiredSnackBar(
+                                        context,
+                                      ),
+                                    )
+                                  else
+                                    const _EventListLoadingState(),
+                                ] else if (hasEventListError) ...[
                                   _EventListErrorState(
                                     message: widget.eventListErrorMessage,
                                     onRetryPressed: widget.onRetryEventsPressed,
@@ -471,7 +490,9 @@ class _EventListWidgetState extends State<EventListWidget> {
                                   ],
                                 ] else if (eventCardsFuture != null)
                                   FutureBuilder<List<EventListCardViewModel>>(
+                                    key: ValueKey(_eventListLoadKey),
                                     future: eventCardsFuture,
+                                    initialData: _eventCardsFutureInitialCards,
                                     builder: (context, eventsSnapshot) {
                                       final activeLoadKey = _eventListLoadKey;
                                       final previousCards =
@@ -480,11 +501,34 @@ class _EventListWidgetState extends State<EventListWidget> {
                                       );
                                       if (eventsSnapshot.connectionState !=
                                           ConnectionState.done) {
+                                        final initialCards =
+                                            _eventCardsFutureInitialCards;
+                                        if (initialCards != null) {
+                                          if (initialCards.isEmpty) {
+                                            return const _EventListEmptyState();
+                                          }
+                                          return _EventListCards(
+                                            eventCards: initialCards,
+                                            selectedCity:
+                                                selectedState?.selected,
+                                            canOpenEventCardChat:
+                                                _canOpenEventCardChat,
+                                            openEventCardDetail:
+                                                _openEventCardDetail,
+                                            openEventCardChat:
+                                                _openEventCardChat,
+                                            showParticipantRequiredSnackBar: () =>
+                                                _showEventListChatParticipantRequiredSnackBar(
+                                              context,
+                                            ),
+                                          );
+                                        }
                                         if (previousCards != null) {
                                           return _EventListPreviousCardsState(
                                             cards: previousCards.cards,
                                             selectedCity:
                                                 selectedState?.selected,
+                                            isRefreshing: true,
                                             canOpenEventCardChat:
                                                 _canOpenEventCardChat,
                                             openEventCardDetail:
@@ -623,6 +667,10 @@ class _EventListWidgetState extends State<EventListWidget> {
               nowUtc: normalizedNowUtc,
             )
           : null;
+      if (cachedCards != null) {
+        _rememberLoadedCards(key, cachedCards);
+      }
+      _eventCardsFutureInitialCards = cachedCards;
       _eventCardsFuture = (cachedCards == null
               ? _loadEventCards(
                   selected: selected,
@@ -677,6 +725,7 @@ class _EventListWidgetState extends State<EventListWidget> {
       }
       _eventListLoadKey = null;
       _eventCardsFuture = null;
+      _eventCardsFutureInitialCards = null;
     });
   }
 
@@ -1124,12 +1173,14 @@ class _EventListPreviousCardsState extends StatelessWidget {
     required this.showParticipantRequiredSnackBar,
     this.errorMessage,
     this.onRetryPressed,
+    this.isRefreshing = false,
   });
 
   final List<EventListCardViewModel> cards;
   final EventSelectedCity? selectedCity;
   final String? errorMessage;
   final VoidCallback? onRetryPressed;
+  final bool isRefreshing;
   final bool Function(EventListCardViewModel event) canOpenEventCardChat;
   final ValueChanged<EventListCardViewModel> openEventCardDetail;
   final void Function({
@@ -1147,8 +1198,7 @@ class _EventListPreviousCardsState extends StatelessWidget {
             onRetryPressed: onRetryPressed,
             compact: true,
           );
-
-    return Column(
+    final content = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (errorState != null) ...[
@@ -1167,6 +1217,27 @@ class _EventListPreviousCardsState extends StatelessWidget {
             showParticipantRequiredSnackBar: showParticipantRequiredSnackBar,
           ),
       ],
+    );
+
+    if (!isRefreshing) {
+      return content;
+    }
+
+    final loadingLabel = FFLocalizations.of(context).getVariableText(
+      ruText: 'Загружаем события',
+      enText: 'Loading events',
+    );
+
+    return Semantics(
+      key: eventListLoadingStateKey,
+      container: true,
+      liveRegion: true,
+      label: loadingLabel,
+      child: UxRefreshingIndicatorOverlay(
+        isRefreshing: true,
+        semanticsLabel: null,
+        child: content,
+      ),
     );
   }
 }

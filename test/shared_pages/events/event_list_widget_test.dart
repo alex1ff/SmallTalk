@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:firebase_auth_platform_interface/firebase_auth_platform_interface.dart';
@@ -664,6 +665,95 @@ void main() {
     expect(find.text('Loaded after retry'), findsOneWidget);
   });
 
+  testWidgets('keeps loaded event cards visible while refresh is pending',
+      (tester) async {
+    var calls = 0;
+    final refreshCompleter = Completer<FFFirestorePage<EventsRecord>>();
+    addTearDown(() {
+      if (!refreshCompleter.isCompleted) {
+        refreshCompleter.complete(FFFirestorePage<EventsRecord>(
+          const [],
+          null,
+          null,
+        ));
+      }
+    });
+    currentUserDocument = _userFixture(
+      uid: 'profile-city-pending-refresh-user',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+          eventPageLoader: (
+            collection,
+            recordBuilder, {
+            queryBuilder,
+            nextPageMarker,
+            required pageSize,
+            required isStream,
+          }) async {
+            calls += 1;
+            if (calls == 2) {
+              return refreshCompleter.future;
+            }
+            return FFFirestorePage<EventsRecord>(
+              [
+                _eventsRecordFixture(
+                  calls == 1 ? 'loaded-before-pending' : 'loaded-after-pending',
+                  title: calls == 1
+                      ? 'Loaded before pending'
+                      : 'Loaded after pending',
+                  startsAt: DateTime.utc(2035, 6, 14, 15),
+                ),
+              ],
+              null,
+              null,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+    expect(find.text('Loaded before pending'), findsOneWidget);
+
+    await tester.tap(_dateFilterFinder(EventListDateFilter.today));
+    await tester.pump();
+
+    expect(calls, 2);
+    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
+    expect(find.text('Loaded before pending'), findsOneWidget);
+
+    refreshCompleter.complete(FFFirestorePage<EventsRecord>(
+      [
+        _eventsRecordFixture(
+          'loaded-after-pending',
+          title: 'Loaded after pending',
+          startsAt: DateTime.utc(2035, 6, 14, 15),
+        ),
+      ],
+      null,
+      null,
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Loaded after pending'), findsOneWidget);
+    expect(find.text('Loaded before pending'), findsNothing);
+  });
+
   testWidgets('keeps confirmed empty events visible when refresh fails',
       (tester) async {
     var calls = 0;
@@ -844,11 +934,79 @@ void main() {
     await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
     await tester.pumpAndSettle();
     await tester.pumpWidget(buildList());
+
+    expect(calls, 1);
+    expect(find.text('Cached loaded event'), findsOneWidget);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+  });
+
+  testWidgets('uses current cache data when returning to a cached filter',
+      (tester) async {
+    var calls = 0;
+    currentUserDocument = _userFixture(
+      uid: 'profile-city-cache-filter-user',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+    final nowUtc = DateTime.utc(2035, 6, 14, 9);
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) async {
+      calls += 1;
+      return FFFirestorePage<EventsRecord>(
+        [
+          _eventsRecordFixture(
+            'cached-filter-event-$calls',
+            title: calls == 1
+                ? 'Default cached filter event'
+                : 'Today loaded filter event',
+            startsAt: DateTime.utc(2035, 6, 14, 15),
+          ),
+        ],
+        null,
+        null,
+      );
+    };
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          nowUtcProvider: () => nowUtc,
+          eventPageLoader: pageLoader,
+        ),
+      ),
+    );
     await tester.pump();
     await tester.pumpAndSettle();
 
     expect(calls, 1);
-    expect(find.text('Cached loaded event'), findsOneWidget);
+    expect(find.text('Default cached filter event'), findsOneWidget);
+
+    await tester.tap(_dateFilterFinder(EventListDateFilter.today));
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(find.text('Today loaded filter event'), findsOneWidget);
+
+    await tester.tap(_dateFilterFinder(EventListDateFilter.today));
+    await tester.pump();
+
+    expect(calls, 2);
+    expect(find.text('Default cached filter event'), findsOneWidget);
+    expect(find.text('Today loaded filter event'), findsNothing);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
   });
 
   testWidgets('does not cache empty event list for default filters',
@@ -935,7 +1093,7 @@ void main() {
     expect(find.byKey(eventListCardShellKey), findsNothing);
   });
 
-  testWidgets('loading state takes priority over provided event cards',
+  testWidgets('loading state keeps provided event cards visible',
       (tester) async {
     await tester.pumpWidget(
       _buildTestApp(
@@ -948,11 +1106,11 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await tester.pump();
 
     expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
     expect(find.byKey(eventListCardShellKey), findsOneWidget);
-    expect(find.text('Реальное событие'), findsNothing);
+    expect(find.text('Реальное событие'), findsOneWidget);
   });
 
   testWidgets('shows error state with retry after city is selected',
