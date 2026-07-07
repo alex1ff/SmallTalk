@@ -7,7 +7,7 @@
 - [x] Пройти основные экраны и зафиксировать места, где контент пропадает при обновлении.
 - [x] Составить список экранов с full-screen loader после первого успешного рендера.
 - [x] Зафиксировать единые состояния загрузки: `initialLoading`, `refreshing`, `hasData`, `empty`, `errorWithData`, `errorWithoutData`.
-- [ ] Запретить показ empty state до завершения первой реальной загрузки данных.
+- [x] Запретить показ empty state до завершения первой реальной загрузки данных.
 - [ ] Запретить замену уже показанного контента на большой loader при refresh.
 - [ ] Зафиксировать правило: error state не стирает старые данные, если они уже были показаны.
 - [ ] Проверить стабильные размеры карточек, строк, аватаров, бейджей, кнопок и нижних панелей.
@@ -129,7 +129,7 @@ Trigger types: `cold start`, `refresh/reconnect`, `filter change`, `retry`, `ret
 
 ### Rule 2026-07-07: Unified Loading States
 
-Каждый экран со списком, карточками, detail-записью, чатом или вторичными async-блоками должен приводить данные к единой модели состояния. Итоговое UI-состояние всегда одно из шести: `initialLoading`, `refreshing`, `hasData`, `empty`, `errorWithData`, `errorWithoutData`.
+Каждый экран со списком, карточками, detail-записью, чатом или вторичными async-блоками должен приводить загрузку данных к единой модели состояния. Итоговое loading/data-состояние всегда одно из шести: `initialLoading`, `refreshing`, `hasData`, `empty`, `errorWithData`, `errorWithoutData`. Доменные состояния после успешной загрузки, например `notFound`, `accessDenied`, `cancelled` или `expired`, отображаются отдельно и не считаются `empty`.
 
 Состояние считается относительно `activeDataKey`: route + текущий пользователь + id записи + активные фильтры. Для событий это `city + dateFilter + levelFilters`, для чата - conversation/eventChat id, для detail - document id. Для вторичных async-блоков используется section key: `parentDataKey + sectionName + params`, например `profile:currentUser:stats`, `eventDetail:eventId:participants`, `eventCard:eventId:publicProfiles`, `teacherPayouts:cards`.
 
@@ -165,7 +165,40 @@ Trigger types: `cold start`, `refresh/reconnect`, `filter change`, `retry`, `ret
 - Вложенные async-данные, например аватары участников, public profiles, статистика, review-блоки, не имеют права менять состояние родительского экрана с `hasData` на loader/empty.
 - Вложенный async-блок ведет собственное section-level состояние по section key и не подставляет `0`, `[]`, пустую строку или empty state до первого успешного результата этой секции.
 
-Следующие Phase 0 пункты про запрет early empty, запрет большого loader при refresh и сохранение данных при error остаются отдельными задачами. Этот раздел фиксирует общую модель; отдельные пункты будут закрываться после точечных правил и/или внедрения в экраны.
+Следующие Phase 0 пункты про запрет большого loader при refresh и сохранение данных при error остаются отдельными задачами. Этот раздел фиксирует общую модель; отдельные пункты будут закрываться после точечных правил и/или внедрения в экраны.
+
+### Rule 2026-07-07: No Empty Before First Successful Load
+
+Empty state разрешен только после успешного ответа/stream snapshot для текущего `activeDataKey`, когда источник данных явно вернул пустой результат. До этого момента экран находится в `initialLoading`, `refreshing` или `errorWithoutData/errorWithData`, но не в `empty`.
+
+Успешная загрузка - это completed future, первый реальный emitted stream snapshot/data для текущего ключа, либо сохраненный completed cache-result для того же `activeDataKey`/`sectionKey`. Для Firestore/Flutter stream успех не требует `ConnectionState.done`; нужен первый реальный snapshot, относящийся к текущему ключу. `initialData`, provider default, cache miss, placeholder, `?? []`, пустой локальный state и fallback-значения не считаются успешной загрузкой. `initialData` допустим как успешный результат только если это типизированный completed cache-result с marker, а не голый `List`/model. Cache-empty можно считать empty только при явном marker/metadata, что пустой cache-result сохранен после успешной загрузки: key, completed flag и время/версия результата. Пустой Firestore `QuerySnapshot.docs` из local cache не считается подтвержденным empty, если нет server-confirmed snapshot или cache-empty marker.
+
+Запрещено:
+
+- Показывать empty из-за `snapshot.data == null`, `!snapshot.hasData`, `connectionState == waiting`, `streamState == null`, отсутствующего provider/cache state или еще не пришедшего `currentUserDocument`.
+- Подставлять `[]` как готовый результат до завершения stream/future и на основе этого показывать empty.
+- Показывать empty при ошибке загрузки. Ошибка без данных - `errorWithoutData`; ошибка с previous/stale data - `errorWithData`.
+- Показывать empty для нового фильтра, города, даты, уровня или первой страницы base query до успешного ответа именно для нового `activeDataKey`.
+- Показывать empty родительского экрана из-за вложенного async-блока: аватары, public profiles, stats, reviews, participants, cards/transactions, unread badges.
+- Показывать empty для агрегированного списка, пока хотя бы один обязательный источник текущего `activeDataKey` еще `initialLoading`, `refreshing` или `errorWithoutData`. Для `conversations + eventChats` empty допустим только после успешного ответа обоих источников и пустого объединенного результата.
+
+Разрешено:
+
+- Показывать empty после успешного server/cache результата, где список реально пуст и подтвержден для всех обязательных источников.
+- Показывать empty для section-level блока только после успешного результата section key, например `eventDetail:eventId:participants` или `profile:currentUser:reviews`.
+- Возвращать empty после optimistic rollback, если нет previous/server data и последняя успешная загрузка действительно была пустой.
+
+Правила для спорных случаев:
+
+- Auth/current user document не пришел - это `initialLoading` или `refreshing`, не empty.
+- Event chats/conversations stream еще не отдал snapshot - список чатов не пустой, он не загружен.
+- `currentUserDocument?.blockedUsers ?? []` не считается успешным пустым результатом, пока user document не загружен.
+- Search/filter result с новым `activeDataKey` и старым `displayedDataKey` остается stale content + `refreshing`; empty показывается только после успешного пустого результата нового ключа.
+- Pagination использует два уровня ключей: `activeDataKey/baseQueryKey` для фильтров и `pageRequestKey` для cursor/страницы. Пустая следующая страница не переводит весь список в `empty`: это `hasData` + `noMoreItems`. Empty допустим только если успешная первая страница/current base query вернула 0 элементов.
+- Для агрегированных списков обязательный источник - тот, который может добавить элементы и влияет на пустоту списка; optional enrichment source, например public profile/avatar/unread metadata, не блокирует empty. Если хотя бы один обязательный источник вернул данные, parent остается `hasData`, `refreshing` или `errorWithData` в зависимости от остальных источников. Если данных нет и хотя бы один обязательный источник еще грузится - `initialLoading` или stale `refreshing`. Если данных нет и обязательный источник упал - `errorWithoutData`, либо `errorWithData` при наличии stale data.
+- Для parent `activeDataKey` и каждого `sectionKey` правило применяется отдельно; section-level empty никогда не меняет parent state на `empty`.
+- Detail-документ с успешной загрузкой `doc.exists == false` не является early empty и не является list-empty. Это доменный `missing/notFound/unavailable` UI state вне loading/data-state модели только после server-confirmed результата или typed cache marker. Cached/missing doc без marker/server confirmation не показывает `notFound`.
+- Nested counters и stats не показывают `0`, если это только отсутствие данных до первой успешной загрузки; используется stable placeholder или прежнее значение.
 
 ## UX Phase 1: Shared Loading Patterns
 
@@ -246,9 +279,15 @@ Trigger types: `cold start`, `refresh/reconnect`, `filter change`, `retry`, `ret
 ## UX Phase 8: Verification
 
 - [ ] Добавить widget-тесты на отсутствие empty state во время первой загрузки.
+- [ ] Добавить widget-тест: пустой Firestore cache snapshot без server confirmation/marker не показывает empty.
+- [ ] Добавить widget-тест: `conversations + eventChats`, где один stream pending, не показывает empty.
+- [ ] Добавить widget-тест: смена фильтра оставляет stale data до результата нового `activeDataKey`.
+- [ ] Добавить widget-тест: пустая вторая страница pagination показывает `noMoreItems`, а не empty всего списка.
+- [ ] Добавить widget-тест: cached missing detail без marker/server confirmation не показывает `notFound`.
 - [ ] Добавить widget-тесты на сохранение previous data при refresh.
 - [ ] Добавить widget-тесты на optimistic send message.
 - [ ] Добавить widget-тесты на optimistic join/leave event.
+- [ ] Добавить widget-тест: optimistic rollback возвращает empty только если последняя успешная server/cache загрузка была пустой.
 - [ ] Проверить вручную вкладки `Чаты`, `События`, `Словарь`, `Профиль`.
 - [ ] Проверить повторный заход на экран после навигации назад/вперед.
 - [ ] Запустить `flutter analyze`.
