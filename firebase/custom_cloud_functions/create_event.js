@@ -1099,6 +1099,14 @@ async function executeCreateEventTransaction({
       uid,
       creationTimestamp,
     }));
+    tx.update(refs.userRef, {
+      eventChatInboxEventIds: admin.firestore.FieldValue.arrayUnion(
+          refs.eventRef.id,
+      ),
+      hiddenChatKeys: admin.firestore.FieldValue.arrayRemove(
+          `event:${refs.eventRef.id}`,
+      ),
+    });
     tx.set(refs.counterRef, nextCounter);
     tx.create(refs.markerRef, buildCreateRequestMarker({
       uid,

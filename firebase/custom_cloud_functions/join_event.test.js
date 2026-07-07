@@ -77,6 +77,27 @@ function createFakeFirestore(seed = {}, {
   const reads = [];
   const writes = [];
 
+  const applyWriteData = (existing = {}, data = {}) => {
+    const next = {...existing};
+    for (const [field, value] of Object.entries(data)) {
+      if (value?.constructor?.name === "ArrayUnionTransform") {
+        next[field] = [
+          ...new Set([
+            ...(Array.isArray(next[field]) ? next[field] : []),
+            ...value.elements,
+          ]),
+        ];
+      } else if (value?.constructor?.name === "ArrayRemoveTransform") {
+        const removed = new Set(value.elements);
+        next[field] = (Array.isArray(next[field]) ? next[field] : [])
+            .filter((item) => !removed.has(item));
+      } else {
+        next[field] = value;
+      }
+    }
+    return next;
+  };
+
   const makeRef = (path) => ({
     path,
     id: path.split("/").pop(),
@@ -205,7 +226,10 @@ function createFakeFirestore(seed = {}, {
           if (write.type === "create") {
             store.set(write.path, write.data);
           } else {
-            store.set(write.path, {...store.get(write.path), ...write.data});
+            store.set(
+                write.path,
+                applyWriteData(store.get(write.path), write.data),
+            );
           }
           versions.set(write.path, (versions.get(write.path) || 0) + 1);
         }
@@ -390,7 +414,10 @@ test("executeJoinEventTransaction creates active participant", async () => {
     "events/event-1": activeEvent(),
     "eventChats/event-1": eventChat(),
     "events/event-1/participants/organizer": organizerParticipant(),
-    "users/uid": userProfile(),
+    "users/uid": userProfile({
+      eventChatInboxEventIds: ["event-old"],
+      hiddenChatKeys: ["event:event-1", "conversation:old"],
+    }),
     "eventCreationCounters/organizer/days/20260616": counterBefore,
   });
 
@@ -425,6 +452,13 @@ test("executeJoinEventTransaction creates active participant", async () => {
     "organizer",
     "uid",
   ]);
+  assert.deepEqual(store.get("users/uid").eventChatInboxEventIds, [
+    "event-old",
+    "event-1",
+  ]);
+  assert.deepEqual(store.get("users/uid").hiddenChatKeys, [
+    "conversation:old",
+  ]);
   assertParticipantCountInvariant(store);
   assert.strictEqual(
       store.get("eventCreationCounters/organizer/days/20260616"),
@@ -444,12 +478,27 @@ test("executeJoinEventTransaction creates active participant", async () => {
         "update:events/event-1",
         "create:events/event-1/participants/uid",
         "update:eventChats/event-1",
+        "update:users/uid",
       ],
   );
   assert.deepEqual(writes[2].data, {
     readAccessUserIds: ["organizer", "uid"],
     updatedAt: fixedTimestamp,
   });
+  assert.equal(
+      writes[3].data.eventChatInboxEventIds.constructor.name,
+      "ArrayUnionTransform",
+  );
+  assert.deepEqual(writes[3].data.eventChatInboxEventIds.elements, [
+    "event-1",
+  ]);
+  assert.equal(
+      writes[3].data.hiddenChatKeys.constructor.name,
+      "ArrayRemoveTransform",
+  );
+  assert.deepEqual(writes[3].data.hiddenChatKeys.elements, [
+    "event:event-1",
+  ]);
 });
 
 test("executeJoinEventTransaction allows join into last available seat",
@@ -497,6 +546,7 @@ test("executeJoinEventTransaction allows join into last available seat",
             "update:events/event-1",
             "create:events/event-1/participants/uid",
             "update:eventChats/event-1",
+            "update:users/uid",
           ],
       );
       assert.deepEqual(writes[2].data, {
@@ -570,6 +620,7 @@ test("executeJoinEventTransaction rejoins left participant", async () => {
         "update:events/event-1",
         "update:events/event-1/participants/uid",
         "update:eventChats/event-1",
+        "update:users/uid",
       ],
   );
   assert.deepEqual(writes[2].data, {
@@ -674,6 +725,7 @@ test("executeJoinEventTransaction concurrent rejoins reuse one membership",
             "update:events/event-1",
             "update:events/event-1/participants/uid",
             "update:eventChats/event-1",
+            "update:users/uid",
           ],
       );
     });
@@ -785,6 +837,7 @@ test("executeJoinEventTransaction concurrent duplicate joins create one membersh
             "update:events/event-1",
             "create:events/event-1/participants/uid",
             "update:eventChats/event-1",
+            "update:users/uid",
           ],
       );
     });
@@ -1093,6 +1146,7 @@ test("executeJoinEventTransaction concurrent joins never exceed capacity",
             "update:events/event-1",
             `create:events/event-1/participants/${joinedUid}`,
             "update:eventChats/event-1",
+            `update:users/${joinedUid}`,
           ],
       );
     });

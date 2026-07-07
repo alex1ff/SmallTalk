@@ -536,6 +536,14 @@ async function executeJoinEventTransaction({
       readAccessUserIds,
       updatedAt: joinTimestamp,
     });
+    tx.update(userRef, {
+      eventChatInboxEventIds: admin.firestore.FieldValue.arrayUnion(
+          payload.eventId,
+      ),
+      hiddenChatKeys: admin.firestore.FieldValue.arrayRemove(
+          `event:${payload.eventId}`,
+      ),
+    });
 
     return {
       eventId: payload.eventId,

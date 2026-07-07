@@ -206,6 +206,27 @@ function createFakeFirestore(seed = {}, {
   const reads = [];
   const writes = [];
 
+  const applyWriteData = (existing = {}, data = {}) => {
+    const next = {...existing};
+    for (const [field, value] of Object.entries(data)) {
+      if (value?.constructor?.name === "ArrayUnionTransform") {
+        next[field] = [
+          ...new Set([
+            ...(Array.isArray(next[field]) ? next[field] : []),
+            ...value.elements,
+          ]),
+        ];
+      } else if (value?.constructor?.name === "ArrayRemoveTransform") {
+        const removed = new Set(value.elements);
+        next[field] = (Array.isArray(next[field]) ? next[field] : [])
+            .filter((item) => !removed.has(item));
+      } else {
+        next[field] = value;
+      }
+    }
+    return next;
+  };
+
   const makeRef = (path) => ({
     path,
     id: path.split("/").pop(),
@@ -280,6 +301,19 @@ function createFakeFirestore(seed = {}, {
               );
             }
           },
+          update(ref, data) {
+            hasWrites = true;
+            if (!store.has(ref.path)) {
+              throw new Error(`Document does not exist: ${ref.path}`);
+            }
+            pendingWrites.push({type: "update", path: ref.path, data});
+            writeLog.push({type: "update", path: ref.path, data});
+            if (pendingWrites.length === failAfterBufferedWrites) {
+              throw new Error(
+                  `Simulated transaction interruption after ${pendingWrites.length} writes`,
+              );
+            }
+          },
         };
         const result = await callback(tx);
         if (failBeforeCommit) {
@@ -298,7 +332,14 @@ function createFakeFirestore(seed = {}, {
           writes.push(...attemptWrites);
         }
         for (const write of pendingWrites) {
-          store.set(write.path, write.data);
+          if (write.type === "update") {
+            store.set(
+                write.path,
+                applyWriteData(store.get(write.path), write.data),
+            );
+          } else {
+            store.set(write.path, applyWriteData({}, write.data));
+          }
           versions.set(write.path, (versions.get(write.path) || 0) + 1);
         }
         return result;
@@ -314,9 +355,11 @@ async function withAdminFirestore(db, callback) {
   const originalFirestore = Object.getOwnPropertyDescriptor(admin, "firestore");
   const timestamp = admin.firestore.Timestamp;
   const geoPoint = admin.firestore.GeoPoint;
+  const fieldValue = admin.firestore.FieldValue;
   const firestore = () => db;
   firestore.Timestamp = timestamp;
   firestore.GeoPoint = geoPoint;
+  firestore.FieldValue = fieldValue;
 
   Object.defineProperty(admin, "firestore", {
     configurable: true,
@@ -1801,6 +1844,8 @@ test("executeCreateEventTransaction creates all event documents", async () => {
     "users/uid": {
       display_name: "Анастасия Иванова",
       photo_url: "https://example.test/avatar.jpg",
+      eventChatInboxEventIds: ["event-old"],
+      hiddenChatKeys: ["event:event-new", "conversation:old"],
     },
   });
   const dayInfo = buildUtcDayInfo(fixedNow);
@@ -1874,6 +1919,13 @@ test("executeCreateEventTransaction creates all event documents", async () => {
       new Set(store.get("eventChats/event-new").readAccessUserIds).size,
       store.get("eventChats/event-new").readAccessUserIds.length,
   );
+  assert.deepEqual(store.get("users/uid").eventChatInboxEventIds, [
+    "event-old",
+    "event-new",
+  ]);
+  assert.deepEqual(store.get("users/uid").hiddenChatKeys, [
+    "conversation:old",
+  ]);
   const counter = store.get("eventCreationCounters/uid/days/20260616");
   assert.deepEqual(Object.keys(counter).sort(), EXPECTED_DAILY_COUNTER_KEYS);
   assert.equal(counter.userId, "uid");
@@ -1902,6 +1954,7 @@ test("executeCreateEventTransaction creates all event documents", async () => {
         "create:events/event-new",
         "create:events/event-new/participants/uid",
         "create:eventChats/event-new",
+        "update:users/uid",
         "set:eventCreationCounters/uid/days/20260616",
         `create:eventCreateRequests/uid/requests/${validRequest.createRequestId}`,
       ],
@@ -2537,7 +2590,7 @@ test("executeCreateEventTransaction rolls back buffered writes on failure", asyn
       /Simulated transaction commit failure/,
   );
 
-  assert.equal(writes.length, 5);
+  assert.equal(writes.length, 6);
   assert.equal(store.has("events/event-new"), false);
   assert.equal(store.has("events/event-new/participants/uid"), false);
   assert.equal(store.has("eventChats/event-new"), false);
@@ -2551,7 +2604,7 @@ test("executeCreateEventTransaction rolls back buffered writes on failure", asyn
 });
 
 test("executeCreateEventTransaction leaves no partial docs when interrupted", async () => {
-  for (const writeCount of [1, 2, 3, 4, 5]) {
+  for (const writeCount of [1, 2, 3, 4, 5, 6]) {
     const {db, makeRef, store, writes} = createFakeFirestore(
         {"users/uid": {display_name: "Анастасия Иванова"}},
         {failAfterBufferedWrites: writeCount},
