@@ -6,7 +6,7 @@
 
 - [x] Пройти основные экраны и зафиксировать места, где контент пропадает при обновлении.
 - [x] Составить список экранов с full-screen loader после первого успешного рендера.
-- [ ] Зафиксировать единые состояния загрузки: `initialLoading`, `refreshing`, `hasData`, `empty`, `errorWithData`, `errorWithoutData`.
+- [x] Зафиксировать единые состояния загрузки: `initialLoading`, `refreshing`, `hasData`, `empty`, `errorWithData`, `errorWithoutData`.
 - [ ] Запретить показ empty state до завершения первой реальной загрузки данных.
 - [ ] Запретить замену уже показанного контента на большой loader при refresh.
 - [ ] Зафиксировать правило: error state не стирает старые данные, если они уже были показаны.
@@ -126,6 +126,46 @@ Trigger types: `cold start`, `refresh/reconnect`, `filter change`, `retry`, `ret
 - `Итог звонка`: `lib/shared_pages/call_summary/call_summary_widget.dart -> build -> profile future waiting`. На ожидании возвращается пустой body без loader-а; review-секция грузится отдельно.
 - `Оплата студента`: `lib/students_pages/pay/pay_widget.dart -> _isLoadingPackages`. Loader выражен через тексты цен, disabled CTA и нижнюю панель, а не через fullscreen state.
 - `Карты/операции выплат преподавателя`: `lib/teachers_pages/pay_copy/pay_copy_widget.dart -> cards/transactions StreamBuilder !snapshot.hasData`. После основного route loader-а секции карт и операций грузятся отдельно и могут менять высоту.
+
+### Rule 2026-07-07: Unified Loading States
+
+Каждый экран со списком, карточками, detail-записью, чатом или вторичными async-блоками должен приводить данные к единой модели состояния. Итоговое UI-состояние всегда одно из шести: `initialLoading`, `refreshing`, `hasData`, `empty`, `errorWithData`, `errorWithoutData`.
+
+Состояние считается относительно `activeDataKey`: route + текущий пользователь + id записи + активные фильтры. Для событий это `city + dateFilter + levelFilters`, для чата - conversation/eventChat id, для detail - document id. Для вторичных async-блоков используется section key: `parentDataKey + sectionName + params`, например `profile:currentUser:stats`, `eventDetail:eventId:participants`, `eventCard:eventId:publicProfiles`, `teacherPayouts:cards`.
+
+Если на экране уже показаны данные, отдельно хранится `displayedDataKey`. При смене фильтра или нового запроса `activeDataKey` может отличаться от `displayedDataKey`; тогда старые совместимые данные остаются как stale content до успешного результата или ошибки нового ключа.
+
+| State | Когда применяется | Что показываем |
+| --- | --- | --- |
+| `initialLoading` | По этому `dataKey` еще не было ни одного успешного результата, запрос/stream уже стартовал | Стабильный shell экрана и компактная загрузка в content area. Не показывать empty/error, не очищать уже известный shell, не менять размеры основных блоков |
+| `refreshing` | Для `activeDataKey` уже есть `lastSuccessfulData`, либо есть совместимый `displayedDataKey`, и идет повторная загрузка, reconnect, retry, pull-to-refresh, смена stream snapshot или догрузка профилей | Оставить данные на экране. Разрешен маленький refresh indicator, inline shimmer фиксированного размера или disabled state конкретной кнопки |
+| `hasData` | Последняя успешная загрузка вернула непустые данные или detail-документ доступен | Показывать данные. Последующие async-блоки не должны сбрасывать родительский экран в loader |
+| `empty` | Загрузка для текущего `dataKey` успешно завершилась и данных реально нет | Показывать общий empty state приложения. Empty запрещен при `initialLoading`, `refreshing` и до завершения первой успешной загрузки |
+| `errorWithData` | Новая загрузка упала, но есть `lastSuccessfulData` для `activeDataKey` или совместимый stale `displayedDataKey` | Оставить данные на экране. Ошибку показать компактно: banner, snackbar, inline retry-row или маленький retry-блок без очистки контента |
+| `errorWithoutData` | Первая загрузка для `dataKey` упала и показывать нечего | Показать компактный error state с retry. Не подменять ошибку empty state и не показывать бесконечный loader |
+
+Приоритет отображения:
+
+1. Есть данные и идет новая загрузка того же или совместимого ключа -> `refreshing`.
+2. Есть данные и новая загрузка упала -> `errorWithData`.
+3. Есть данные и нет активной загрузки/ошибки -> `hasData`.
+4. Нет данных + request in flight -> `initialLoading`.
+5. Нет данных + error -> `errorWithoutData`.
+6. Нет данных + успешный результат пустой -> `empty`.
+
+Общие правила реализации:
+
+- Не присваивать `[]`, `null` или empty view как визуальное состояние до окончания первой реальной загрузки.
+- Хранить `lastSuccessfulData` на время жизни экрана минимум в `State/Model`, для tab/list экранов - в in-memory cache на время сессии.
+- Stream reconnect с уже показанными данными всегда трактуется как `refreshing`, а не как `initialLoading`.
+- Смена фильтра создает новый `activeDataKey`; если старый `displayedDataKey` совместим, старый список остается как stale content в состоянии `refreshing` до результата нового ключа. Empty для нового ключа показывается только после успешного ответа.
+- Совместимые ключи - это один и тот же экран, тот же пользователь, тот же тип данных и одинаковая визуальная структура. Для list/grid экранов разные фильтры, город, дата или pagination считаются совместимыми. Для detail/chat экранов другой document id, другой conversation id, другой event id, другой пользователь или logout не считаются совместимыми.
+- Ошибка не очищает данные. Очистка допустима только при явном действии пользователя: удаление, выход из чата/события, logout, смена аккаунта.
+- Optimistic действия (`send`, `join`, `leave`, `delete`) не переводят весь экран в loading; они получают отдельное локальное состояние конкретной строки, сообщения или кнопки. Если список был `empty`, optimistic item временно переводит effective data в `hasData`; при rollback возвращается к `empty` только если нет previous/server data.
+- Вложенные async-данные, например аватары участников, public profiles, статистика, review-блоки, не имеют права менять состояние родительского экрана с `hasData` на loader/empty.
+- Вложенный async-блок ведет собственное section-level состояние по section key и не подставляет `0`, `[]`, пустую строку или empty state до первого успешного результата этой секции.
+
+Следующие Phase 0 пункты про запрет early empty, запрет большого loader при refresh и сохранение данных при error остаются отдельными задачами. Этот раздел фиксирует общую модель; отдельные пункты будут закрываться после точечных правил и/или внедрения в экраны.
 
 ## UX Phase 1: Shared Loading Patterns
 
