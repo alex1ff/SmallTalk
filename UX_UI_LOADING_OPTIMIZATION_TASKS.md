@@ -8,7 +8,7 @@
 - [x] Составить список экранов с full-screen loader после первого успешного рендера.
 - [x] Зафиксировать единые состояния загрузки: `initialLoading`, `refreshing`, `hasData`, `empty`, `errorWithData`, `errorWithoutData`.
 - [x] Запретить показ empty state до завершения первой реальной загрузки данных.
-- [ ] Запретить замену уже показанного контента на большой loader при refresh.
+- [x] Запретить замену уже показанного контента на большой loader при refresh.
 - [ ] Зафиксировать правило: error state не стирает старые данные, если они уже были показаны.
 - [ ] Проверить стабильные размеры карточек, строк, аватаров, бейджей, кнопок и нижних панелей.
 
@@ -129,7 +129,7 @@ Trigger types: `cold start`, `refresh/reconnect`, `filter change`, `retry`, `ret
 
 ### Rule 2026-07-07: Unified Loading States
 
-Каждый экран со списком, карточками, detail-записью, чатом или вторичными async-блоками должен приводить загрузку данных к единой модели состояния. Итоговое loading/data-состояние всегда одно из шести: `initialLoading`, `refreshing`, `hasData`, `empty`, `errorWithData`, `errorWithoutData`. Доменные состояния после успешной загрузки, например `notFound`, `accessDenied`, `cancelled` или `expired`, отображаются отдельно и не считаются `empty`.
+Каждый экран со списком, карточками, detail-записью, чатом или вторичными async-блоками должен приводить загрузку данных к единой модели состояния. Итоговое loading/data-состояние всегда одно из шести: `initialLoading`, `refreshing`, `hasData`, `empty`, `errorWithData`, `errorWithoutData`. Доменные состояния после успешной загрузки, например `notFound`, `deleted`, `accessDenied`, `cancelled` или `expired`, отображаются отдельно и не считаются `empty`.
 
 Состояние считается относительно `activeDataKey`: route + текущий пользователь + id записи + активные фильтры. Для событий это `city + dateFilter + levelFilters`, для чата - conversation/eventChat id, для detail - document id. Для вторичных async-блоков используется section key: `parentDataKey + sectionName + params`, например `profile:currentUser:stats`, `eventDetail:eventId:participants`, `eventCard:eventId:publicProfiles`, `teacherPayouts:cards`.
 
@@ -138,10 +138,10 @@ Trigger types: `cold start`, `refresh/reconnect`, `filter change`, `retry`, `ret
 | State | Когда применяется | Что показываем |
 | --- | --- | --- |
 | `initialLoading` | По этому `dataKey` еще не было ни одного успешного результата, запрос/stream уже стартовал | Стабильный shell экрана и компактная загрузка в content area. Не показывать empty/error, не очищать уже известный shell, не менять размеры основных блоков |
-| `refreshing` | Для `activeDataKey` уже есть `lastSuccessfulData`, либо есть совместимый `displayedDataKey`, и идет повторная загрузка, reconnect, retry, pull-to-refresh, смена stream snapshot или догрузка профилей | Оставить данные на экране. Разрешен маленький refresh indicator, inline shimmer фиксированного размера или disabled state конкретной кнопки |
+| `refreshing` | Для `activeDataKey` уже есть `lastSuccessfulResult`, либо есть совместимый `displayedDataKey`, и идет повторная загрузка, reconnect, retry, pull-to-refresh, смена stream snapshot или догрузка профилей | Оставить данные на экране. Разрешен маленький refresh indicator, inline shimmer фиксированного размера или disabled state конкретной кнопки |
 | `hasData` | Последняя успешная загрузка вернула непустые данные или detail-документ доступен | Показывать данные. Последующие async-блоки не должны сбрасывать родительский экран в loader |
 | `empty` | Загрузка для текущего `dataKey` успешно завершилась и данных реально нет | Показывать общий empty state приложения. Empty запрещен при `initialLoading`, `refreshing` и до завершения первой успешной загрузки |
-| `errorWithData` | Новая загрузка упала, но есть `lastSuccessfulData` для `activeDataKey` или совместимый stale `displayedDataKey` | Оставить данные на экране. Ошибку показать компактно: banner, snackbar, inline retry-row или маленький retry-блок без очистки контента |
+| `errorWithData` | Новая загрузка упала, но есть `lastSuccessfulResult` для `activeDataKey` или совместимый stale `displayedDataKey` | Оставить данные на экране. Ошибку показать компактно: banner, snackbar, inline retry-row или маленький retry-блок без очистки контента |
 | `errorWithoutData` | Первая загрузка для `dataKey` упала и показывать нечего | Показать компактный error state с retry. Не подменять ошибку empty state и не показывать бесконечный loader |
 
 Приоритет отображения:
@@ -156,7 +156,7 @@ Trigger types: `cold start`, `refresh/reconnect`, `filter change`, `retry`, `ret
 Общие правила реализации:
 
 - Не присваивать `[]`, `null` или empty view как визуальное состояние до окончания первой реальной загрузки.
-- Хранить `lastSuccessfulData` на время жизни экрана минимум в `State/Model`, для tab/list экранов - в in-memory cache на время сессии.
+- Хранить `lastSuccessfulResult` на время жизни экрана минимум в `State/Model`, для tab/list экранов - в in-memory cache на время сессии. `lastSuccessfulResult` может быть data, confirmed empty или domain loaded-state.
 - Stream reconnect с уже показанными данными всегда трактуется как `refreshing`, а не как `initialLoading`.
 - Смена фильтра создает новый `activeDataKey`; если старый `displayedDataKey` совместим, старый список остается как stale content в состоянии `refreshing` до результата нового ключа. Empty для нового ключа показывается только после успешного ответа.
 - Совместимые ключи - это один и тот же экран, тот же пользователь, тот же тип данных и одинаковая визуальная структура. Для list/grid экранов разные фильтры, город, дата или pagination считаются совместимыми. Для detail/chat экранов другой document id, другой conversation id, другой event id, другой пользователь или logout не считаются совместимыми.
@@ -165,7 +165,7 @@ Trigger types: `cold start`, `refresh/reconnect`, `filter change`, `retry`, `ret
 - Вложенные async-данные, например аватары участников, public profiles, статистика, review-блоки, не имеют права менять состояние родительского экрана с `hasData` на loader/empty.
 - Вложенный async-блок ведет собственное section-level состояние по section key и не подставляет `0`, `[]`, пустую строку или empty state до первого успешного результата этой секции.
 
-Следующие Phase 0 пункты про запрет большого loader при refresh и сохранение данных при error остаются отдельными задачами. Этот раздел фиксирует общую модель; отдельные пункты будут закрываться после точечных правил и/или внедрения в экраны.
+Следующий Phase 0 пункт про сохранение данных при error остается отдельной задачей. Этот раздел фиксирует общую модель; отдельные пункты будут закрываться после точечных правил и/или внедрения в экраны.
 
 ### Rule 2026-07-07: No Empty Before First Successful Load
 
@@ -199,6 +199,45 @@ Empty state разрешен только после успешного отве
 - Для parent `activeDataKey` и каждого `sectionKey` правило применяется отдельно; section-level empty никогда не меняет parent state на `empty`.
 - Detail-документ с успешной загрузкой `doc.exists == false` не является early empty и не является list-empty. Это доменный `missing/notFound/unavailable` UI state вне loading/data-state модели только после server-confirmed результата или typed cache marker. Cached/missing doc без marker/server confirmation не показывает `notFound`.
 - Nested counters и stats не показывают `0`, если это только отсутствие данных до первой успешной загрузки; используется stable placeholder или прежнее значение.
+
+### Rule 2026-07-07: No Full-Screen Loader After Content
+
+Если экран уже один раз показал `lastSuccessfulResult` для `activeDataKey` или compatible `displayedDataKey`, последующие refresh/reconnect/retry/filter-change не заменяют основной контент на fullscreen/page-level loader. `lastSuccessfulResult` включает confirmed `hasData`, confirmed `empty`, `errorWithData` со stale data и доменный loaded-state. Такой переход всегда отображается как `refreshing`, `errorWithData` или stale content, пока не придет новый confirmed result.
+
+Запрещено после первого успешного показа:
+
+- Возвращать loading `Scaffold`, fullscreen spinner, `_buildLoadingState`, `_EventDetailRouteStateScaffold` или большой center loader вместо уже показанного экрана.
+- Заменять список сообщений/чатов/событий/слов/истории на `SpinKitCircle`, `CircularProgressIndicator`, пустой `SizedBox`, skeleton screen или full error только потому, что stream снова `waiting` или future перезапустился.
+- Рендерить waiting-ветку restarted `FutureBuilder` после уже показанного контента; нужно показывать `lastSuccessfulResult` + `refreshing`.
+- Сбрасывать detail-экран в loader при reconnect document stream, если есть `lastSuccessfulResult` или compatible stale detail.
+- Сбрасывать user-gated экран в loader при повторном приходе `currentUserDocument == null`, если текущий пользователь не поменялся и есть последнее подтвержденное состояние экрана. Это относится к dashboard, profile, history, reviews, payouts, calls и другим экранам, завязанным на current user.
+- Сбрасывать parent экран из-за вложенных async-блоков: public profiles, avatars, stats, reviews, cards, participants, unread counters.
+- Показывать full error state при refresh/reconnect после уже показанного контента. Здесь запрещен только full-screen/full-content error replacement; общее правило ошибок фиксируется отдельным Phase 0 пунктом.
+
+Разрешено вместо большого loader:
+
+- Маленький refresh indicator в header, над списком, в pull-to-refresh зоне или рядом с действием.
+- Inline placeholder фиксированного размера внутри новой строки/карточки, если этой строки раньше не было.
+- Disabled/loading state конкретной кнопки или optimistic row/message state.
+- Тонкий progress indicator для pagination внизу списка.
+- Сохранение старого списка/detail как stale content с визуально стабильной геометрией.
+
+Полный loader допустим только:
+
+- При `initialLoading`, когда для `activeDataKey` нет `lastSuccessfulResult`, compatible `displayedDataKey`, completed cache-result или domain loaded-state.
+- После logout, смены аккаунта, смены пользователя в route, явного выхода из чата/события или навигации на принципиально другой document id/conversation id/event id без compatible stale data.
+- После confirmed `deleted`, `notFound`, `accessDenied`, `cancelled` или `expired` показывается соответствующий domain loaded-state, а не full loader.
+- Для отдельного section key допустим только фиксированный section-level placeholder/spinner, если секция раньше не имела successful result и этот loader не выглядит как page/content-area loader и не меняет размеры parent-контента.
+
+Правила для ключевых экранов:
+
+- `Чаты`: список чатов остается на экране при reconnect; event-chats stream не очищает conversations list.
+- `Страница чата`: уже показанные сообщения остаются; новые/старые сообщения догружаются inline.
+- `События`: при смене фильтра старые карточки остаются stale content до нового результата; empty/error нового фильтра не стирает старый список до confirmed result/errorWithData.
+- `Страница события`: detail, CTA, участники и organizer block не уходят в route-level loader при reconnect; вложенные профили участников обновляются inline.
+- `Словарь`: список слов не заменяется empty/loader при reconnect; панель повторения сохраняет высоту.
+- `Профиль`: основной профиль не исчезает при догрузке stats/subscription/email; блоки используют stable placeholders или previous values.
+- `Звонки`: детали/summary не сбрасываются в full loader при reconnect session/review/caption streams, если базовая session уже была показана.
 
 ## UX Phase 1: Shared Loading Patterns
 
