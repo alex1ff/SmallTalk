@@ -9,7 +9,7 @@
 - [x] Зафиксировать единые состояния загрузки: `initialLoading`, `refreshing`, `hasData`, `empty`, `errorWithData`, `errorWithoutData`.
 - [x] Запретить показ empty state до завершения первой реальной загрузки данных.
 - [x] Запретить замену уже показанного контента на большой loader при refresh.
-- [ ] Зафиксировать правило: error state не стирает старые данные, если они уже были показаны.
+- [x] Зафиксировать правило: error state не стирает старые данные, если они уже были показаны.
 - [ ] Проверить стабильные размеры карточек, строк, аватаров, бейджей, кнопок и нижних панелей.
 
 ### Audit 2026-07-07: Content Drop Points
@@ -133,7 +133,7 @@ Trigger types: `cold start`, `refresh/reconnect`, `filter change`, `retry`, `ret
 
 Состояние считается относительно `activeDataKey`: route + текущий пользователь + id записи + активные фильтры. Для событий это `city + dateFilter + levelFilters`, для чата - conversation/eventChat id, для detail - document id. Для вторичных async-блоков используется section key: `parentDataKey + sectionName + params`, например `profile:currentUser:stats`, `eventDetail:eventId:participants`, `eventCard:eventId:publicProfiles`, `teacherPayouts:cards`.
 
-Если на экране уже показаны данные, отдельно хранится `displayedDataKey`. При смене фильтра или нового запроса `activeDataKey` может отличаться от `displayedDataKey`; тогда старые совместимые данные остаются как stale content до успешного результата или ошибки нового ключа.
+Если на экране уже показаны данные, отдельно хранится `displayedDataKey`. При смене фильтра или нового запроса `activeDataKey` может отличаться от `displayedDataKey`; тогда старые совместимые данные остаются как stale content до успешного результата нового ключа, а при ошибке нового ключа остаются как `errorWithData`.
 
 | State | Когда применяется | Что показываем |
 | --- | --- | --- |
@@ -147,11 +147,11 @@ Trigger types: `cold start`, `refresh/reconnect`, `filter change`, `retry`, `ret
 Приоритет отображения:
 
 1. Есть данные и идет новая загрузка того же или совместимого ключа -> `refreshing`.
-2. Есть данные и новая загрузка упала -> `errorWithData`.
+2. Есть `lastSuccessfulResult`, previous loaded state или compatible `displayedDataKey`, и новая загрузка упала -> `errorWithData`, даже если previous state был confirmed `empty` или domain loaded-state.
 3. Есть данные и нет активной загрузки/ошибки -> `hasData`.
-4. Нет данных + request in flight -> `initialLoading`.
-5. Нет данных + error -> `errorWithoutData`.
-6. Нет данных + успешный результат пустой -> `empty`.
+4. Нет previous loaded state + request in flight -> `initialLoading`.
+5. Нет previous loaded state + error -> `errorWithoutData`.
+6. Нет previous loaded state + успешный результат пустой -> `empty`.
 
 Общие правила реализации:
 
@@ -165,7 +165,7 @@ Trigger types: `cold start`, `refresh/reconnect`, `filter change`, `retry`, `ret
 - Вложенные async-данные, например аватары участников, public profiles, статистика, review-блоки, не имеют права менять состояние родительского экрана с `hasData` на loader/empty.
 - Вложенный async-блок ведет собственное section-level состояние по section key и не подставляет `0`, `[]`, пустую строку или empty state до первого успешного результата этой секции.
 
-Следующий Phase 0 пункт про сохранение данных при error остается отдельной задачей. Этот раздел фиксирует общую модель; отдельные пункты будут закрываться после точечных правил и/или внедрения в экраны.
+Этот раздел фиксирует общую модель; отдельные Phase 0 пункты закрываются отдельными правилами и дальше внедряются в экраны.
 
 ### Rule 2026-07-07: No Empty Before First Successful Load
 
@@ -238,6 +238,42 @@ Empty state разрешен только после успешного отве
 - `Словарь`: список слов не заменяется empty/loader при reconnect; панель повторения сохраняет высоту.
 - `Профиль`: основной профиль не исчезает при догрузке stats/subscription/email; блоки используют stable placeholders или previous values.
 - `Звонки`: детали/summary не сбрасываются в full loader при reconnect session/review/caption streams, если базовая session уже была показана.
+
+### Rule 2026-07-07: Error Keeps Previous Content
+
+Ошибка загрузки не очищает уже показанный контент. Если для `activeDataKey` есть `lastSuccessfulResult` или compatible `displayedDataKey`, экран переходит в `errorWithData`: прежний loaded UI остается, ошибка отображается компактно и не меняет геометрию основного контента. Если `lastSuccessfulResult` был confirmed empty или domain loaded-state, этот empty/domain UI тоже остается и получает compact error slot; он не превращается в новый empty/error/fullscreen state.
+
+`errorWithoutData` допустим только когда нет `lastSuccessfulResult`, нет compatible stale content, нет completed cache-result и первая реальная загрузка для текущего ключа завершилась ошибкой.
+
+Запрещено при `errorWithData`:
+
+- Заменять список/detail/chat/profile на fullscreen error state, пустой экран, empty state, loader или `SizedBox.shrink`.
+- Очищать сообщения, события, слова, историю, participants, cards/transactions, reviews или stats из-за ошибки refresh/reconnect.
+- Сбрасывать CTA, счетчики, unread badges, optimistic rows/messages или bottom action bar в начальное состояние из-за ошибки вложенного async-блока.
+- Показывать generic "не удалось загрузить" как единственный контент, если пользователь уже видел данные.
+
+Разрешено при `errorWithData`:
+
+- Compact banner/snackbar/toast с текстом ошибки и retry.
+- Inline retry-row фиксированной высоты в секции, где произошла ошибка.
+- Маленький warning icon/status рядом с заголовком, фильтром или timestamp.
+- Сохранить stale data с признаком, что обновление не удалось.
+
+Правила для mixed states:
+
+- Parent экран остается `hasData` или `errorWithData`, если ошибся вложенный optional source: avatar/public profile/unread/stat/review/card enrichment.
+- Section key может быть `errorWithoutData`, только если сама секция не имела previous result; parent при этом не становится full error.
+- Если section key уже имел previous result, ошибка секции становится section-level `errorWithData`: прежнее значение секции остается на месте, рядом показывается compact retry/status.
+- Если один обязательный источник агрегированного списка упал, но другой уже дал элементы, parent остается `errorWithData` с объединенным доступным контентом.
+- Если один обязательный источник агрегированного списка упал, остальные успешно вернули пусто, и previous/stale data нет, parent становится `errorWithoutData`, а не `empty`.
+- Если все обязательные источники упали и нет previous/stale data, parent становится `errorWithoutData`.
+- Если новый фильтр упал, но есть compatible `displayedDataKey`, показывается stale список + компактная ошибка нового фильтра.
+
+Retry behavior:
+
+- Retry из `errorWithData` переводит экран в `refreshing`, сохраняя данные.
+- Retry из `errorWithoutData` может показывать compact/page-level loading, потому что данных еще нет.
+- Повторная ошибка не должна дублировать banners бесконечно; обновляется один стабильный error slot.
 
 ## UX Phase 1: Shared Loading Patterns
 
