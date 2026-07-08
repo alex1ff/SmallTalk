@@ -21,6 +21,9 @@ export 'favorite_model.dart';
 
 const double _favoriteChatAvatarSize = 52.0;
 const double _favoriteChatTimestampWidth = 74.0;
+const double _favoriteChatRowContentHeight = 76.0;
+const double _favoriteChatRowHeight = _favoriteChatRowContentHeight + 1.0;
+const double _favoriteChatUnreadSlotHeight = 30.0;
 const Color _favoriteChatDividerColor = Color(0xFFEBEBEB);
 const Color _favoriteChatDeleteBackground = Color(0xFFFF3B30);
 
@@ -151,6 +154,8 @@ bool shouldShowFavoriteMessagesLoadError({
 
   return !conversationsHasLoaded || !eventChatsHasLoaded;
 }
+
+double favoriteChatRowHeight() => _favoriteChatRowHeight;
 
 class FavoriteWidget extends StatefulWidget {
   const FavoriteWidget({super.key});
@@ -868,161 +873,119 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
               width: double.infinity,
               margin: EdgeInsets.zero,
               color: Colors.transparent,
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsetsDirectional.fromSTEB(
-                      ExpatlioDesign.pagePadding,
-                      ExpatlioDesign.itemSpacing,
-                      ExpatlioDesign.pagePadding,
-                      ExpatlioDesign.itemSpacing,
+              child: _chatRowFrame(
+                child: Row(
+                  children: [
+                    Container(
+                      width: _favoriteChatAvatarSize,
+                      height: _favoriteChatAvatarSize,
+                      decoration: BoxDecoration(
+                        color: partnerPhotoUrl.isEmpty
+                            ? ExpatlioDesign.avatarFallbackBackground
+                            : ExpatlioDesign.card,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: ExpatlioDesign.border),
+                        image: partnerPhotoUrl.isNotEmpty
+                            ? DecorationImage(
+                                fit: BoxFit.cover,
+                                image: CachedNetworkImageProvider(
+                                  partnerPhotoUrl,
+                                  maxWidth: 108,
+                                  maxHeight: 108,
+                                ),
+                              )
+                            : null,
+                      ),
+                      child: partnerPhotoUrl.isEmpty
+                          ? Center(
+                              child: Text(
+                                ExpatlioDesign.avatarInitial(
+                                    visiblePartnerDisplayName),
+                                style: ExpatlioDesign.textStyle(
+                                  context,
+                                  color: ExpatlioDesign.avatarFallbackText,
+                                  size: 14.0,
+                                  weight: FontWeight.w600,
+                                ),
+                              ),
+                            )
+                          : null,
                     ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: _favoriteChatAvatarSize,
-                          height: _favoriteChatAvatarSize,
-                          decoration: BoxDecoration(
-                            color: partnerPhotoUrl.isEmpty
-                                ? ExpatlioDesign.avatarFallbackBackground
-                                : ExpatlioDesign.card,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: ExpatlioDesign.border),
-                            image: partnerPhotoUrl.isNotEmpty
-                                ? DecorationImage(
-                                    fit: BoxFit.cover,
-                                    image: CachedNetworkImageProvider(
-                                      partnerPhotoUrl,
-                                      maxWidth: 108,
-                                      maxHeight: 108,
-                                    ),
-                                  )
-                                : null,
-                          ),
-                          child: partnerPhotoUrl.isEmpty
-                              ? Center(
-                                  child: Text(
-                                    ExpatlioDesign.avatarInitial(
-                                        visiblePartnerDisplayName),
-                                    style: ExpatlioDesign.textStyle(
-                                      context,
-                                      color: ExpatlioDesign.avatarFallbackText,
-                                      size: 14.0,
-                                      weight: FontWeight.w600,
-                                    ),
-                                  ),
-                                )
-                              : null,
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsetsDirectional.fromSTEB(
+                          ExpatlioDesign.itemSpacing,
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space0,
                         ),
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsetsDirectional.fromSTEB(
-                              ExpatlioDesign.itemSpacing,
-                              ExpatlioDesign.space0,
-                              ExpatlioDesign.space0,
-                              ExpatlioDesign.space0,
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
                               children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Row(
-                                        children: [
-                                          Flexible(
-                                            child: Text(
-                                              visiblePartnerDisplayName,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: ExpatlioDesign.textStyle(
-                                                context,
-                                                size: 16.0,
-                                                weight: unread
-                                                    ? FontWeight.w700
-                                                    : FontWeight.w600,
-                                              ),
-                                            ),
+                                Expanded(
+                                  child: Row(
+                                    children: [
+                                      Flexible(
+                                        child: Text(
+                                          visiblePartnerDisplayName,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: ExpatlioDesign.textStyle(
+                                            context,
+                                            size: 16.0,
+                                            weight: unread
+                                                ? FontWeight.w700
+                                                : FontWeight.w600,
                                           ),
-                                          if (isFriend)
-                                            const Padding(
-                                              padding:
-                                                  EdgeInsetsDirectional.only(
-                                                      start: ExpatlioDesign
-                                                          .space8),
-                                              child: Icon(
-                                                Icons.star_rounded,
-                                                color: ExpatlioDesign.warning,
-                                                size: 18.0,
-                                              ),
-                                            ),
-                                        ],
+                                        ),
                                       ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: ExpatlioDesign.space4),
-                                Text(
-                                  subtitle,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: ExpatlioDesign.textStyle(
-                                    context,
-                                    color: ExpatlioDesign.muted,
-                                    size: 14.0,
-                                    weight: FontWeight.w400,
+                                      if (isFriend)
+                                        const Padding(
+                                          padding: EdgeInsetsDirectional.only(
+                                              start: ExpatlioDesign.space8),
+                                          child: Icon(
+                                            Icons.star_rounded,
+                                            color: ExpatlioDesign.warning,
+                                            size: 18.0,
+                                          ),
+                                        ),
+                                    ],
                                   ),
                                 ),
                               ],
                             ),
-                          ),
-                        ),
-                        SizedBox(
-                          width: _favoriteChatTimestampWidth,
-                          child: Padding(
-                            padding: const EdgeInsetsDirectional.only(
-                              start: ExpatlioDesign.space12,
+                            const SizedBox(height: ExpatlioDesign.space4),
+                            Text(
+                              subtitle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: ExpatlioDesign.textStyle(
+                                context,
+                                color: ExpatlioDesign.muted,
+                                size: 14.0,
+                                weight: FontWeight.w400,
+                              ),
                             ),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Text(
-                                  _formatInboxTimestamp(
-                                    conversation.lastMessageAt ??
-                                        conversation.unlockedAt,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.clip,
-                                  softWrap: false,
-                                  textAlign: TextAlign.end,
-                                  style: ExpatlioDesign.textStyle(
-                                    context,
-                                    color: ExpatlioDesign.inactive,
-                                    size: 12.0,
-                                    weight: FontWeight.w400,
-                                  ),
-                                ),
-                                if (unread) ...[
-                                  const SizedBox(
-                                    height: ExpatlioDesign.space8,
-                                  ),
-                                  _ConversationUnreadBadge(
-                                    unreadCountStream:
-                                        _watchConversationUnreadCount(
-                                      conversation,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
-                  ),
-                  _chatDivider(),
-                ],
+                    _chatTimestampColumn(
+                      timestampText: _formatInboxTimestamp(
+                        conversation.lastMessageAt ?? conversation.unlockedAt,
+                      ),
+                      badge: unread
+                          ? _ConversationUnreadBadge(
+                              unreadCountStream:
+                                  _watchConversationUnreadCount(conversation),
+                            )
+                          : null,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -1057,6 +1020,71 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
       ),
       onDismissed: (_) => onDelete(),
       child: child,
+    );
+  }
+
+  Widget _chatRowFrame({
+    required Widget child,
+  }) {
+    return SizedBox(
+      height: _favoriteChatRowHeight,
+      child: Column(
+        children: [
+          SizedBox(
+            height: _favoriteChatRowContentHeight,
+            child: Padding(
+              padding: const EdgeInsetsDirectional.symmetric(
+                horizontal: ExpatlioDesign.pagePadding,
+              ),
+              child: child,
+            ),
+          ),
+          _chatDivider(),
+        ],
+      ),
+    );
+  }
+
+  Widget _chatTimestampColumn({
+    required String timestampText,
+    Widget? badge,
+  }) {
+    return SizedBox(
+      width: _favoriteChatTimestampWidth,
+      height: _favoriteChatRowContentHeight,
+      child: Padding(
+        padding: const EdgeInsetsDirectional.only(
+          start: ExpatlioDesign.space12,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.max,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              timestampText,
+              maxLines: 1,
+              overflow: TextOverflow.clip,
+              softWrap: false,
+              textAlign: TextAlign.end,
+              textScaler: TextScaler.noScaling,
+              style: ExpatlioDesign.textStyle(
+                context,
+                color: ExpatlioDesign.inactive,
+                size: 12.0,
+                weight: FontWeight.w400,
+              ),
+            ),
+            const Spacer(),
+            SizedBox(
+              height: _favoriteChatUnreadSlotHeight,
+              child: Align(
+                alignment: AlignmentDirectional.centerEnd,
+                child: badge ?? const SizedBox.shrink(),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1131,108 +1159,73 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                   width: double.infinity,
                   margin: EdgeInsets.zero,
                   color: Colors.transparent,
-                  child: Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsetsDirectional.fromSTEB(
-                          ExpatlioDesign.pagePadding,
-                          ExpatlioDesign.itemSpacing,
-                          ExpatlioDesign.pagePadding,
-                          ExpatlioDesign.itemSpacing,
+                  child: _chatRowFrame(
+                    child: Row(
+                      children: [
+                        Container(
+                          width: _favoriteChatAvatarSize,
+                          height: _favoriteChatAvatarSize,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: ExpatlioDesign.avatarFallbackBackground,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: ExpatlioDesign.border),
+                          ),
+                          child: Icon(
+                            Icons.calendar_month_rounded,
+                            color: FlutterFlowTheme.of(context).primary,
+                            size: 20.0,
+                          ),
                         ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: _favoriteChatAvatarSize,
-                              height: _favoriteChatAvatarSize,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: ExpatlioDesign.avatarFallbackBackground,
-                                shape: BoxShape.circle,
-                                border:
-                                    Border.all(color: ExpatlioDesign.border),
-                              ),
-                              child: Icon(
-                                Icons.calendar_month_rounded,
-                                color: FlutterFlowTheme.of(context).primary,
-                                size: 20.0,
-                              ),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsetsDirectional.fromSTEB(
+                              ExpatlioDesign.itemSpacing,
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space0,
                             ),
-                            Expanded(
-                              child: Padding(
-                                padding: const EdgeInsetsDirectional.fromSTEB(
-                                  ExpatlioDesign.itemSpacing,
-                                  ExpatlioDesign.space0,
-                                  ExpatlioDesign.space0,
-                                  ExpatlioDesign.space0,
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Row(
                                   children: [
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            title,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: ExpatlioDesign.textStyle(
-                                              context,
-                                              size: 16.0,
-                                              weight: FontWeight.w600,
-                                            ),
-                                          ),
+                                    Expanded(
+                                      child: Text(
+                                        title,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: ExpatlioDesign.textStyle(
+                                          context,
+                                          size: 16.0,
+                                          weight: FontWeight.w600,
                                         ),
-                                      ],
-                                    ),
-                                    const SizedBox(
-                                        height: ExpatlioDesign.space4),
-                                    Text(
-                                      subtitle,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: ExpatlioDesign.textStyle(
-                                        context,
-                                        color: ExpatlioDesign.muted,
-                                        size: 14.0,
-                                        weight: FontWeight.w400,
                                       ),
                                     ),
                                   ],
                                 ),
-                              ),
-                            ),
-                            SizedBox(
-                              width: _favoriteChatTimestampWidth,
-                              child: Padding(
-                                padding: const EdgeInsetsDirectional.only(
-                                    start: ExpatlioDesign.space12),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    Text(
-                                      _formatInboxTimestamp(timestamp),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.clip,
-                                      softWrap: false,
-                                      textAlign: TextAlign.end,
-                                      style: ExpatlioDesign.textStyle(
-                                        context,
-                                        color: ExpatlioDesign.inactive,
-                                        size: 12.0,
-                                        weight: FontWeight.w400,
-                                      ),
-                                    ),
-                                  ],
+                                const SizedBox(height: ExpatlioDesign.space4),
+                                Text(
+                                  subtitle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: ExpatlioDesign.textStyle(
+                                    context,
+                                    color: ExpatlioDesign.muted,
+                                    size: 14.0,
+                                    weight: FontWeight.w400,
+                                  ),
                                 ),
-                              ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
-                      ),
-                      _chatDivider(),
-                    ],
+                        _chatTimestampColumn(
+                          timestampText: _formatInboxTimestamp(timestamp),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -1655,6 +1648,7 @@ class _UnreadCountBadge extends StatelessWidget {
             label,
             maxLines: 1,
             textAlign: TextAlign.center,
+            textScaler: TextScaler.noScaling,
             style: ExpatlioDesign.textStyle(
               context,
               color: Colors.white,
