@@ -14,6 +14,7 @@ import '/shared_pages/chat_call_event_presentation.dart';
 import '/shared_pages/chat_message_bubble_style.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/components/chat_call_event_card.dart';
+import '/services/ux_session_loaded_result_cache.dart';
 import 'chat_thread_formatters.dart';
 import 'chat_thread_model.dart';
 export 'chat_thread_model.dart';
@@ -33,10 +34,18 @@ class ChatThreadWidget extends StatefulWidget {
 
   @override
   State<ChatThreadWidget> createState() => _ChatThreadWidgetState();
+
+  @visibleForTesting
+  static void debugResetMessageCacheForTesting() {
+    _ChatThreadWidgetState._messagesCacheByConversationPath.clear();
+  }
 }
 
 class _ChatThreadWidgetState extends State<ChatThreadWidget> {
   static const int _messagePageSize = 60;
+  static final UxSessionLoadedResultCache<List<MessagesRecord>>
+      _messagesCacheByConversationPath =
+      UxSessionLoadedResultCache<List<MessagesRecord>>();
 
   late ChatThreadModel _model;
   final scaffoldKey = GlobalKey<ScaffoldState>();
@@ -96,6 +105,32 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
         ),
         limit: _messageLimit,
       ),
+    );
+  }
+
+  Object _messagesCacheKey(DocumentReference conversation) => [
+        'chatThreadMessages',
+        currentUserUid,
+        conversation.path,
+      ];
+
+  List<MessagesRecord>? _cachedMessages(DocumentReference conversation) {
+    final messages = _messagesCacheByConversationPath.readItems(
+      _messagesCacheKey(conversation),
+    );
+    if (messages == null || messages.isEmpty) {
+      return null;
+    }
+    return messages;
+  }
+
+  void _rememberMessages(
+    DocumentReference conversation,
+    List<MessagesRecord> messages,
+  ) {
+    _messagesCacheByConversationPath.writeItems(
+      dataKey: _messagesCacheKey(conversation),
+      items: List<MessagesRecord>.unmodifiable(messages),
     );
   }
 
@@ -1024,6 +1059,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                   Expanded(
                     child: StreamBuilder<List<MessagesRecord>>(
                       stream: _watchMessages(conversation.reference),
+                      initialData: _cachedMessages(conversation.reference),
                       builder: (context, messagesSnapshot) {
                         if (messagesSnapshot.hasError) {
                           debugPrint(
@@ -1049,6 +1085,10 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                         }
 
                         final messages = messagesSnapshot.data!;
+                        if (messagesSnapshot.connectionState !=
+                            ConnectionState.waiting) {
+                          _rememberMessages(conversation.reference, messages);
+                        }
                         _canLoadOlderMessages =
                             messages.length >= _messageLimit;
 

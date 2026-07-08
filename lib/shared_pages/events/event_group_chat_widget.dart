@@ -13,6 +13,7 @@ import '/shared_pages/design/expatlio_design.dart';
 import '/services/event_action_error_mapper.dart';
 import '/services/event_actions_repository.dart';
 import '/services/event_group_chat_repository.dart';
+import '/services/ux_session_loaded_result_cache.dart';
 
 const ValueKey<String> eventGroupChatMessagesLoadingKey =
     ValueKey<String>('event_group_chat_messages_loading');
@@ -93,9 +94,17 @@ class EventGroupChatWidget extends StatefulWidget {
 
   @override
   State<EventGroupChatWidget> createState() => _EventGroupChatWidgetState();
+
+  @visibleForTesting
+  static void debugResetMessageCacheForTesting() {
+    _EventGroupChatWidgetState._messagesCacheByEventId.clear();
+  }
 }
 
 class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
+  static final UxSessionLoadedResultCache<List<EventChatMessagesRecord>>
+      _messagesCacheByEventId =
+      UxSessionLoadedResultCache<List<EventChatMessagesRecord>>();
   final TextEditingController _messageTextController = TextEditingController();
   final FocusNode _messageFocusNode = FocusNode();
   late Stream<EventChatsRecord?> _chatAccessStream;
@@ -145,6 +154,31 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
         messagesStream: widget.messagesStream,
         limit: widget.messageLimit,
       );
+
+  Object _messagesCacheKey(String eventId) => [
+        'eventGroupChatMessages',
+        currentUserUid,
+        eventId.trim(),
+      ];
+
+  List<EventChatMessagesRecord>? _cachedMessages(String eventId) {
+    final messages =
+        _messagesCacheByEventId.readItems(_messagesCacheKey(eventId));
+    if (messages == null || messages.isEmpty) {
+      return null;
+    }
+    return messages;
+  }
+
+  void _rememberMessages(
+    String eventId,
+    List<EventChatMessagesRecord> messages,
+  ) {
+    _messagesCacheByEventId.writeItems(
+      dataKey: _messagesCacheKey(eventId),
+      items: List<EventChatMessagesRecord>.unmodifiable(messages),
+    );
+  }
 
   Stream<EventChatsRecord?> _watchChatAccess() =>
       EventGroupChatRepository.watchChatAccess(
@@ -408,6 +442,7 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
         Expanded(
           child: StreamBuilder<List<EventChatMessagesRecord>>(
             stream: messagesStream,
+            initialData: _cachedMessages(widget.eventId),
             builder: (context, snapshot) {
               if (snapshot.hasError) {
                 debugPrint(
@@ -433,7 +468,11 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
                 );
               }
 
-              final messages = _displayMessages(snapshot.data!);
+              final messageRecords = snapshot.data!;
+              if (snapshot.connectionState != ConnectionState.waiting) {
+                _rememberMessages(widget.eventId, messageRecords);
+              }
+              final messages = _displayMessages(messageRecords);
               if (messages.isEmpty) {
                 return _EventGroupChatStateMessage(
                   key: eventGroupChatMessagesEmptyKey,

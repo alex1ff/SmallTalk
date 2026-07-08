@@ -64,6 +64,7 @@ void main() {
   });
 
   tearDown(() {
+    EventGroupChatWidget.debugResetMessageCacheForTesting();
     currentUser = null;
   });
 
@@ -310,6 +311,60 @@ void main() {
     expect(find.byKey(eventGroupChatMessageBubbleKey('message-1')),
         findsOneWidget);
     expect(find.text('Всем привет!'), findsOneWidget);
+  });
+
+  testWidgets('shows cached event chat messages while stream reconnects',
+      (tester) async {
+    final chatRef = EventChatsRecord.collection.doc('event-cache');
+    final cachedMessage = _messageFixture(
+      chatRef: chatRef,
+      messageId: 'cached-message',
+      text: 'Кешированное сообщение',
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          key: const ValueKey<String>('event-cache-first'),
+          eventId: 'event-cache',
+          chatStream: _allowedChatStream(eventId: 'event-cache'),
+          accessStateInvoker: _accessStateInvoker(eventId: 'event-cache'),
+          messagesStream: (_) => Stream.value(<EventChatMessagesRecord>[
+            cachedMessage,
+          ]),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Кешированное сообщение'), findsOneWidget);
+
+    final pendingMessages = Completer<List<EventChatMessagesRecord>>();
+    addTearDown(() {
+      if (!pendingMessages.isCompleted) {
+        pendingMessages.complete(const <EventChatMessagesRecord>[]);
+      }
+    });
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          key: const ValueKey<String>('event-cache-second'),
+          eventId: 'event-cache',
+          chatStream: _allowedChatStream(eventId: 'event-cache'),
+          accessStateInvoker: _accessStateInvoker(eventId: 'event-cache'),
+          messagesStream: (_) => pendingMessages.future.asStream(),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(eventGroupChatMessagesLoadingKey), findsNothing);
+    expect(find.byKey(eventGroupChatMessagesListKey), findsOneWidget);
+    expect(find.byKey(eventGroupChatMessageBubbleKey('cached-message')),
+        findsOneWidget);
+    expect(find.text('Кешированное сообщение'), findsOneWidget);
   });
 
   testWidgets('renders own event chat messages with the shared lavender color',
