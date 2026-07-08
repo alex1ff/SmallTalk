@@ -15,6 +15,14 @@ void main() {
     expect(favoriteChatDividerThickness(), 1.0);
   });
 
+  test('favorite unread badge label changes without changing badge size', () {
+    expect(favoriteChatUnreadBadgeLabel(1), '1');
+    expect(favoriteChatUnreadBadgeLabel(2), '2');
+    expect(favoriteChatUnreadBadgeLabel(99), '99');
+    expect(favoriteChatUnreadBadgeLabel(100), '99+');
+    expect(favoriteChatUnreadBadgeSize(), 30.0);
+  });
+
   test('favorite chat rows use one shared fixed-height frame', () {
     final source = File('lib/students_pages/favorite/favorite_widget.dart')
         .readAsStringSync();

@@ -162,6 +162,8 @@ double favoriteChatAvatarSize() => _favoriteChatAvatarSize;
 double favoriteChatTimestampWidth() => _favoriteChatTimestampWidth;
 double favoriteChatUnreadBadgeSize() => _favoriteChatUnreadBadgeSize;
 double favoriteChatDividerThickness() => _favoriteChatDividerThickness;
+String favoriteChatUnreadBadgeLabel(int count) =>
+    count > 99 ? '99+' : count.toString();
 
 class FavoriteWidget extends StatefulWidget {
   const FavoriteWidget({super.key});
@@ -1635,7 +1637,7 @@ class _UnreadCountBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = count > 99 ? '99+' : count.toString();
+    final label = favoriteChatUnreadBadgeLabel(count);
 
     return SizedBox.square(
       dimension: _favoriteChatUnreadBadgeSize,
