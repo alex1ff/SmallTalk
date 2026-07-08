@@ -1101,6 +1101,7 @@ void main() {
     expect(find.byKey(eventGroupChatMessagesEmptyKey), findsNothing);
     expect(find.text('Привет'), findsOneWidget);
     expect(find.text('Марко'), findsOneWidget);
+    expect(find.byIcon(Icons.schedule_rounded), findsOneWidget);
     expect(find.byIcon(Icons.flag_outlined), findsNothing);
 
     final input = tester.widget<TextFormField>(
@@ -1243,10 +1244,12 @@ void main() {
     expect(find.byKey(eventGroupChatSendErrorSnackBarKey), findsOneWidget);
     expect(find.text('Не удалось выполнить действие. Попробуйте снова.'),
         findsOneWidget);
+    expect(find.text('Привет'), findsOneWidget);
+    expect(find.byIcon(Icons.error_outline_rounded), findsOneWidget);
     final input = tester.widget<TextFormField>(
       find.byKey(eventGroupChatMessageInputKey),
     );
-    expect(input.controller?.text, 'Привет');
+    expect(input.controller?.text, isEmpty);
   });
 
   testWidgets('shows error state when event chat messages fail to load',

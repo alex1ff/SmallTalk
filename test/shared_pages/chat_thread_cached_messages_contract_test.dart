@@ -40,6 +40,12 @@ void main() {
     expect(
         source, contains('final List<_PendingChatMessage> _pendingMessages'));
     expect(source, contains('_pendingMessages.add(pendingMessage)'));
+    expect(source, contains('ChatLocalMessageStatus.sending'));
+    expect(source, contains('ChatLocalMessageStatus.sent'));
+    expect(source, contains('ChatLocalMessageStatus.failed'));
+    expect(source, contains('localStatus: message.status'));
+    expect(source, contains('_isSending = false;'));
+    expect(source, contains('ChatLocalMessageStatusIcon'));
     expect(
         source, contains('MessagesRecord.createDoc(conversation.reference)'));
     expect(source, contains('messageRef.set('));

@@ -11,6 +11,8 @@ import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/call_details/call_details_widget.dart';
 import '/shared_pages/chat_call_event_presentation.dart';
+import '/shared_pages/chat_local_message_status.dart';
+import '/shared_pages/chat_local_message_status_icon.dart';
 import '/shared_pages/chat_message_bubble_style.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/components/chat_call_event_card.dart';
@@ -48,6 +50,7 @@ class _PendingChatMessage {
     required this.senderId,
     required this.text,
     required this.createdAt,
+    required this.status,
   });
 
   final String localId;
@@ -55,6 +58,19 @@ class _PendingChatMessage {
   final String senderId;
   final String text;
   final DateTime createdAt;
+  final ChatLocalMessageStatus status;
+
+  _PendingChatMessage copyWith({
+    ChatLocalMessageStatus? status,
+  }) =>
+      _PendingChatMessage(
+        localId: localId,
+        messageRef: messageRef,
+        senderId: senderId,
+        text: text,
+        createdAt: createdAt,
+        status: status ?? this.status,
+      );
 }
 
 class _ChatThreadDisplayMessage {
@@ -188,6 +204,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     _messageLimit = _messagePageSize;
     _canLoadOlderMessages = true;
     _messageLimitIncreaseScheduled = false;
+    _isSending = false;
     _pendingMessages.clear();
   }
 
@@ -408,6 +425,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
       return;
     }
 
+    final conversationPath = conversation.reference.path;
     final messageRef = MessagesRecord.createDoc(conversation.reference);
     final pendingMessage = _createPendingMessage(
       messageRef: messageRef,
@@ -433,22 +451,35 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
           },
         ),
       );
-    } catch (error) {
-      if (!mounted) {
+      if (!mounted || widget.conversationRef?.path != conversationPath) {
         return;
       }
       setState(() {
-        _pendingMessages.removeWhere(
+        final pendingIndex = _pendingMessages.indexWhere(
           (message) => message.localId == pendingMessage.localId,
         );
-      });
-      final controller = _model.messageTextController;
-      if (controller != null && controller.text.trim().isEmpty) {
-        controller.text = text;
-        controller.selection = TextSelection.collapsed(
-          offset: controller.text.length,
+        if (pendingIndex == -1) {
+          return;
+        }
+        _pendingMessages[pendingIndex] = pendingMessage.copyWith(
+          status: ChatLocalMessageStatus.sent,
         );
+      });
+    } catch (error) {
+      if (!mounted || widget.conversationRef?.path != conversationPath) {
+        return;
       }
+      setState(() {
+        final pendingIndex = _pendingMessages.indexWhere(
+          (message) => message.localId == pendingMessage.localId,
+        );
+        if (pendingIndex == -1) {
+          return;
+        }
+        _pendingMessages[pendingIndex] = pendingMessage.copyWith(
+          status: ChatLocalMessageStatus.failed,
+        );
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -463,7 +494,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
         'Failed to send chat message for ${conversation.reference.path}: $error',
       );
     } finally {
-      if (mounted) {
+      if (mounted && widget.conversationRef?.path == conversationPath) {
         setState(() {
           _isSending = false;
         });
@@ -484,6 +515,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
       senderId: senderId,
       text: text,
       createdAt: createdAt,
+      status: ChatLocalMessageStatus.sending,
     );
   }
 
@@ -809,6 +841,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
       timestamp: message.createdAt,
       isCurrentUser: true,
       isReadByPartner: false,
+      localStatus: message.status,
     );
   }
 
@@ -818,6 +851,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     required DateTime? timestamp,
     required bool isCurrentUser,
     required bool isReadByPartner,
+    ChatLocalMessageStatus? localStatus,
   }) {
     final bubbleColor = chatMessageBubbleColor(isCurrentUser: isCurrentUser);
     final textColor = chatMessageTextColor();
@@ -893,15 +927,19 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                         ),
                         if (isCurrentUser) ...[
                           const SizedBox(width: ExpatlioDesign.space4),
-                          Icon(
-                            isReadByPartner
-                                ? Icons.done_all_rounded
-                                : Icons.done_rounded,
-                            color: chatMessageReadReceiptColor(
-                              isReadByPartner: isReadByPartner,
-                            ),
-                            size: 14.0,
-                          ),
+                          localStatus == null
+                              ? Icon(
+                                  isReadByPartner
+                                      ? Icons.done_all_rounded
+                                      : Icons.done_rounded,
+                                  color: chatMessageReadReceiptColor(
+                                    isReadByPartner: isReadByPartner,
+                                  ),
+                                  size: 14.0,
+                                )
+                              : ChatLocalMessageStatusIcon(
+                                  status: localStatus,
+                                ),
                         ],
                       ],
                     ),

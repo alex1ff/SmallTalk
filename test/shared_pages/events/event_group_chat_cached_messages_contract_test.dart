@@ -22,6 +22,11 @@ void main() {
         source, contains('snapshot.data ?? _cachedMessages(widget.eventId)'));
     expect(
         source, contains('_rememberMessages(widget.eventId, messageRecords)'));
+    expect(source, contains('_schedulePruneConfirmedPendingMessages'));
+    expect(source, contains('ChatLocalMessageStatus.sending'));
+    expect(source, contains('ChatLocalMessageStatus.sent'));
+    expect(source, contains('ChatLocalMessageStatus.failed'));
+    expect(source, contains('ChatLocalMessageStatusIcon'));
     expect(
       source,
       matches(

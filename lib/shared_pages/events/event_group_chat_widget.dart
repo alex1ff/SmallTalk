@@ -8,6 +8,8 @@ import '/backend/backend.dart';
 import '/components/ux_empty_state.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/chat_local_message_status.dart';
+import '/shared_pages/chat_local_message_status_icon.dart';
 import '/shared_pages/chat_message_bubble_style.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/services/event_action_error_mapper.dart';
@@ -60,6 +62,9 @@ ValueKey<String> eventGroupChatMessageTombstoneKey(String messageId) =>
 
 ValueKey<String> eventGroupChatMessageReportButtonKey(String messageId) =>
     ValueKey<String>('event_group_chat_message_report_button_$messageId');
+
+ValueKey<String> eventGroupChatMessageLocalStatusKey(String messageId) =>
+    ValueKey<String>('event_group_chat_message_local_status_$messageId');
 
 ValueKey<String> eventGroupChatReportReasonKey(String reasonCode) =>
     ValueKey<String>('event_group_chat_report_reason_$reasonCode');
@@ -228,7 +233,6 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
     }
 
     final eventId = widget.eventId.trim();
-    final previousValue = _messageTextController.value;
     final pendingMessage = _createPendingMessage(text);
     setState(() {
       _pendingMessages.add(pendingMessage);
@@ -255,6 +259,7 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
         }
         _pendingMessages[pendingIndex] = pendingMessage.copyWith(
           serverMessageId: result.messageId,
+          status: ChatLocalMessageStatus.sent,
         );
       });
     } catch (error) {
@@ -262,17 +267,16 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
         return;
       }
       setState(() {
-        _pendingMessages.removeWhere(
+        final pendingIndex = _pendingMessages.indexWhere(
           (message) => message.localId == pendingMessage.localId,
         );
-      });
-      if (_messageTextController.text.isEmpty) {
-        _messageTextController.value = previousValue.copyWith(
-          text: text,
-          selection: TextSelection.collapsed(offset: text.length),
-          composing: TextRange.empty,
+        if (pendingIndex == -1) {
+          return;
+        }
+        _pendingMessages[pendingIndex] = pendingMessage.copyWith(
+          status: ChatLocalMessageStatus.failed,
         );
-      }
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           key: eventGroupChatSendErrorSnackBarKey,
@@ -296,6 +300,7 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
       senderPhotoUrl: currentUserPhoto.trim(),
       text: text,
       createdAt: createdAt,
+      status: ChatLocalMessageStatus.sending,
     );
   }
 
@@ -473,6 +478,7 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
               if (snapshot.connectionState != ConnectionState.waiting &&
                   snapshot.hasData) {
                 _rememberMessages(widget.eventId, messageRecords);
+                _schedulePruneConfirmedPendingMessages(messageRecords);
               }
               final messages = _displayMessages(messageRecords);
               if (messages.isEmpty) {
@@ -539,6 +545,42 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
     ];
   }
 
+  void _schedulePruneConfirmedPendingMessages(
+    List<EventChatMessagesRecord> records,
+  ) {
+    if (_pendingMessages.isEmpty || records.isEmpty) {
+      return;
+    }
+
+    final recordIds = records
+        .map((record) => record.reference.id)
+        .where((id) => id.trim().isNotEmpty)
+        .toSet();
+    if (recordIds.isEmpty) {
+      return;
+    }
+
+    final hasConfirmedPending = _pendingMessages.any((message) {
+      final serverMessageId = message.serverMessageId;
+      return serverMessageId != null && recordIds.contains(serverMessageId);
+    });
+    if (!hasConfirmedPending) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _pendingMessages.removeWhere((message) {
+          final serverMessageId = message.serverMessageId;
+          return serverMessageId != null && recordIds.contains(serverMessageId);
+        });
+      });
+    });
+  }
+
   Widget _accessDeniedState() {
     return _EventGroupChatStateMessage(
       key: eventGroupChatAccessDeniedKey,
@@ -568,6 +610,7 @@ class _PendingEventChatMessage {
     required this.senderPhotoUrl,
     required this.text,
     required this.createdAt,
+    required this.status,
     this.serverMessageId,
   });
 
@@ -578,9 +621,11 @@ class _PendingEventChatMessage {
   final String senderPhotoUrl;
   final String text;
   final DateTime createdAt;
+  final ChatLocalMessageStatus status;
 
   _PendingEventChatMessage copyWith({
     String? serverMessageId,
+    ChatLocalMessageStatus? status,
   }) =>
       _PendingEventChatMessage(
         localId: localId,
@@ -590,6 +635,7 @@ class _PendingEventChatMessage {
         senderPhotoUrl: senderPhotoUrl,
         text: text,
         createdAt: createdAt,
+        status: status ?? this.status,
       );
 }
 
@@ -604,6 +650,7 @@ class _EventGroupChatDisplayMessage {
     required this.deletedAt,
     required this.record,
     required this.isPending,
+    required this.localStatus,
   });
 
   factory _EventGroupChatDisplayMessage.record(
@@ -619,6 +666,7 @@ class _EventGroupChatDisplayMessage {
         deletedAt: record.deletedAt,
         record: record,
         isPending: false,
+        localStatus: null,
       );
 
   factory _EventGroupChatDisplayMessage.pending(
@@ -634,6 +682,7 @@ class _EventGroupChatDisplayMessage {
         deletedAt: null,
         record: null,
         isPending: true,
+        localStatus: message.status,
       );
 
   final String id;
@@ -645,6 +694,7 @@ class _EventGroupChatDisplayMessage {
   final DateTime? deletedAt;
   final EventChatMessagesRecord? record;
   final bool isPending;
+  final ChatLocalMessageStatus? localStatus;
 }
 
 class _EventChatMessageReportReasonOption {
@@ -1025,6 +1075,16 @@ class _EventGroupChatMessageBubble extends StatelessWidget {
               weight: FontWeight.w500,
             ),
           ),
+          if (message.localStatus != null) ...[
+            const SizedBox(height: 4),
+            Align(
+              alignment: AlignmentDirectional.centerEnd,
+              child: ChatLocalMessageStatusIcon(
+                key: eventGroupChatMessageLocalStatusKey(messageId),
+                status: message.localStatus!,
+              ),
+            ),
+          ],
         ],
       ),
     );
