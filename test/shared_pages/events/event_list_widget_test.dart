@@ -754,6 +754,98 @@ void main() {
     expect(find.text('Loaded before pending'), findsNothing);
   });
 
+  testWidgets('keeps loaded event cards visible while level filter is pending',
+      (tester) async {
+    var calls = 0;
+    final levelCompleter = Completer<FFFirestorePage<EventsRecord>>();
+    addTearDown(() {
+      if (!levelCompleter.isCompleted) {
+        levelCompleter.complete(FFFirestorePage<EventsRecord>(
+          const [],
+          null,
+          null,
+        ));
+      }
+    });
+    currentUserDocument = _userFixture(
+      uid: 'profile-city-pending-level-user',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+          eventPageLoader: (
+            collection,
+            recordBuilder, {
+            queryBuilder,
+            nextPageMarker,
+            required pageSize,
+            required isStream,
+          }) async {
+            calls += 1;
+            if (calls == 2) {
+              return levelCompleter.future;
+            }
+            return FFFirestorePage<EventsRecord>(
+              [
+                _eventsRecordFixture(
+                  calls == 1
+                      ? 'loaded-before-level-pending'
+                      : 'loaded-after-level-pending',
+                  title: calls == 1
+                      ? 'Loaded before level pending'
+                      : 'Loaded after level pending',
+                  startsAt: DateTime.utc(2035, 6, 14, 15),
+                ),
+              ],
+              null,
+              null,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+    expect(find.text('Loaded before level pending'), findsOneWidget);
+
+    await tester.tap(_levelFilterFinder('B2'));
+    await tester.pump();
+
+    expect(calls, 2);
+    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
+    expect(find.text('Loaded before level pending'), findsOneWidget);
+
+    levelCompleter.complete(FFFirestorePage<EventsRecord>(
+      [
+        _eventsRecordFixture(
+          'loaded-after-level-pending',
+          title: 'Loaded after level pending',
+          startsAt: DateTime.utc(2035, 6, 14, 15),
+        ),
+      ],
+      null,
+      null,
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Loaded after level pending'), findsOneWidget);
+    expect(find.text('Loaded before level pending'), findsNothing);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+  });
+
   testWidgets('keeps confirmed empty events visible when refresh fails',
       (tester) async {
     var calls = 0;
