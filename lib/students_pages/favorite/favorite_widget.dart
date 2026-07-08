@@ -53,6 +53,91 @@ String formatFavoriteInboxTimestamp(DateTime? timestamp, {DateTime? now}) {
   return DateFormat('MM/dd/yy').format(localTime);
 }
 
+Set<String> normalizeFavoriteHiddenChatKeys(Object? rawHiddenChatKeys) {
+  final keys = <String>{};
+
+  void addHiddenKey(String rawKey) {
+    final key = rawKey.trim();
+    if (key.isNotEmpty) {
+      keys.add(key);
+    }
+  }
+
+  if (rawHiddenChatKeys is Iterable) {
+    for (final rawKey in rawHiddenChatKeys) {
+      if (rawKey is String) {
+        addHiddenKey(rawKey);
+      }
+    }
+  }
+
+  return keys;
+}
+
+class FavoriteHiddenChatKeySyncResult {
+  const FavoriteHiddenChatKeySyncResult({
+    required this.optimisticHiddenKeys,
+    required this.serverConfirmedOptimisticHiddenKeys,
+  });
+
+  final Set<String> optimisticHiddenKeys;
+  final Set<String> serverConfirmedOptimisticHiddenKeys;
+}
+
+FavoriteHiddenChatKeySyncResult syncFavoriteOptimisticHiddenChatKeys({
+  required Iterable<String> optimisticHiddenKeys,
+  required Iterable<String> serverConfirmedOptimisticHiddenKeys,
+  required Set<String> serverHiddenKeys,
+}) {
+  final confirmedInput = normalizeFavoriteHiddenChatKeys(
+    serverConfirmedOptimisticHiddenKeys,
+  );
+  final nextOptimistic = <String>{};
+  final nextConfirmed = <String>{};
+
+  for (final rawKey in optimisticHiddenKeys) {
+    final key = rawKey.trim();
+    if (key.isEmpty) {
+      continue;
+    }
+
+    final serverHasKey = serverHiddenKeys.contains(key);
+    if (serverHasKey) {
+      nextOptimistic.add(key);
+      nextConfirmed.add(key);
+      continue;
+    }
+
+    if (!confirmedInput.contains(key)) {
+      nextOptimistic.add(key);
+    }
+  }
+
+  return FavoriteHiddenChatKeySyncResult(
+    optimisticHiddenKeys: nextOptimistic,
+    serverConfirmedOptimisticHiddenKeys: nextConfirmed,
+  );
+}
+
+Set<String> resolveFavoriteEffectiveHiddenChatKeys({
+  required Object? rawHiddenChatKeys,
+  Iterable<String> rememberedEventIds = const <String>[],
+  Iterable<String> optimisticHiddenKeys = const <String>[],
+}) {
+  final keys = normalizeFavoriteHiddenChatKeys(rawHiddenChatKeys);
+
+  for (final rawEventId in rememberedEventIds) {
+    final eventId = rawEventId.trim();
+    if (eventId.isNotEmpty) {
+      keys.remove('event:$eventId');
+    }
+  }
+
+  keys.addAll(normalizeFavoriteHiddenChatKeys(optimisticHiddenKeys));
+
+  return keys;
+}
+
 class FavoriteWidget extends StatefulWidget {
   const FavoriteWidget({super.key});
 
@@ -81,6 +166,8 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
       {};
   static final Map<String, EventsRecord> _eventCacheByEventId = {};
   static final Map<String, Set<String>> _hiddenChatKeyOverridesByUid = {};
+  static final Map<String, Set<String>>
+      _serverConfirmedHiddenChatKeyOverridesByUid = {};
   String? _conversationsStreamUid;
   Stream<_ConversationsLoadState>? _conversationsStream;
   String? _eventChatsStreamUid;
@@ -146,24 +233,42 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
   }
 
   Set<String> _hiddenChatKeysForCurrentUser(String currentUid) {
-    final keys = <String>{};
-    final rawKeys = currentUserDocument?.snapshotData['hiddenChatKeys'];
-    if (rawKeys is Iterable) {
-      for (final rawKey in rawKeys) {
-        if (rawKey is! String) {
-          continue;
-        }
-        final key = rawKey.trim();
-        if (key.isNotEmpty) {
-          keys.add(key);
-        }
+    final serverHiddenKeys = normalizeFavoriteHiddenChatKeys(
+      currentUserDocument?.snapshotData['hiddenChatKeys'],
+    );
+    final optimisticHiddenKeys =
+        _hiddenChatKeyOverridesByUid[currentUid] ?? const <String>{};
+    final serverConfirmedHiddenKeys =
+        _serverConfirmedHiddenChatKeyOverridesByUid[currentUid] ??
+            const <String>{};
+
+    if (optimisticHiddenKeys.isNotEmpty ||
+        serverConfirmedHiddenKeys.isNotEmpty) {
+      final syncResult = syncFavoriteOptimisticHiddenChatKeys(
+        optimisticHiddenKeys: optimisticHiddenKeys,
+        serverConfirmedOptimisticHiddenKeys: serverConfirmedHiddenKeys,
+        serverHiddenKeys: serverHiddenKeys,
+      );
+      if (syncResult.optimisticHiddenKeys.isEmpty) {
+        _hiddenChatKeyOverridesByUid.remove(currentUid);
+      } else {
+        _hiddenChatKeyOverridesByUid[currentUid] =
+            syncResult.optimisticHiddenKeys;
+      }
+      if (syncResult.serverConfirmedOptimisticHiddenKeys.isEmpty) {
+        _serverConfirmedHiddenChatKeyOverridesByUid.remove(currentUid);
+      } else {
+        _serverConfirmedHiddenChatKeyOverridesByUid[currentUid] =
+            syncResult.serverConfirmedOptimisticHiddenKeys;
       }
     }
-    keys.addAll(_hiddenChatKeyOverridesByUid[currentUid] ?? const <String>{});
-    for (final eventId in EventGroupChatRepository.rememberedInboxEventIds) {
-      keys.remove('event:$eventId');
-    }
-    return keys;
+
+    return resolveFavoriteEffectiveHiddenChatKeys(
+      rawHiddenChatKeys: serverHiddenKeys,
+      rememberedEventIds: EventGroupChatRepository.rememberedInboxEventIds,
+      optimisticHiddenKeys:
+          _hiddenChatKeyOverridesByUid[currentUid] ?? const <String>{},
+    );
   }
 
   String _conversationHiddenKey(ConversationsRecord conversation) =>
@@ -184,6 +289,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
       _hiddenChatKeyOverridesByUid
           .putIfAbsent(uid, () => <String>{})
           .add(normalizedKey);
+      _serverConfirmedHiddenChatKeyOverridesByUid[uid]?.remove(normalizedKey);
     });
 
     try {
@@ -192,6 +298,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
       });
     } catch (error) {
       _hiddenChatKeyOverridesByUid[uid]?.remove(normalizedKey);
+      _serverConfirmedHiddenChatKeyOverridesByUid[uid]?.remove(normalizedKey);
       if (mounted) {
         setState(() {});
         ScaffoldMessenger.of(context).showSnackBar(
