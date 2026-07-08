@@ -41,6 +41,110 @@ class ChatThreadWidget extends StatefulWidget {
   }
 }
 
+class _PendingChatMessage {
+  const _PendingChatMessage({
+    required this.localId,
+    required this.messageRef,
+    required this.senderId,
+    required this.text,
+    required this.createdAt,
+  });
+
+  final String localId;
+  final DocumentReference messageRef;
+  final String senderId;
+  final String text;
+  final DateTime createdAt;
+}
+
+class _ChatThreadDisplayMessage {
+  const _ChatThreadDisplayMessage._({
+    this.record,
+    this.pending,
+  });
+
+  factory _ChatThreadDisplayMessage.record(MessagesRecord record) =>
+      _ChatThreadDisplayMessage._(record: record);
+
+  factory _ChatThreadDisplayMessage.pending(_PendingChatMessage pending) =>
+      _ChatThreadDisplayMessage._(pending: pending);
+
+  final MessagesRecord? record;
+  final _PendingChatMessage? pending;
+
+  DateTime? get createdAt => record?.createdAt ?? pending?.createdAt;
+}
+
+@visibleForTesting
+class ChatThreadMessageMergeItem {
+  const ChatThreadMessageMergeItem({
+    required this.key,
+    required this.createdAt,
+    required this.isPending,
+  });
+
+  final String key;
+  final DateTime? createdAt;
+  final bool isPending;
+}
+
+class _IndexedChatThreadMessageMergeItem {
+  const _IndexedChatThreadMessageMergeItem(this.item, this.index);
+
+  final ChatThreadMessageMergeItem item;
+  final int index;
+}
+
+@visibleForTesting
+List<ChatThreadMessageMergeItem> mergeChatThreadMessageItemsForTesting({
+  required Iterable<ChatThreadMessageMergeItem> records,
+  required Iterable<ChatThreadMessageMergeItem> pending,
+}) {
+  final recordItems = records.toList(growable: false);
+  final pendingItems = pending.toList(growable: false);
+  final pendingKeys = pendingItems.map((message) => message.key).toSet();
+  final confirmedRecordKeys = recordItems
+      .where((record) => record.createdAt != null)
+      .map((record) => record.key)
+      .toSet();
+  final items = <ChatThreadMessageMergeItem>[
+    for (final record in recordItems)
+      if (record.createdAt != null || !pendingKeys.contains(record.key)) record,
+    for (final message in pendingItems)
+      if (!confirmedRecordKeys.contains(message.key)) message,
+  ];
+  final indexedItems = <_IndexedChatThreadMessageMergeItem>[
+    for (var index = 0; index < items.length; index += 1)
+      _IndexedChatThreadMessageMergeItem(items[index], index),
+  ];
+  indexedItems.sort((left, right) {
+    final dateComparison = _compareChatThreadMessageDates(
+      left.item.createdAt,
+      right.item.createdAt,
+    );
+    if (dateComparison != 0) {
+      return dateComparison;
+    }
+    return left.index.compareTo(right.index);
+  });
+  return List<ChatThreadMessageMergeItem>.unmodifiable(
+    indexedItems.map((item) => item.item),
+  );
+}
+
+int _compareChatThreadMessageDates(DateTime? left, DateTime? right) {
+  if (left == null && right == null) {
+    return 0;
+  }
+  if (left == null) {
+    return 1;
+  }
+  if (right == null) {
+    return -1;
+  }
+  return right.compareTo(left);
+}
+
 class _ChatThreadWidgetState extends State<ChatThreadWidget> {
   static const int _messagePageSize = 60;
   static final UxSessionLoadedResultCache<List<MessagesRecord>>
@@ -54,8 +158,10 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
   String? _conversationStreamPath;
   final _publicProfileStreams = <String, Stream<UserPublicProfilesRecord?>>{};
   final _messageStreams = <String, Stream<List<MessagesRecord>>>{};
+  final List<_PendingChatMessage> _pendingMessages = <_PendingChatMessage>[];
   DateTime? _lastReadMarkerTarget;
   DateTime? _scheduledReadMarkerTarget;
+  int _pendingMessageSerial = 0;
   int _messageLimit = _messagePageSize;
   bool _canLoadOlderMessages = true;
   bool _messageLimitIncreaseScheduled = false;
@@ -82,6 +188,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     _messageLimit = _messagePageSize;
     _canLoadOlderMessages = true;
     _messageLimitIncreaseScheduled = false;
+    _pendingMessages.clear();
   }
 
   Stream<UserPublicProfilesRecord?> _watchPublicProfile(DocumentReference ref) {
@@ -301,12 +408,20 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
       return;
     }
 
+    final messageRef = MessagesRecord.createDoc(conversation.reference);
+    final pendingMessage = _createPendingMessage(
+      messageRef: messageRef,
+      senderId: currentUid,
+      text: text,
+    );
     setState(() {
       _isSending = true;
+      _pendingMessages.add(pendingMessage);
     });
+    _model.messageTextController?.clear();
+    FocusScope.of(context).unfocus();
 
     try {
-      final messageRef = MessagesRecord.createDoc(conversation.reference);
       await messageRef.set(
         mapToFirestore(
           <String, dynamic>{
@@ -318,9 +433,22 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
           },
         ),
       );
-      _model.messageTextController?.clear();
-      FocusScope.of(context).unfocus();
     } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _pendingMessages.removeWhere(
+          (message) => message.localId == pendingMessage.localId,
+        );
+      });
+      final controller = _model.messageTextController;
+      if (controller != null && controller.text.trim().isEmpty) {
+        controller.text = text;
+        controller.selection = TextSelection.collapsed(
+          offset: controller.text.length,
+        );
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -341,6 +469,87 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
         });
       }
     }
+  }
+
+  _PendingChatMessage _createPendingMessage({
+    required DocumentReference messageRef,
+    required String senderId,
+    required String text,
+  }) {
+    final createdAt = DateTime.now();
+    final serial = _pendingMessageSerial++;
+    return _PendingChatMessage(
+      localId: 'pending-${createdAt.microsecondsSinceEpoch}-$serial',
+      messageRef: messageRef,
+      senderId: senderId,
+      text: text,
+      createdAt: createdAt,
+    );
+  }
+
+  List<_ChatThreadDisplayMessage> _displayMessages(
+    List<MessagesRecord> records,
+  ) {
+    final recordsByPath = <String, MessagesRecord>{
+      for (final record in records) record.reference.path: record,
+    };
+    final pendingByPath = <String, _PendingChatMessage>{
+      for (final message in _pendingMessages) message.messageRef.path: message,
+    };
+    final mergedItems = mergeChatThreadMessageItemsForTesting(
+      records: records.map(
+        (record) => ChatThreadMessageMergeItem(
+          key: record.reference.path,
+          createdAt: record.createdAt,
+          isPending: false,
+        ),
+      ),
+      pending: _pendingMessages.map(
+        (message) => ChatThreadMessageMergeItem(
+          key: message.messageRef.path,
+          createdAt: message.createdAt,
+          isPending: true,
+        ),
+      ),
+    );
+
+    return <_ChatThreadDisplayMessage>[
+      for (final item in mergedItems)
+        if (item.isPending)
+          _ChatThreadDisplayMessage.pending(pendingByPath[item.key]!)
+        else
+          _ChatThreadDisplayMessage.record(recordsByPath[item.key]!),
+    ];
+  }
+
+  void _schedulePruneConfirmedPendingMessages(List<MessagesRecord> records) {
+    if (_pendingMessages.isEmpty || records.isEmpty) {
+      return;
+    }
+    final confirmedPaths = records
+        .where((record) => record.createdAt != null)
+        .map((record) => record.reference.path)
+        .toSet();
+    if (confirmedPaths.isEmpty) {
+      return;
+    }
+    final hasConfirmedPending = _pendingMessages.any(
+      (message) => confirmedPaths.contains(message.messageRef.path),
+    );
+    if (!hasConfirmedPending) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _pendingMessages.removeWhere(
+          (message) => confirmedPaths.contains(message.messageRef.path),
+        );
+      });
+    });
   }
 
   Future<void> _toggleFriend(
@@ -395,7 +604,10 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
         leftLocal.day == rightLocal.day;
   }
 
-  bool _shouldShowDateDivider(List<MessagesRecord> messages, int index) {
+  bool _shouldShowDateDivider(
+    List<_ChatThreadDisplayMessage> messages,
+    int index,
+  ) {
     final messageTimestamp = messages[index].createdAt;
     if (messageTimestamp == null) {
       return false;
@@ -578,6 +790,35 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     required bool isCurrentUser,
     required bool isReadByPartner,
   }) {
+    return _buildTextMessageBubble(
+      context,
+      text: message.text,
+      timestamp: message.createdAt,
+      isCurrentUser: isCurrentUser,
+      isReadByPartner: isReadByPartner,
+    );
+  }
+
+  Widget _buildPendingMessageBubble(
+    BuildContext context, {
+    required _PendingChatMessage message,
+  }) {
+    return _buildTextMessageBubble(
+      context,
+      text: message.text,
+      timestamp: message.createdAt,
+      isCurrentUser: true,
+      isReadByPartner: false,
+    );
+  }
+
+  Widget _buildTextMessageBubble(
+    BuildContext context, {
+    required String text,
+    required DateTime? timestamp,
+    required bool isCurrentUser,
+    required bool isReadByPartner,
+  }) {
     final bubbleColor = chatMessageBubbleColor(isCurrentUser: isCurrentUser);
     final textColor = chatMessageTextColor();
 
@@ -625,7 +866,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  message.text,
+                  text,
                   style: FlutterFlowTheme.of(context).bodyMedium.override(
                         fontFamily: 'sf pro display',
                         color: textColor,
@@ -633,7 +874,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                         letterSpacing: 0.0,
                       ),
                 ),
-                if (message.createdAt != null)
+                if (timestamp != null)
                   Padding(
                     padding: const EdgeInsetsDirectional.only(
                         top: ExpatlioDesign.space4),
@@ -641,7 +882,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          _formatMessageTimestamp(message.createdAt),
+                          _formatMessageTimestamp(timestamp),
                           style:
                               FlutterFlowTheme.of(context).bodyMedium.override(
                                     fontFamily: 'sf pro display',
@@ -1073,7 +1314,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
 
                         final messages = messagesSnapshot.data ??
                             _cachedMessages(conversation.reference);
-                        if (messages == null) {
+                        if (messages == null && _pendingMessages.isEmpty) {
                           return Center(
                             child: SizedBox(
                               width: 50.0,
@@ -1088,13 +1329,25 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
 
                         if (messagesSnapshot.connectionState !=
                                 ConnectionState.waiting &&
-                            messagesSnapshot.hasData) {
-                          _rememberMessages(conversation.reference, messages);
+                            messagesSnapshot.hasData &&
+                            messages != null) {
+                          final confirmedMessages = messages
+                              .where((message) => message.createdAt != null)
+                              .toList(growable: false);
+                          _rememberMessages(
+                            conversation.reference,
+                            confirmedMessages,
+                          );
+                          _schedulePruneConfirmedPendingMessages(messages);
                         }
+                        final serverMessages =
+                            messages ?? const <MessagesRecord>[];
                         _canLoadOlderMessages =
-                            messages.length >= _messageLimit;
+                            serverMessages.length >= _messageLimit;
+                        final displayMessages =
+                            _displayMessages(serverMessages);
 
-                        if (messages.isEmpty) {
+                        if (displayMessages.isEmpty) {
                           return Center(
                             child: Padding(
                               padding:
@@ -1130,27 +1383,29 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                             ExpatlioDesign.pagePadding,
                             ExpatlioDesign.space112,
                           ),
-                          itemCount: messages.length,
+                          itemCount: displayMessages.length,
                           itemBuilder: (context, index) {
-                            final message = messages[index];
+                            final displayMessage = displayMessages[index];
                             final itemChildren = <Widget>[];
                             if (_shouldShowDateDivider(
-                              messages,
+                              displayMessages,
                               index,
                             )) {
                               itemChildren.add(
                                 _buildDateDivider(
                                   context,
-                                  message.createdAt!,
+                                  displayMessage.createdAt!,
                                 ),
                               );
                             }
 
-                            if (messageIsCallEvent(message)) {
+                            final record = displayMessage.record;
+                            final pendingMessage = displayMessage.pending;
+                            if (record != null && messageIsCallEvent(record)) {
                               itemChildren.add(
                                 _buildCallEventMessageCard(
                                   context,
-                                  message: message,
+                                  message: record,
                                 ),
                               );
                               return Column(
@@ -1159,22 +1414,31 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                               );
                             }
 
-                            final isCurrentUser =
-                                message.senderId == currentUserUid;
-                            final partnerReadAt =
-                                conversation.lastReadAtByUserId[partnerRef.id];
-                            final isReadByPartner = isCurrentUser &&
-                                message.createdAt != null &&
-                                partnerReadAt != null &&
-                                !partnerReadAt.isBefore(message.createdAt!);
-                            itemChildren.add(
-                              _buildMessageBubble(
-                                context,
-                                message: message,
-                                isCurrentUser: isCurrentUser,
-                                isReadByPartner: isReadByPartner,
-                              ),
-                            );
+                            if (pendingMessage != null) {
+                              itemChildren.add(
+                                _buildPendingMessageBubble(
+                                  context,
+                                  message: pendingMessage,
+                                ),
+                              );
+                            } else if (record != null) {
+                              final isCurrentUser =
+                                  record.senderId == currentUserUid;
+                              final partnerReadAt = conversation
+                                  .lastReadAtByUserId[partnerRef.id];
+                              final isReadByPartner = isCurrentUser &&
+                                  record.createdAt != null &&
+                                  partnerReadAt != null &&
+                                  !partnerReadAt.isBefore(record.createdAt!);
+                              itemChildren.add(
+                                _buildMessageBubble(
+                                  context,
+                                  message: record,
+                                  isCurrentUser: isCurrentUser,
+                                  isReadByPartner: isReadByPartner,
+                                ),
+                              );
+                            }
 
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
