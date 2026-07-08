@@ -88,7 +88,6 @@ class EventGroupChatWidget extends StatefulWidget {
     required this.eventId,
     this.chatStream,
     this.messagesStream,
-    this.accessStateInvoker,
     this.sendMessageInvoker,
     this.reportMessageInvoker,
     this.messageLimit = EventGroupChatRepository.defaultMessageLimit,
@@ -97,7 +96,6 @@ class EventGroupChatWidget extends StatefulWidget {
   final String eventId;
   final EventChatMetadataStream? chatStream;
   final EventChatMessagesStream? messagesStream;
-  final EventCallableInvoker? accessStateInvoker;
   final EventCallableInvoker? sendMessageInvoker;
   final EventCallableInvoker? reportMessageInvoker;
   final int messageLimit;

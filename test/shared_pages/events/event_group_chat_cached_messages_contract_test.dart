@@ -27,6 +27,7 @@ void main() {
     expect(source, contains('ChatLocalMessageStatus.sent'));
     expect(source, contains('ChatLocalMessageStatus.failed'));
     expect(source, contains('ChatLocalMessageStatusIcon'));
+    expect(source, isNot(contains('accessStateInvoker')));
     expect(source, contains('eventGroupChatMessageItemKey'));
     expect(
         source, contains('key: eventGroupChatMessageItemKey(message.itemKey)'));

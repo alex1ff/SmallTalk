@@ -443,8 +443,10 @@ void main() {
     expect(chat, isNot(contains('ChatThreadWidget')));
     expect(chat, isNot(contains('FirebaseFirestore')));
     expect(chat, isNot(contains('.set(')));
-    expect(chat, isNot(contains('.update(')));
+    expect(chat, isNot(contains("collection('messages')")));
+    expect(chat, isNot(contains('EventChatMessagesRecord.createDoc')));
     expect(chat, isNot(contains('.delete(')));
+    expect(chat, isNot(contains('accessStateInvoker')));
     expect(repository, isNot(contains('sendEventChatMessage')));
   });
 
