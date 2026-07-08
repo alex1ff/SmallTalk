@@ -1656,24 +1656,28 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                       mainAxisSize: MainAxisSize.max,
                       children: [
                         Expanded(
-                          child: TextFormField(
-                            controller: _model.messageTextController,
-                            focusNode: _model.messageFocusNode,
-                            textCapitalization: TextCapitalization.sentences,
-                            textInputAction: TextInputAction.send,
-                            textAlignVertical: TextAlignVertical.center,
-                            maxLines: 4,
-                            minLines: 1,
-                            decoration: ExpatlioDesign.formFieldDecoration(
-                              context,
-                              hintText:
-                                  FFLocalizations.of(context).getVariableText(
-                                ruText: 'Написать сообщение',
-                                enText: 'Write a message',
+                          child: SizedBox(
+                            height: ExpatlioDesign.formFieldHeight,
+                            child: TextFormField(
+                              controller: _model.messageTextController,
+                              focusNode: _model.messageFocusNode,
+                              textCapitalization: TextCapitalization.sentences,
+                              textInputAction: TextInputAction.send,
+                              textAlignVertical: TextAlignVertical.center,
+                              minLines: 1,
+                              maxLines: 1,
+                              decoration: ExpatlioDesign.formFieldDecoration(
+                                context,
+                                hintText:
+                                    FFLocalizations.of(context).getVariableText(
+                                  ruText: 'Написать сообщение',
+                                  enText: 'Write a message',
+                                ),
                               ),
+                              style: ExpatlioDesign.formTextStyle(context),
+                              onFieldSubmitted: (_) =>
+                                  _sendMessage(conversation),
                             ),
-                            style: ExpatlioDesign.formTextStyle(context),
-                            onFieldSubmitted: (_) => _sendMessage(conversation),
                           ),
                         ),
                         const SizedBox(width: ExpatlioDesign.space8),

@@ -980,24 +980,27 @@ class _EventGroupChatComposer extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
-                child: TextFormField(
-                  key: eventGroupChatMessageInputKey,
-                  controller: controller,
-                  focusNode: focusNode,
-                  textCapitalization: TextCapitalization.sentences,
-                  textInputAction: TextInputAction.send,
-                  textAlignVertical: TextAlignVertical.center,
-                  minLines: 1,
-                  maxLines: 4,
-                  decoration: ExpatlioDesign.formFieldDecoration(
-                    context,
-                    hintText: FFLocalizations.of(context).getVariableText(
-                      ruText: 'Написать сообщение',
-                      enText: 'Write a message',
+                child: SizedBox(
+                  height: ExpatlioDesign.formFieldHeight,
+                  child: TextFormField(
+                    key: eventGroupChatMessageInputKey,
+                    controller: controller,
+                    focusNode: focusNode,
+                    textCapitalization: TextCapitalization.sentences,
+                    textInputAction: TextInputAction.send,
+                    textAlignVertical: TextAlignVertical.center,
+                    minLines: 1,
+                    maxLines: 1,
+                    decoration: ExpatlioDesign.formFieldDecoration(
+                      context,
+                      hintText: FFLocalizations.of(context).getVariableText(
+                        ruText: 'Написать сообщение',
+                        enText: 'Write a message',
+                      ),
                     ),
+                    style: ExpatlioDesign.formTextStyle(context),
+                    onFieldSubmitted: (_) => onSendPressed(),
                   ),
-                  style: ExpatlioDesign.formTextStyle(context),
-                  onFieldSubmitted: (_) => onSendPressed(),
                 ),
               ),
               const SizedBox(width: ExpatlioDesign.space8),

@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:small_talk/auth/firebase_auth/auth_util.dart';
 import 'package:small_talk/backend/backend.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
+import 'package:small_talk/shared_pages/design/expatlio_design.dart';
 import 'package:small_talk/shared_pages/events/event_group_chat_widget.dart';
 import 'package:small_talk/services/event_actions_repository.dart';
 import 'package:small_talk/services/event_group_chat_repository.dart';
@@ -1072,6 +1073,56 @@ void main() {
       find.byKey(eventGroupChatMessageInputKey),
     );
     expect(input.controller?.text, isEmpty);
+  });
+
+  testWidgets('keeps composer input and send button height fixed',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-123',
+          chatStream: _allowedChatStream(),
+          accessStateInvoker: _accessStateInvoker(),
+          messagesStream: (_) =>
+              Stream.value(const <EventChatMessagesRecord>[]),
+          sendMessageInvoker: (_, __) async => <String, dynamic>{
+            'messageId': 'message-1',
+            'createdAt': '2026-06-14T12:00:00.000Z',
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final inputFinder = find.byKey(eventGroupChatMessageInputKey);
+    final sendButtonFinder = find.byKey(eventGroupChatSendButtonKey);
+    final inputTextField = tester.widget<TextField>(
+      find.descendant(
+        of: inputFinder,
+        matching: find.byType(TextField),
+      ),
+    );
+
+    expect(inputTextField.minLines, 1);
+    expect(inputTextField.maxLines, 1);
+    expect(tester.getSize(inputFinder).height, ExpatlioDesign.formFieldHeight);
+    expect(
+      tester.getSize(sendButtonFinder),
+      const Size.square(ExpatlioDesign.formFieldHeight),
+    );
+
+    await tester.enterText(
+      inputFinder,
+      'Очень длинное сообщение, которое раньше могло раздувать composer '
+      'и менять высоту нижней панели во время набора.',
+    );
+    await tester.pump();
+
+    expect(tester.getSize(inputFinder).height, ExpatlioDesign.formFieldHeight);
+    expect(
+      tester.getSize(sendButtonFinder),
+      const Size.square(ExpatlioDesign.formFieldHeight),
+    );
   });
 
   testWidgets('keeps composer active while send is pending', (tester) async {
