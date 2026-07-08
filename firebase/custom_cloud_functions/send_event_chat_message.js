@@ -5,7 +5,11 @@ const REQUEST_TIMEOUT_SECONDS = 30;
 const EVENT_STATUS_ACTIVE = "active";
 const PARTICIPANT_STATUS_ACTIVE = "active";
 const EVENT_CHAT_COLLECTION = "eventChats";
-const SEND_EVENT_CHAT_MESSAGE_KEYS = Object.freeze(["eventId", "text"]);
+const SEND_EVENT_CHAT_MESSAGE_REQUIRED_KEYS = Object.freeze(["eventId", "text"]);
+const SEND_EVENT_CHAT_MESSAGE_KEYS = Object.freeze([
+  ...SEND_EVENT_CHAT_MESSAGE_REQUIRED_KEYS,
+  "clientMessageId",
+]);
 const SEND_EVENT_CHAT_MESSAGE_KEY_SET =
   new Set(SEND_EVENT_CHAT_MESSAGE_KEYS);
 const EVENT_CHAT_METADATA_KEYS = Object.freeze([
@@ -49,7 +53,7 @@ function validateExactSendEventChatMessageKeys(data) {
       throwInvalidSendRequest(key, "unknown_key");
     }
   }
-  for (const key of SEND_EVENT_CHAT_MESSAGE_KEYS) {
+  for (const key of SEND_EVENT_CHAT_MESSAGE_REQUIRED_KEYS) {
     if (!Object.prototype.hasOwnProperty.call(data, key)) {
       throwInvalidSendRequest(key, "missing");
     }
@@ -98,11 +102,33 @@ function normalizeMessageText(value) {
   return text;
 }
 
+function normalizeClientMessageId(value) {
+  if (value === undefined) {
+    return null;
+  }
+  if (typeof value !== "string") {
+    throwInvalidSendRequest("clientMessageId", "invalid_type");
+  }
+  const clientMessageId = value.trim();
+  if (
+    !clientMessageId ||
+    clientMessageId === "." ||
+    clientMessageId === ".." ||
+    clientMessageId.includes("/") ||
+    /^__.*__$/.test(clientMessageId) ||
+    Buffer.byteLength(clientMessageId, "utf8") > 1500
+  ) {
+    throwInvalidSendRequest("clientMessageId", "invalid_format");
+  }
+  return clientMessageId;
+}
+
 function normalizeSendEventChatMessagePayload(data) {
   validateExactSendEventChatMessageKeys(data);
   return {
     eventId: normalizeEventId(data.eventId),
     text: normalizeMessageText(data.text),
+    clientMessageId: normalizeClientMessageId(data.clientMessageId),
   };
 }
 
@@ -416,14 +442,18 @@ async function executeSendEventChatMessageTransaction({
   const chatRef = db.collection(EVENT_CHAT_COLLECTION).doc(payload.eventId);
   const participantRef = eventRef.collection("participants").doc(uid);
   const userRef = db.collection("users").doc(uid);
-  const messageRef = chatRef.collection("messages").doc();
+  const messageRef = payload.clientMessageId ?
+    chatRef.collection("messages").doc(payload.clientMessageId) :
+    chatRef.collection("messages").doc();
 
   return await db.runTransaction(async (tx) => {
-    const [eventDoc, chatDoc, participantDoc, userDoc] = await Promise.all([
+    const [eventDoc, chatDoc, participantDoc, userDoc, messageDoc] =
+    await Promise.all([
       tx.get(eventRef),
       tx.get(chatRef),
       tx.get(participantRef),
       tx.get(userRef),
+      payload.clientMessageId ? tx.get(messageRef) : Promise.resolve(null),
     ]);
     const eventData = eventDoc.exists ? eventDoc.data() || {} : {};
     const chatData = chatDoc.exists ? chatDoc.data() || {} : {};
@@ -431,6 +461,28 @@ async function executeSendEventChatMessageTransaction({
       participantDoc.data() || {} :
       {};
     const userData = userDoc.exists ? userDoc.data() || {} : {};
+    if (messageDoc?.exists) {
+      const messageData = messageDoc.data() || {};
+      if (
+        messageData.senderId !== uid ||
+        messageData.text !== payload.text ||
+        !hasTimestampValue(messageData.createdAt)
+      ) {
+        throwSendError(
+            "already-exists",
+            "Event chat message id already exists",
+            {
+              domainCode: "event_chat_message_id_conflict",
+              field: "clientMessageId",
+            },
+        );
+      }
+      return {
+        eventId: payload.eventId,
+        messageId: messageRef.id,
+        createdAt: messageData.createdAt.toDate().toISOString(),
+      };
+    }
 
     assertEventAllowsChatWrites({
       eventExists: eventDoc.exists,

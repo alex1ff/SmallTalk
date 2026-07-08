@@ -1058,10 +1058,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(functionName, sendEventChatMessageFunctionName);
-    expect(payload, <String, dynamic>{
-      'eventId': 'event-123',
-      'text': 'Всем привет!',
-    });
+    expect(payload?['eventId'], 'event-123');
+    expect(payload?['text'], 'Всем привет!');
+    expect(payload?['clientMessageId'], isA<String>());
+    expect((payload?['clientMessageId'] as String).trim(), isNotEmpty);
     final input = tester.widget<TextFormField>(
       find.byKey(eventGroupChatMessageInputKey),
     );
@@ -1188,6 +1188,58 @@ void main() {
     expect(find.text('Привет'), findsOneWidget);
   });
 
+  testWidgets('hides failed pending when server message with client id appears',
+      (tester) async {
+    currentUser = _TestAuthUser('uid-1', displayName: 'Марко');
+    final messagesController =
+        StreamController<List<EventChatMessagesRecord>>();
+    String? clientMessageId;
+    addTearDown(messagesController.close);
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-123',
+          chatStream: _allowedChatStream(),
+          accessStateInvoker: _accessStateInvoker(),
+          messagesStream: (_) => messagesController.stream,
+          sendMessageInvoker: (_, payload) async {
+            clientMessageId = payload['clientMessageId'] as String;
+            throw StateError('network response lost after write');
+          },
+        ),
+      ),
+    );
+
+    messagesController.add(const <EventChatMessagesRecord>[]);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(eventGroupChatMessageInputKey), 'Привет');
+    await tester.tap(find.byKey(eventGroupChatSendButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(clientMessageId, isNotNull);
+    expect(find.text('Привет'), findsOneWidget);
+    expect(find.text('Повторить'), findsOneWidget);
+
+    messagesController.add(<EventChatMessagesRecord>[
+      _messageFixture(
+        chatRef: EventChatsRecord.collection.doc('event-123'),
+        messageId: clientMessageId!,
+        senderId: 'uid-1',
+        senderDisplayName: 'Марко',
+        text: 'Привет',
+      ),
+    ]);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Привет'), findsOneWidget);
+    expect(find.text('Повторить'), findsNothing);
+    expect(find.byIcon(Icons.error_outline_rounded), findsNothing);
+    expect(find.byKey(eventGroupChatMessageBubbleKey(clientMessageId!)),
+        findsOneWidget);
+  });
+
   testWidgets('does not call send callable for blank event chat messages',
       (tester) async {
     var sendCalls = 0;
@@ -1221,6 +1273,8 @@ void main() {
 
   testWidgets('shows mapped error when event chat message send fails',
       (tester) async {
+    var sendCalls = 0;
+    final payloads = <Map<String, dynamic>>[];
     await tester.pumpWidget(
       _buildTestApp(
         home: EventGroupChatWidget(
@@ -1229,8 +1283,16 @@ void main() {
           accessStateInvoker: _accessStateInvoker(),
           messagesStream: (_) =>
               Stream.value(const <EventChatMessagesRecord>[]),
-          sendMessageInvoker: (_, __) async {
-            throw StateError('send failed');
+          sendMessageInvoker: (_, payload) async {
+            sendCalls += 1;
+            payloads.add(payload);
+            if (sendCalls == 1) {
+              throw StateError('send failed');
+            }
+            return <String, dynamic>{
+              'messageId': 'message-retry',
+              'createdAt': '2026-06-14T12:00:00.000Z',
+            };
           },
         ),
       ),
@@ -1246,10 +1308,20 @@ void main() {
         findsOneWidget);
     expect(find.text('Привет'), findsOneWidget);
     expect(find.byIcon(Icons.error_outline_rounded), findsOneWidget);
+    expect(find.text('Повторить'), findsOneWidget);
     final input = tester.widget<TextFormField>(
       find.byKey(eventGroupChatMessageInputKey),
     );
     expect(input.controller?.text, isEmpty);
+
+    await tester.tap(find.text('Повторить'));
+    await tester.pumpAndSettle();
+
+    expect(sendCalls, 2);
+    expect(payloads, hasLength(2));
+    expect(payloads[0]['clientMessageId'], payloads[1]['clientMessageId']);
+    expect(find.byIcon(Icons.done_rounded), findsOneWidget);
+    expect(find.text('Повторить'), findsNothing);
   });
 
   testWidgets('shows error state when event chat messages fail to load',

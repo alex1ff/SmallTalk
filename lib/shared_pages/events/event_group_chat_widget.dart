@@ -66,6 +66,9 @@ ValueKey<String> eventGroupChatMessageReportButtonKey(String messageId) =>
 ValueKey<String> eventGroupChatMessageLocalStatusKey(String messageId) =>
     ValueKey<String>('event_group_chat_message_local_status_$messageId');
 
+ValueKey<String> eventGroupChatMessageRetryButtonKey(String messageId) =>
+    ValueKey<String>('event_group_chat_message_retry_button_$messageId');
+
 ValueKey<String> eventGroupChatReportReasonKey(String reasonCode) =>
     ValueKey<String>('event_group_chat_report_reason_$reasonCode');
 
@@ -243,6 +246,7 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
       final result = await EventActionsRepository.sendEventChatMessage(
         eventId: eventId,
         text: text,
+        clientMessageId: pendingMessage.localId,
         invoker: widget.sendMessageInvoker,
       );
       EventGroupChatRepository.rememberInboxEventId(eventId);
@@ -288,6 +292,79 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
         '$eventId: $error',
       );
     }
+  }
+
+  Future<void> _retryPendingMessage(String localId) async {
+    final pendingIndex = _pendingMessages.indexWhere(
+      (message) => message.localId == localId,
+    );
+    if (pendingIndex == -1) {
+      return;
+    }
+    final pendingMessage = _pendingMessages[pendingIndex];
+    if (pendingMessage.status != ChatLocalMessageStatus.failed) {
+      return;
+    }
+
+    final eventId = widget.eventId.trim();
+    setState(() {
+      _updatePendingMessageStatus(localId, ChatLocalMessageStatus.sending);
+    });
+
+    try {
+      final result = await EventActionsRepository.sendEventChatMessage(
+        eventId: eventId,
+        text: pendingMessage.text,
+        clientMessageId: pendingMessage.localId,
+        invoker: widget.sendMessageInvoker,
+      );
+      EventGroupChatRepository.rememberInboxEventId(eventId);
+      unawaited(_persistInboxEventId(eventId));
+      if (!mounted || widget.eventId.trim() != eventId) {
+        return;
+      }
+      setState(() {
+        _updatePendingMessageStatus(
+          localId,
+          ChatLocalMessageStatus.sent,
+          serverMessageId: result.messageId,
+        );
+      });
+    } catch (error) {
+      if (!mounted || widget.eventId.trim() != eventId) {
+        return;
+      }
+      setState(() {
+        _updatePendingMessageStatus(localId, ChatLocalMessageStatus.failed);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          key: eventGroupChatSendErrorSnackBarKey,
+          content: Text(eventActionFailureMessage(context, error)),
+        ),
+      );
+      debugPrint(
+        'EventGroupChatWidget: failed to retry message for '
+        '$eventId: $error',
+      );
+    }
+  }
+
+  void _updatePendingMessageStatus(
+    String localId,
+    ChatLocalMessageStatus status, {
+    String? serverMessageId,
+  }) {
+    final pendingIndex = _pendingMessages.indexWhere(
+      (message) => message.localId == localId,
+    );
+    if (pendingIndex == -1) {
+      return;
+    }
+    _pendingMessages[pendingIndex] = _pendingMessages[pendingIndex].copyWith(
+      serverMessageId: serverMessageId,
+      status: status,
+    );
   }
 
   _PendingEventChatMessage _createPendingMessage(String text) {
@@ -510,6 +587,10 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
                     onReportPressed: message.record == null
                         ? null
                         : () => _showReportMessageDialog(message.record!),
+                    onRetryPressed:
+                        message.localStatus == ChatLocalMessageStatus.failed
+                            ? () => _retryPendingMessage(message.id)
+                            : null,
                   );
                 },
               );
@@ -533,8 +614,8 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
         .where((id) => id.trim().isNotEmpty)
         .toSet();
     final visiblePendingMessages = _pendingMessages.where((message) {
-      final serverMessageId = message.serverMessageId;
-      return serverMessageId == null || !recordIds.contains(serverMessageId);
+      final confirmedMessageId = message.serverMessageId ?? message.localId;
+      return !recordIds.contains(confirmedMessageId);
     });
 
     return <_EventGroupChatDisplayMessage>[
@@ -561,8 +642,8 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
     }
 
     final hasConfirmedPending = _pendingMessages.any((message) {
-      final serverMessageId = message.serverMessageId;
-      return serverMessageId != null && recordIds.contains(serverMessageId);
+      final confirmedMessageId = message.serverMessageId ?? message.localId;
+      return recordIds.contains(confirmedMessageId);
     });
     if (!hasConfirmedPending) {
       return;
@@ -574,8 +655,8 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
       }
       setState(() {
         _pendingMessages.removeWhere((message) {
-          final serverMessageId = message.serverMessageId;
-          return serverMessageId != null && recordIds.contains(serverMessageId);
+          final confirmedMessageId = message.serverMessageId ?? message.localId;
+          return recordIds.contains(confirmedMessageId);
         });
       });
     });
@@ -994,10 +1075,12 @@ class _EventGroupChatMessageBubble extends StatelessWidget {
   const _EventGroupChatMessageBubble({
     required this.message,
     required this.onReportPressed,
+    required this.onRetryPressed,
   });
 
   final _EventGroupChatDisplayMessage message;
   final VoidCallback? onReportPressed;
+  final VoidCallback? onRetryPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -1079,9 +1162,22 @@ class _EventGroupChatMessageBubble extends StatelessWidget {
             const SizedBox(height: 4),
             Align(
               alignment: AlignmentDirectional.centerEnd,
-              child: ChatLocalMessageStatusIcon(
-                key: eventGroupChatMessageLocalStatusKey(messageId),
-                status: message.localStatus!,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ChatLocalMessageStatusIcon(
+                    key: eventGroupChatMessageLocalStatusKey(messageId),
+                    status: message.localStatus!,
+                  ),
+                  if (message.localStatus == ChatLocalMessageStatus.failed &&
+                      onRetryPressed != null) ...[
+                    const SizedBox(width: ExpatlioDesign.space4),
+                    _EventGroupChatRetryButton(
+                      key: eventGroupChatMessageRetryButtonKey(messageId),
+                      onPressed: onRetryPressed!,
+                    ),
+                  ],
+                ],
               ),
             ),
           ],
@@ -1164,6 +1260,43 @@ class _EventGroupChatMessageBubble extends StatelessWidget {
     return FFLocalizations.of(context).getVariableText(
       ruText: 'Участник',
       enText: 'Participant',
+    );
+  }
+}
+
+class _EventGroupChatRetryButton extends StatelessWidget {
+  const _EventGroupChatRetryButton({
+    super.key,
+    required this.onPressed,
+  });
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.compact,
+        padding: const EdgeInsetsDirectional.symmetric(
+          horizontal: ExpatlioDesign.space4,
+          vertical: 2.0,
+        ),
+      ),
+      child: Text(
+        FFLocalizations.of(context).getVariableText(
+          ruText: 'Повторить',
+          enText: 'Retry',
+        ),
+        style: ExpatlioDesign.textStyle(
+          context,
+          color: ExpatlioDesign.danger,
+          size: 11,
+          weight: FontWeight.w600,
+        ),
+      ),
     );
   }
 }

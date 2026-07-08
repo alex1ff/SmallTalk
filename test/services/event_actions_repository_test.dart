@@ -227,6 +227,7 @@ void main() {
       final result = await EventActionsRepository.sendEventChatMessage(
         eventId: ' event-1 ',
         text: '  Всем привет!  ',
+        clientMessageId: ' client-message-1 ',
         invoker: (calledFunctionName, calledPayload) async {
           functionName = calledFunctionName;
           payload = calledPayload;
@@ -241,6 +242,7 @@ void main() {
       expect(payload, <String, dynamic>{
         'eventId': 'event-1',
         'text': '  Всем привет!  ',
+        'clientMessageId': 'client-message-1',
       });
       expect(result.messageId, 'message-1');
       expect(result.createdAt, DateTime.parse('2026-06-14T12:03:00Z'));

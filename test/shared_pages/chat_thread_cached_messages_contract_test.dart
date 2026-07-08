@@ -46,6 +46,10 @@ void main() {
     expect(source, contains('localStatus: message.status'));
     expect(source, contains('_isSending = false;'));
     expect(source, contains('ChatLocalMessageStatusIcon'));
+    expect(source, contains('_retryPendingMessage'));
+    expect(source, contains('_buildRetryMessageButton'));
+    expect(source, contains('ruText: \'Повторить\''));
+    expect(source, contains('enText: \'Retry\''));
     expect(
         source, contains('MessagesRecord.createDoc(conversation.reference)'));
     expect(source, contains('messageRef.set('));

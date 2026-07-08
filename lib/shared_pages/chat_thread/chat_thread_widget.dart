@@ -502,6 +502,97 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     }
   }
 
+  Future<void> _retryPendingMessage(
+    ConversationsRecord conversation,
+    _PendingChatMessage pendingMessage,
+  ) async {
+    final currentRef = currentUserReference;
+    final currentUid = currentUserUid;
+    if (currentRef == null ||
+        currentUid.isEmpty ||
+        _isSending ||
+        pendingMessage.status != ChatLocalMessageStatus.failed) {
+      return;
+    }
+
+    final conversationPath = conversation.reference.path;
+    setState(() {
+      _isSending = true;
+      _updatePendingMessageStatus(
+        pendingMessage.localId,
+        ChatLocalMessageStatus.sending,
+      );
+    });
+
+    try {
+      await pendingMessage.messageRef.set(
+        mapToFirestore(
+          <String, dynamic>{
+            'senderId': currentUid,
+            'senderRef': currentRef,
+            'type': kConversationMessageTypeText,
+            'text': pendingMessage.text,
+            'createdAt': FieldValue.serverTimestamp(),
+          },
+        ),
+      );
+      if (!mounted || widget.conversationRef?.path != conversationPath) {
+        return;
+      }
+      setState(() {
+        _updatePendingMessageStatus(
+          pendingMessage.localId,
+          ChatLocalMessageStatus.sent,
+        );
+      });
+    } catch (error) {
+      if (!mounted || widget.conversationRef?.path != conversationPath) {
+        return;
+      }
+      setState(() {
+        _updatePendingMessageStatus(
+          pendingMessage.localId,
+          ChatLocalMessageStatus.failed,
+        );
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            FFLocalizations.of(context).getVariableText(
+              ruText: 'Не удалось отправить сообщение.',
+              enText: 'Unable to send message.',
+            ),
+          ),
+        ),
+      );
+      debugPrint(
+        'Failed to retry chat message for ${conversation.reference.path}: '
+        '$error',
+      );
+    } finally {
+      if (mounted && widget.conversationRef?.path == conversationPath) {
+        setState(() {
+          _isSending = false;
+        });
+      }
+    }
+  }
+
+  void _updatePendingMessageStatus(
+    String localId,
+    ChatLocalMessageStatus status,
+  ) {
+    final pendingIndex = _pendingMessages.indexWhere(
+      (message) => message.localId == localId,
+    );
+    if (pendingIndex == -1) {
+      return;
+    }
+    _pendingMessages[pendingIndex] = _pendingMessages[pendingIndex].copyWith(
+      status: status,
+    );
+  }
+
   _PendingChatMessage _createPendingMessage({
     required DocumentReference messageRef,
     required String senderId,
@@ -833,6 +924,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
 
   Widget _buildPendingMessageBubble(
     BuildContext context, {
+    required ConversationsRecord conversation,
     required _PendingChatMessage message,
   }) {
     return _buildTextMessageBubble(
@@ -842,6 +934,9 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
       isCurrentUser: true,
       isReadByPartner: false,
       localStatus: message.status,
+      onRetry: message.status == ChatLocalMessageStatus.failed
+          ? () => _retryPendingMessage(conversation, message)
+          : null,
     );
   }
 
@@ -852,6 +947,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     required bool isCurrentUser,
     required bool isReadByPartner,
     ChatLocalMessageStatus? localStatus,
+    VoidCallback? onRetry,
   }) {
     final bubbleColor = chatMessageBubbleColor(isCurrentUser: isCurrentUser);
     final textColor = chatMessageTextColor();
@@ -940,6 +1036,11 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                               : ChatLocalMessageStatusIcon(
                                   status: localStatus,
                                 ),
+                          if (localStatus == ChatLocalMessageStatus.failed &&
+                              onRetry != null) ...[
+                            const SizedBox(width: ExpatlioDesign.space4),
+                            _buildRetryMessageButton(context, onRetry),
+                          ],
                         ],
                       ],
                     ),
@@ -949,6 +1050,37 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildRetryMessageButton(
+    BuildContext context,
+    VoidCallback onRetry,
+  ) {
+    return TextButton(
+      onPressed: onRetry,
+      style: TextButton.styleFrom(
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.compact,
+        padding: const EdgeInsetsDirectional.symmetric(
+          horizontal: ExpatlioDesign.space4,
+          vertical: 2.0,
+        ),
+      ),
+      child: Text(
+        FFLocalizations.of(context).getVariableText(
+          ruText: 'Повторить',
+          enText: 'Retry',
+        ),
+        style: FlutterFlowTheme.of(context).bodyMedium.override(
+              fontFamily: 'sf pro display',
+              color: ExpatlioDesign.danger,
+              fontSize: 11.0,
+              letterSpacing: 0.0,
+              fontWeight: FontWeight.w600,
+            ),
+      ),
     );
   }
 
@@ -1456,6 +1588,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                               itemChildren.add(
                                 _buildPendingMessageBubble(
                                   context,
+                                  conversation: conversation,
                                   message: pendingMessage,
                                 ),
                               );

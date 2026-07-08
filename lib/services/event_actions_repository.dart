@@ -312,13 +312,22 @@ class EventActionsRepository {
   static Future<SendEventChatMessageResult> sendEventChatMessage({
     required String eventId,
     required String text,
+    String? clientMessageId,
     EventCallableInvoker? invoker,
   }) async {
+    final normalizedClientMessageId = clientMessageId == null
+        ? null
+        : normalizeEventActionId(
+            clientMessageId,
+            fieldName: 'clientMessageId',
+          );
     final responseData = await _callEventFunction(
       sendEventChatMessageFunctionName,
       <String, dynamic>{
         'eventId': normalizeEventActionId(eventId),
         'text': text,
+        if (normalizedClientMessageId != null)
+          'clientMessageId': normalizedClientMessageId,
       },
       invoker: invoker,
     );
