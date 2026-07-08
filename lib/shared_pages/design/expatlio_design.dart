@@ -111,6 +111,14 @@ class ExpatlioDesign {
   static const EdgeInsetsDirectional formGroupPadding =
       EdgeInsetsDirectional.fromSTEB(space16, space16, space16, space20);
 
+  static double bottomBarSafePadding(BuildContext context) {
+    final mediaQuery = MediaQuery.of(context);
+    if (mediaQuery.viewInsets.bottom > 0) {
+      return 0.0;
+    }
+    return mediaQuery.viewPadding.bottom;
+  }
+
   static const List<BoxShadow> cardShadow = [
     BoxShadow(
       color: Color(0x0A000000),

@@ -1125,6 +1125,57 @@ void main() {
     );
   });
 
+  testWidgets('does not keep bottom safe area while keyboard is open',
+      (tester) async {
+    Widget buildChatWithMediaQuery({required EdgeInsets viewInsets}) {
+      return _buildTestApp(
+        home: MediaQuery(
+          data: MediaQueryData(
+            viewPadding: const EdgeInsets.only(bottom: 34),
+            padding: const EdgeInsets.only(bottom: 34),
+            viewInsets: viewInsets,
+          ),
+          child: EventGroupChatWidget(
+            eventId: 'event-123',
+            chatStream: _allowedChatStream(),
+            accessStateInvoker: _accessStateInvoker(),
+            messagesStream: (_) =>
+                Stream.value(const <EventChatMessagesRecord>[]),
+            sendMessageInvoker: (_, __) async => <String, dynamic>{
+              'messageId': 'message-1',
+              'createdAt': '2026-06-14T12:00:00.000Z',
+            },
+          ),
+        ),
+      );
+    }
+
+    await tester.pumpWidget(
+      buildChatWithMediaQuery(viewInsets: EdgeInsets.zero),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester.getSize(find.byKey(eventGroupChatComposerKey)).height,
+      ExpatlioDesign.space12 +
+          ExpatlioDesign.formFieldHeight +
+          ExpatlioDesign.space12 +
+          34,
+    );
+
+    await tester.pumpWidget(
+      buildChatWithMediaQuery(
+        viewInsets: const EdgeInsets.only(bottom: 320),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester.getSize(find.byKey(eventGroupChatComposerKey)).height,
+      ExpatlioDesign.space12 +
+          ExpatlioDesign.formFieldHeight +
+          ExpatlioDesign.space12,
+    );
+  });
+
   testWidgets('keeps composer active while send is pending', (tester) async {
     currentUser = _TestAuthUser('uid-1', displayName: 'Марко');
     final sendCompleter = Completer<Object?>();

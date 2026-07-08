@@ -1646,11 +1646,12 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                     ),
                   ),
                   child: Padding(
-                    padding: const EdgeInsetsDirectional.fromSTEB(
+                    padding: EdgeInsetsDirectional.fromSTEB(
                       ExpatlioDesign.pagePadding,
                       ExpatlioDesign.space12,
                       ExpatlioDesign.pagePadding,
-                      ExpatlioDesign.space32,
+                      ExpatlioDesign.space12 +
+                          ExpatlioDesign.bottomBarSafePadding(context),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.max,

@@ -2118,12 +2118,14 @@ class _EventCreateSubmitBar extends StatelessWidget {
       ),
       child: SafeArea(
         top: false,
+        bottom: false,
         child: Padding(
-          padding: const EdgeInsetsDirectional.fromSTEB(
+          padding: EdgeInsetsDirectional.fromSTEB(
             ExpatlioDesign.pagePadding,
             ExpatlioDesign.space16,
             ExpatlioDesign.pagePadding,
-            ExpatlioDesign.space16,
+            ExpatlioDesign.space16 +
+                ExpatlioDesign.bottomBarSafePadding(context),
           ),
           child: Align(
             alignment: AlignmentDirectional.center,

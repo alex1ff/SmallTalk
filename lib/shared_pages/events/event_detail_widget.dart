@@ -1629,12 +1629,14 @@ class _EventDetailBottomActionBar extends StatelessWidget {
       ),
       child: SafeArea(
         top: false,
+        bottom: false,
         child: Padding(
-          padding: const EdgeInsetsDirectional.fromSTEB(
+          padding: EdgeInsetsDirectional.fromSTEB(
             _eventDetailContentHorizontalPadding,
             ExpatlioDesign.space12,
             _eventDetailContentHorizontalPadding,
-            ExpatlioDesign.space12,
+            ExpatlioDesign.space12 +
+                ExpatlioDesign.bottomBarSafePadding(context),
           ),
           child: Align(
             alignment: AlignmentDirectional.center,

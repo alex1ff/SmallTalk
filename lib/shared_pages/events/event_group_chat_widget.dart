@@ -33,6 +33,8 @@ const ValueKey<String> eventGroupChatMessageInputKey =
     ValueKey<String>('event_group_chat_message_input');
 const ValueKey<String> eventGroupChatSendButtonKey =
     ValueKey<String>('event_group_chat_send_button');
+const ValueKey<String> eventGroupChatComposerKey =
+    ValueKey<String>('event_group_chat_composer');
 const ValueKey<String> eventGroupChatSendErrorSnackBarKey =
     ValueKey<String>('event_group_chat_send_error_snack_bar');
 const ValueKey<String> eventGroupChatReportSuccessSnackBarKey =
@@ -961,6 +963,7 @@ class _EventGroupChatComposer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
+      key: eventGroupChatComposerKey,
       decoration: const BoxDecoration(
         color: ExpatlioDesign.background,
         border: Border(
@@ -969,12 +972,14 @@ class _EventGroupChatComposer extends StatelessWidget {
       ),
       child: SafeArea(
         top: false,
+        bottom: false,
         child: Padding(
-          padding: const EdgeInsetsDirectional.fromSTEB(
+          padding: EdgeInsetsDirectional.fromSTEB(
             ExpatlioDesign.space16,
             ExpatlioDesign.space12,
             ExpatlioDesign.space16,
-            ExpatlioDesign.space12,
+            ExpatlioDesign.space12 +
+                ExpatlioDesign.bottomBarSafePadding(context),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
