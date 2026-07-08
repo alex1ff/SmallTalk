@@ -24,6 +24,8 @@ const double _favoriteChatTimestampWidth = 74.0;
 const double _favoriteChatRowContentHeight = 76.0;
 const double _favoriteChatRowHeight = _favoriteChatRowContentHeight + 1.0;
 const double _favoriteChatUnreadSlotHeight = 30.0;
+const double _favoriteChatUnreadBadgeSize = 30.0;
+const double _favoriteChatDividerThickness = 1.0;
 const Color _favoriteChatDividerColor = Color(0xFFEBEBEB);
 const Color _favoriteChatDeleteBackground = Color(0xFFFF3B30);
 
@@ -156,6 +158,10 @@ bool shouldShowFavoriteMessagesLoadError({
 }
 
 double favoriteChatRowHeight() => _favoriteChatRowHeight;
+double favoriteChatAvatarSize() => _favoriteChatAvatarSize;
+double favoriteChatTimestampWidth() => _favoriteChatTimestampWidth;
+double favoriteChatUnreadBadgeSize() => _favoriteChatUnreadBadgeSize;
+double favoriteChatDividerThickness() => _favoriteChatDividerThickness;
 
 class FavoriteWidget extends StatefulWidget {
   const FavoriteWidget({super.key});
@@ -1097,8 +1103,8 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
         end: ExpatlioDesign.pagePadding,
       ),
       child: Divider(
-        height: 1.0,
-        thickness: 1.0,
+        height: _favoriteChatDividerThickness,
+        thickness: _favoriteChatDividerThickness,
         color: _favoriteChatDividerColor,
       ),
     );
@@ -1630,14 +1636,9 @@ class _UnreadCountBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final label = count > 99 ? '99+' : count.toString();
-    final badgeDiameter = switch (label.length) {
-      1 => 20.0,
-      2 => 24.0,
-      _ => 30.0,
-    };
 
     return SizedBox.square(
-      dimension: badgeDiameter,
+      dimension: _favoriteChatUnreadBadgeSize,
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: FlutterFlowTheme.of(context).primary,
