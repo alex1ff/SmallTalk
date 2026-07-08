@@ -138,6 +138,20 @@ Set<String> resolveFavoriteEffectiveHiddenChatKeys({
   return keys;
 }
 
+bool shouldShowFavoriteMessagesLoadError({
+  required bool conversationsLoadFailed,
+  required bool eventChatsLoadFailed,
+  required bool conversationsHasLoaded,
+  required bool eventChatsHasLoaded,
+  required bool inboxIsEmpty,
+}) {
+  if (!inboxIsEmpty || (!conversationsLoadFailed && !eventChatsLoadFailed)) {
+    return false;
+  }
+
+  return !conversationsHasLoaded || !eventChatsHasLoaded;
+}
+
 class FavoriteWidget extends StatefulWidget {
   const FavoriteWidget({super.key});
 
@@ -1248,9 +1262,11 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     required bool conversationsLoading,
     required bool conversationsLoadFailed,
     required bool conversationsAccessDenied,
+    required bool conversationsHasLoaded,
     required List<ConversationsRecord> conversations,
     required bool eventChatsLoading,
     required bool eventChatsLoadFailed,
+    required bool eventChatsHasLoaded,
     required List<EventChatsRecord> eventChats,
     required List<DocumentReference> friends,
     required Set<String> hiddenChatKeys,
@@ -1263,12 +1279,13 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     );
     final messagesInitialLoading = conversationsLoading || eventChatsLoading;
 
-    if (messagesInitialLoading && inboxItems.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    if ((conversationsLoadFailed || eventChatsLoadFailed) &&
-        inboxItems.isEmpty) {
+    if (shouldShowFavoriteMessagesLoadError(
+      conversationsLoadFailed: conversationsLoadFailed,
+      eventChatsLoadFailed: eventChatsLoadFailed,
+      conversationsHasLoaded: conversationsHasLoaded,
+      eventChatsHasLoaded: eventChatsHasLoaded,
+      inboxIsEmpty: inboxItems.isEmpty,
+    )) {
       return _buildInlineNotice(
         context,
         text: conversationsAccessDenied
@@ -1281,6 +1298,10 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                 enText: 'Could not load messages. Please try again later.',
               ),
       );
+    }
+
+    if (messagesInitialLoading && inboxItems.isEmpty) {
+      return const SizedBox.shrink();
     }
 
     if (inboxItems.isEmpty) {
@@ -1481,6 +1502,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
 
                     final conversationsState =
                         conversationsResolution.displayState;
+                    final conversationsHasLoaded = conversationsState != null;
                     final conversationsError = conversationsSnapshot.error;
                     final conversationsLoading =
                         conversationsResolution.isInitialLoading;
@@ -1507,6 +1529,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
 
                         final eventChatsState =
                             eventChatsResolution.displayState;
+                        final eventChatsHasLoaded = eventChatsState != null;
                         final eventChatsLoading =
                             eventChatsResolution.isInitialLoading;
                         final eventChatsLoadFailed =
@@ -1549,10 +1572,14 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                                               conversationsLoadFailed,
                                           conversationsAccessDenied:
                                               conversationsAccessDenied,
+                                          conversationsHasLoaded:
+                                              conversationsHasLoaded,
                                           conversations: conversations,
                                           eventChatsLoading: eventChatsLoading,
                                           eventChatsLoadFailed:
                                               eventChatsLoadFailed,
+                                          eventChatsHasLoaded:
+                                              eventChatsHasLoaded,
                                           eventChats: eventChats,
                                           friends: friends,
                                           hiddenChatKeys: hiddenChatKeys,
