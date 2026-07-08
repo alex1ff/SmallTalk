@@ -265,6 +265,7 @@ class _EventListWidgetState extends State<EventListWidget> {
   Future<List<EventListCardViewModel>>? _eventCardsFuture;
   List<EventListCardViewModel>? _eventCardsFutureInitialCards;
   _EventListLoadedCards? _lastLoadedCards;
+  int _eventListLoadGeneration = 0;
 
   @override
   void initState() {
@@ -295,10 +296,7 @@ class _EventListWidgetState extends State<EventListWidget> {
             widget.currentUserParticipantLoader ||
         oldWidget.activeParticipantsLoader != widget.activeParticipantsLoader ||
         oldWidget.nowUtcProvider != widget.nowUtcProvider) {
-      _eventListLoadKey = null;
-      _eventCardsFuture = null;
-      _eventCardsFutureInitialCards = null;
-      _lastLoadedCards = null;
+      _resetEventCardsLoadState(clearLastLoadedCards: true);
     }
   }
 
@@ -661,12 +659,11 @@ class _EventListWidgetState extends State<EventListWidget> {
     );
     if (_eventListLoadKey != key || _eventCardsFuture == null) {
       _eventListLoadKey = key;
-      final cachedCards = viewerUserId.isEmpty
-          ? _eventListCardsCache.read(
-              key,
-              nowUtc: normalizedNowUtc,
-            )
-          : null;
+      final loadGeneration = _eventListLoadGeneration;
+      final cachedCards = _eventListCardsCache.read(
+        key,
+        nowUtc: normalizedNowUtc,
+      );
       if (cachedCards != null) {
         _rememberLoadedCards(key, cachedCards);
       }
@@ -679,10 +676,12 @@ class _EventListWidgetState extends State<EventListWidget> {
                   nowUtc: normalizedNowUtc,
                   selectedLevel: _selectedLevel,
                   currentUserId: viewerUserId,
+                  loadGeneration: loadGeneration,
                 )
               : Future.value(cachedCards))
           .then((cards) {
-        if (_eventListLoadKey == key) {
+        if (_eventListLoadKey == key &&
+            _eventListLoadGeneration == loadGeneration) {
           _rememberLoadedCards(key, cards);
         }
         return cards;
@@ -723,10 +722,18 @@ class _EventListWidgetState extends State<EventListWidget> {
       if (key != null) {
         _eventListCardsCache.remove(key);
       }
-      _eventListLoadKey = null;
-      _eventCardsFuture = null;
-      _eventCardsFutureInitialCards = null;
+      _resetEventCardsLoadState(clearLastLoadedCards: false);
     });
+  }
+
+  void _resetEventCardsLoadState({required bool clearLastLoadedCards}) {
+    _eventListLoadGeneration += 1;
+    _eventListLoadKey = null;
+    _eventCardsFuture = null;
+    _eventCardsFutureInitialCards = null;
+    if (clearLastLoadedCards) {
+      _lastLoadedCards = null;
+    }
   }
 
   Future<List<EventListCardViewModel>> _loadEventCards({
@@ -736,6 +743,7 @@ class _EventListWidgetState extends State<EventListWidget> {
     required DateTime nowUtc,
     required String? selectedLevel,
     required String currentUserId,
+    required int loadGeneration,
   }) async {
     final page = localDateRange == null
         ? await EventListRepository.loadLevelFilteredActiveEventPage(
@@ -783,7 +791,7 @@ class _EventListWidgetState extends State<EventListWidget> {
         )
         .whereType<EventListCardViewModel>()
         .toList(growable: false);
-    if (cards.isNotEmpty && currentUserId.isEmpty) {
+    if (cards.isNotEmpty && _eventListLoadGeneration == loadGeneration) {
       _eventListCardsCache.write(
         key,
         cards,
@@ -1079,10 +1087,23 @@ class _EventListWidgetState extends State<EventListWidget> {
     if (eventId.isEmpty) {
       return;
     }
-    context.pushNamed(
+    final detailNavigation = context.pushNamed(
       EventDetailWidget.routeName,
       pathParameters: <String, String>{'eventId': eventId},
     );
+    unawaited(
+      detailNavigation.whenComplete(_invalidateEventCardsAfterDetailReturn),
+    );
+  }
+
+  void _invalidateEventCardsAfterDetailReturn() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _eventListCardsCache.clear();
+      _resetEventCardsLoadState(clearLastLoadedCards: true);
+    });
   }
 
   void _openEventCardChat({

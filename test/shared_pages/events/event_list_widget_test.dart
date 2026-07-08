@@ -914,6 +914,10 @@ void main() {
         null,
       );
     };
+    final EventListCurrentUserParticipantLoader currentUserParticipantLoader =
+        (_, __) async => null;
+    final EventListActiveParticipantsLoader activeParticipantsLoader =
+        (_) async => const <EventParticipantsRecord>[];
 
     Widget buildList() => _buildTestApp(
           home: EventListWidget(
@@ -921,6 +925,8 @@ void main() {
             languageCatalogOverride: _languageCatalog,
             nowUtcProvider: () => nowUtc,
             eventPageLoader: pageLoader,
+            currentUserParticipantLoader: currentUserParticipantLoader,
+            activeParticipantsLoader: activeParticipantsLoader,
           ),
         );
 
@@ -937,6 +943,198 @@ void main() {
 
     expect(calls, 1);
     expect(find.text('Cached loaded event'), findsOneWidget);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+  });
+
+  testWidgets('reuses cached event cards for an authenticated user',
+      (tester) async {
+    var calls = 0;
+    currentUser = _TestAuthUser('authenticated-event-cache-user');
+    currentUserDocument = _userFixture(
+      uid: 'authenticated-event-cache-user',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+    final nowUtc = DateTime.utc(2035, 6, 14, 9);
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) async {
+      calls += 1;
+      return FFFirestorePage<EventsRecord>(
+        [
+          _eventsRecordFixture(
+            'authenticated-cached-event',
+            title: 'Authenticated cached event',
+            startsAt: DateTime.utc(2035, 6, 14, 15),
+          ),
+        ],
+        null,
+        null,
+      );
+    };
+    final EventListCurrentUserParticipantLoader currentUserParticipantLoader =
+        (_, __) async => null;
+    final EventListActiveParticipantsLoader activeParticipantsLoader =
+        (_) async => const <EventParticipantsRecord>[];
+
+    Widget buildList() => _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            nowUtcProvider: () => nowUtc,
+            eventPageLoader: pageLoader,
+            currentUserParticipantLoader: currentUserParticipantLoader,
+            activeParticipantsLoader: activeParticipantsLoader,
+          ),
+        );
+
+    await tester.pumpWidget(buildList());
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+    expect(find.text('Authenticated cached event'), findsOneWidget);
+
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(buildList());
+
+    expect(calls, 1);
+    expect(find.text('Authenticated cached event'), findsOneWidget);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+  });
+
+  testWidgets('refreshes authenticated event cache after returning from detail',
+      (tester) async {
+    const joinAndReturnButtonKey = ValueKey<String>('join_and_return');
+    var calls = 0;
+    var joined = false;
+    currentUser = _TestAuthUser('authenticated-detail-return-user');
+    final nowUtc = DateTime.utc(2035, 6, 14, 9);
+    final secondPageCompleter = Completer<FFFirestorePage<EventsRecord>>();
+
+    EventParticipantsRecord currentParticipant(DocumentReference eventRef) {
+      return EventParticipantsRecord.getDocumentFromData(
+        createEventParticipantsRecordData(
+          userId: 'authenticated-detail-return-user',
+          displayName: 'Student',
+          status: eventStatusActive,
+          joinedAt: DateTime.utc(2035, 6, 14, 10),
+        ),
+        EventParticipantsRecord.createDoc(
+          eventRef,
+          id: 'authenticated-detail-return-user',
+        ),
+      );
+    }
+
+    FFFirestorePage<EventsRecord> eventPage() {
+      return FFFirestorePage<EventsRecord>(
+        [
+          _eventsRecordFixture(
+            'detail-return-cache-event',
+            title: 'Detail return cache event',
+            startsAt: DateTime.utc(2035, 6, 14, 15),
+          ),
+        ],
+        null,
+        null,
+      );
+    }
+
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) async {
+      calls += 1;
+      if (calls == 2) {
+        return secondPageCompleter.future;
+      }
+      return eventPage();
+    };
+    final EventListCurrentUserParticipantLoader currentUserParticipantLoader =
+        (eventRef, userId) async {
+      return joined ? currentParticipant(eventRef) : null;
+    };
+    final EventListActiveParticipantsLoader activeParticipantsLoader =
+        (eventRef) async {
+      return joined
+          ? <EventParticipantsRecord>[currentParticipant(eventRef)]
+          : const <EventParticipantsRecord>[];
+    };
+
+    final router = GoRouter(
+      initialLocation: EventListWidget.routePath,
+      routes: [
+        GoRoute(
+          name: EventListWidget.routeName,
+          path: EventListWidget.routePath,
+          builder: (context, state) => EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: _selectedCityFixture(),
+            nowUtcProvider: () => nowUtc,
+            eventPageLoader: pageLoader,
+            currentUserParticipantLoader: currentUserParticipantLoader,
+            activeParticipantsLoader: activeParticipantsLoader,
+          ),
+        ),
+        GoRoute(
+          name: EventDetailWidget.routeName,
+          path: EventDetailWidget.routePath,
+          builder: (context, state) => Scaffold(
+            body: Center(
+              child: TextButton(
+                key: joinAndReturnButtonKey,
+                onPressed: () {
+                  joined = true;
+                  context.pop();
+                },
+                child: const Text('Join and return'),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildRouterTestApp(router));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+    expect(find.text('Detail return cache event'), findsOneWidget);
+    expect(find.text('Присоединиться'), findsOneWidget);
+
+    await tester.tap(find.text('Detail return cache event'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(joinAndReturnButtonKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(calls, 2);
+    expect(find.text('Присоединиться'), findsNothing);
+    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
+
+    secondPageCompleter.complete(eventPage());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Detail return cache event'), findsOneWidget);
+    expect(find.text('Вы участвуете'), findsOneWidget);
     expect(find.byKey(eventListLoadingStateKey), findsNothing);
   });
 
@@ -977,6 +1175,10 @@ void main() {
         null,
       );
     };
+    final EventListCurrentUserParticipantLoader currentUserParticipantLoader =
+        (_, __) async => null;
+    final EventListActiveParticipantsLoader activeParticipantsLoader =
+        (_) async => const <EventParticipantsRecord>[];
 
     await tester.pumpWidget(
       _buildTestApp(
@@ -985,6 +1187,8 @@ void main() {
           languageCatalogOverride: _languageCatalog,
           nowUtcProvider: () => nowUtc,
           eventPageLoader: pageLoader,
+          currentUserParticipantLoader: currentUserParticipantLoader,
+          activeParticipantsLoader: activeParticipantsLoader,
         ),
       ),
     );
@@ -1006,6 +1210,157 @@ void main() {
     expect(calls, 2);
     expect(find.text('Default cached filter event'), findsOneWidget);
     expect(find.text('Today loaded filter event'), findsNothing);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+  });
+
+  testWidgets('keeps event cache entries separate by level filter',
+      (tester) async {
+    var calls = 0;
+    currentUser = _TestAuthUser('authenticated-level-cache-user');
+    currentUserDocument = _userFixture(
+      uid: 'authenticated-level-cache-user',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+    final nowUtc = DateTime.utc(2035, 6, 14, 9);
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) async {
+      calls += 1;
+      return FFFirestorePage<EventsRecord>(
+        [
+          _eventsRecordFixture(
+            'level-cache-event-$calls',
+            title: calls == 1
+                ? 'Default level cache event'
+                : 'B2 level cache event',
+            startsAt: DateTime.utc(2035, 6, 14, 15),
+          ),
+        ],
+        null,
+        null,
+      );
+    };
+    final EventListCurrentUserParticipantLoader currentUserParticipantLoader =
+        (_, __) async => null;
+    final EventListActiveParticipantsLoader activeParticipantsLoader =
+        (_) async => const <EventParticipantsRecord>[];
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          nowUtcProvider: () => nowUtc,
+          eventPageLoader: pageLoader,
+          currentUserParticipantLoader: currentUserParticipantLoader,
+          activeParticipantsLoader: activeParticipantsLoader,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+    expect(find.text('Default level cache event'), findsOneWidget);
+
+    await tester.tap(_levelFilterFinder('B2'));
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(find.text('B2 level cache event'), findsOneWidget);
+
+    await tester.tap(_levelFilterFinder('B2'));
+    await tester.pump();
+
+    expect(calls, 2);
+    expect(find.text('Default level cache event'), findsOneWidget);
+    expect(find.text('B2 level cache event'), findsNothing);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+  });
+
+  testWidgets('keeps event cache entries separate by city', (tester) async {
+    var calls = 0;
+    final nowUtc = DateTime.utc(2035, 6, 14, 9);
+    final moscowCity = _selectedCityFixture();
+    final parisCity = EventSelectedCity(
+      city: _cityFixture(
+        countryCode: 'FR',
+        cityKey: 'paris',
+        cityNameRu: 'Париж',
+        cityNameEn: 'Paris',
+        cityDisplayContext: 'France',
+      ),
+      source: EventCitySelectionSource.manual,
+    );
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) async {
+      calls += 1;
+      return FFFirestorePage<EventsRecord>(
+        [
+          _eventsRecordFixture(
+            'city-cache-event-$calls',
+            title: calls == 1
+                ? 'Moscow cached city event'
+                : 'Paris loaded city event',
+            startsAt: DateTime.utc(2035, 6, 14, 15),
+          ),
+        ],
+        null,
+        null,
+      );
+    };
+
+    Widget buildList(EventSelectedCity selectedCity) => _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: selectedCity,
+            nowUtcProvider: () => nowUtc,
+            eventPageLoader: pageLoader,
+          ),
+        );
+
+    await tester.pumpWidget(buildList(moscowCity));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+    expect(find.text('Moscow cached city event'), findsOneWidget);
+
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(buildList(parisCity));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(find.text('Paris loaded city event'), findsOneWidget);
+
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(buildList(moscowCity));
+    await tester.pump();
+
+    expect(calls, 2);
+    expect(find.text('Moscow cached city event'), findsOneWidget);
+    expect(find.text('Paris loaded city event'), findsNothing);
     expect(find.byKey(eventListLoadingStateKey), findsNothing);
   });
 
