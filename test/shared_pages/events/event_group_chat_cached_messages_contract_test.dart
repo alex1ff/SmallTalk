@@ -27,6 +27,11 @@ void main() {
     expect(source, contains('ChatLocalMessageStatus.sent'));
     expect(source, contains('ChatLocalMessageStatus.failed'));
     expect(source, contains('ChatLocalMessageStatusIcon'));
+    expect(source, contains('eventGroupChatMessageItemKey'));
+    expect(
+        source, contains('key: eventGroupChatMessageItemKey(message.itemKey)'));
+    expect(source, contains('id: message.localId'));
+    expect(source, contains('itemKey: message.localId'));
     expect(source, contains('eventGroupChatMessageRetryButtonKey'));
     expect(source, contains('_retryPendingMessage'));
     expect(source, contains('ruText: \'Повторить\''));

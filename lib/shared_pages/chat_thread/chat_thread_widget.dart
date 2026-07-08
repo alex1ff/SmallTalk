@@ -88,6 +88,8 @@ class _ChatThreadDisplayMessage {
   final MessagesRecord? record;
   final _PendingChatMessage? pending;
 
+  String get itemKey => record?.reference.path ?? pending!.messageRef.path;
+
   DateTime? get createdAt => record?.createdAt ?? pending?.createdAt;
 }
 
@@ -1579,6 +1581,9 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                                 ),
                               );
                               return Column(
+                                key: ValueKey<String>(
+                                  'chat_thread_message_item_${displayMessage.itemKey}',
+                                ),
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: itemChildren,
                               );
@@ -1612,6 +1617,9 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                             }
 
                             return Column(
+                              key: ValueKey<String>(
+                                'chat_thread_message_item_${displayMessage.itemKey}',
+                              ),
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: itemChildren,
                             );

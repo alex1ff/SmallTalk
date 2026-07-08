@@ -56,6 +56,8 @@ void main() {
     expect(source, contains('_displayMessages(serverMessages)'));
     expect(source, contains('_buildPendingMessageBubble('));
     expect(source, contains('_ChatThreadDisplayMessage.pending'));
+    expect(source, contains('String get itemKey =>'));
+    expect(source, contains('chat_thread_message_item_'));
     expect(
         source, contains('_schedulePruneConfirmedPendingMessages(messages)'));
     expect(source, contains('messages == null && _pendingMessages.isEmpty'));

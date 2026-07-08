@@ -1062,6 +1062,12 @@ void main() {
     expect(payload?['text'], 'Всем привет!');
     expect(payload?['clientMessageId'], isA<String>());
     expect((payload?['clientMessageId'] as String).trim(), isNotEmpty);
+    expect(
+      find.byKey(
+        eventGroupChatMessageItemKey(payload?['clientMessageId'] as String),
+      ),
+      findsOneWidget,
+    );
     final input = tester.widget<TextFormField>(
       find.byKey(eventGroupChatMessageInputKey),
     );

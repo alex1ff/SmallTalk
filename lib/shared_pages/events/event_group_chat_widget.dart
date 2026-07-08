@@ -51,6 +51,9 @@ const ValueKey<String> eventGroupChatReportSubmitButtonKey =
 ValueKey<String> eventGroupChatMessageBubbleKey(String messageId) =>
     ValueKey<String>('event_group_chat_message_bubble_$messageId');
 
+ValueKey<String> eventGroupChatMessageItemKey(String messageId) =>
+    ValueKey<String>('event_group_chat_message_item_$messageId');
+
 ValueKey<String> eventGroupChatMessageSenderNameKey(String messageId) =>
     ValueKey<String>('event_group_chat_message_sender_name_$messageId');
 
@@ -583,6 +586,7 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
                 itemBuilder: (context, index) {
                   final message = messages[messages.length - 1 - index];
                   return _EventGroupChatMessageBubble(
+                    key: eventGroupChatMessageItemKey(message.itemKey),
                     message: message,
                     onReportPressed: message.record == null
                         ? null
@@ -723,6 +727,7 @@ class _PendingEventChatMessage {
 class _EventGroupChatDisplayMessage {
   const _EventGroupChatDisplayMessage._({
     required this.id,
+    required this.itemKey,
     required this.senderId,
     required this.senderDisplayName,
     required this.senderPhotoUrl,
@@ -739,6 +744,7 @@ class _EventGroupChatDisplayMessage {
   ) =>
       _EventGroupChatDisplayMessage._(
         id: record.reference.id,
+        itemKey: record.reference.id,
         senderId: record.senderId,
         senderDisplayName: record.senderDisplayName,
         senderPhotoUrl: record.senderPhotoUrl,
@@ -754,7 +760,8 @@ class _EventGroupChatDisplayMessage {
     _PendingEventChatMessage message,
   ) =>
       _EventGroupChatDisplayMessage._(
-        id: message.serverMessageId ?? message.localId,
+        id: message.localId,
+        itemKey: message.localId,
         senderId: message.senderId,
         senderDisplayName: message.senderDisplayName,
         senderPhotoUrl: message.senderPhotoUrl,
@@ -767,6 +774,7 @@ class _EventGroupChatDisplayMessage {
       );
 
   final String id;
+  final String itemKey;
   final String senderId;
   final String senderDisplayName;
   final String senderPhotoUrl;
@@ -1073,6 +1081,7 @@ class _EventGroupChatStateMessage extends StatelessWidget {
 
 class _EventGroupChatMessageBubble extends StatelessWidget {
   const _EventGroupChatMessageBubble({
+    super.key,
     required this.message,
     required this.onReportPressed,
     required this.onRetryPressed,
