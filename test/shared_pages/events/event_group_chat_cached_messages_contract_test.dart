@@ -19,6 +19,8 @@ void main() {
     expect(source, contains('messages == null || messages.isEmpty'));
     expect(source, contains('debugResetMessageCacheForTesting'));
     expect(
+        source, contains('snapshot.data ?? _cachedMessages(widget.eventId)'));
+    expect(
         source, contains('_rememberMessages(widget.eventId, messageRecords)'));
     expect(
       source,

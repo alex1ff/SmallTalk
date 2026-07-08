@@ -458,7 +458,9 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
                 );
               }
 
-              if (!snapshot.hasData) {
+              final messageRecords =
+                  snapshot.data ?? _cachedMessages(widget.eventId);
+              if (messageRecords == null) {
                 return const Center(
                   child: SizedBox.square(
                     key: eventGroupChatMessagesLoadingKey,
@@ -468,8 +470,8 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
                 );
               }
 
-              final messageRecords = snapshot.data!;
-              if (snapshot.connectionState != ConnectionState.waiting) {
+              if (snapshot.connectionState != ConnectionState.waiting &&
+                  snapshot.hasData) {
                 _rememberMessages(widget.eventId, messageRecords);
               }
               final messages = _displayMessages(messageRecords);

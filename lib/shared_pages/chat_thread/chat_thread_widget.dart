@@ -1071,7 +1071,9 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                           );
                         }
 
-                        if (!messagesSnapshot.hasData) {
+                        final messages = messagesSnapshot.data ??
+                            _cachedMessages(conversation.reference);
+                        if (messages == null) {
                           return Center(
                             child: SizedBox(
                               width: 50.0,
@@ -1084,9 +1086,9 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                           );
                         }
 
-                        final messages = messagesSnapshot.data!;
                         if (messagesSnapshot.connectionState !=
-                            ConnectionState.waiting) {
+                                ConnectionState.waiting &&
+                            messagesSnapshot.hasData) {
                           _rememberMessages(conversation.reference, messages);
                         }
                         _canLoadOlderMessages =

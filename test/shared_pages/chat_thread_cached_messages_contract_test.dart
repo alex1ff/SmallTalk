@@ -30,6 +30,8 @@ void main() {
     );
     expect(source, contains('messages == null || messages.isEmpty'));
     expect(source, contains('debugResetMessageCacheForTesting'));
+    expect(source, contains('messagesSnapshot.data ??'));
+    expect(source, contains('_cachedMessages(conversation.reference)'));
     expect(
       source,
       matches(
