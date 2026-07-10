@@ -11,6 +11,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:small_talk/auth/firebase_auth/auth_util.dart';
 import 'package:small_talk/backend/backend.dart';
+import 'package:small_talk/components/ux_refreshing_indicator_overlay.dart';
 import 'package:small_talk/flutter_flow/custom_icons.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/flutter_flow/nav/nav.dart';
@@ -483,6 +484,8 @@ void main() {
     final card = find.byKey(eventListCardShellKey);
     expect(card, findsOneWidget);
     expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
+    expect(find.byKey(eventListRefreshingIndicatorKey), findsNothing);
+    expect(find.byType(UxRefreshingIndicatorPill), findsNothing);
     expect(find.byKey(eventListCardHeaderKey), findsOneWidget);
     expect(find.byKey(eventListCardBodyKey), findsOneWidget);
     expect(find.byKey(eventListCardMetaKey), findsOneWidget);
@@ -509,6 +512,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
+    expect(find.byKey(eventListRefreshingIndicatorKey), findsNothing);
+    expect(find.byType(UxRefreshingIndicatorPill), findsNothing);
     expect(find.byKey(eventListCardShellKey), findsOneWidget);
     expect(find.byKey(eventListCardActionsKey), findsOneWidget);
     expect(find.byKey(eventListCardChatCtaKey), findsNothing);
@@ -655,6 +660,8 @@ void main() {
     expect(calls, 2);
     expect(find.byKey(eventListErrorStateKey), findsOneWidget);
     expect(find.byKey(eventListLoadingStateKey), findsNothing);
+    expect(find.byKey(eventListRefreshingIndicatorKey), findsNothing);
+    expect(find.byType(UxRefreshingIndicatorPill), findsNothing);
     expect(find.text('Loaded before refresh'), findsOneWidget);
 
     await tester.tap(find.byKey(eventListErrorRetryButtonKey));
@@ -734,7 +741,9 @@ void main() {
     await tester.pump();
 
     expect(calls, 2);
-    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
+    expect(find.byKey(eventListRefreshingIndicatorKey), findsOneWidget);
+    expect(find.byType(UxRefreshingIndicatorPill), findsOneWidget);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
     expect(find.text('Loaded before pending'), findsOneWidget);
 
     refreshCompleter.complete(FFFirestorePage<EventsRecord>(
@@ -752,6 +761,8 @@ void main() {
 
     expect(find.text('Loaded after pending'), findsOneWidget);
     expect(find.text('Loaded before pending'), findsNothing);
+    expect(find.byKey(eventListRefreshingIndicatorKey), findsNothing);
+    expect(find.byType(UxRefreshingIndicatorPill), findsNothing);
   });
 
   testWidgets('keeps loaded event cards visible while level filter is pending',
@@ -825,7 +836,9 @@ void main() {
     await tester.pump();
 
     expect(calls, 2);
-    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
+    expect(find.byKey(eventListRefreshingIndicatorKey), findsOneWidget);
+    expect(find.byType(UxRefreshingIndicatorPill), findsOneWidget);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
     expect(find.text('Loaded before level pending'), findsOneWidget);
 
     levelCompleter.complete(FFFirestorePage<EventsRecord>(
@@ -843,6 +856,8 @@ void main() {
 
     expect(find.text('Loaded after level pending'), findsOneWidget);
     expect(find.text('Loaded before level pending'), findsNothing);
+    expect(find.byKey(eventListRefreshingIndicatorKey), findsNothing);
+    expect(find.byType(UxRefreshingIndicatorPill), findsNothing);
     expect(find.byKey(eventListLoadingStateKey), findsNothing);
   });
 
@@ -1540,7 +1555,7 @@ void main() {
     expect(find.byKey(eventListCardShellKey), findsNothing);
   });
 
-  testWidgets('loading state keeps provided event cards visible',
+  testWidgets('refreshing state keeps provided event cards visible',
       (tester) async {
     await tester.pumpWidget(
       _buildTestApp(
@@ -1555,9 +1570,16 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
+    expect(find.byKey(eventListRefreshingIndicatorKey), findsOneWidget);
+    expect(find.byType(UxRefreshingIndicatorPill), findsOneWidget);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
     expect(find.byKey(eventListCardShellKey), findsOneWidget);
     expect(find.text('Реальное событие'), findsOneWidget);
+
+    final refreshOverlay = tester.widget<UxRefreshingIndicatorOverlay>(
+      find.byKey(eventListRefreshingIndicatorKey),
+    );
+    expect(refreshOverlay.semanticsLabel, 'Обновляем события');
   });
 
   testWidgets('shows error state with retry after city is selected',

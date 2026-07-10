@@ -39,6 +39,8 @@ const ValueKey<String> eventManualCitySearchFieldKey =
     ValueKey<String>('event_manual_city_search_field');
 const ValueKey<String> eventListLoadingStateKey =
     ValueKey<String>('event_list_loading_state');
+const ValueKey<String> eventListRefreshingIndicatorKey =
+    ValueKey<String>('event_list_refreshing_indicator');
 const ValueKey<String> eventListEmptyStateKey =
     ValueKey<String>('event_list_empty_state');
 const ValueKey<String> eventListErrorStateKey =
@@ -1244,21 +1246,16 @@ class _EventListPreviousCardsState extends StatelessWidget {
       return content;
     }
 
-    final loadingLabel = FFLocalizations.of(context).getVariableText(
-      ruText: 'Загружаем события',
-      enText: 'Loading events',
+    final refreshingLabel = FFLocalizations.of(context).getVariableText(
+      ruText: 'Обновляем события',
+      enText: 'Refreshing events',
     );
 
-    return Semantics(
-      key: eventListLoadingStateKey,
-      container: true,
-      liveRegion: true,
-      label: loadingLabel,
-      child: UxRefreshingIndicatorOverlay(
-        isRefreshing: true,
-        semanticsLabel: null,
-        child: content,
-      ),
+    return UxRefreshingIndicatorOverlay(
+      key: eventListRefreshingIndicatorKey,
+      isRefreshing: true,
+      semanticsLabel: refreshingLabel,
+      child: content,
     );
   }
 }
