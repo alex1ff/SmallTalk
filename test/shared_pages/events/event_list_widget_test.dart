@@ -861,6 +861,360 @@ void main() {
     expect(find.byKey(eventListLoadingStateKey), findsNothing);
   });
 
+  testWidgets('waits for the active filter before showing empty state',
+      (tester) async {
+    var calls = 0;
+    final initialCompleter = Completer<FFFirestorePage<EventsRecord>>();
+    final filteredCompleter = Completer<FFFirestorePage<EventsRecord>>();
+    addTearDown(() {
+      if (!initialCompleter.isCompleted) {
+        initialCompleter.complete(
+          FFFirestorePage<EventsRecord>(const [], null, null),
+        );
+      }
+      if (!filteredCompleter.isCompleted) {
+        filteredCompleter.complete(
+          FFFirestorePage<EventsRecord>(const [], null, null),
+        );
+      }
+    });
+    currentUserDocument = _userFixture(
+      uid: 'profile-city-pending-empty-user',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+          eventPageLoader: (
+            collection,
+            recordBuilder, {
+            queryBuilder,
+            nextPageMarker,
+            required pageSize,
+            required isStream,
+          }) {
+            calls += 1;
+            return calls == 1
+                ? initialCompleter.future
+                : filteredCompleter.future;
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(calls, 1);
+    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
+    expect(find.byKey(eventListRefreshingIndicatorKey), findsNothing);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+
+    initialCompleter.complete(
+      FFFirestorePage<EventsRecord>(const [], null, null),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListEmptyStateKey), findsOneWidget);
+    final confirmedEmptySize = tester.getSize(
+      find.byKey(eventListEmptyStateKey),
+    );
+
+    await tester.tap(_dateFilterFinder(EventListDateFilter.today));
+    await tester.pump();
+
+    expect(calls, 2);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+    expect(find.byKey(eventListRefreshingEmptyShellKey), findsOneWidget);
+    expect(find.byKey(eventListRefreshingIndicatorKey), findsOneWidget);
+    expect(find.byType(UxRefreshingIndicatorPill), findsOneWidget);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+    expect(
+      tester.getSize(find.byKey(eventListRefreshingEmptyShellKey)),
+      confirmedEmptySize,
+    );
+
+    filteredCompleter.complete(
+      FFFirestorePage<EventsRecord>(const [], null, null),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListEmptyStateKey), findsOneWidget);
+    expect(find.byKey(eventListRefreshingEmptyShellKey), findsNothing);
+    expect(find.byKey(eventListRefreshingIndicatorKey), findsNothing);
+    expect(find.byType(UxRefreshingIndicatorPill), findsNothing);
+    expect(
+        tester.getSize(find.byKey(eventListEmptyStateKey)), confirmedEmptySize);
+    expect(calls, 2);
+  });
+
+  testWidgets('keeps confirmed empty for the same filter across midnight',
+      (tester) async {
+    var calls = 0;
+    var nowUtc = DateTime.utc(2035, 6, 14, 9);
+    final nowUtcProvider = () => nowUtc;
+    final refreshCompleter = Completer<FFFirestorePage<EventsRecord>>();
+    addTearDown(() {
+      if (!refreshCompleter.isCompleted) {
+        refreshCompleter.complete(
+          FFFirestorePage<EventsRecord>(const [], null, null),
+        );
+      }
+    });
+    currentUserDocument = _userFixture(
+      uid: 'profile-city-same-filter-midnight-user',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) {
+      calls += 1;
+      if (calls == 3) {
+        return refreshCompleter.future;
+      }
+      return Future.value(
+        FFFirestorePage<EventsRecord>(const [], null, null),
+      );
+    };
+    Widget buildList() => _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            nowUtcProvider: nowUtcProvider,
+            eventPageLoader: pageLoader,
+          ),
+        );
+
+    await tester.pumpWidget(buildList());
+    await tester.pumpAndSettle();
+    await tester.tap(_dateFilterFinder(EventListDateFilter.today));
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(find.byKey(eventListEmptyStateKey), findsOneWidget);
+    final confirmedEmptySize = tester.getSize(
+      find.byKey(eventListEmptyStateKey),
+    );
+
+    nowUtc = DateTime.utc(2035, 6, 15, 9);
+    await tester.pumpWidget(buildList());
+    await tester.pump();
+
+    expect(calls, 3);
+    expect(find.byKey(eventListEmptyStateKey), findsOneWidget);
+    expect(find.byKey(eventListRefreshingEmptyShellKey), findsNothing);
+    expect(find.byKey(eventListRefreshingIndicatorKey), findsOneWidget);
+    expect(find.byType(UxRefreshingIndicatorPill), findsOneWidget);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+    expect(
+      tester.getSize(find.byKey(eventListEmptyStateKey)),
+      confirmedEmptySize,
+    );
+
+    refreshCompleter.complete(
+      FFFirestorePage<EventsRecord>(const [], null, null),
+    );
+    await tester.pumpAndSettle();
+
+    expect(calls, 3);
+    expect(find.byKey(eventListEmptyStateKey), findsOneWidget);
+    expect(find.byKey(eventListRefreshingIndicatorKey), findsNothing);
+  });
+
+  testWidgets('treats level and city as different active filters',
+      (tester) async {
+    var calls = 0;
+    var selectedCity = _selectedCityFixture();
+    final nowUtcProvider = () => DateTime.utc(2035, 6, 14, 9);
+    final levelCompleter = Completer<FFFirestorePage<EventsRecord>>();
+    final cityCompleter = Completer<FFFirestorePage<EventsRecord>>();
+    addTearDown(() {
+      if (!levelCompleter.isCompleted) {
+        levelCompleter.complete(
+          FFFirestorePage<EventsRecord>(const [], null, null),
+        );
+      }
+      if (!cityCompleter.isCompleted) {
+        cityCompleter.complete(
+          FFFirestorePage<EventsRecord>(const [], null, null),
+        );
+      }
+    });
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) {
+      calls += 1;
+      return switch (calls) {
+        1 => Future.value(
+            FFFirestorePage<EventsRecord>(const [], null, null),
+          ),
+        2 => levelCompleter.future,
+        3 => cityCompleter.future,
+        _ => throw StateError('Unexpected event page request $calls'),
+      };
+    };
+    Widget buildList() => _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: selectedCity,
+            nowUtcProvider: nowUtcProvider,
+            eventPageLoader: pageLoader,
+          ),
+        );
+
+    await tester.pumpWidget(buildList());
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+    expect(find.byKey(eventListEmptyStateKey), findsOneWidget);
+
+    await tester.tap(_levelFilterFinder('B2'));
+    await tester.pump();
+
+    expect(calls, 2);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+    expect(find.byKey(eventListRefreshingEmptyShellKey), findsOneWidget);
+    expect(find.byKey(eventListRefreshingIndicatorKey), findsOneWidget);
+
+    levelCompleter.complete(
+      FFFirestorePage<EventsRecord>(const [], null, null),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListEmptyStateKey), findsOneWidget);
+    selectedCity = EventSelectedCity(
+      city: _catalog.cities.firstWhere(
+        (city) => city.cityKey == 'new_york',
+      ),
+      source: EventCitySelectionSource.manual,
+    );
+    await tester.pumpWidget(buildList());
+    await tester.pump();
+
+    expect(calls, 3);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+    expect(find.byKey(eventListRefreshingEmptyShellKey), findsOneWidget);
+    expect(find.byKey(eventListRefreshingIndicatorKey), findsOneWidget);
+
+    cityCompleter.complete(
+      FFFirestorePage<EventsRecord>(const [], null, null),
+    );
+    await tester.pumpAndSettle();
+
+    expect(calls, 3);
+    expect(find.byKey(eventListEmptyStateKey), findsOneWidget);
+    expect(find.byKey(eventListRefreshingEmptyShellKey), findsNothing);
+    expect(find.byKey(eventListRefreshingIndicatorKey), findsNothing);
+  });
+
+  testWidgets('does not carry confirmed empty across user accounts',
+      (tester) async {
+    var calls = 0;
+    final nowUtcProvider = () => DateTime.utc(2035, 6, 14, 9);
+    final secondUserCompleter = Completer<FFFirestorePage<EventsRecord>>();
+    addTearDown(() {
+      if (!secondUserCompleter.isCompleted) {
+        secondUserCompleter.complete(
+          FFFirestorePage<EventsRecord>(const [], null, null),
+        );
+      }
+    });
+    currentUser = _TestAuthUser('events-empty-account-a');
+    currentUserDocument = _userFixture(
+      uid: 'events-empty-account-a',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) {
+      calls += 1;
+      return calls == 1
+          ? Future.value(
+              FFFirestorePage<EventsRecord>(const [], null, null),
+            )
+          : secondUserCompleter.future;
+    };
+    Widget buildList() => _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            nowUtcProvider: nowUtcProvider,
+            eventPageLoader: pageLoader,
+          ),
+        );
+
+    await tester.pumpWidget(buildList());
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+    expect(find.byKey(eventListEmptyStateKey), findsOneWidget);
+
+    currentUser = _TestAuthUser('events-empty-account-b');
+    currentUserDocument = _userFixture(
+      uid: 'events-empty-account-b',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+    await tester.pumpWidget(buildList());
+    await tester.pump();
+
+    expect(calls, 2);
+    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+    expect(find.byKey(eventListRefreshingEmptyShellKey), findsNothing);
+    expect(find.byKey(eventListRefreshingIndicatorKey), findsNothing);
+
+    secondUserCompleter.complete(
+      FFFirestorePage<EventsRecord>(const [], null, null),
+    );
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+    expect(find.byKey(eventListEmptyStateKey), findsOneWidget);
+  });
+
   testWidgets('keeps confirmed empty events visible when refresh fails',
       (tester) async {
     var calls = 0;

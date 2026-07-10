@@ -41,6 +41,8 @@ const ValueKey<String> eventListLoadingStateKey =
     ValueKey<String>('event_list_loading_state');
 const ValueKey<String> eventListRefreshingIndicatorKey =
     ValueKey<String>('event_list_refreshing_indicator');
+const ValueKey<String> eventListRefreshingEmptyShellKey =
+    ValueKey<String>('event_list_refreshing_empty_shell');
 const ValueKey<String> eventListEmptyStateKey =
     ValueKey<String>('event_list_empty_state');
 const ValueKey<String> eventListErrorStateKey =
@@ -529,6 +531,9 @@ class _EventListWidgetState extends State<EventListWidget> {
                                             selectedCity:
                                                 selectedState?.selected,
                                             isRefreshing: true,
+                                            showEmptyState: previousCards
+                                                    .key.activeDataKey ==
+                                                activeLoadKey?.activeDataKey,
                                             canOpenEventCardChat:
                                                 _canOpenEventCardChat,
                                             openEventCardDetail:
@@ -1197,6 +1202,7 @@ class _EventListPreviousCardsState extends StatelessWidget {
     this.errorMessage,
     this.onRetryPressed,
     this.isRefreshing = false,
+    this.showEmptyState = true,
   });
 
   final List<EventListCardViewModel> cards;
@@ -1204,6 +1210,7 @@ class _EventListPreviousCardsState extends StatelessWidget {
   final String? errorMessage;
   final VoidCallback? onRetryPressed;
   final bool isRefreshing;
+  final bool showEmptyState;
   final bool Function(EventListCardViewModel event) canOpenEventCardChat;
   final ValueChanged<EventListCardViewModel> openEventCardDetail;
   final void Function({
@@ -1229,7 +1236,14 @@ class _EventListPreviousCardsState extends StatelessWidget {
           const SizedBox(height: ExpatlioDesign.space12),
         ],
         if (cards.isEmpty)
-          const _EventListEmptyState()
+          if (showEmptyState)
+            const _EventListEmptyState()
+          else
+            SizedBox(
+              key: eventListRefreshingEmptyShellKey,
+              width: double.infinity,
+              height: _eventListEmptyStateHeight(context),
+            )
         else
           _EventListCards(
             eventCards: cards,
@@ -1297,6 +1311,14 @@ class _EventListLoadKey {
   final int participantLoaderIdentity;
   final int activeParticipantsLoaderIdentity;
 
+  _EventListActiveDataKey get activeDataKey => _EventListActiveDataKey(
+        countryCode: countryCode,
+        cityKey: cityKey,
+        dateFilter: dateFilter,
+        selectedLevel: selectedLevel,
+        currentUserId: currentUserId,
+      );
+
   @override
   bool operator ==(Object other) {
     return other is _EventListLoadKey &&
@@ -1327,6 +1349,44 @@ class _EventListLoadKey {
         currentUserId,
         participantLoaderIdentity,
         activeParticipantsLoaderIdentity,
+      );
+}
+
+/// Visual query identity. Request windows, time zones, and loader identities
+/// stay in [_EventListLoadKey] because they must not turn the same visible
+/// filters into a different empty-state identity.
+class _EventListActiveDataKey {
+  const _EventListActiveDataKey({
+    required this.countryCode,
+    required this.cityKey,
+    required this.dateFilter,
+    required this.selectedLevel,
+    required this.currentUserId,
+  });
+
+  final String countryCode;
+  final String cityKey;
+  final EventListDateFilter? dateFilter;
+  final String? selectedLevel;
+  final String currentUserId;
+
+  @override
+  bool operator ==(Object other) {
+    return other is _EventListActiveDataKey &&
+        other.countryCode == countryCode &&
+        other.cityKey == cityKey &&
+        other.dateFilter == dateFilter &&
+        other.selectedLevel == selectedLevel &&
+        other.currentUserId == currentUserId;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        countryCode,
+        cityKey,
+        dateFilter,
+        selectedLevel,
+        currentUserId,
       );
 }
 
@@ -1679,9 +1739,7 @@ class _EventListEmptyState extends StatelessWidget {
       ruText: 'Выберите другой день, уровень или город.',
       enText: 'Choose another day, level, or city.',
     );
-    final emptyStateHeight = (MediaQuery.sizeOf(context).height - 280)
-        .clamp(420.0, 640.0)
-        .toDouble();
+    final emptyStateHeight = _eventListEmptyStateHeight(context);
 
     return Semantics(
       key: eventListEmptyStateKey,
@@ -1706,6 +1764,12 @@ class _EventListEmptyState extends StatelessWidget {
       ),
     );
   }
+}
+
+double _eventListEmptyStateHeight(BuildContext context) {
+  return (MediaQuery.sizeOf(context).height - 280)
+      .clamp(420.0, 640.0)
+      .toDouble();
 }
 
 class _EventListErrorState extends StatelessWidget {
