@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:firebase_auth_platform_interface/firebase_auth_platform_interface.dart';
 import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -3530,7 +3531,7 @@ void main() {
     expect(find.text('Присоединиться'), findsOneWidget);
     expect(
       tester.getSize(find.byKey(eventListCardPrimaryCtaKey)).height,
-      36,
+      48,
     );
     final semantics =
         tester.getSemantics(find.byKey(eventListCardPrimaryCtaKey));
@@ -3575,6 +3576,7 @@ void main() {
           tester.getSemantics(find.byKey(eventListCardPrimaryCtaKey));
       expect(semantics.flagsCollection.isButton, isTrue);
       expect(semantics.flagsCollection.isEnabled, isFalse);
+      _expectEventCardActionLabelsFit(tester);
     }
   });
 
@@ -4357,6 +4359,232 @@ void main() {
     ]);
   });
 
+  testWidgets('event card uses one fixed geometry for loading and content',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    Future<_EventCardGeometry> pumpCard({
+      required String stateKey,
+      EventListCardViewModel? card,
+      bool isLoading = false,
+    }) async {
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventListWidget(
+            key: ValueKey<String>(stateKey),
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: _selectedCityFixture(),
+            eventCardsOverride: card == null
+                ? const <EventListCardViewModel>[]
+                : <EventListCardViewModel>[card],
+            isLoadingEvents: isLoading,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(eventListCardShellKey), findsOneWidget);
+      final exception = tester.takeException();
+      expect(exception == null ? null : exception.toStringDeep(), isNull);
+      return _eventCardGeometry(tester);
+    }
+
+    final loading = await pumpCard(
+      stateKey: 'loading-card',
+      isLoading: true,
+    );
+    final sparse = await pumpCard(
+      stateKey: 'sparse-card',
+      card: _eventCardFixture(
+        organizerDisplayName: '',
+        title: 'Клуб',
+        description: '',
+        locationName: '',
+      ),
+    );
+    _expectEventCardActionLabelsFit(tester);
+    expect(
+      tester.getSize(find.byKey(eventListCardPrimaryCtaKey)).width,
+      greaterThan(tester.getSize(find.byKey(eventListCardChatCtaKey)).width),
+    );
+    final maximal = await pumpCard(
+      stateKey: 'maximal-card',
+      card: _eventCardFixture(
+        organizerDisplayName: 'Анастасия Александровна Иванова',
+        title:
+            'Очень длинное название встречи для проверки стабильной структуры карточки',
+        description:
+            'Длинное описание события занимает несколько строк, но не должно менять высоту карточки или положение действий.',
+        levelMin: 'BEGINNER LEVEL',
+        levelMax: 'ADVANCED LEVEL',
+        locationName:
+            'Очень длинный адрес, который занимает две строки на узком экране',
+        participants: List<EventListParticipantViewModel>.generate(
+          6,
+          (index) => EventListParticipantViewModel(
+            displayName: 'Участник ${index + 1}',
+          ),
+        ),
+        participantsCount: 12,
+        capacity: 20,
+        joinCtaState: EventListJoinCtaState.joined,
+        chatCtaState: EventListChatCtaState.enabled,
+      ),
+    );
+    _expectEventCardActionLabelsFit(tester);
+
+    final expected = (
+      shellSize: const Size(286, 366),
+      header: const Rect.fromLTWH(17, 17, 252, 38),
+      body: const Rect.fromLTWH(17, 69, 252, 100),
+      meta: const Rect.fromLTWH(17, 177, 252, 72),
+      footer: const Rect.fromLTWH(17, 263, 252, 24),
+      actions: const Rect.fromLTWH(17, 301, 252, 48),
+    );
+    expect(loading, expected);
+    expect(sparse, loading);
+    expect(maximal, loading);
+  });
+
+  testWidgets('card slots stay stable for scaled RU and EN content',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    Future<_EventCardGeometry> pumpCard({
+      required String stateKey,
+      required Locale locale,
+      required double textScale,
+      EventListCardViewModel? card,
+      bool isLoading = false,
+    }) async {
+      await tester.pumpWidget(
+        _buildTestApp(
+          locale: locale,
+          home: MediaQuery(
+            data: MediaQueryData(
+              size: const Size(320, 1100),
+              devicePixelRatio: 1,
+              textScaler: TextScaler.linear(textScale),
+            ),
+            child: EventListWidget(
+              key: ValueKey<String>(stateKey),
+              cityCatalogOverride: _catalog,
+              languageCatalogOverride: _languageCatalog,
+              initialSelectedCity: _selectedCityFixture(),
+              eventCardsOverride: card == null
+                  ? const <EventListCardViewModel>[]
+                  : <EventListCardViewModel>[card],
+              isLoadingEvents: isLoading,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(eventListCardShellKey), findsOneWidget);
+      final exception = tester.takeException();
+      expect(exception == null ? null : exception.toStringDeep(), isNull);
+      return _eventCardGeometry(tester);
+    }
+
+    for (final configuration in <({Locale locale, double textScale})>[
+      (locale: const Locale('ru'), textScale: 1.6),
+      (locale: const Locale('en'), textScale: 3.0),
+    ]) {
+      final suffix =
+          '${configuration.locale.languageCode}-${configuration.textScale}';
+      final loading = await pumpCard(
+        stateKey: 'scaled-loading-$suffix',
+        locale: configuration.locale,
+        textScale: configuration.textScale,
+        isLoading: true,
+      );
+      final sparse = await pumpCard(
+        stateKey: 'scaled-sparse-$suffix',
+        locale: configuration.locale,
+        textScale: configuration.textScale,
+        card: _eventCardFixture(
+          organizerDisplayName: 'A',
+          title: 'Short',
+          description: '',
+          locationName: '',
+        ),
+      );
+      _expectEventCardActionLabelsFit(tester);
+      final maximal = await pumpCard(
+        stateKey: 'scaled-maximal-$suffix',
+        locale: configuration.locale,
+        textScale: configuration.textScale,
+        card: _eventCardFixture(
+          organizerDisplayName: List<String>.filled(12, 'Organizer').join(' '),
+          title: List<String>.filled(20, 'Conversation').join(' '),
+          description: List<String>.filled(30, 'Description').join(' '),
+          levelMin: 'EXTREMELY LONG BEGINNER LEVEL',
+          levelMax: 'EXTREMELY LONG ADVANCED LEVEL',
+          locationName: List<String>.filled(20, 'Location').join(' '),
+          participants: List<EventListParticipantViewModel>.generate(
+            6,
+            (index) => EventListParticipantViewModel(
+              displayName: 'Participant ${index + 1}',
+            ),
+          ),
+          participantsCount: 18,
+          capacity: 20,
+          joinCtaState: EventListJoinCtaState.full,
+          chatCtaState: EventListChatCtaState.enabled,
+        ),
+      );
+      _expectEventCardActionLabelsFit(tester);
+
+      final _EventCardGeometry expectedGeometry =
+          configuration.locale.languageCode == 'ru'
+              ? (
+                  shellSize: const Size(286, 587),
+                  header: const Rect.fromLTWH(17, 17, 252, 56),
+                  body: const Rect.fromLTWH(17, 87, 252, 154),
+                  meta: const Rect.fromLTWH(17, 249, 252, 100),
+                  footer: const Rect.fromLTWH(17, 363, 252, 27),
+                  actions: const Rect.fromLTWH(17, 404, 252, 166),
+                )
+              : (
+                  shellSize: const Size(286, 957),
+                  header: const Rect.fromLTWH(17, 17, 252, 101),
+                  body: const Rect.fromLTWH(17, 132, 252, 280),
+                  meta: const Rect.fromLTWH(17, 420, 252, 168),
+                  footer: const Rect.fromLTWH(17, 602, 252, 50),
+                  actions: const Rect.fromLTWH(17, 666, 252, 274),
+                );
+      expect(loading, expectedGeometry);
+      expect(sparse, loading);
+      expect(maximal, loading);
+
+      for (final joinState in EventListJoinCtaState.values) {
+        final stateGeometry = await pumpCard(
+          stateKey: 'scaled-${joinState.name}-$suffix',
+          locale: configuration.locale,
+          textScale: configuration.textScale,
+          card: _eventCardFixture(
+            joinCtaState: joinState,
+            chatCtaState: EventListChatCtaState.enabled,
+          ),
+        );
+        _expectEventCardActionLabelsFit(tester);
+        if (configuration.locale.languageCode == 'en' &&
+            joinState == EventListJoinCtaState.past) {
+          expect(find.text('Past'), findsOneWidget);
+        }
+        expect(stateGeometry, loading);
+      }
+    }
+  });
+
   testWidgets('event card layout shell stays bounded on a narrow viewport',
       (tester) async {
     tester.view.physicalSize = const Size(320, 700);
@@ -4402,6 +4630,7 @@ void main() {
     expect(find.byKey(eventListCardShellKey), findsOneWidget);
     expect(find.text('Анастасия Иванова'), findsOneWidget);
     expect(tester.takeException(), isNull);
+    _expectEventCardActionLabelsFit(tester);
   });
 
   testWidgets('leaves stale malformed and unknown profile cities unselected',
@@ -4709,6 +4938,53 @@ void _expectWhereCondition(
 
 Finder _participantAvatarFinder(int index) =>
     find.byKey(ValueKey<String>('event_list_participant_avatar_$index'));
+
+typedef _EventCardGeometry = ({
+  Size shellSize,
+  Rect header,
+  Rect body,
+  Rect meta,
+  Rect footer,
+  Rect actions,
+});
+
+_EventCardGeometry _eventCardGeometry(WidgetTester tester) {
+  final shell = tester.getRect(find.byKey(eventListCardShellKey));
+  final relativeOffset = Offset(-shell.left, -shell.top);
+  Rect relativeRect(ValueKey<String> key) =>
+      tester.getRect(find.byKey(key)).shift(relativeOffset);
+
+  return (
+    shellSize: shell.size,
+    header: relativeRect(eventListCardHeaderKey),
+    body: relativeRect(eventListCardBodyKey),
+    meta: relativeRect(eventListCardMetaKey),
+    footer: relativeRect(eventListCardFooterKey),
+    actions: relativeRect(eventListCardActionsKey),
+  );
+}
+
+void _expectEventCardActionLabelsFit(WidgetTester tester) {
+  for (final actionKey in <ValueKey<String>>[
+    eventListCardPrimaryCtaKey,
+    eventListCardChatCtaKey,
+  ]) {
+    final textFinder = find.descendant(
+      of: find.byKey(actionKey),
+      matching: find.byType(Text),
+    );
+    expect(textFinder, findsOneWidget);
+    final label = tester.widget<Text>(textFinder).data;
+    final paragraph = tester.renderObject<RenderParagraph>(textFinder);
+    expect(
+      paragraph.didExceedMaxLines,
+      isFalse,
+      reason: 'Action label "$label" for $actionKey must remain fully visible: '
+          'intrinsic=${paragraph.getMaxIntrinsicWidth(double.infinity)}, '
+          'available=${paragraph.size.width}.',
+    );
+  }
+}
 
 EventSelectedCity _selectedCityFixture() {
   return EventSelectedCity(
