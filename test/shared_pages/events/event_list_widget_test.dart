@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_auth_platform_interface/firebase_auth_platform_interface.dart';
 import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter/material.dart';
@@ -2913,6 +2914,643 @@ void main() {
   });
 
   testWidgets(
+    'keeps card and avatar slots stable while participants enrich',
+    (tester) async {
+      tester.view.physicalSize = const Size(320, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final participantsCompleter = Completer<List<EventParticipantsRecord>>();
+      addTearDown(() {
+        if (!participantsCompleter.isCompleted) {
+          participantsCompleter.complete(const <EventParticipantsRecord>[]);
+        }
+      });
+      var participantLookups = 0;
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: _selectedCityFixture(),
+            nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+            eventPageLoader: (
+              collection,
+              recordBuilder, {
+              queryBuilder,
+              nextPageMarker,
+              required pageSize,
+              required isStream,
+            }) async {
+              return FFFirestorePage<EventsRecord>(
+                [
+                  _eventsRecordFixture(
+                    'progressive-participants-event',
+                    title: 'Progressive participants event',
+                    startsAt: DateTime.utc(2035, 6, 14, 15),
+                  ),
+                ],
+                null,
+                null,
+              );
+            },
+            activeParticipantsLoader: (eventRef) {
+              participantLookups += 1;
+              return participantsCompleter.future;
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(participantLookups, 1);
+      expect(find.text('Progressive participants event'), findsOneWidget);
+      expect(find.byKey(eventListLoadingStateKey), findsNothing);
+      final beforeGeometry = _eventCardGeometry(tester);
+      final beforeStack =
+          tester.getRect(find.byKey(eventListParticipantAvatarStackKey));
+      final beforeSlots = _participantAvatarSlotRects(tester, count: 6);
+      final beforeOrganizer =
+          tester.getRect(find.byKey(eventListCardOrganizerAvatarKey));
+
+      final eventRef = EventsRecord.collection.doc(
+        'progressive-participants-event',
+      );
+      participantsCompleter.complete([
+        _eventParticipantRecordFixture(
+          eventRef,
+          userId: 'organizer-user',
+          displayName: 'Анастасия Иванова',
+          role: 'organizer',
+          joinedAt: DateTime.utc(2035, 6, 14, 8),
+        ),
+        _eventParticipantRecordFixture(
+          eventRef,
+          userId: 'participant-marco',
+          displayName: 'Marco Rossi',
+          photoUrl: 'not-a-valid-url',
+          joinedAt: DateTime.utc(2035, 6, 14, 9),
+        ),
+        _eventParticipantRecordFixture(
+          eventRef,
+          userId: 'participant-liza',
+          displayName: 'Лиза',
+          joinedAt: DateTime.utc(2035, 6, 14, 10),
+        ),
+      ]);
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('M'), findsOneWidget);
+      expect(find.text('Л'), findsOneWidget);
+      final participantImageFinder = find.descendant(
+        of: _participantAvatarFinder(1),
+        matching: find.byType(CachedNetworkImage),
+      );
+      expect(participantImageFinder, findsOneWidget);
+      final participantImage =
+          tester.widget<CachedNetworkImage>(participantImageFinder);
+      expect(participantImage.width, 24);
+      expect(participantImage.height, 24);
+      final participantImageRect = tester.getRect(participantImageFinder);
+      expect(_eventCardGeometry(tester), beforeGeometry);
+      expect(
+        tester.getRect(find.byKey(eventListParticipantAvatarStackKey)),
+        beforeStack,
+      );
+      expect(_participantAvatarSlotRects(tester, count: 6), beforeSlots);
+      expect(
+        tester.getRect(find.byKey(eventListCardOrganizerAvatarKey)),
+        beforeOrganizer,
+      );
+
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(_eventCardGeometry(tester), beforeGeometry);
+      expect(_participantAvatarSlotRects(tester, count: 6), beforeSlots);
+      expect(tester.getRect(participantImageFinder), participantImageRect);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'keeps participant stack width stable without count or capacity',
+    (tester) async {
+      final participantsCompleter = Completer<List<EventParticipantsRecord>>();
+      addTearDown(() {
+        if (!participantsCompleter.isCompleted) {
+          participantsCompleter.complete(const <EventParticipantsRecord>[]);
+        }
+      });
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: _selectedCityFixture(),
+            nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+            eventPageLoader: (
+              collection,
+              recordBuilder, {
+              queryBuilder,
+              nextPageMarker,
+              required pageSize,
+              required isStream,
+            }) async {
+              return FFFirestorePage<EventsRecord>(
+                [
+                  _eventsRecordFixture(
+                    'unknown-participant-total-event',
+                    title: 'Unknown participant total event',
+                    startsAt: DateTime.utc(2035, 6, 14, 15),
+                    includeCapacity: false,
+                    includeParticipantsCount: false,
+                  ),
+                ],
+                null,
+                null,
+              );
+            },
+            activeParticipantsLoader: (_) => participantsCompleter.future,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Unknown participant total event'), findsOneWidget);
+      final beforeGeometry = _eventCardGeometry(tester);
+      final beforeStack =
+          tester.getRect(find.byKey(eventListParticipantAvatarStackKey));
+      final beforeOrganizerSlot = tester.getRect(_participantAvatarFinder(0));
+
+      final eventRef =
+          EventsRecord.collection.doc('unknown-participant-total-event');
+      participantsCompleter.complete([
+        _eventParticipantRecordFixture(
+          eventRef,
+          userId: 'organizer-user',
+          displayName: 'Анастасия Иванова',
+          role: 'organizer',
+          joinedAt: DateTime.utc(2035, 6, 14, 8),
+        ),
+        _eventParticipantRecordFixture(
+          eventRef,
+          userId: 'participant-marco',
+          displayName: 'Marco',
+          joinedAt: DateTime.utc(2035, 6, 14, 9),
+        ),
+        _eventParticipantRecordFixture(
+          eventRef,
+          userId: 'participant-liza',
+          displayName: 'Лиза',
+          joinedAt: DateTime.utc(2035, 6, 14, 10),
+        ),
+      ]);
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('M'), findsOneWidget);
+      expect(find.text('Л'), findsOneWidget);
+      expect(_eventCardGeometry(tester), beforeGeometry);
+      expect(
+        tester.getRect(find.byKey(eventListParticipantAvatarStackKey)),
+        beforeStack,
+      );
+      expect(tester.getRect(_participantAvatarFinder(0)), beforeOrganizerSlot);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('keeps base card geometry when participant enrichment fails',
+      (tester) async {
+    final participantsCompleter = Completer<List<EventParticipantsRecord>>();
+    addTearDown(() {
+      if (!participantsCompleter.isCompleted) {
+        participantsCompleter.complete(const <EventParticipantsRecord>[]);
+      }
+    });
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: _selectedCityFixture(),
+          nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+          eventPageLoader: (
+            collection,
+            recordBuilder, {
+            queryBuilder,
+            nextPageMarker,
+            required pageSize,
+            required isStream,
+          }) async {
+            return FFFirestorePage<EventsRecord>(
+              [
+                _eventsRecordFixture(
+                  'participant-error-event',
+                  title: 'Participant error event',
+                  startsAt: DateTime.utc(2035, 6, 14, 15),
+                ),
+              ],
+              null,
+              null,
+            );
+          },
+          activeParticipantsLoader: (_) => participantsCompleter.future,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Participant error event'), findsOneWidget);
+    final beforeGeometry = _eventCardGeometry(tester);
+    final beforeSlots = _participantAvatarSlotRects(tester, count: 6);
+
+    participantsCompleter.completeError(StateError('participants failed'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Participant error event'), findsOneWidget);
+    expect(_eventCardGeometry(tester), beforeGeometry);
+    expect(_participantAvatarSlotRects(tester, count: 6), beforeSlots);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'keeps membership actions neutral until the participant lookup completes',
+    (tester) async {
+      currentUser = _TestAuthUser('pending-member');
+      currentUserDocument = _userFixture(
+        uid: 'pending-member',
+        data: {
+          'display_name': 'Pending Member',
+          'profileCity': _profileCityFixture(
+            countryCode: 'RU',
+            cityKey: 'moscow',
+            catalogVersion: _catalog.catalogVersion,
+          ).toMap(),
+        },
+      );
+      final membershipCompleter = Completer<EventParticipantsRecord?>();
+      addTearDown(() {
+        if (!membershipCompleter.isCompleted) {
+          membershipCompleter.complete(null);
+        }
+      });
+      var membershipLookups = 0;
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: _selectedCityFixture(),
+            nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+            eventPageLoader: (
+              collection,
+              recordBuilder, {
+              queryBuilder,
+              nextPageMarker,
+              required pageSize,
+              required isStream,
+            }) async {
+              return FFFirestorePage<EventsRecord>(
+                [
+                  _eventsRecordFixture(
+                    'pending-membership-event',
+                    title: 'Pending membership event',
+                    startsAt: DateTime.utc(2035, 6, 14, 15),
+                  ),
+                ],
+                null,
+                null,
+              );
+            },
+            currentUserParticipantLoader: (eventRef, userId) {
+              membershipLookups += 1;
+              return membershipCompleter.future;
+            },
+            activeParticipantsLoader: (_) async =>
+                const <EventParticipantsRecord>[],
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(membershipLookups, 1);
+      expect(find.text('Pending membership event'), findsOneWidget);
+      expect(find.text('Проверяем участие'), findsOneWidget);
+      expect(find.text('Присоединиться'), findsNothing);
+      final pendingPrimarySemantics =
+          tester.getSemantics(find.byKey(eventListCardPrimaryCtaKey));
+      expect(pendingPrimarySemantics.flagsCollection.isButton, isTrue);
+      expect(pendingPrimarySemantics.flagsCollection.isEnabled, isFalse);
+      final pendingChatSemantics =
+          tester.getSemantics(find.byKey(eventListCardChatCtaKey));
+      expect(pendingChatSemantics.flagsCollection.isButton, isTrue);
+      expect(pendingChatSemantics.flagsCollection.isEnabled, isFalse);
+      expect(pendingChatSemantics.label, contains('Проверяем доступ к чату'));
+      final pendingChatInkWell = tester.widget<InkWell>(
+        find.descendant(
+          of: find.byKey(eventListCardChatCtaKey),
+          matching: find.byType(InkWell),
+        ),
+      );
+      expect(pendingChatInkWell.onTap, isNull);
+      final beforeGeometry = _eventCardGeometry(tester);
+
+      await tester.tap(find.byKey(eventListCardPrimaryCtaKey));
+      await tester.pump();
+      await tester.tap(find.byKey(eventListCardChatCtaKey));
+      await tester.pump();
+
+      expect(find.text('Pending membership event'), findsOneWidget);
+      expect(find.byType(SnackBar), findsNothing);
+      expect(tester.takeException(), isNull);
+
+      final eventRef = EventsRecord.collection.doc('pending-membership-event');
+      membershipCompleter.complete(
+        _eventParticipantRecordFixture(
+          eventRef,
+          userId: 'pending-member',
+          displayName: 'Pending Member',
+          joinedAt: DateTime.utc(2035, 6, 14, 10),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Проверяем участие'), findsNothing);
+      expect(find.text('Вы участвуете'), findsOneWidget);
+      final joinedChatSemantics =
+          tester.getSemantics(find.byKey(eventListCardChatCtaKey));
+      expect(joinedChatSemantics.flagsCollection.isEnabled, isTrue);
+      expect(_eventCardGeometry(tester), beforeGeometry);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'keeps membership geometry stable when the participant lookup fails',
+    (tester) async {
+      currentUser = _TestAuthUser('membership-error-user');
+      currentUserDocument = _userFixture(
+        uid: 'membership-error-user',
+        data: {
+          'profileCity': _profileCityFixture(
+            countryCode: 'RU',
+            cityKey: 'moscow',
+            catalogVersion: _catalog.catalogVersion,
+          ).toMap(),
+        },
+      );
+      final membershipCompleter = Completer<EventParticipantsRecord?>();
+      addTearDown(() {
+        if (!membershipCompleter.isCompleted) {
+          membershipCompleter.complete(null);
+        }
+      });
+      var pageLoads = 0;
+      var membershipLookups = 0;
+      final EventListPageLoader pageLoader = (
+        collection,
+        recordBuilder, {
+        queryBuilder,
+        nextPageMarker,
+        required pageSize,
+        required isStream,
+      }) async {
+        pageLoads += 1;
+        return FFFirestorePage<EventsRecord>(
+          [
+            _eventsRecordFixture(
+              'membership-error-event',
+              title: 'Membership error event',
+              startsAt: DateTime.utc(2035, 6, 14, 15),
+            ),
+          ],
+          null,
+          null,
+        );
+      };
+      final EventListCurrentUserParticipantLoader membershipLoader = (_, __) {
+        membershipLookups += 1;
+        if (membershipLookups == 1) {
+          return membershipCompleter.future;
+        }
+        return Future<EventParticipantsRecord?>.value();
+      };
+      final EventListActiveParticipantsLoader activeParticipantsLoader =
+          (_) async => const <EventParticipantsRecord>[];
+
+      Widget buildList() => _buildTestApp(
+            home: EventListWidget(
+              key: const ValueKey<String>('membership-error-list'),
+              cityCatalogOverride: _catalog,
+              languageCatalogOverride: _languageCatalog,
+              initialSelectedCity: _selectedCityFixture(),
+              nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+              eventPageLoader: pageLoader,
+              currentUserParticipantLoader: membershipLoader,
+              activeParticipantsLoader: activeParticipantsLoader,
+            ),
+          );
+
+      await tester.pumpWidget(buildList());
+      await tester.pump();
+      await tester.pump();
+
+      expect(pageLoads, 1);
+      expect(membershipLookups, 1);
+      expect(find.text('Проверяем участие'), findsOneWidget);
+      final beforeGeometry = _eventCardGeometry(tester);
+
+      membershipCompleter.completeError(StateError('membership failed'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Проверяем участие'), findsNothing);
+      expect(find.text('Статус недоступен'), findsOneWidget);
+      expect(find.text('Присоединиться'), findsNothing);
+      final chatSemantics =
+          tester.getSemantics(find.byKey(eventListCardChatCtaKey));
+      expect(chatSemantics.flagsCollection.isEnabled, isFalse);
+      expect(
+        chatSemantics.label,
+        contains('Не удалось проверить доступ к чату'),
+      );
+      expect(_eventCardGeometry(tester), beforeGeometry);
+      expect(tester.takeException(), isNull);
+
+      await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(buildList());
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(pageLoads, 2);
+      expect(membershipLookups, 2);
+      expect(find.text('Статус недоступен'), findsNothing);
+      expect(find.text('Присоединиться'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('discards stale A-B-A participant enrichment and cache writes',
+      (tester) async {
+    final staleCompleter = Completer<List<EventParticipantsRecord>>();
+    addTearDown(() {
+      if (!staleCompleter.isCompleted) {
+        staleCompleter.complete(const <EventParticipantsRecord>[]);
+      }
+    });
+    var pageLoads = 0;
+    var participantLoads = 0;
+
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) async {
+      pageLoads += 1;
+      return FFFirestorePage<EventsRecord>(
+        [
+          _eventsRecordFixture(
+            'participant-race-event',
+            title: 'Participant race event',
+            startsAt: DateTime.utc(2035, 6, 15, 15),
+          ),
+        ],
+        null,
+        null,
+      );
+    };
+    final EventListActiveParticipantsLoader activeParticipantsLoader =
+        (eventRef) {
+      participantLoads += 1;
+      if (participantLoads == 1) {
+        return staleCompleter.future;
+      }
+      return Future<List<EventParticipantsRecord>>.value([
+        _eventParticipantRecordFixture(
+          eventRef,
+          userId: participantLoads == 2
+              ? 'participant-between'
+              : 'participant-fresh',
+          displayName: participantLoads == 2 ? 'Between' : 'Fresh',
+          joinedAt: DateTime.utc(2035, 6, 15, 10),
+        ),
+      ]);
+    };
+
+    Widget buildList() => _buildTestApp(
+          home: EventListWidget(
+            key: const ValueKey<String>('participant-race-list'),
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: _selectedCityFixture(),
+            nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+            eventPageLoader: pageLoader,
+            activeParticipantsLoader: activeParticipantsLoader,
+          ),
+        );
+
+    await tester.pumpWidget(buildList());
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Participant race event'), findsOneWidget);
+    expect(pageLoads, 1);
+    expect(participantLoads, 1);
+
+    await tester.tap(_dateFilterFinder(EventListDateFilter.tomorrow));
+    await tester.pumpAndSettle();
+
+    expect(pageLoads, 2);
+    expect(participantLoads, 2);
+    expect(
+      find.descendant(
+        of: find.byKey(eventListParticipantAvatarStackKey),
+        matching: find.text('B'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(_dateFilterFinder(EventListDateFilter.tomorrow));
+    await tester.pumpAndSettle();
+
+    expect(pageLoads, 3);
+    expect(participantLoads, 3);
+    expect(
+      find.descendant(
+        of: find.byKey(eventListParticipantAvatarStackKey),
+        matching: find.text('F'),
+      ),
+      findsOneWidget,
+    );
+
+    final eventRef = EventsRecord.collection.doc('participant-race-event');
+    staleCompleter.complete([
+      _eventParticipantRecordFixture(
+        eventRef,
+        userId: 'participant-stale',
+        displayName: 'Stale',
+        joinedAt: DateTime.utc(2035, 6, 15, 11),
+      ),
+    ]);
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      find.descendant(
+        of: find.byKey(eventListParticipantAvatarStackKey),
+        matching: find.text('F'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(eventListParticipantAvatarStackKey),
+        matching: find.text('S'),
+      ),
+      findsNothing,
+    );
+
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(buildList());
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(pageLoads, 3);
+    expect(participantLoads, 3);
+    expect(
+      find.descendant(
+        of: find.byKey(eventListParticipantAvatarStackKey),
+        matching: find.text('F'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(eventListParticipantAvatarStackKey),
+        matching: find.text('S'),
+      ),
+      findsNothing,
+    );
+  });
+
+  testWidgets(
     'loaded event uses current profile for generic participant preview',
     (tester) async {
       currentUser = _TestAuthUser('student-2');
@@ -4582,6 +5220,22 @@ void main() {
         }
         expect(stateGeometry, loading);
       }
+
+      for (final membershipState in <EventListMembershipState>[
+        EventListMembershipState.pending,
+        EventListMembershipState.lookupFailed,
+      ]) {
+        final stateGeometry = await pumpCard(
+          stateKey: 'scaled-${membershipState.name}-$suffix',
+          locale: configuration.locale,
+          textScale: configuration.textScale,
+          card: _eventCardFixture(
+            membershipState: membershipState,
+          ),
+        );
+        _expectEventCardActionLabelsFit(tester);
+        expect(stateGeometry, loading);
+      }
     }
   });
 
@@ -4939,6 +5593,15 @@ void _expectWhereCondition(
 Finder _participantAvatarFinder(int index) =>
     find.byKey(ValueKey<String>('event_list_participant_avatar_$index'));
 
+List<Rect> _participantAvatarSlotRects(
+  WidgetTester tester, {
+  required int count,
+}) =>
+    [
+      for (var index = 0; index < count; index += 1)
+        tester.getRect(_participantAvatarFinder(index)),
+    ];
+
 typedef _EventCardGeometry = ({
   Size shellSize,
   Rect header,
@@ -5022,6 +5685,7 @@ EventListCardViewModel _eventCardFixture({
   int? capacity,
   EventListJoinCtaState joinCtaState = EventListJoinCtaState.join,
   EventListChatCtaState chatCtaState = EventListChatCtaState.participantOnly,
+  EventListMembershipState membershipState = EventListMembershipState.resolved,
 }) {
   return EventListCardViewModel(
     eventId: eventId,
@@ -5034,6 +5698,7 @@ EventListCardViewModel _eventCardFixture({
     capacity: capacity,
     joinCtaState: joinCtaState,
     chatCtaState: chatCtaState,
+    membershipState: membershipState,
     languageCode: languageCode,
     languageNameEn: languageNameEn,
     languageNameRu: languageNameRu,
@@ -5047,10 +5712,33 @@ EventListCardViewModel _eventCardFixture({
   );
 }
 
+EventParticipantsRecord _eventParticipantRecordFixture(
+  DocumentReference eventRef, {
+  required String userId,
+  required String displayName,
+  String? photoUrl,
+  String role = 'participant',
+  required DateTime joinedAt,
+}) {
+  return EventParticipantsRecord.getDocumentFromData(
+    createEventParticipantsRecordData(
+      userId: userId,
+      displayName: displayName,
+      photoUrl: photoUrl,
+      role: role,
+      status: eventStatusActive,
+      joinedAt: joinedAt,
+    ),
+    EventParticipantsRecord.createDoc(eventRef, id: userId),
+  );
+}
+
 EventsRecord _eventsRecordFixture(
   String id, {
   String title = 'Разговорный клуб',
   DateTime? startsAt,
+  bool includeCapacity = true,
+  bool includeParticipantsCount = true,
 }) {
   return EventsRecord.getDocumentFromData(
     {
@@ -5066,8 +5754,8 @@ EventsRecord _eventsRecordFixture(
       'locationName': 'Starbucks, ул. Арбат, 5',
       'startsAt': startsAt ?? DateTime.utc(2035, 6, 14, 15),
       'timeZoneId': 'Europe/Moscow',
-      'capacity': 10,
-      'participantsCount': 1,
+      if (includeCapacity) 'capacity': 10,
+      if (includeParticipantsCount) 'participantsCount': 1,
       'organizerId': 'organizer-user',
       'organizerDisplayName': 'Анастасия Иванова',
       'organizerPhotoUrl': '',

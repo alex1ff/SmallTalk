@@ -181,6 +181,12 @@ enum EventListChatCtaState {
   participantOnly,
 }
 
+enum EventListMembershipState {
+  resolved,
+  pending,
+  lookupFailed,
+}
+
 class EventListCardViewModel {
   const EventListCardViewModel({
     this.eventId = '',
@@ -203,6 +209,8 @@ class EventListCardViewModel {
     this.capacity,
     this.joinCtaState = EventListJoinCtaState.join,
     this.chatCtaState = EventListChatCtaState.participantOnly,
+    this.membershipState = EventListMembershipState.resolved,
+    this.reserveParticipantPreviewSpace = false,
   });
 
   final String organizerDisplayName;
@@ -215,6 +223,8 @@ class EventListCardViewModel {
   final int? capacity;
   final EventListJoinCtaState joinCtaState;
   final EventListChatCtaState chatCtaState;
+  final EventListMembershipState membershipState;
+  final bool reserveParticipantPreviewSpace;
   final String languageCode;
   final String? languageNameEn;
   final String? languageNameRu;
@@ -229,9 +239,12 @@ class EventListCardViewModel {
   bool get hasParticipantPreview =>
       participants.isNotEmpty || (participantsCount ?? 0) > 0;
 
+  bool get hasParticipantPreviewRegion =>
+      hasParticipantPreview || reserveParticipantPreviewSpace;
+
   bool get hasOccupancy => capacity != null && capacity! > 0;
 
-  bool get hasFooterContent => hasParticipantPreview || hasOccupancy;
+  bool get hasFooterContent => hasParticipantPreviewRegion || hasOccupancy;
 
   int get resolvedParticipantsCount {
     final count = participantsCount;
@@ -692,6 +705,7 @@ class _EventListWidgetState extends State<EventListWidget> {
           : identityHashCode(widget.activeParticipantsLoader),
     );
     if (_eventListLoadKey != key || _eventCardsFuture == null) {
+      _eventListLoadGeneration += 1;
       _eventListLoadKey = key;
       final loadGeneration = _eventListLoadGeneration;
       final cachedCards = _eventListCardsCache.read(
@@ -702,26 +716,40 @@ class _EventListWidgetState extends State<EventListWidget> {
         _rememberLoadedCards(key, cachedCards);
       }
       _eventCardsFutureInitialCards = cachedCards;
-      _eventCardsFuture = (cachedCards == null
-              ? _loadEventCards(
-                  selected: selected,
-                  key: key,
-                  localDateRange: localDateRange,
-                  nowUtc: normalizedNowUtc,
-                  selectedLevel: _selectedLevel,
-                  currentUserId: viewerUserId,
-                  loadGeneration: loadGeneration,
-                )
-              : Future.value(cachedCards))
-          .then((cards) {
-        if (_eventListLoadKey == key &&
-            _eventListLoadGeneration == loadGeneration) {
-          _rememberLoadedCards(key, cards);
-        }
-        return cards;
-      });
+      _eventCardsFuture = cachedCards == null
+          ? _loadBaseEventCards(
+              selected: selected,
+              localDateRange: localDateRange,
+              nowUtc: normalizedNowUtc,
+              selectedLevel: _selectedLevel,
+              currentUserId: viewerUserId,
+            ).then((baseLoad) {
+              if (_eventListLoadIsCurrent(key, loadGeneration)) {
+                _rememberLoadedCards(key, baseLoad.cards);
+                if (baseLoad.cards.isNotEmpty) {
+                  unawaited(
+                    _enrichEventCards(
+                      events: baseLoad.events,
+                      fallbackTimeZoneId: selected.city.timeZoneId,
+                      key: key,
+                      nowUtc: normalizedNowUtc,
+                      currentUserId: viewerUserId,
+                      loadGeneration: loadGeneration,
+                    ),
+                  );
+                }
+              }
+              return baseLoad.cards;
+            })
+          : Future<List<EventListCardViewModel>>.value(cachedCards);
     }
     return _eventCardsFuture;
+  }
+
+  bool _eventListLoadIsCurrent(_EventListLoadKey key, int loadGeneration) {
+    return mounted &&
+        _eventListLoadKey == key &&
+        _eventListLoadGeneration == loadGeneration;
   }
 
   void _rememberLoadedCards(
@@ -770,14 +798,12 @@ class _EventListWidgetState extends State<EventListWidget> {
     }
   }
 
-  Future<List<EventListCardViewModel>> _loadEventCards({
+  Future<_EventListBaseCardsLoad> _loadBaseEventCards({
     required EventSelectedCity selected,
-    required _EventListLoadKey key,
     required EventListLocalDateRange? localDateRange,
     required DateTime nowUtc,
     required String? selectedLevel,
     required String currentUserId,
-    required int loadGeneration,
   }) async {
     final page = localDateRange == null
         ? await EventListRepository.loadLevelFilteredActiveEventPage(
@@ -801,14 +827,6 @@ class _EventListWidgetState extends State<EventListWidget> {
             pageLoader: widget.eventPageLoader,
           );
 
-    final participantRecordsByEventId =
-        await _loadCurrentUserParticipantRecordsByEventId(
-      events: page.data,
-      currentUserId: currentUserId,
-    );
-    final activeParticipantRecordsByEventId =
-        await _loadActiveParticipantRecordsByEventId(events: page.data);
-
     final cards = page.data
         .map(
           (event) => _eventListCardFromRecord(
@@ -816,38 +834,97 @@ class _EventListWidgetState extends State<EventListWidget> {
             fallbackTimeZoneId: selected.city.timeZoneId,
             nowUtc: nowUtc,
             currentUserId: currentUserId,
-            currentUserParticipant:
-                participantRecordsByEventId[event.reference.id],
-            activeParticipants:
-                activeParticipantRecordsByEventId[event.reference.id] ??
-                    const <EventParticipantsRecord>[],
+            membershipState: _eventListMembershipNeedsLookup(
+              event,
+              currentUserId,
+            )
+                ? EventListMembershipState.pending
+                : EventListMembershipState.resolved,
           ),
         )
         .whereType<EventListCardViewModel>()
         .toList(growable: false);
-    if (cards.isNotEmpty && _eventListLoadGeneration == loadGeneration) {
+    return _EventListBaseCardsLoad(events: page.data, cards: cards);
+  }
+
+  Future<void> _enrichEventCards({
+    required List<EventsRecord> events,
+    required String fallbackTimeZoneId,
+    required _EventListLoadKey key,
+    required DateTime nowUtc,
+    required String currentUserId,
+    required int loadGeneration,
+  }) async {
+    final currentParticipantsFuture =
+        _loadCurrentUserParticipantRecordsByEventId(
+      events: events,
+      currentUserId: currentUserId,
+    );
+    final activeParticipantsFuture =
+        _loadActiveParticipantRecordsByEventId(events: events);
+    final membershipLoad = await currentParticipantsFuture;
+    final activeParticipantRecordsByEventId = await activeParticipantsFuture;
+
+    if (!_eventListLoadIsCurrent(key, loadGeneration)) {
+      return;
+    }
+
+    final enrichedCards = events
+        .map(
+          (event) => _eventListCardFromRecord(
+            event,
+            fallbackTimeZoneId: fallbackTimeZoneId,
+            nowUtc: nowUtc,
+            currentUserId: currentUserId,
+            currentUserParticipant:
+                membershipLoad.recordsByEventId[event.reference.id],
+            activeParticipants:
+                activeParticipantRecordsByEventId[event.reference.id] ??
+                    const <EventParticipantsRecord>[],
+            membershipState:
+                membershipLoad.failedEventIds.contains(event.reference.id)
+                    ? EventListMembershipState.lookupFailed
+                    : EventListMembershipState.resolved,
+          ),
+        )
+        .whereType<EventListCardViewModel>()
+        .toList(growable: false);
+    if (!_eventListLoadIsCurrent(key, loadGeneration)) {
+      return;
+    }
+
+    if (enrichedCards.isNotEmpty && membershipLoad.failedEventIds.isEmpty) {
       _eventListCardsCache.write(
         key,
-        cards,
+        enrichedCards,
         fetchedAtUtc: nowUtc,
       );
     }
-    return cards;
+    setState(() {
+      _eventCardsFutureInitialCards = enrichedCards;
+      _eventCardsFuture =
+          Future<List<EventListCardViewModel>>.value(enrichedCards);
+      _rememberLoadedCards(key, enrichedCards);
+    });
   }
 
-  Future<Map<String, EventParticipantsRecord>>
-      _loadCurrentUserParticipantRecordsByEventId({
+  Future<_EventListMembershipLoad> _loadCurrentUserParticipantRecordsByEventId({
     required List<EventsRecord> events,
     required String currentUserId,
   }) async {
     final userId = currentUserId.trim();
     if (events.isEmpty || userId.isEmpty) {
-      return const <String, EventParticipantsRecord>{};
+      return const _EventListMembershipLoad();
     }
     final loader =
         widget.currentUserParticipantLoader ?? _loadEventListParticipant;
     final entries = await Future.wait(
       events.map((event) async {
+        if (!_eventListMembershipNeedsLookup(event, userId)) {
+          return _EventListMembershipLookupResult(
+            eventId: event.reference.id,
+          );
+        }
         try {
           final participant = await loader(event.reference, userId);
           if (!_eventListParticipantIsActiveForUser(
@@ -855,16 +932,31 @@ class _EventListWidgetState extends State<EventListWidget> {
             eventReference: event.reference,
             userId: userId,
           )) {
-            return null;
+            return _EventListMembershipLookupResult(
+              eventId: event.reference.id,
+            );
           }
-          return MapEntry(event.reference.id, participant!);
+          return _EventListMembershipLookupResult(
+            eventId: event.reference.id,
+            participant: participant,
+          );
         } catch (_) {
-          return null;
+          return _EventListMembershipLookupResult(
+            eventId: event.reference.id,
+            failed: true,
+          );
         }
       }),
     );
-    return Map<String, EventParticipantsRecord>.fromEntries(
-      entries.whereType<MapEntry<String, EventParticipantsRecord>>(),
+    return _EventListMembershipLoad(
+      recordsByEventId: Map<String, EventParticipantsRecord>.fromEntries(
+        entries.where((entry) => entry.participant != null).map(
+              (entry) => MapEntry(entry.eventId, entry.participant!),
+            ),
+      ),
+      failedEventIds: Set<String>.unmodifiable(
+        entries.where((entry) => entry.failed).map((entry) => entry.eventId),
+      ),
     );
   }
 
@@ -1311,6 +1403,38 @@ class _EventListLoadedCards {
   final List<EventListCardViewModel> cards;
 }
 
+class _EventListBaseCardsLoad {
+  const _EventListBaseCardsLoad({
+    required this.events,
+    required this.cards,
+  });
+
+  final List<EventsRecord> events;
+  final List<EventListCardViewModel> cards;
+}
+
+class _EventListMembershipLoad {
+  const _EventListMembershipLoad({
+    this.recordsByEventId = const <String, EventParticipantsRecord>{},
+    this.failedEventIds = const <String>{},
+  });
+
+  final Map<String, EventParticipantsRecord> recordsByEventId;
+  final Set<String> failedEventIds;
+}
+
+class _EventListMembershipLookupResult {
+  const _EventListMembershipLookupResult({
+    required this.eventId,
+    this.participant,
+    this.failed = false,
+  });
+
+  final String eventId;
+  final EventParticipantsRecord? participant;
+  final bool failed;
+}
+
 class _EventListLoadKey {
   const _EventListLoadKey({
     required this.countryCode,
@@ -1523,6 +1647,7 @@ EventListCardViewModel? _eventListCardFromRecord(
   EventParticipantsRecord? currentUserParticipant,
   List<EventParticipantsRecord> activeParticipants =
       const <EventParticipantsRecord>[],
+  EventListMembershipState membershipState = EventListMembershipState.resolved,
 }) {
   final startsAt = event.startsAt;
   if (startsAt == null) {
@@ -1581,7 +1706,17 @@ EventListCardViewModel? _eventListCardFromRecord(
     chatCtaState: isJoined
         ? EventListChatCtaState.enabled
         : EventListChatCtaState.participantOnly,
+    membershipState: membershipState,
+    reserveParticipantPreviewSpace: true,
   );
+}
+
+bool _eventListMembershipNeedsLookup(
+  EventsRecord event,
+  String currentUserId,
+) {
+  final userId = currentUserId.trim();
+  return userId.isNotEmpty && event.organizerId.trim() != userId;
 }
 
 bool _eventListParticipantIsActiveForUser(
@@ -2072,37 +2207,48 @@ class _EventCardShell extends StatelessWidget {
         color: Colors.transparent,
         borderRadius: borderRadius,
         clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: borderRadius,
-          child: Ink(
-            decoration: ExpatlioDesign.cardDecoration(
-              color: Colors.white,
-              radius: _eventListCardRadius,
-              borderColor: _eventListBorderColor,
-            ),
-            child: Padding(
-              padding: const EdgeInsetsDirectional.all(_eventListCardPadding),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _EventCardHeaderShell(card: card, metrics: metrics),
-                  const SizedBox(height: _eventListCardHeaderBodyGap),
-                  _EventCardBodyShell(card: card, metrics: metrics),
-                  const SizedBox(height: _eventListCardBodyMetaGap),
-                  _EventCardMetaShell(card: card, metrics: metrics),
-                  const SizedBox(height: _eventListCardMetaFooterGap),
-                  _EventCardFooterShell(card: card, metrics: metrics),
-                  const SizedBox(height: _eventListCardFooterActionsGap),
-                  _EventCardActionsShell(
+        child: Ink(
+          decoration: ExpatlioDesign.cardDecoration(
+            color: Colors.white,
+            radius: _eventListCardRadius,
+            borderColor: _eventListBorderColor,
+          ),
+          child: Padding(
+            padding: const EdgeInsetsDirectional.all(_eventListCardPadding),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                InkWell(
+                  onTap: onPressed,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _EventCardHeaderShell(card: card, metrics: metrics),
+                      const SizedBox(height: _eventListCardHeaderBodyGap),
+                      _EventCardBodyShell(card: card, metrics: metrics),
+                      const SizedBox(height: _eventListCardBodyMetaGap),
+                      _EventCardMetaShell(card: card, metrics: metrics),
+                      const SizedBox(height: _eventListCardMetaFooterGap),
+                      _EventCardFooterShell(card: card, metrics: metrics),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: _eventListCardFooterActionsGap),
+                InkWell(
+                  onTap:
+                      card?.membershipState == EventListMembershipState.resolved
+                          ? onPressed
+                          : null,
+                  child: _EventCardActionsShell(
                     card: card,
                     metrics: metrics,
                     onChatPressed: onChatPressed,
                     onChatParticipantRequiredPressed:
                         onChatParticipantRequiredPressed,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
@@ -2257,6 +2403,8 @@ class _EventOrganizerAvatar extends StatelessWidget {
           ? _fallback(context)
           : CachedNetworkImage(
               imageUrl: normalizedPhotoUrl,
+              width: _eventListOrganizerAvatarSize,
+              height: _eventListOrganizerAvatarSize,
               fit: BoxFit.cover,
               fadeInDuration: Duration.zero,
               fadeOutDuration: Duration.zero,
@@ -2797,13 +2945,14 @@ class _EventCardFooterShell extends StatelessWidget {
       child: event.hasFooterContent
           ? Row(
               children: [
-                if (event.hasParticipantPreview)
+                if (event.hasParticipantPreviewRegion)
                   _EventParticipantAvatarStack(
                     participants: event.participants,
                     participantsCount: event.participantsCount,
                     capacity: event.capacity,
+                    reservePreviewSpace: event.reserveParticipantPreviewSpace,
                   ),
-                if (event.hasParticipantPreview && event.hasOccupancy)
+                if (event.hasParticipantPreviewRegion && event.hasOccupancy)
                   const SizedBox(width: ExpatlioDesign.space12),
                 if (event.hasOccupancy)
                   Flexible(
@@ -2851,6 +3000,7 @@ class _EventParticipantAvatarStack extends StatelessWidget {
     required this.participants,
     required this.participantsCount,
     required this.capacity,
+    required this.reservePreviewSpace,
   });
 
   static const double _avatarSize = 24;
@@ -2860,18 +3010,21 @@ class _EventParticipantAvatarStack extends StatelessWidget {
   final List<EventListParticipantViewModel> participants;
   final int? participantsCount;
   final int? capacity;
+  final bool reservePreviewSpace;
 
   @override
   Widget build(BuildContext context) {
     final totalCount = _totalCount;
     final previewTotal = _previewTotal(totalCount);
     final visibleSlotCount = math.min(previewTotal, _maxVisibleSlots);
-    if (visibleSlotCount <= 0) {
+    if (visibleSlotCount <= 0 && !reservePreviewSpace) {
       return const SizedBox.shrink();
     }
     final visibleFilledSlotCount = math.min(totalCount, visibleSlotCount);
     final overflowCount = previewTotal - visibleSlotCount;
-    final itemCount = visibleSlotCount + (overflowCount > 0 ? 1 : 0);
+    final itemCount = reservePreviewSpace
+        ? _maxVisibleSlots + 1
+        : visibleSlotCount + (overflowCount > 0 ? 1 : 0);
 
     return SizedBox(
       key: eventListParticipantAvatarStackKey,
@@ -2954,6 +3107,8 @@ class _EventParticipantAvatar extends StatelessWidget {
             ? _fallback(context)
             : CachedNetworkImage(
                 imageUrl: normalizedPhotoUrl,
+                width: dimension,
+                height: dimension,
                 fit: BoxFit.cover,
                 fadeInDuration: Duration.zero,
                 fadeOutDuration: Duration.zero,
@@ -3104,11 +3259,13 @@ class _EventCardActionsShell extends StatelessWidget {
               onChatParticipantRequiredPressed != null;
       primaryAction = _EventCardPrimaryCta(
         state: event.joinCtaState,
+        membershipState: event.membershipState,
         height: metrics.actionHeight,
         maxLines: metrics.actionMaxLines,
       );
       secondaryAction = _EventCardChatCta(
         state: event.chatCtaState,
+        membershipState: event.membershipState,
         height: metrics.actionHeight,
         maxLines: metrics.actionMaxLines,
         onPressed: canOpenChat ? onChatPressed : null,
@@ -3156,25 +3313,31 @@ class _EventCardActionsShell extends StatelessWidget {
 class _EventCardPrimaryCta extends StatelessWidget {
   const _EventCardPrimaryCta({
     required this.state,
+    required this.membershipState,
     required this.height,
     required this.maxLines,
   });
 
   final EventListJoinCtaState state;
+  final EventListMembershipState membershipState;
   final double height;
   final int maxLines;
 
   @override
   Widget build(BuildContext context) {
-    final enabled = state == EventListJoinCtaState.join;
+    final membershipResolved =
+        membershipState == EventListMembershipState.resolved;
+    final enabled = membershipResolved && state == EventListJoinCtaState.join;
     final backgroundColor = enabled
         ? ExpatlioDesign.primary
         : ExpatlioDesign.secondarySystemBackground;
-    final textColor = enabled
-        ? Colors.white
-        : state == EventListJoinCtaState.joined
-            ? ExpatlioDesign.primary
-            : ExpatlioDesign.muted;
+    final textColor = !membershipResolved
+        ? ExpatlioDesign.muted
+        : enabled
+            ? Colors.white
+            : state == EventListJoinCtaState.joined
+                ? ExpatlioDesign.primary
+                : ExpatlioDesign.muted;
 
     return Semantics(
       button: true,
@@ -3191,7 +3354,20 @@ class _EventCardPrimaryCta extends StatelessWidget {
           borderRadius: BorderRadius.circular(_eventListActionRadius),
         ),
         child: Text(
-          _eventPrimaryCtaLabel(context, state),
+          switch (membershipState) {
+            EventListMembershipState.pending =>
+              FFLocalizations.of(context).getVariableText(
+                ruText: 'Проверяем участие',
+                enText: 'Checking status',
+              ),
+            EventListMembershipState.lookupFailed =>
+              FFLocalizations.of(context).getVariableText(
+                ruText: 'Статус недоступен',
+                enText: 'Status unavailable',
+              ),
+            EventListMembershipState.resolved =>
+              _eventPrimaryCtaLabel(context, state),
+          },
           maxLines: maxLines,
           overflow: TextOverflow.ellipsis,
           textAlign: TextAlign.center,
@@ -3211,6 +3387,7 @@ class _EventCardPrimaryCta extends StatelessWidget {
 class _EventCardChatCta extends StatelessWidget {
   const _EventCardChatCta({
     required this.state,
+    required this.membershipState,
     required this.height,
     required this.maxLines,
     required this.onPressed,
@@ -3218,6 +3395,7 @@ class _EventCardChatCta extends StatelessWidget {
   });
 
   final EventListChatCtaState state;
+  final EventListMembershipState membershipState;
   final double height;
   final int maxLines;
   final VoidCallback? onPressed;
@@ -3225,12 +3403,18 @@ class _EventCardChatCta extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final enabled = state == EventListChatCtaState.enabled && onPressed != null;
-    final effectiveOnPressed = enabled
-        ? onPressed
-        : state == EventListChatCtaState.participantOnly
-            ? onParticipantRequiredPressed
-            : null;
+    final membershipResolved =
+        membershipState == EventListMembershipState.resolved;
+    final enabled = membershipResolved &&
+        state == EventListChatCtaState.enabled &&
+        onPressed != null;
+    final effectiveOnPressed = !membershipResolved
+        ? null
+        : enabled
+            ? onPressed
+            : state == EventListChatCtaState.participantOnly
+                ? onParticipantRequiredPressed
+                : null;
     final label = FFLocalizations.of(context).getVariableText(
       ruText: 'Чат',
       enText: 'Chat',
@@ -3238,6 +3422,14 @@ class _EventCardChatCta extends StatelessWidget {
     final disabledLabel = FFLocalizations.of(context).getVariableText(
       ruText: 'Чат доступен только участникам',
       enText: 'Chat is available to participants only',
+    );
+    final pendingLabel = FFLocalizations.of(context).getVariableText(
+      ruText: 'Проверяем доступ к чату',
+      enText: 'Checking chat access',
+    );
+    final failedLabel = FFLocalizations.of(context).getVariableText(
+      ruText: 'Не удалось проверить доступ к чату',
+      enText: 'Could not check chat access',
     );
     final canHandleTap = effectiveOnPressed != null;
     final foregroundColor =
@@ -3251,7 +3443,11 @@ class _EventCardChatCta extends StatelessWidget {
       container: true,
       button: true,
       enabled: enabled,
-      label: enabled ? label : disabledLabel,
+      label: switch (membershipState) {
+        EventListMembershipState.pending => pendingLabel,
+        EventListMembershipState.lookupFailed => failedLabel,
+        EventListMembershipState.resolved => enabled ? label : disabledLabel,
+      },
       onTap: enabled ? onPressed : null,
       child: ExcludeSemantics(
         child: Material(
