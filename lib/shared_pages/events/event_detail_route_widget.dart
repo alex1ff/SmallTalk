@@ -59,6 +59,7 @@ typedef _EventDetailPendingMembershipIntent = ({
   _EventDetailRouteDataKey dataKey,
   bool desiredJoined,
   int generation,
+  int optimisticParticipantsCount,
 });
 
 _EventDetailRouteDataKey _eventDetailRouteDataKey({
@@ -115,8 +116,10 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
   bool _isReportingEvent = false;
   String? _locallyCanceledEventId;
   String? _locallyJoinedEventId;
+  String? _locallyJoinedParticipantsCountEventId;
   int? _locallyJoinedParticipantsCount;
   String? _locallyLeftEventId;
+  String? _locallyLeftParticipantsCountEventId;
   int? _locallyLeftParticipantsCount;
   _EventDetailPendingMembershipIntent? _pendingMembershipIntent;
   String? _currentDetailEventId;
@@ -150,8 +153,10 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       _locallyStartedAt = null;
       _locallyCanceledEventId = null;
       _locallyJoinedEventId = null;
+      _locallyJoinedParticipantsCountEventId = null;
       _locallyJoinedParticipantsCount = null;
       _locallyLeftEventId = null;
+      _locallyLeftParticipantsCountEventId = null;
       _locallyLeftParticipantsCount = null;
       _currentDetailEventId = null;
       if (dataKeyChanged) {
@@ -265,7 +270,10 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
     }
   }
 
-  Future<void> _handleJoin(EventsRecord event) async {
+  Future<void> _handleJoin(
+    EventsRecord event, {
+    required int displayedParticipantsCount,
+  }) async {
     if (_isJoining || _isLeaving) {
       return;
     }
@@ -283,6 +291,10 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         dataKey: requestDataKey,
         desiredJoined: true,
         generation: requestGeneration,
+        optimisticParticipantsCount: _eventDetailOptimisticParticipantsCount(
+          displayedParticipantsCount: displayedParticipantsCount,
+          desiredJoined: true,
+        ),
       );
     });
     try {
@@ -308,8 +320,10 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       setState(() {
         _pendingMembershipIntent = null;
         _locallyJoinedEventId = result.eventId;
+        _locallyJoinedParticipantsCountEventId = result.eventId;
         _locallyJoinedParticipantsCount = result.participantsCount;
         _locallyLeftEventId = null;
+        _locallyLeftParticipantsCountEventId = null;
         _locallyLeftParticipantsCount = null;
         _lastTrackedLeftEventId = null;
       });
@@ -344,6 +358,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
   Future<void> _handleLeave(
     EventsRecord event, {
     required bool isActiveParticipant,
+    required int displayedParticipantsCount,
   }) async {
     if (_isJoining || _isLeaving) {
       return;
@@ -374,6 +389,10 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         dataKey: requestDataKey,
         desiredJoined: false,
         generation: requestGeneration,
+        optimisticParticipantsCount: _eventDetailOptimisticParticipantsCount(
+          displayedParticipantsCount: displayedParticipantsCount,
+          desiredJoined: false,
+        ),
       );
     });
     try {
@@ -399,8 +418,10 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       setState(() {
         _pendingMembershipIntent = null;
         _locallyJoinedEventId = null;
+        _locallyJoinedParticipantsCountEventId = null;
         _locallyJoinedParticipantsCount = null;
         _locallyLeftEventId = result.eventId;
+        _locallyLeftParticipantsCountEventId = result.eventId;
         _locallyLeftParticipantsCount = result.participantsCount;
         _lastTrackedJoinedEventId = null;
       });
@@ -634,14 +655,21 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         final isLocallyCanceled = _locallyCanceledEventId == eventId;
         final isLocallyJoined = _locallyJoinedEventId == eventId;
         final isLocallyLeft = _locallyLeftEventId == eventId;
+        final hasLocalJoinedParticipantsCount =
+            _locallyJoinedParticipantsCountEventId == eventId;
+        final hasLocalLeftParticipantsCount =
+            _locallyLeftParticipantsCountEventId == eventId;
         final snapshotParticipantsCount =
             event.hasParticipantsCount() ? event.participantsCount : null;
-        final participantsCount = _eventDetailParticipantsCountForEvent(
+        final confirmedParticipantsCount =
+            _eventDetailParticipantsCountForEvent(
           snapshotParticipantsCount: snapshotParticipantsCount,
-          localJoinedParticipantsCount:
-              isLocallyJoined ? _locallyJoinedParticipantsCount : null,
-          localLeftParticipantsCount:
-              isLocallyLeft ? _locallyLeftParticipantsCount : null,
+          localJoinedParticipantsCount: hasLocalJoinedParticipantsCount
+              ? _locallyJoinedParticipantsCount
+              : null,
+          localLeftParticipantsCount: hasLocalLeftParticipantsCount
+              ? _locallyLeftParticipantsCount
+              : null,
         );
         final status = event.status.trim();
         final isActive = status == 'active';
@@ -656,11 +684,12 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
           snapshotParticipantsCount: snapshotParticipantsCount,
         );
 
-        final participantStream = currentUserUid.trim().isEmpty
+        final participantUserId = currentUserUid.trim();
+        final participantStream = participantUserId.isEmpty
             ? null
             : EventDetailRepository.watchCurrentUserParticipant(
                 eventId: eventId,
-                userId: currentUserUid,
+                userId: participantUserId,
                 snapshotStream: widget.participantSnapshotStream,
               );
 
@@ -676,34 +705,22 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
             final isOrganizerActiveParticipant =
                 canManage && isActiveParticipant;
             final pendingMembershipIntent = _pendingMembershipIntent;
-            final pendingDesiredJoined = pendingMembershipIntent != null &&
+            final activePendingMembershipIntent = pendingMembershipIntent !=
+                        null &&
                     pendingMembershipIntent.dataKey == _eventStreamDataKey &&
                     pendingMembershipIntent.dataKey.eventId == eventId &&
                     pendingMembershipIntent.generation ==
                         _participantActionGeneration
-                ? pendingMembershipIntent.desiredJoined
+                ? pendingMembershipIntent
                 : null;
-            final resolvedJoinCtaState = isCanceled
-                ? EventDetailJoinCtaState.canceled
-                : pendingDesiredJoined == true
-                    ? EventDetailJoinCtaState.optimisticJoined
-                    : pendingDesiredJoined == false
-                        ? EventDetailJoinCtaState.optimisticLeft
-                        : _eventDetailJoinStateForEvent(
-                            event,
-                            isCanceled: false,
-                            isJoined: isJoinedForActions,
-                            isJoining: _isJoining,
-                            hasStarted: hasStarted,
-                            resolvedParticipantsCount: participantsCount,
-                          );
-            final joinCtaState = isOrganizerActiveParticipant &&
-                    resolvedJoinCtaState == EventDetailJoinCtaState.joined
-                ? EventDetailJoinCtaState.joinedLocked
-                : resolvedJoinCtaState;
-            final canJoin = joinCtaState == EventDetailJoinCtaState.join;
-            final canLeave = !isOrganizerActiveParticipant &&
-                joinCtaState == EventDetailJoinCtaState.joined;
+            final hasResolvedParticipantSnapshot = !participantSnapshot
+                    .hasError &&
+                participantSnapshot.connectionState != ConnectionState.waiting;
+            _clearLocalMembershipIfParticipantSnapshotCaughtUp(
+              eventId: eventId,
+              isActiveParticipant: isActiveParticipant,
+              hasResolvedParticipantSnapshot: hasResolvedParticipantSnapshot,
+            );
             _scheduleStartsAtRefreshIfNeeded(
               eventId: eventId,
               startsAt: event.startsAt,
@@ -731,15 +748,71 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
                 participantsStream: widget.participantsStream,
               ),
               builder: (context, participantsSnapshot) {
+                final confirmedDesiredJoined = isLocallyLeft
+                    ? false
+                    : isLocallyJoined || isActiveParticipant
+                        ? true
+                        : hasResolvedParticipantSnapshot
+                            ? false
+                            : null;
+                final desiredJoined =
+                    activePendingMembershipIntent?.desiredJoined ??
+                        confirmedDesiredJoined;
+                final currentUserDocumentForPreview = currentUserDocument;
+                final hasCurrentUserPreview =
+                    currentUserDocumentForPreview != null &&
+                        currentUserDocumentForPreview.reference.id ==
+                            participantUserId;
                 final participantViewModels =
-                    _eventDetailParticipantViewModelsWithLocalJoin(
+                    _eventDetailParticipantViewModelsWithMembershipOverride(
                   participants: _eventDetailParticipantViewModelsForRoute(
                     event: event,
                     participants: participantsSnapshot.data ??
                         const <EventParticipantsRecord>[],
                   ),
-                  isLocallyJoined: isLocallyJoined,
+                  currentUserId: participantUserId,
+                  desiredJoined: desiredJoined,
+                  currentUserDisplayName: hasCurrentUserPreview
+                      ? currentUserDocumentForPreview.displayName
+                      : '',
+                  currentUserPhotoUrl: hasCurrentUserPreview
+                      ? currentUserDocumentForPreview.photoUrl
+                      : '',
                 );
+                final participantsCount =
+                    _eventDetailParticipantsCountWithPendingIntent(
+                  confirmedParticipantsCount: confirmedParticipantsCount,
+                  pendingMembershipIntent: activePendingMembershipIntent,
+                );
+                final displayedParticipantsCount =
+                    _eventDetailDisplayedParticipantsCount(
+                  participantsCount: participantsCount,
+                  participantTileCount: participantViewModels.length,
+                );
+                final pendingDesiredJoined =
+                    activePendingMembershipIntent?.desiredJoined;
+                final resolvedJoinCtaState = isCanceled
+                    ? EventDetailJoinCtaState.canceled
+                    : pendingDesiredJoined == true
+                        ? EventDetailJoinCtaState.optimisticJoined
+                        : pendingDesiredJoined == false
+                            ? EventDetailJoinCtaState.optimisticLeft
+                            : _eventDetailJoinStateForEvent(
+                                event,
+                                isCanceled: false,
+                                isJoined: isJoinedForActions,
+                                isJoining: _isJoining,
+                                hasStarted: hasStarted,
+                                resolvedParticipantsCount:
+                                    displayedParticipantsCount,
+                              );
+                final joinCtaState = isOrganizerActiveParticipant &&
+                        resolvedJoinCtaState == EventDetailJoinCtaState.joined
+                    ? EventDetailJoinCtaState.joinedLocked
+                    : resolvedJoinCtaState;
+                final canJoin = joinCtaState == EventDetailJoinCtaState.join;
+                final canLeave = !isOrganizerActiveParticipant &&
+                    joinCtaState == EventDetailJoinCtaState.joined;
 
                 final content = EventDetailWidget(
                   eventId: eventId,
@@ -793,11 +866,17 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
                       : null,
                   onPrimaryCtaPressed: isActive && !_isJoining && !_isLeaving
                       ? canJoin
-                          ? () => _handleJoin(event)
+                          ? () => _handleJoin(
+                                event,
+                                displayedParticipantsCount:
+                                    displayedParticipantsCount,
+                              )
                           : canLeave
                               ? () => _handleLeave(
                                     event,
                                     isActiveParticipant: isActiveParticipant,
+                                    displayedParticipantsCount:
+                                        displayedParticipantsCount,
                                   )
                               : null
                       : null,
@@ -884,13 +963,15 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
     required String eventId,
     required int? snapshotParticipantsCount,
   }) {
+    final dataKey = _eventStreamDataKey;
     final localParticipantsCount = _locallyJoinedParticipantsCount;
     final localLeftParticipantsCount = _locallyLeftParticipantsCount;
-    final shouldClearJoined = _locallyJoinedEventId == eventId &&
-        localParticipantsCount != null &&
-        snapshotParticipantsCount != null &&
-        snapshotParticipantsCount >= localParticipantsCount;
-    final shouldClearLeft = _locallyLeftEventId == eventId &&
+    final shouldClearJoined =
+        _locallyJoinedParticipantsCountEventId == eventId &&
+            localParticipantsCount != null &&
+            snapshotParticipantsCount != null &&
+            snapshotParticipantsCount >= localParticipantsCount;
+    final shouldClearLeft = _locallyLeftParticipantsCountEventId == eventId &&
         localLeftParticipantsCount != null &&
         snapshotParticipantsCount != null &&
         snapshotParticipantsCount <= localLeftParticipantsCount;
@@ -900,21 +981,59 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted ||
+          _eventStreamDataKey != dataKey ||
           (shouldClearJoined &&
-              (_locallyJoinedEventId != eventId ||
+              (_locallyJoinedParticipantsCountEventId != eventId ||
                   _locallyJoinedParticipantsCount != localParticipantsCount)) ||
           (shouldClearLeft &&
-              (_locallyLeftEventId != eventId ||
+              (_locallyLeftParticipantsCountEventId != eventId ||
                   _locallyLeftParticipantsCount !=
                       localLeftParticipantsCount))) {
         return;
       }
       setState(() {
         if (shouldClearJoined) {
+          _locallyJoinedParticipantsCountEventId = null;
           _locallyJoinedParticipantsCount = null;
         }
         if (shouldClearLeft) {
+          _locallyLeftParticipantsCountEventId = null;
           _locallyLeftParticipantsCount = null;
+        }
+      });
+    });
+  }
+
+  void _clearLocalMembershipIfParticipantSnapshotCaughtUp({
+    required String eventId,
+    required bool isActiveParticipant,
+    required bool hasResolvedParticipantSnapshot,
+  }) {
+    final dataKey = _eventStreamDataKey;
+    final actionGeneration = _participantActionGeneration;
+    final shouldClearJoined =
+        _locallyJoinedEventId == eventId && isActiveParticipant;
+    final shouldClearLeft = _locallyLeftEventId == eventId &&
+        hasResolvedParticipantSnapshot &&
+        !isActiveParticipant;
+    if (!shouldClearJoined && !shouldClearLeft) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          _eventStreamDataKey != dataKey ||
+          _participantActionGeneration != actionGeneration ||
+          (shouldClearJoined && _locallyJoinedEventId != eventId) ||
+          (shouldClearLeft && _locallyLeftEventId != eventId)) {
+        return;
+      }
+      setState(() {
+        if (shouldClearJoined) {
+          _locallyJoinedEventId = null;
+        }
+        if (shouldClearLeft) {
+          _locallyLeftEventId = null;
         }
       });
     });
@@ -1234,29 +1353,94 @@ List<EventDetailParticipantViewModel>
 }
 
 List<EventDetailParticipantViewModel>
-    _eventDetailParticipantViewModelsWithLocalJoin({
+    _eventDetailParticipantViewModelsWithMembershipOverride({
   required List<EventDetailParticipantViewModel> participants,
-  required bool isLocallyJoined,
+  required String currentUserId,
+  required bool? desiredJoined,
+  required String currentUserDisplayName,
+  required String currentUserPhotoUrl,
 }) {
-  if (!isLocallyJoined) {
+  final userId = currentUserId.trim();
+  if (userId.isEmpty || desiredJoined == null) {
     return participants;
   }
-  final userId = currentUserUid.trim();
-  if (userId.isEmpty ||
-      participants.any((participant) => participant.userId.trim() == userId)) {
-    return participants;
+
+  if (!desiredJoined) {
+    return participants
+        .where((participant) => participant.userId.trim() != userId)
+        .toList(growable: false);
+  }
+
+  var foundCurrentUser = false;
+  final deduplicatedParticipants = <EventDetailParticipantViewModel>[];
+  for (final participant in participants) {
+    if (participant.userId.trim() != userId) {
+      deduplicatedParticipants.add(participant);
+      continue;
+    }
+    if (!foundCurrentUser) {
+      deduplicatedParticipants.add(participant);
+      foundCurrentUser = true;
+    }
+  }
+  if (foundCurrentUser) {
+    return deduplicatedParticipants;
   }
   final displayName =
       _eventDetailVisibleParticipantDisplayName(currentUserDisplayName);
-  final photoUrl = currentUserPhoto.trim();
+  final photoUrl = currentUserPhotoUrl.trim();
   return [
-    ...participants,
+    ...deduplicatedParticipants,
     EventDetailParticipantViewModel(
       userId: userId,
       displayName: displayName,
       photoUrl: photoUrl.isEmpty ? null : photoUrl,
     ),
   ];
+}
+
+int _eventDetailOptimisticParticipantsCount({
+  required int displayedParticipantsCount,
+  required bool desiredJoined,
+}) {
+  final normalizedCount =
+      displayedParticipantsCount < 0 ? 0 : displayedParticipantsCount;
+  if (desiredJoined) {
+    return normalizedCount + 1;
+  }
+  return normalizedCount > 0 ? normalizedCount - 1 : 0;
+}
+
+int? _eventDetailParticipantsCountWithPendingIntent({
+  required int? confirmedParticipantsCount,
+  required _EventDetailPendingMembershipIntent? pendingMembershipIntent,
+}) {
+  final pendingIntent = pendingMembershipIntent;
+  if (pendingIntent == null) {
+    return confirmedParticipantsCount;
+  }
+
+  final optimisticCount = pendingIntent.optimisticParticipantsCount;
+  final confirmedCount = confirmedParticipantsCount;
+  if (confirmedCount == null) {
+    return optimisticCount;
+  }
+  if (pendingIntent.desiredJoined) {
+    return confirmedCount > optimisticCount ? confirmedCount : optimisticCount;
+  }
+  return confirmedCount < optimisticCount ? confirmedCount : optimisticCount;
+}
+
+int _eventDetailDisplayedParticipantsCount({
+  required int? participantsCount,
+  required int participantTileCount,
+}) {
+  final normalizedCount = participantsCount == null || participantsCount < 0
+      ? 0
+      : participantsCount;
+  return normalizedCount < participantTileCount
+      ? participantTileCount
+      : normalizedCount;
 }
 
 String _eventDetailVisibleParticipantDisplayName(String displayName) {
