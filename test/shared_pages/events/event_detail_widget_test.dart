@@ -1957,7 +1957,88 @@ void main() {
       find.bySemanticsLabel(RegExp(r'^Участник$')),
       findsOneWidget,
     );
+    final fallbackSemantics =
+        tester.getSemantics(find.byKey(eventDetailParticipantTileKey(2)));
+    expect(fallbackSemantics.flagsCollection.isImage, isTrue);
+    expect(fallbackSemantics.label, 'Участник');
+    expect(
+      find.descendant(
+        of: find.byKey(eventDetailParticipantTileKey(2)),
+        matching: find.byIcon(Icons.person_outline),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(eventDetailParticipantTileKey(2)),
+        matching: find.text('?'),
+      ),
+      findsNothing,
+    );
     semanticsHandle.dispose();
+  });
+
+  testWidgets('invisible participant identity uses safe English fallback',
+      (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+
+    try {
+      await tester.pumpWidget(
+        _buildTestApp(
+          locale: const Locale('en'),
+          home: const EventDetailWidget(
+            eventId: 'event-123',
+            participants: [
+              EventDetailParticipantViewModel(
+                userId: 'private-user-id',
+                displayName: '\u200B\u2060',
+              ),
+              EventDetailParticipantViewModel(
+                userId: 'second-private-user-id',
+                displayName: 'Al\u202Eice',
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final participantSemantics =
+          tester.getSemantics(find.byKey(eventDetailParticipantTileKey(0)));
+      expect(participantSemantics.flagsCollection.isImage, isTrue);
+      expect(participantSemantics.label, 'Participant');
+      expect(participantSemantics.label, isNot(contains('private-user-id')));
+      expect(find.text('private-user-id'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byKey(eventDetailParticipantTileKey(0)),
+          matching: find.byIcon(Icons.person_outline),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('?'), findsNothing);
+
+      final mixedNameSemantics =
+          tester.getSemantics(find.byKey(eventDetailParticipantTileKey(1)));
+      expect(mixedNameSemantics.flagsCollection.isImage, isTrue);
+      expect(mixedNameSemantics.label, 'Participant: Alice');
+      expect(mixedNameSemantics.label, isNot(contains('\u202E')));
+      expect(
+        mixedNameSemantics.label,
+        isNot(contains('second-private-user-id')),
+      );
+      expect(find.text('Alice'), findsOneWidget);
+      expect(find.text('Al\u202Eice'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byKey(eventDetailParticipantTileKey(1)),
+          matching: find.text('A'),
+        ),
+        findsOneWidget,
+      );
+    } finally {
+      semanticsHandle.dispose();
+    }
   });
 
   testWidgets('participants grid fits at most five avatars per row',

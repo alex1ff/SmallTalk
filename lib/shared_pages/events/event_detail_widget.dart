@@ -96,6 +96,13 @@ const double _eventDetailCompactButtonRadius = 12;
 const double _eventDetailContentBottomPadding = _eventDetailActionHeight +
     ExpatlioDesign.space16 * 2 +
     ExpatlioDesign.space16;
+final RegExp _eventDetailInvisibleParticipantNameCharacters = RegExp(
+  r'[\u0000-\u001F\u007F-\u009F\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180B-\u180F\u200B-\u200F\u202A-\u202E\u2060-\u206F\u3164\uFE00-\uFE0F\uFEFF\uFFA0]',
+);
+final RegExp _eventDetailParticipantNameLetterOrNumber = RegExp(
+  r'[\p{L}\p{N}]',
+  unicode: true,
+);
 
 BoxDecoration _eventDetailCardDecoration() {
   return BoxDecoration(
@@ -1318,7 +1325,8 @@ class _EventDetailParticipantTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final displayName = participant.displayName.trim();
+    final displayName =
+        _eventDetailUsableParticipantDisplayName(participant.displayName);
     final semanticsLabel = FFLocalizations.of(context).getVariableText(
       ruText: displayName.isEmpty ? 'Участник' : 'Участник: $displayName',
       enText: displayName.isEmpty ? 'Participant' : 'Participant: $displayName',
@@ -1326,6 +1334,7 @@ class _EventDetailParticipantTile extends StatelessWidget {
 
     return Semantics(
       container: true,
+      image: true,
       label: semanticsLabel,
       child: ExcludeSemantics(
         child: SizedBox(
@@ -1575,7 +1584,8 @@ class _EventDetailParticipantAvatar extends StatelessWidget {
   }
 
   Widget _fallback(BuildContext context) {
-    if (displayName.trim().isEmpty) {
+    final initial = _eventDetailParticipantAvatarInitial(displayName);
+    if (initial == null) {
       return const ColoredBox(
         color: ExpatlioDesign.avatarFallbackBackground,
         child: Icon(
@@ -1592,7 +1602,7 @@ class _EventDetailParticipantAvatar extends StatelessWidget {
       child: FittedBox(
         fit: BoxFit.scaleDown,
         child: Text(
-          ExpatlioDesign.avatarInitial(displayName),
+          initial,
           maxLines: 1,
           style: ExpatlioDesign.textStyle(
             context,
@@ -1604,6 +1614,30 @@ class _EventDetailParticipantAvatar extends StatelessWidget {
       ),
     );
   }
+}
+
+String _eventDetailUsableParticipantDisplayName(String displayName) {
+  final normalized = displayName.trim();
+  final lower = normalized.toLowerCase();
+  if (normalized.isEmpty || lower == 'участник' || lower == 'participant') {
+    return '';
+  }
+  final visibleName = normalized
+      .replaceAll(_eventDetailInvisibleParticipantNameCharacters, '')
+      .trim();
+  if (visibleName.isEmpty ||
+      !_eventDetailParticipantNameLetterOrNumber.hasMatch(visibleName)) {
+    return '';
+  }
+  return visibleName;
+}
+
+String? _eventDetailParticipantAvatarInitial(String displayName) {
+  final visibleName = _eventDetailUsableParticipantDisplayName(displayName)
+      .replaceAll(_eventDetailInvisibleParticipantNameCharacters, '');
+  final initialMatch =
+      _eventDetailParticipantNameLetterOrNumber.firstMatch(visibleName);
+  return initialMatch?.group(0)?.toUpperCase();
 }
 
 class _EventDetailBottomActionBar extends StatelessWidget {

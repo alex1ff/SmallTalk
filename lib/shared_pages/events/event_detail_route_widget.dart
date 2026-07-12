@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:flutter/material.dart';
 
@@ -75,6 +76,13 @@ _EventDetailRouteDataKey _eventDetailRouteDataKey({
 
 final _eventDetailPublicProfilePreloadRepository =
     UserPublicProfilePreloadRepository();
+final RegExp _eventDetailInvisibleParticipantNameCharacters = RegExp(
+  r'[\u0000-\u001F\u007F-\u009F\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180B-\u180F\u200B-\u200F\u202A-\u202E\u2060-\u206F\u3164\uFE00-\uFE0F\uFEFF\uFFA0]',
+);
+final RegExp _eventDetailParticipantNameLetterOrNumber = RegExp(
+  r'[\p{L}\p{N}]',
+  unicode: true,
+);
 
 class EventDetailRouteWidget extends StatefulWidget {
   const EventDetailRouteWidget({
@@ -1209,8 +1217,14 @@ class _EventDetailPublicProfileEnricher extends StatefulWidget {
 
 class _EventDetailPublicProfileEnricherState
     extends State<_EventDetailPublicProfileEnricher> {
+  static const int _maxKnownProfiles = 64;
+
+  _EventDetailRouteDataKey? _scopeDataKey;
+  Object? _scopeLoaderIdentity;
   _EventDetailPublicProfileRequestKey? _requestKey;
-  Future<Map<String, UserPublicProfilesRecord>>? _profilesFuture;
+  final LinkedHashMap<String, UserPublicProfilesRecord> _knownProfilesByUserId =
+      LinkedHashMap<String, UserPublicProfilesRecord>();
+  int _requestGeneration = 0;
 
   @override
   void initState() {
@@ -1225,47 +1239,74 @@ class _EventDetailPublicProfileEnricherState
   }
 
   void _configureRequest() {
-    final userIds = widget.enabled ? widget.userIds : const <String>[];
-    final nextRequestKey = userIds.isEmpty
-        ? null
-        : _EventDetailPublicProfileRequestKey(
-            dataKey: widget.dataKey,
-            userIds: userIds,
-            loaderIdentity: widget.loaderIdentity,
-          );
+    final scopeChanged = _scopeDataKey != widget.dataKey ||
+        !identical(_scopeLoaderIdentity, widget.loaderIdentity);
+    if (scopeChanged) {
+      _scopeDataKey = widget.dataKey;
+      _scopeLoaderIdentity = widget.loaderIdentity;
+      _requestKey = null;
+      _requestGeneration += 1;
+      _knownProfilesByUserId.clear();
+    }
+    if (!widget.enabled) {
+      return;
+    }
+
+    final nextRequestKey = _EventDetailPublicProfileRequestKey(
+      dataKey: widget.dataKey,
+      userIds: widget.userIds,
+      loaderIdentity: widget.loaderIdentity,
+    );
     if (nextRequestKey == _requestKey) {
       return;
     }
     _requestKey = nextRequestKey;
-    _profilesFuture = nextRequestKey == null
-        ? null
-        : _loadEventDetailPublicProfiles(
-            userIds: nextRequestKey.userIds,
-            loader: widget.loader,
-          );
+    final requestGeneration = ++_requestGeneration;
+    for (final userId in nextRequestKey.userIds) {
+      final knownProfile = _knownProfilesByUserId.remove(userId);
+      if (knownProfile != null) {
+        _knownProfilesByUserId[userId] = knownProfile;
+      }
+    }
+    final unknownUserIds = nextRequestKey.userIds
+        .where((userId) => !_knownProfilesByUserId.containsKey(userId))
+        .toList(growable: false);
+    if (unknownUserIds.isEmpty) {
+      return;
+    }
+    unawaited(
+      _loadEventDetailPublicProfiles(
+        userIds: unknownUserIds,
+        loader: widget.loader,
+      ).then((profilesByUserId) {
+        if (!mounted ||
+            requestGeneration != _requestGeneration ||
+            nextRequestKey != _requestKey ||
+            profilesByUserId.isEmpty) {
+          return;
+        }
+        setState(() {
+          for (final entry in profilesByUserId.entries) {
+            _knownProfilesByUserId.remove(entry.key);
+            _knownProfilesByUserId[entry.key] = entry.value;
+          }
+          while (_knownProfilesByUserId.length > _maxKnownProfiles) {
+            _knownProfilesByUserId.remove(_knownProfilesByUserId.keys.first);
+          }
+        });
+      }),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final profilesFuture = _profilesFuture;
-    if (profilesFuture == null) {
-      return widget.builder(widget.participants);
-    }
-
-    return FutureBuilder<Map<String, UserPublicProfilesRecord>>(
-      key: ValueKey<_EventDetailPublicProfileRequestKey?>(_requestKey),
-      future: profilesFuture,
-      builder: (context, snapshot) {
-        final profilesByUserId = snapshot.data;
-        final participants = profilesByUserId == null
-            ? widget.participants
-            : _eventDetailParticipantViewModelsWithPublicProfiles(
-                participants: widget.participants,
-                profilesByUserId: profilesByUserId,
-              );
-        return widget.builder(participants);
-      },
-    );
+    final participants = _knownProfilesByUserId.isEmpty
+        ? widget.participants
+        : _eventDetailParticipantViewModelsWithPublicProfiles(
+            participants: widget.participants,
+            profilesByUserId: _knownProfilesByUserId,
+          );
+    return widget.builder(participants);
   }
 }
 
@@ -1316,13 +1357,12 @@ List<String> _eventDetailPublicProfileUserIdsForRoute({
   required List<EventDetailParticipantViewModel> visibleParticipants,
 }) {
   final eligibleUserIds = <String>{};
-  final eventPath = EventsRecord.collection.doc(eventId).path;
   for (final participant in participantRecords) {
-    final userId = participant.userId.trim();
-    if (participant.userId == userId &&
-        isValidUserPublicProfileUserId(userId) &&
-        participant.reference.id == userId &&
-        participant.reference.parent.parent?.path == eventPath) {
+    final userId = _eventDetailCanonicalParticipantUserId(
+      participant,
+      eventId: eventId,
+    );
+    if (userId.isNotEmpty) {
       eligibleUserIds.add(userId);
     }
   }
@@ -1575,12 +1615,21 @@ List<EventDetailParticipantViewModel>
   final organizerPhotoUrl = event.organizerPhotoUrl.trim();
   final hasOrganizerParticipant = organizerId.isNotEmpty &&
       participants.any(
-        (participant) => participant.userId.trim() == organizerId,
+        (participant) =>
+            _eventDetailCanonicalParticipantUserId(
+              participant,
+              eventId: event.reference.id,
+            ) ==
+            organizerId,
       );
 
   final participantViewModels = participants.map((participant) {
+    final participantUserId = _eventDetailCanonicalParticipantUserId(
+      participant,
+      eventId: event.reference.id,
+    );
     final isOrganizer =
-        organizerId.isNotEmpty && participant.userId.trim() == organizerId;
+        organizerId.isNotEmpty && participantUserId == organizerId;
     final participantDisplayName =
         _eventDetailVisibleParticipantDisplayName(participant.displayName);
     final displayName = participantDisplayName.isNotEmpty
@@ -1595,7 +1644,7 @@ List<EventDetailParticipantViewModel>
             : '';
 
     return EventDetailParticipantViewModel(
-      userId: participant.userId.trim(),
+      userId: participantUserId,
       displayName: displayName,
       photoUrl: photoUrl.isEmpty ? null : photoUrl,
     );
@@ -1613,6 +1662,23 @@ List<EventDetailParticipantViewModel>
     ),
     ...participantViewModels,
   ];
+}
+
+String _eventDetailCanonicalParticipantUserId(
+  EventParticipantsRecord participant, {
+  required String eventId,
+}) {
+  final referenceUserId = participant.reference.id;
+  if (!isValidUserPublicProfileUserId(referenceUserId) ||
+      participant.reference.parent.parent?.path !=
+          EventsRecord.collection.doc(eventId).path) {
+    return '';
+  }
+  final storedUserId = participant.userId;
+  if (!participant.hasUserId() || storedUserId.isEmpty) {
+    return referenceUserId;
+  }
+  return storedUserId == referenceUserId ? referenceUserId : '';
 }
 
 List<EventDetailParticipantViewModel>
@@ -1712,7 +1778,14 @@ String _eventDetailVisibleParticipantDisplayName(String displayName) {
   if (lower == 'участник' || lower == 'participant') {
     return '';
   }
-  return normalized;
+  final visibleName = normalized
+      .replaceAll(_eventDetailInvisibleParticipantNameCharacters, '')
+      .trim();
+  if (visibleName.isEmpty ||
+      !_eventDetailParticipantNameLetterOrNumber.hasMatch(visibleName)) {
+    return '';
+  }
+  return visibleName;
 }
 
 class _EventDetailRouteStateScaffold extends StatelessWidget {
@@ -1860,9 +1933,10 @@ bool _eventDetailIsActiveParticipant(
   if (participant == null) {
     return false;
   }
-  if (participant.parentReference.id != eventId) {
-    return false;
-  }
-  return participant.userId.trim() == currentUserUid.trim() &&
+  return _eventDetailCanonicalParticipantUserId(
+            participant,
+            eventId: eventId,
+          ) ==
+          currentUserUid.trim() &&
       participant.status.trim() == 'active';
 }

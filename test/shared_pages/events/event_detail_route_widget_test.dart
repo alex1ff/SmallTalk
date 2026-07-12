@@ -764,7 +764,12 @@ void main() {
     final participantsController =
         StreamController<List<EventParticipantsRecord>>.broadcast(sync: true);
     final profilesCompleter = Completer<UserPublicProfilePreloadResult>();
+    final staleExpandedProfilesCompleter =
+        Completer<UserPublicProfilePreloadResult>();
+    final currentExpandedProfilesCompleter =
+        Completer<UserPublicProfilePreloadResult>();
     final requestedUserIds = <List<String>>[];
+    var expandedProfileCalls = 0;
     addTearDown(participantsController.close);
 
     await tester.pumpWidget(
@@ -789,8 +794,15 @@ void main() {
           ),
           participantsStream: (_) => participantsController.stream,
           publicProfilesLoader: (userIds) {
-            requestedUserIds.add(userIds.toList(growable: false)..sort());
-            return profilesCompleter.future;
+            final requested = userIds.toList(growable: false)..sort();
+            requestedUserIds.add(requested);
+            if (!requested.contains('student-3')) {
+              return profilesCompleter.future;
+            }
+            expandedProfileCalls += 1;
+            return expandedProfileCalls == 1
+                ? staleExpandedProfilesCompleter.future
+                : currentExpandedProfilesCompleter.future;
           },
         ),
       ),
@@ -937,6 +949,342 @@ void main() {
       ),
       findsOneWidget,
     );
+
+    final expandedParticipants = <EventParticipantsRecord>[
+      EventParticipantsRecord.getDocumentFromData(
+        _participantData(
+          userId: 'organizer-1',
+          status: 'active',
+          displayName: 'Refreshed Organizer',
+          joinedAt: DateTime.utc(2026, 1, 1),
+        ),
+        EventParticipantsRecord.createDoc(
+          EventsRecord.collection.doc('event-1'),
+          id: 'organizer-1',
+        ),
+      ),
+      EventParticipantsRecord.getDocumentFromData(
+        _participantData(
+          userId: 'student-2',
+          status: 'active',
+          displayName: 'Refreshed Student',
+          joinedAt: DateTime.utc(2026, 1, 2),
+        ),
+        EventParticipantsRecord.createDoc(
+          EventsRecord.collection.doc('event-1'),
+          id: 'student-2',
+        ),
+      ),
+      EventParticipantsRecord.getDocumentFromData(
+        _participantData(
+          userId: 'student-3',
+          status: 'active',
+          displayName: '',
+          joinedAt: DateTime.utc(2026, 1, 3),
+        ),
+        EventParticipantsRecord.createDoc(
+          EventsRecord.collection.doc('event-1'),
+          id: 'student-3',
+        ),
+      ),
+    ];
+    participantsController.add(expandedParticipants);
+    await tester.pump();
+    await tester.pump();
+
+    expect(requestedUserIds, [
+      <String>['organizer-1', 'student-2'],
+      <String>['student-3'],
+    ]);
+    expect(find.text('Public Student'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(eventDetailParticipantTileKey(2)),
+        matching: find.byIcon(Icons.person_outline),
+      ),
+      findsOneWidget,
+    );
+
+    participantsController.add(
+      expandedParticipants.take(2).toList(growable: false),
+    );
+    await tester.pump();
+    expect(requestedUserIds, hasLength(2));
+    expect(find.text('Public Student'), findsOneWidget);
+
+    participantsController.add(expandedParticipants);
+    await tester.pump();
+    await tester.pump();
+
+    expect(requestedUserIds, [
+      <String>['organizer-1', 'student-2'],
+      <String>['student-3'],
+      <String>['student-3'],
+    ]);
+
+    staleExpandedProfilesCompleter.complete(
+      UserPublicProfilePreloadResult(
+        profilesByUserId: {
+          'student-3': _userPublicProfile(
+            userId: 'student-3',
+            displayName: 'Stale Student 3',
+            photoUrl: '',
+          ),
+        },
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Stale Student 3'), findsNothing);
+    expect(find.text('Public Student'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(eventDetailParticipantTileKey(2)),
+        matching: find.byIcon(Icons.person_outline),
+      ),
+      findsOneWidget,
+    );
+
+    currentExpandedProfilesCompleter.complete(
+      UserPublicProfilePreloadResult(
+        failedUserIds: const {'student-3'},
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Public Student'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(eventDetailParticipantTileKey(2)),
+        matching: find.byIcon(Icons.person_outline),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('recent visible profile survives bounded profile cache churn',
+      (tester) async {
+    currentUser = _TestAuthUser('viewer-1');
+    UxSessionCacheLifecycle.updateAuthenticatedUser('viewer-1');
+    final participantsController =
+        StreamController<List<EventParticipantsRecord>>.broadcast(sync: true);
+    final requestedUserIds = <List<String>>[];
+    addTearDown(participantsController.close);
+
+    EventParticipantsRecord participant(String userId) {
+      return EventParticipantsRecord.getDocumentFromData(
+        _participantData(
+          userId: userId,
+          status: 'active',
+          displayName: 'Snapshot $userId',
+          joinedAt: DateTime.utc(2026, 1, 2),
+        ),
+        EventParticipantsRecord.createDoc(
+          EventsRecord.collection.doc('event-1'),
+          id: userId,
+        ),
+      );
+    }
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(participantsCount: 2),
+            ),
+          ),
+          participantSnapshotStream: (participantRef) =>
+              Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: participantRef,
+              data: _participantData(
+                userId: 'viewer-1',
+                status: 'left',
+              ),
+            ),
+          ),
+          participantsStream: (_) => participantsController.stream,
+          publicProfilesLoader: (userIds) {
+            final requested = userIds.toList(growable: false)..sort();
+            requestedUserIds.add(requested);
+            return Future<UserPublicProfilePreloadResult>.value(
+              UserPublicProfilePreloadResult(
+                profilesByUserId: {
+                  for (final userId in requested)
+                    userId: _userPublicProfile(
+                      userId: userId,
+                      displayName: 'Public $userId',
+                      photoUrl: '',
+                    ),
+                },
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    Future<void> showParticipants(List<String> userIds) async {
+      participantsController.add(
+        userIds.map(participant).toList(growable: false),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await showParticipants(const ['keeper']);
+    expect(find.text('Public keeper'), findsOneWidget);
+
+    for (var index = 0; index < 62; index += 1) {
+      await showParticipants(['history-$index']);
+    }
+    expect(requestedUserIds, hasLength(63));
+
+    await showParticipants(const ['keeper']);
+    expect(requestedUserIds, hasLength(63));
+    expect(find.text('Public keeper'), findsOneWidget);
+
+    await showParticipants(const ['keeper', 'newcomer']);
+
+    expect(requestedUserIds, hasLength(64));
+    expect(requestedUserIds.last, const ['newcomer']);
+    expect(find.text('Public keeper'), findsOneWidget);
+    expect(find.text('Snapshot keeper'), findsNothing);
+    expect(find.text('Public newcomer'), findsOneWidget);
+  });
+
+  testWidgets('ref-only participant keeps a stable fallback until hydration',
+      (tester) async {
+    currentUser = _TestAuthUser('viewer-1');
+    UxSessionCacheLifecycle.updateAuthenticatedUser('viewer-1');
+    final participantsController =
+        StreamController<List<EventParticipantsRecord>>.broadcast(sync: true);
+    final profilesCompleter = Completer<UserPublicProfilePreloadResult>();
+    final requestedUserIds = <List<String>>[];
+    final semanticsHandle = tester.ensureSemantics();
+    addTearDown(participantsController.close);
+
+    try {
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventDetailRouteWidget(
+            eventId: 'event-1',
+            snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: eventRef,
+                data: _eventData(participantsCount: 2),
+              ),
+            ),
+            participantSnapshotStream: (participantRef) =>
+                Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: participantRef,
+                data: _participantData(
+                  userId: 'viewer-1',
+                  status: 'left',
+                ),
+              ),
+            ),
+            participantsStream: (_) => participantsController.stream,
+            publicProfilesLoader: (userIds) {
+              requestedUserIds.add(userIds.toList(growable: false)..sort());
+              return profilesCompleter.future;
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final eventRef = EventsRecord.collection.doc('event-1');
+      final refOnlyParticipant = EventParticipantsRecord.getDocumentFromData(
+        _participantData(
+          userId: 'student-2',
+          status: 'active',
+          displayName: '\u200B',
+          joinedAt: DateTime.utc(2026, 1, 2),
+        )..remove('userId'),
+        EventParticipantsRecord.createDoc(eventRef, id: 'student-2'),
+      );
+      final participants = [
+        EventParticipantsRecord.getDocumentFromData(
+          _participantData(
+            userId: 'organizer-1',
+            status: 'active',
+            displayName: 'Anastasia Ivanova',
+            joinedAt: DateTime.utc(2026, 1, 1),
+          ),
+          EventParticipantsRecord.createDoc(eventRef, id: 'organizer-1'),
+        ),
+        refOnlyParticipant,
+      ];
+      participantsController.add(participants);
+      await tester.pump();
+      await tester.pump();
+
+      expect(requestedUserIds, [
+        <String>['organizer-1', 'student-2']
+      ]);
+      expect(find.text('student-2'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byKey(eventDetailParticipantTileKey(1)),
+          matching: find.byIcon(Icons.person_outline),
+        ),
+        findsOneWidget,
+      );
+      var participantSemantics =
+          tester.getSemantics(find.byKey(eventDetailParticipantTileKey(1)));
+      expect(participantSemantics.flagsCollection.isImage, isTrue);
+      expect(participantSemantics.label, 'Участник');
+      expect(participantSemantics.label, isNot(contains('student-2')));
+
+      participantsController.add(participants);
+      await tester.pump();
+      await tester.pump();
+
+      expect(requestedUserIds, hasLength(1));
+      expect(
+        find.descendant(
+          of: find.byKey(eventDetailParticipantTileKey(1)),
+          matching: find.byIcon(Icons.person_outline),
+        ),
+        findsOneWidget,
+      );
+
+      profilesCompleter.complete(
+        UserPublicProfilePreloadResult(
+          profilesByUserId: {
+            'student-2': _userPublicProfile(
+              userId: 'student-2',
+              displayName: '💡 Al\u202Eice',
+              photoUrl: '',
+            ),
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('💡 Alice'), findsOneWidget);
+      expect(find.text('💡 Al\u202Eice'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byKey(eventDetailParticipantTileKey(1)),
+          matching: find.text('A'),
+        ),
+        findsOneWidget,
+      );
+      participantSemantics =
+          tester.getSemantics(find.byKey(eventDetailParticipantTileKey(1)));
+      expect(participantSemantics.flagsCollection.isImage, isTrue);
+      expect(participantSemantics.label, 'Участник: 💡 Alice');
+      expect(participantSemantics.label, isNot(contains('\u202E')));
+      expect(participantSemantics.label, isNot(contains('student-2')));
+    } finally {
+      semanticsHandle.dispose();
+    }
   });
 
   testWidgets('public profile failure keeps participant snapshot usable',
@@ -1197,6 +1545,127 @@ void main() {
       requestedUserIds,
       everyElement(<String>['organizer-1', 'student-2']),
     );
+  });
+
+  testWidgets('known profiles clear when auth or loader scope changes',
+      (tester) async {
+    final firstUserCompleter = Completer<UserPublicProfilePreloadResult>();
+    final secondUserCompleter = Completer<UserPublicProfilePreloadResult>();
+    final secondLoaderCompleter = Completer<UserPublicProfilePreloadResult>();
+    var firstLoaderCalls = 0;
+
+    Future<UserPublicProfilePreloadResult> firstLoader(
+      Iterable<String> _,
+    ) {
+      firstLoaderCalls += 1;
+      return firstLoaderCalls == 1
+          ? firstUserCompleter.future
+          : secondUserCompleter.future;
+    }
+
+    Future<UserPublicProfilePreloadResult> secondLoader(
+      Iterable<String> _,
+    ) =>
+        secondLoaderCompleter.future;
+
+    Widget buildRoute(EventDetailPublicProfilesLoader loader) => _buildTestApp(
+          home: EventDetailRouteWidget(
+            eventId: 'event-1',
+            snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: eventRef,
+                data: _eventData(participantsCount: 2),
+              ),
+            ),
+            participantSnapshotStream: (participantRef) =>
+                Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: participantRef,
+                data: _participantData(
+                  userId: currentUser?.uid ?? '',
+                  status: 'left',
+                ),
+              ),
+            ),
+            participantsStream: (eventRef) =>
+                Stream<List<EventParticipantsRecord>>.value([
+              EventParticipantsRecord.getDocumentFromData(
+                _participantData(
+                  userId: 'student-2',
+                  status: 'active',
+                  displayName: 'Snapshot Student',
+                ),
+                EventParticipantsRecord.createDoc(
+                  eventRef,
+                  id: 'student-2',
+                ),
+              ),
+            ]),
+            publicProfilesLoader: loader,
+          ),
+        );
+
+    currentUser = _TestAuthUser('viewer-a');
+    UxSessionCacheLifecycle.updateAuthenticatedUser('viewer-a');
+    await tester.pumpWidget(buildRoute(firstLoader));
+    await tester.pumpAndSettle();
+
+    firstUserCompleter.complete(
+      UserPublicProfilePreloadResult(
+        profilesByUserId: {
+          'student-2': _userPublicProfile(
+            userId: 'student-2',
+            displayName: 'Known User A',
+            photoUrl: '',
+          ),
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Known User A'), findsOneWidget);
+
+    currentUser = _TestAuthUser('viewer-b');
+    UxSessionCacheLifecycle.updateAuthenticatedUser('viewer-b');
+    await tester.pumpWidget(buildRoute(firstLoader));
+    await tester.pumpAndSettle();
+
+    expect(firstLoaderCalls, 2);
+    expect(find.text('Known User A'), findsNothing);
+    expect(find.text('Snapshot Student'), findsOneWidget);
+
+    secondUserCompleter.complete(
+      UserPublicProfilePreloadResult(
+        profilesByUserId: {
+          'student-2': _userPublicProfile(
+            userId: 'student-2',
+            displayName: 'Known User B',
+            photoUrl: '',
+          ),
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Known User B'), findsOneWidget);
+
+    await tester.pumpWidget(buildRoute(secondLoader));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Known User B'), findsNothing);
+    expect(find.text('Snapshot Student'), findsOneWidget);
+
+    secondLoaderCompleter.complete(
+      UserPublicProfilePreloadResult(
+        profilesByUserId: {
+          'student-2': _userPublicProfile(
+            userId: 'student-2',
+            displayName: 'Known Second Loader',
+            photoUrl: '',
+          ),
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Known Second Loader'), findsOneWidget);
   });
 
   testWidgets('opens organizer private chat before joining', (tester) async {
