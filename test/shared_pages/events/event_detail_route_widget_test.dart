@@ -1245,62 +1245,139 @@ void main() {
     expect(find.byKey(eventDetailCanceledBannerKey), findsOneWidget);
   });
 
-  testWidgets('join tap calls join callable and shows loading until completion',
+  testWidgets('join tap optimistically shows joined target until completion',
       (tester) async {
+    currentUser = _TestAuthUser('student-1');
+    UxSessionCacheLifecycle.updateAuthenticatedUser('student-1');
+    currentUserDocument = UsersRecord.getDocumentFromData(
+      {
+        'display_name': 'Марко Росси',
+        'photo_url': 'https://example.test/marco.jpg',
+      },
+      UsersRecord.collection.doc('student-1'),
+    );
+    final semanticsHandle = tester.ensureSemantics();
     final completer = Completer<Object?>();
+    final snapshotController = StreamController<DocumentSnapshot>();
     final analyticsTracker = _RecordingEventsAnalyticsTracker();
     var joinCalls = 0;
     String? functionName;
     Map<String, dynamic>? payload;
+    addTearDown(snapshotController.close);
 
-    await tester.pumpWidget(
-      _buildTestApp(
-        home: EventDetailRouteWidget(
-          eventId: ' event-1 ',
-          analyticsTracker: analyticsTracker,
-          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
-            _FakeEventDocumentSnapshot(
-              reference: eventRef,
-              data: _eventData(),
+    try {
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventDetailRouteWidget(
+            eventId: ' event-1 ',
+            analyticsTracker: analyticsTracker,
+            snapshotStream: (_) => snapshotController.stream,
+            participantSnapshotStream: (participantRef) =>
+                Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: participantRef,
+                exists: false,
+              ),
             ),
+            participantsStream: (eventRef) =>
+                Stream<List<EventParticipantsRecord>>.value([
+              EventParticipantsRecord.getDocumentFromData(
+                _participantData(
+                  userId: 'organizer-1',
+                  status: 'active',
+                  displayName: 'Anastasia Ivanova',
+                ),
+                EventParticipantsRecord.createDoc(
+                  eventRef,
+                  id: 'organizer-1',
+                ),
+              ),
+            ]),
+            joinEventInvoker: (calledFunctionName, calledPayload) {
+              joinCalls += 1;
+              functionName = calledFunctionName;
+              payload = calledPayload;
+              return completer.future;
+            },
           ),
-          joinEventInvoker: (calledFunctionName, calledPayload) {
-            joinCalls += 1;
-            functionName = calledFunctionName;
-            payload = calledPayload;
-            return completer.future;
-          },
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pump();
+      snapshotController.add(
+        _FakeEventDocumentSnapshot(
+          reference: EventsRecord.collection.doc('event-1'),
+          data: _eventData(participantsCount: 5),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
 
-    expect(find.text('Присоединиться'), findsOneWidget);
+      expect(find.text('Присоединиться'), findsOneWidget);
+      expect(find.text('5/10 мест'), findsOneWidget);
+      expect(find.text('Марко Росси'), findsNothing);
 
-    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
-    await tester.pump();
+      await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+      await tester.pump();
 
-    expect(joinCalls, 1);
-    expect(functionName, joinEventFunctionName);
-    expect(payload, <String, dynamic>{'eventId': 'event-1'});
-    expect(find.text('Присоединяемся...'), findsOneWidget);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(joinCalls, 1);
+      expect(functionName, joinEventFunctionName);
+      expect(payload, <String, dynamic>{'eventId': 'event-1'});
+      expect(find.text('Покинуть'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.text('5/10 мест'), findsOneWidget);
+      expect(find.text('Марко Росси'), findsNothing);
+      expect(
+        analyticsTracker.payloadsFor(
+          EventsAnalyticsService.eventJoinedEventName,
+        ),
+        isEmpty,
+      );
+      var primarySemantics =
+          tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
+      expect(primarySemantics.flagsCollection.isEnabled, isFalse);
+      expect(primarySemantics.label, 'Присоединяемся к событию');
 
-    completer.complete(_joinEventResponse());
-    await tester.pumpAndSettle();
+      snapshotController.add(
+        _FakeEventDocumentSnapshot(
+          reference: EventsRecord.collection.doc('event-1'),
+          data: _eventData(
+            title: 'Updated conversation club',
+            participantsCount: 5,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
 
-    expect(joinCalls, 1);
-    expect(find.text('Покинуть'), findsOneWidget);
-    expect(find.text('Присоединяемся...'), findsNothing);
-    expect(
-      analyticsTracker.payloadsFor(EventsAnalyticsService.eventJoinedEventName),
-      [
-        <String, String>{
-          'countryCode': 'RU',
-          'cityKey': 'moscow',
-        },
-      ],
-    );
+      expect(find.text('Updated conversation club'), findsOneWidget);
+      expect(find.text('Покинуть'), findsOneWidget);
+      expect(find.text('5/10 мест'), findsOneWidget);
+
+      completer.complete(_joinEventResponse());
+      await tester.pumpAndSettle();
+
+      expect(joinCalls, 1);
+      expect(find.text('Покинуть'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.text('6/10 мест'), findsOneWidget);
+      expect(find.text('Марко Росси'), findsOneWidget);
+      primarySemantics =
+          tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
+      expect(primarySemantics.flagsCollection.isEnabled, isTrue);
+      expect(
+        analyticsTracker.payloadsFor(
+          EventsAnalyticsService.eventJoinedEventName,
+        ),
+        [
+          <String, String>{
+            'countryCode': 'RU',
+            'cityKey': 'moscow',
+          },
+        ],
+      );
+    } finally {
+      semanticsHandle.dispose();
+    }
   });
 
   testWidgets('in-flight join blocks repeated primary taps', (tester) async {
@@ -1334,7 +1411,8 @@ void main() {
     await tester.pump();
 
     expect(joinCalls, 1);
-    expect(find.text('Присоединяемся...'), findsOneWidget);
+    expect(find.text('Покинуть'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
     completer.complete(_joinEventResponse());
     await tester.pumpAndSettle();
@@ -2358,11 +2436,13 @@ void main() {
       await tester.pump();
 
       expect(leaveCalls, 1);
-      expect(find.text('Покинуть'), findsOneWidget);
+      expect(find.text('Присоединиться'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
       final primarySemantics =
           tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
       expect(primarySemantics.flagsCollection.isEnabled, isFalse);
+      expect(primarySemantics.label, 'Покидаем событие');
 
       leaveCompleter.complete(_leaveEventResponse());
       await tester.pumpAndSettle();
@@ -2468,10 +2548,88 @@ void main() {
     );
   });
 
-  testWidgets('leave failure clears loading state without changing CTA',
+  testWidgets('leave failure rolls back optimistic membership state',
       (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+    final leaveCompleter = Completer<Object?>();
     final analyticsTracker = _RecordingEventsAnalyticsTracker();
     var leaveCalls = 0;
+
+    try {
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventDetailRouteWidget(
+            eventId: 'event-1',
+            analyticsTracker: analyticsTracker,
+            snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: eventRef,
+                data: _eventData(),
+              ),
+            ),
+            joinEventInvoker: (_, __) async => _joinEventResponse(),
+            leaveEventInvoker: (_, __) {
+              leaveCalls += 1;
+              return leaveCompleter.future;
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Покинуть'), findsOneWidget);
+      expect(find.text('6/10 мест'), findsOneWidget);
+
+      await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(eventDetailLeaveDialogConfirmButtonKey));
+      await tester.pump();
+
+      expect(leaveCalls, 1);
+      expect(find.text('Присоединиться'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.text('6/10 мест'), findsOneWidget);
+      expect(find.byKey(eventDetailLeaveErrorSnackBarKey), findsNothing);
+      var primarySemantics =
+          tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
+      expect(primarySemantics.flagsCollection.isEnabled, isFalse);
+      expect(primarySemantics.label, 'Покидаем событие');
+      expect(
+        analyticsTracker.payloadsFor(
+          EventsAnalyticsService.eventLeftEventName,
+        ),
+        isEmpty,
+      );
+
+      leaveCompleter.completeError(StateError('leave failed'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Покинуть'), findsOneWidget);
+      expect(find.text('Присоединиться'), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.text('6/10 мест'), findsOneWidget);
+      expect(find.byKey(eventDetailLeaveErrorSnackBarKey), findsOneWidget);
+      primarySemantics =
+          tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
+      expect(primarySemantics.flagsCollection.isEnabled, isTrue);
+      expect(
+        analyticsTracker.payloadsFor(
+          EventsAnalyticsService.eventLeftEventName,
+        ),
+        isEmpty,
+      );
+    } finally {
+      semanticsHandle.dispose();
+    }
+  });
+
+  testWidgets('mismatched leave response rolls back without analytics',
+      (tester) async {
+    final leaveCompleter = Completer<Object?>();
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
 
     await tester.pumpWidget(
       _buildTestApp(
@@ -2485,10 +2643,7 @@ void main() {
             ),
           ),
           joinEventInvoker: (_, __) async => _joinEventResponse(),
-          leaveEventInvoker: (_, __) async {
-            leaveCalls += 1;
-            throw StateError('leave failed');
-          },
+          leaveEventInvoker: (_, __) => leaveCompleter.future,
         ),
       ),
     );
@@ -2496,15 +2651,21 @@ void main() {
 
     await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
     await tester.pumpAndSettle();
-
     await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(eventDetailLeaveDialogConfirmButtonKey));
+    await tester.pump();
+
+    expect(find.text('Присоединиться'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    leaveCompleter.complete(_leaveEventResponse(eventId: 'event-2'));
     await tester.pumpAndSettle();
 
-    expect(leaveCalls, 1);
     expect(find.text('Покинуть'), findsOneWidget);
     expect(find.text('Присоединиться'), findsNothing);
+    expect(find.text('6/10 мест'), findsOneWidget);
+    expect(find.byKey(eventDetailLeaveErrorSnackBarKey), findsOneWidget);
     expect(
       analyticsTracker.payloadsFor(EventsAnalyticsService.eventLeftEventName),
       isEmpty,
@@ -2619,10 +2780,79 @@ void main() {
     expect(find.text('6/10 мест'), findsNothing);
   });
 
-  testWidgets('join failure clears loading state without changing CTA',
+  testWidgets('join failure rolls back optimistic membership state',
       (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+    final joinCompleter = Completer<Object?>();
     final analyticsTracker = _RecordingEventsAnalyticsTracker();
     var joinCalls = 0;
+
+    try {
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventDetailRouteWidget(
+            eventId: 'event-1',
+            analyticsTracker: analyticsTracker,
+            snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: eventRef,
+                data: _eventData(),
+              ),
+            ),
+            joinEventInvoker: (_, __) {
+              joinCalls += 1;
+              return joinCompleter.future;
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+      await tester.pump();
+
+      expect(joinCalls, 1);
+      expect(find.text('Покинуть'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.text('5/10 мест'), findsOneWidget);
+      expect(find.byKey(eventDetailJoinErrorSnackBarKey), findsNothing);
+      var primarySemantics =
+          tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
+      expect(primarySemantics.flagsCollection.isEnabled, isFalse);
+      expect(primarySemantics.label, 'Присоединяемся к событию');
+      expect(
+        analyticsTracker.payloadsFor(
+          EventsAnalyticsService.eventJoinedEventName,
+        ),
+        isEmpty,
+      );
+
+      joinCompleter.completeError(StateError('join failed'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Присоединиться'), findsOneWidget);
+      expect(find.text('Покинуть'), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.text('5/10 мест'), findsOneWidget);
+      expect(find.byKey(eventDetailJoinErrorSnackBarKey), findsOneWidget);
+      primarySemantics =
+          tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
+      expect(primarySemantics.flagsCollection.isEnabled, isTrue);
+      expect(
+        analyticsTracker.payloadsFor(
+          EventsAnalyticsService.eventJoinedEventName,
+        ),
+        isEmpty,
+      );
+    } finally {
+      semanticsHandle.dispose();
+    }
+  });
+
+  testWidgets('mismatched join response rolls back without analytics',
+      (tester) async {
+    final joinCompleter = Completer<Object?>();
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
 
     await tester.pumpWidget(
       _buildTestApp(
@@ -2635,21 +2865,25 @@ void main() {
               data: _eventData(),
             ),
           ),
-          joinEventInvoker: (_, __) async {
-            joinCalls += 1;
-            throw StateError('join failed');
-          },
+          joinEventInvoker: (_, __) => joinCompleter.future,
         ),
       ),
     );
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pump();
+
+    expect(find.text('Покинуть'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    joinCompleter.complete(_joinEventResponse(eventId: 'event-2'));
     await tester.pumpAndSettle();
 
-    expect(joinCalls, 1);
     expect(find.text('Присоединиться'), findsOneWidget);
-    expect(find.text('Присоединяемся...'), findsNothing);
+    expect(find.text('Покинуть'), findsNothing);
+    expect(find.text('5/10 мест'), findsOneWidget);
+    expect(find.byKey(eventDetailJoinErrorSnackBarKey), findsOneWidget);
     expect(
       analyticsTracker.payloadsFor(EventsAnalyticsService.eventJoinedEventName),
       isEmpty,
@@ -2760,7 +2994,8 @@ void main() {
     await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
     await tester.pump();
 
-    expect(find.text('Присоединяемся...'), findsOneWidget);
+    expect(find.text('Покинуть'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
     await tester.pumpWidget(
       _buildTestApp(
@@ -2788,13 +3023,14 @@ void main() {
 
     expect(find.text('Second event'), findsOneWidget);
     expect(find.text('Присоединиться'), findsOneWidget);
-    expect(find.text('Присоединяемся...'), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
 
     await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
     await tester.pump();
 
     expect(joinedEventIds, <String>['event-1', 'event-2']);
-    expect(find.text('Присоединяемся...'), findsOneWidget);
+    expect(find.text('Покинуть'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
     firstJoinCompleter.complete(
       _joinEventResponse(
@@ -2804,8 +3040,8 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('Присоединяемся...'), findsOneWidget);
-    expect(find.text('Покинуть'), findsNothing);
+    expect(find.text('Покинуть'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
     expect(find.text('9/10 мест'), findsNothing);
 
     secondJoinCompleter.complete(_joinEventResponse(eventId: 'event-2'));
@@ -2821,6 +3057,90 @@ void main() {
           'cityKey': 'new_york',
         },
       ],
+    );
+  });
+
+  testWidgets('user change clears pending join and ignores stale completion',
+      (tester) async {
+    final joinCompleter = Completer<Object?>();
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
+    var joinCalls = 0;
+
+    Stream<DocumentSnapshot> detailStream(DocumentReference eventRef) =>
+        Stream<DocumentSnapshot>.value(
+          _FakeEventDocumentSnapshot(
+            reference: eventRef,
+            data: _eventData(),
+          ),
+        );
+    Stream<DocumentSnapshot> participantStream(
+      DocumentReference participantRef,
+    ) =>
+        Stream<DocumentSnapshot>.value(
+          _FakeEventDocumentSnapshot(
+            reference: participantRef,
+            exists: false,
+          ),
+        );
+    Stream<List<EventParticipantsRecord>> participantsStream(
+      DocumentReference _,
+    ) =>
+        Stream<List<EventParticipantsRecord>>.value(
+          const <EventParticipantsRecord>[],
+        );
+    Future<Object?> joinInvoker(String _, Map<String, dynamic> __) {
+      joinCalls += 1;
+      return joinCompleter.future;
+    }
+
+    Widget buildRoute() => _buildTestApp(
+          home: EventDetailRouteWidget(
+            eventId: 'event-1',
+            analyticsTracker: analyticsTracker,
+            snapshotStream: detailStream,
+            participantSnapshotStream: participantStream,
+            participantsStream: participantsStream,
+            joinEventInvoker: joinInvoker,
+          ),
+        );
+
+    currentUser = _TestAuthUser('user-a');
+    UxSessionCacheLifecycle.updateAuthenticatedUser('user-a');
+    await tester.pumpWidget(buildRoute());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+    await tester.pump();
+
+    expect(joinCalls, 1);
+    expect(find.text('Покинуть'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    currentUser = _TestAuthUser('user-b');
+    UxSessionCacheLifecycle.updateAuthenticatedUser('user-b');
+    await tester.pumpWidget(buildRoute());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Присоединиться'), findsOneWidget);
+    expect(find.text('Покинуть'), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    joinCompleter.complete(
+      _joinEventResponse(
+        eventId: 'event-1',
+        participantsCount: 9,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(joinCalls, 1);
+    expect(find.text('Присоединиться'), findsOneWidget);
+    expect(find.text('Покинуть'), findsNothing);
+    expect(find.text('5/10 мест'), findsOneWidget);
+    expect(find.text('9/10 мест'), findsNothing);
+    expect(
+      analyticsTracker.payloadsFor(EventsAnalyticsService.eventJoinedEventName),
+      isEmpty,
     );
   });
 

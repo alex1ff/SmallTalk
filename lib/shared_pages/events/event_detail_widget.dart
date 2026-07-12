@@ -123,6 +123,8 @@ class EventDetailParticipantViewModel {
 enum EventDetailJoinCtaState {
   join,
   joining,
+  optimisticJoined,
+  optimisticLeft,
   joined,
   joinedLocked,
   full,
@@ -1785,6 +1787,8 @@ class _EventDetailPrimaryCtaState extends State<_EventDetailPrimaryCta> {
         widget.onPressed != null,
       EventDetailJoinCtaState.joinedLocked ||
       EventDetailJoinCtaState.joining ||
+      EventDetailJoinCtaState.optimisticJoined ||
+      EventDetailJoinCtaState.optimisticLeft ||
       EventDetailJoinCtaState.full ||
       EventDetailJoinCtaState.canceled ||
       EventDetailJoinCtaState.past =>
@@ -1794,6 +1798,9 @@ class _EventDetailPrimaryCtaState extends State<_EventDetailPrimaryCta> {
         ? switch (state) {
             EventDetailJoinCtaState.join => ExpatlioDesign.primary,
             EventDetailJoinCtaState.joining =>
+              ExpatlioDesign.secondarySystemBackground,
+            EventDetailJoinCtaState.optimisticJoined ||
+            EventDetailJoinCtaState.optimisticLeft =>
               ExpatlioDesign.secondarySystemBackground,
             EventDetailJoinCtaState.joined =>
               _eventDetailDestructiveCtaBackground,
@@ -1809,6 +1816,9 @@ class _EventDetailPrimaryCtaState extends State<_EventDetailPrimaryCta> {
         ? switch (state) {
             EventDetailJoinCtaState.join => Colors.white,
             EventDetailJoinCtaState.joining => ExpatlioDesign.muted,
+            EventDetailJoinCtaState.optimisticJoined ||
+            EventDetailJoinCtaState.optimisticLeft =>
+              ExpatlioDesign.muted,
             EventDetailJoinCtaState.joined => Colors.white,
             EventDetailJoinCtaState.joinedLocked => ExpatlioDesign.muted,
             EventDetailJoinCtaState.full ||
@@ -1848,7 +1858,9 @@ class _EventDetailPrimaryCtaState extends State<_EventDetailPrimaryCta> {
             foregroundColor: Colors.white,
             disabledForegroundColor: ExpatlioDesign.muted,
           ),
-          child: state == EventDetailJoinCtaState.joining
+          child: state == EventDetailJoinCtaState.joining ||
+                  state == EventDetailJoinCtaState.optimisticJoined ||
+                  state == EventDetailJoinCtaState.optimisticLeft
               ? Row(
                   mainAxisSize: MainAxisSize.min,
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -2298,6 +2310,16 @@ String _eventDetailJoinCtaLabel(
         ruText: 'Присоединяемся...',
         enText: 'Joining...',
       ),
+    EventDetailJoinCtaState.optimisticJoined =>
+      FFLocalizations.of(context).getVariableText(
+        ruText: 'Покинуть',
+        enText: 'Leave',
+      ),
+    EventDetailJoinCtaState.optimisticLeft =>
+      FFLocalizations.of(context).getVariableText(
+        ruText: 'Присоединиться',
+        enText: 'Join',
+      ),
     EventDetailJoinCtaState.joined =>
       FFLocalizations.of(context).getVariableText(
         ruText: 'Покинуть',
@@ -2327,6 +2349,16 @@ String _eventDetailJoinCtaSemanticsLabel(
       FFLocalizations.of(context).getVariableText(
         ruText: 'Присоединяемся к событию',
         enText: 'Joining event',
+      ),
+    EventDetailJoinCtaState.optimisticJoined =>
+      FFLocalizations.of(context).getVariableText(
+        ruText: 'Присоединяемся к событию',
+        enText: 'Joining event',
+      ),
+    EventDetailJoinCtaState.optimisticLeft =>
+      FFLocalizations.of(context).getVariableText(
+        ruText: 'Покидаем событие',
+        enText: 'Leaving event',
       ),
     EventDetailJoinCtaState.joined =>
       FFLocalizations.of(context).getVariableText(

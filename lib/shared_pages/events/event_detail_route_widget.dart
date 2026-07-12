@@ -55,6 +55,11 @@ typedef EventChatThreadOpener = Future<void> Function(
   ConversationsRecord? initialConversation,
 });
 typedef _EventDetailRouteDataKey = ({String eventId, String userId});
+typedef _EventDetailPendingMembershipIntent = ({
+  _EventDetailRouteDataKey dataKey,
+  bool desiredJoined,
+  int generation,
+});
 
 _EventDetailRouteDataKey _eventDetailRouteDataKey({
   required String eventId,
@@ -113,6 +118,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
   int? _locallyJoinedParticipantsCount;
   String? _locallyLeftEventId;
   int? _locallyLeftParticipantsCount;
+  _EventDetailPendingMembershipIntent? _pendingMembershipIntent;
   String? _currentDetailEventId;
   int _participantActionGeneration = 0;
   String? _lastTrackedEventDetailOpenKey;
@@ -150,13 +156,14 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       _currentDetailEventId = null;
       if (dataKeyChanged) {
         _lastTrackedEventDetailOpenKey = null;
+        _pendingMembershipIntent = null;
+        _participantActionGeneration += 1;
+        _isLeaving = false;
+        _isJoining = false;
       }
       _lastTrackedCanceledEventId = null;
       _lastTrackedJoinedEventId = null;
       _lastTrackedLeftEventId = null;
-      _participantActionGeneration += 1;
-      _isLeaving = false;
-      _isJoining = false;
       _isOpeningOrganizerChat = false;
       _isReportingEvent = false;
     }
@@ -191,6 +198,26 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         snapshotStream: widget.snapshotStream,
         sessionCacheUserId: sessionCacheUserId,
       );
+
+  bool _isCurrentParticipantAction({
+    required int generation,
+    required _EventDetailRouteDataKey dataKey,
+  }) =>
+      mounted &&
+      generation == _participantActionGeneration &&
+      dataKey == _eventStreamDataKey;
+
+  void _validateParticipantActionEventId({
+    required String expectedEventId,
+    required String actualEventId,
+  }) {
+    if (actualEventId != expectedEventId) {
+      throw StateError(
+        'Participant action returned event "$actualEventId" for '
+        '"$expectedEventId".',
+      );
+    }
+  }
 
   Future<void> _handleOrganizerCancel(EventsRecord event) async {
     if (_isCanceling) {
@@ -248,26 +275,38 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         widget.analyticsTracker ?? EventsAnalyticsService.defaultTracker;
     final requestGeneration = _participantActionGeneration + 1;
     _participantActionGeneration = requestGeneration;
+    final requestDataKey = _eventStreamDataKey;
 
     setState(() {
       _isJoining = true;
+      _pendingMembershipIntent = (
+        dataKey: requestDataKey,
+        desiredJoined: true,
+        generation: requestGeneration,
+      );
     });
     try {
       final result = await EventActionsRepository.joinEvent(
         eventId: eventId,
         invoker: widget.joinEventInvoker,
       );
-      if (!mounted || requestGeneration != _participantActionGeneration) {
+      if (!_isCurrentParticipantAction(
+        generation: requestGeneration,
+        dataKey: requestDataKey,
+      )) {
         return;
       }
-      if (result.eventId == eventId) {
-        _trackEventJoinedIfNeeded(
-          eventId: result.eventId,
-          event: event,
-          tracker: tracker,
-        );
-      }
+      _validateParticipantActionEventId(
+        expectedEventId: eventId,
+        actualEventId: result.eventId,
+      );
+      _trackEventJoinedIfNeeded(
+        eventId: result.eventId,
+        event: event,
+        tracker: tracker,
+      );
       setState(() {
+        _pendingMembershipIntent = null;
         _locallyJoinedEventId = result.eventId;
         _locallyJoinedParticipantsCount = result.participantsCount;
         _locallyLeftEventId = null;
@@ -275,9 +314,15 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         _lastTrackedLeftEventId = null;
       });
     } catch (error) {
-      if (!mounted || requestGeneration != _participantActionGeneration) {
+      if (!_isCurrentParticipantAction(
+        generation: requestGeneration,
+        dataKey: requestDataKey,
+      )) {
         return;
       }
+      setState(() {
+        _pendingMembershipIntent = null;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           key: eventDetailJoinErrorSnackBarKey,
@@ -285,7 +330,10 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         ),
       );
     } finally {
-      if (mounted && requestGeneration == _participantActionGeneration) {
+      if (_isCurrentParticipantAction(
+        generation: requestGeneration,
+        dataKey: requestDataKey,
+      )) {
         setState(() {
           _isJoining = false;
         });
@@ -318,38 +366,54 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         widget.analyticsTracker ?? EventsAnalyticsService.defaultTracker;
     final requestGeneration = _participantActionGeneration + 1;
     _participantActionGeneration = requestGeneration;
+    final requestDataKey = _eventStreamDataKey;
 
     setState(() {
       _isLeaving = true;
+      _pendingMembershipIntent = (
+        dataKey: requestDataKey,
+        desiredJoined: false,
+        generation: requestGeneration,
+      );
     });
     try {
       final result = await EventActionsRepository.leaveEvent(
         eventId: eventId,
         invoker: widget.leaveEventInvoker,
       );
-      if (!mounted || requestGeneration != _participantActionGeneration) {
+      if (!_isCurrentParticipantAction(
+        generation: requestGeneration,
+        dataKey: requestDataKey,
+      )) {
         return;
       }
-      if (result.eventId == eventId) {
-        _trackEventLeftIfNeeded(
-          eventId: result.eventId,
-          event: event,
-          tracker: tracker,
-        );
-      }
+      _validateParticipantActionEventId(
+        expectedEventId: eventId,
+        actualEventId: result.eventId,
+      );
+      _trackEventLeftIfNeeded(
+        eventId: result.eventId,
+        event: event,
+        tracker: tracker,
+      );
       setState(() {
-        if (result.eventId == eventId) {
-          _locallyJoinedEventId = null;
-          _locallyJoinedParticipantsCount = null;
-          _locallyLeftEventId = result.eventId;
-          _locallyLeftParticipantsCount = result.participantsCount;
-          _lastTrackedJoinedEventId = null;
-        }
+        _pendingMembershipIntent = null;
+        _locallyJoinedEventId = null;
+        _locallyJoinedParticipantsCount = null;
+        _locallyLeftEventId = result.eventId;
+        _locallyLeftParticipantsCount = result.participantsCount;
+        _lastTrackedJoinedEventId = null;
       });
     } catch (error) {
-      if (!mounted || requestGeneration != _participantActionGeneration) {
+      if (!_isCurrentParticipantAction(
+        generation: requestGeneration,
+        dataKey: requestDataKey,
+      )) {
         return;
       }
+      setState(() {
+        _pendingMembershipIntent = null;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           key: eventDetailLeaveErrorSnackBarKey,
@@ -357,7 +421,10 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         ),
       );
     } finally {
-      if (mounted && requestGeneration == _participantActionGeneration) {
+      if (_isCurrentParticipantAction(
+        generation: requestGeneration,
+        dataKey: requestDataKey,
+      )) {
         setState(() {
           _isLeaving = false;
         });
@@ -608,14 +675,28 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
                 !isLocallyLeft && (isLocallyJoined || isActiveParticipant);
             final isOrganizerActiveParticipant =
                 canManage && isActiveParticipant;
-            final resolvedJoinCtaState = _eventDetailJoinStateForEvent(
-              event,
-              isCanceled: isCanceled,
-              isJoined: isJoinedForActions,
-              isJoining: _isJoining,
-              hasStarted: hasStarted,
-              resolvedParticipantsCount: participantsCount,
-            );
+            final pendingMembershipIntent = _pendingMembershipIntent;
+            final pendingDesiredJoined = pendingMembershipIntent != null &&
+                    pendingMembershipIntent.dataKey == _eventStreamDataKey &&
+                    pendingMembershipIntent.dataKey.eventId == eventId &&
+                    pendingMembershipIntent.generation ==
+                        _participantActionGeneration
+                ? pendingMembershipIntent.desiredJoined
+                : null;
+            final resolvedJoinCtaState = isCanceled
+                ? EventDetailJoinCtaState.canceled
+                : pendingDesiredJoined == true
+                    ? EventDetailJoinCtaState.optimisticJoined
+                    : pendingDesiredJoined == false
+                        ? EventDetailJoinCtaState.optimisticLeft
+                        : _eventDetailJoinStateForEvent(
+                            event,
+                            isCanceled: false,
+                            isJoined: isJoinedForActions,
+                            isJoining: _isJoining,
+                            hasStarted: hasStarted,
+                            resolvedParticipantsCount: participantsCount,
+                          );
             final joinCtaState = isOrganizerActiveParticipant &&
                     resolvedJoinCtaState == EventDetailJoinCtaState.joined
                 ? EventDetailJoinCtaState.joinedLocked

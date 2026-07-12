@@ -315,6 +315,60 @@ void main() {
     }
   });
 
+  testWidgets('optimistic membership CTA shows target state and blocks taps',
+      (tester) async {
+    final cases = <({
+      EventDetailJoinCtaState state,
+      String label,
+      String semanticsLabel,
+    })>[
+      (
+        state: EventDetailJoinCtaState.optimisticJoined,
+        label: 'Покинуть',
+        semanticsLabel: 'Присоединяемся к событию',
+      ),
+      (
+        state: EventDetailJoinCtaState.optimisticLeft,
+        label: 'Присоединиться',
+        semanticsLabel: 'Покидаем событие',
+      ),
+    ];
+
+    for (final testCase in cases) {
+      final semanticsHandle = tester.ensureSemantics();
+      var tapCount = 0;
+
+      try {
+        await tester.pumpWidget(
+          _buildTestApp(
+            home: EventDetailWidget(
+              eventId: 'event-123',
+              joinCtaState: testCase.state,
+              onPrimaryCtaPressed: () => tapCount += 1,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        expect(find.text(testCase.label), findsOneWidget);
+        expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+        final primarySemantics =
+            tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
+        expect(primarySemantics.flagsCollection.isButton, isTrue);
+        expect(primarySemantics.flagsCollection.isEnabled, isFalse);
+        expect(primarySemantics.label, testCase.semanticsLabel);
+
+        await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
+        await tester.pump();
+
+        expect(tapCount, 0);
+      } finally {
+        semanticsHandle.dispose();
+      }
+    }
+  });
+
   testWidgets('joined CTA state confirms before leave action', (tester) async {
     final semanticsHandle = tester.ensureSemantics();
     var leaveTapCount = 0;
