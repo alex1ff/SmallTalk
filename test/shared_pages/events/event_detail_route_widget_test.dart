@@ -15,9 +15,11 @@ import 'package:small_talk/shared_pages/events/event_detail_route_widget.dart';
 import 'package:small_talk/shared_pages/events/event_detail_widget.dart';
 import 'package:small_talk/shared_pages/events/event_group_chat_widget.dart';
 import 'package:small_talk/services/event_actions_repository.dart';
+import 'package:small_talk/services/event_detail_repository.dart';
 import 'package:small_talk/services/event_list_date_bounds.dart';
 import 'package:small_talk/services/event_selected_city_state.dart';
 import 'package:small_talk/services/events_analytics_service.dart';
+import 'package:small_talk/services/ux_session_cache_lifecycle.dart';
 
 const _supportedLocales = [
   Locale('ru'),
@@ -69,14 +71,134 @@ void main() {
   });
 
   setUp(() {
+    EventDetailRepository.clearEventDetailSessionCache();
     currentUser = _TestAuthUser('organizer-1');
+    UxSessionCacheLifecycle.updateAuthenticatedUser('organizer-1');
     EventsAnalyticsService.defaultTracker = const _NoopEventsAnalyticsTracker();
   });
 
   tearDown(() {
     EventsAnalyticsService.defaultTracker = EventsAnalyticsService.instance;
+    UxSessionCacheLifecycle.updateAuthenticatedUser(null);
     currentUser = null;
     currentUserDocument = null;
+  });
+
+  testWidgets('route stores confirmed detail for the current session user',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: ' event-1 ',
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(title: 'Cached conversation club'),
+            ),
+          ),
+          participantSnapshotStream: (participantRef) =>
+              Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: participantRef,
+              data: _participantData(
+                userId: 'organizer-1',
+                status: 'active',
+              ),
+            ),
+          ),
+          participantsStream: (_) =>
+              Stream<List<EventParticipantsRecord>>.value(
+            const <EventParticipantsRecord>[],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cached conversation club'), findsOneWidget);
+    expect(
+      EventDetailRepository.cachedEventDetail(
+        eventId: 'event-1',
+        userId: 'organizer-1',
+      )?.title,
+      'Cached conversation club',
+    );
+    expect(
+      EventDetailRepository.cachedEventDetail(
+        eventId: 'event-1',
+        userId: 'another-user',
+      ),
+      isNull,
+    );
+  });
+
+  testWidgets('route recreates its detail stream when the user changes',
+      (tester) async {
+    var streamCalls = 0;
+    Stream<DocumentSnapshot> detailStream(DocumentReference eventRef) {
+      streamCalls += 1;
+      final userId = currentUser?.uid ?? '';
+      return Stream<DocumentSnapshot>.value(
+        _FakeEventDocumentSnapshot(
+          reference: eventRef,
+          data: _eventData(title: '$userId event'),
+        ),
+      );
+    }
+
+    Widget buildRoute() => _buildTestApp(
+          home: EventDetailRouteWidget(
+            eventId: 'event-1',
+            snapshotStream: detailStream,
+            participantSnapshotStream: (participantRef) =>
+                Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: participantRef,
+                data: _participantData(
+                  userId: currentUser?.uid ?? '',
+                  status: 'active',
+                ),
+              ),
+            ),
+            participantsStream: (_) =>
+                Stream<List<EventParticipantsRecord>>.value(
+              const <EventParticipantsRecord>[],
+            ),
+          ),
+        );
+
+    currentUser = _TestAuthUser('user-a');
+    UxSessionCacheLifecycle.updateAuthenticatedUser('user-a');
+    await tester.pumpWidget(buildRoute());
+    await tester.pumpAndSettle();
+    expect(
+      EventDetailRepository.cachedEventDetail(
+        eventId: 'event-1',
+        userId: 'user-a',
+      )?.title,
+      'user-a event',
+    );
+
+    currentUser = _TestAuthUser('user-b');
+    UxSessionCacheLifecycle.updateAuthenticatedUser('user-b');
+    await tester.pumpWidget(buildRoute());
+    await tester.pumpAndSettle();
+    expect(streamCalls, 2);
+
+    expect(
+      EventDetailRepository.cachedEventDetail(
+        eventId: 'event-1',
+        userId: 'user-a',
+      ),
+      isNull,
+    );
+    expect(
+      EventDetailRepository.cachedEventDetail(
+        eventId: 'event-1',
+        userId: 'user-b',
+      )?.title,
+      'user-b event',
+    );
   });
 
   testWidgets('organizer confirmation cancels event through callable once',

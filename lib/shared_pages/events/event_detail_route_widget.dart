@@ -85,6 +85,7 @@ class EventDetailRouteWidget extends StatefulWidget {
 
 class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
   late Stream<EventsRecord?> _eventStream;
+  late String _eventStreamUserId;
   Timer? _startsAtRefreshTimer;
   String? _startsAtRefreshEventId;
   DateTime? _startsAtRefreshAt;
@@ -110,15 +111,19 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
   @override
   void initState() {
     super.initState();
-    _eventStream = _watchEvent();
+    _eventStreamUserId = _sessionCacheUserId;
+    _eventStream = _watchEvent(sessionCacheUserId: _eventStreamUserId);
   }
 
   @override
   void didUpdateWidget(covariant EventDetailRouteWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final sessionCacheUserId = _sessionCacheUserId;
     if (oldWidget.eventId != widget.eventId ||
-        oldWidget.snapshotStream != widget.snapshotStream) {
-      _eventStream = _watchEvent();
+        oldWidget.snapshotStream != widget.snapshotStream ||
+        _eventStreamUserId != sessionCacheUserId) {
+      _eventStreamUserId = sessionCacheUserId;
+      _eventStream = _watchEvent(sessionCacheUserId: sessionCacheUserId);
       _clearStartsAtRefreshTimer();
       _locallyStartedEventId = null;
       _locallyStartedAt = null;
@@ -146,9 +151,13 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
     super.dispose();
   }
 
-  Stream<EventsRecord?> _watchEvent() => EventDetailRepository.watchEventDetail(
+  String get _sessionCacheUserId => currentUser?.uid ?? currentUserUid;
+
+  Stream<EventsRecord?> _watchEvent({required String sessionCacheUserId}) =>
+      EventDetailRepository.watchEventDetail(
         eventId: widget.eventId,
         snapshotStream: widget.snapshotStream,
+        sessionCacheUserId: sessionCacheUserId,
       );
 
   Future<void> _handleOrganizerCancel(EventsRecord event) async {

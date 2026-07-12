@@ -1,6 +1,10 @@
+import 'dart:collection';
 import 'dart:convert';
 
 import '/backend/backend.dart';
+import '/services/ux_loading_state.dart';
+import '/services/ux_session_cache_lifecycle.dart';
+import '/services/ux_session_loaded_result_cache.dart';
 
 typedef EventDetailSnapshotStream = Stream<DocumentSnapshot> Function(
   DocumentReference eventRef,
@@ -12,9 +16,26 @@ typedef EventActiveParticipantsStream = Stream<List<EventParticipantsRecord>>
     Function(
   DocumentReference eventRef,
 );
+typedef EventDetailSnapshotFlagReader = bool Function(
+  DocumentSnapshot snapshot,
+);
+typedef _EventDetailCacheKey = ({String eventId, String userId});
 
 class EventDetailRepository {
   const EventDetailRepository._();
+
+  static const int _maxEventDetailSessionEntries = 64;
+  static final UxSessionLoadedResultCache<EventsRecord>
+      _eventDetailSessionCache = UxSessionLoadedResultCache<EventsRecord>(
+    maxEntries: _maxEventDetailSessionEntries,
+  );
+  static final LinkedHashMap<_EventDetailCacheKey, int>
+      _eventDetailLatestRequestTokens =
+      LinkedHashMap<_EventDetailCacheKey, int>();
+  static final LinkedHashMap<_EventDetailCacheKey, int>
+      _eventDetailCacheOwnerTokens = LinkedHashMap<_EventDetailCacheKey, int>();
+  static int _eventDetailWatcherTokenSerial = 0;
+  static bool _sessionCacheLifecycleRegistered = false;
 
   static DocumentReference eventReferenceForId(String eventId) =>
       EventsRecord.collection.doc(normalizeEventDetailId(eventId));
@@ -22,16 +43,183 @@ class EventDetailRepository {
   static Stream<EventsRecord?> watchEventDetail({
     required String eventId,
     EventDetailSnapshotStream? snapshotStream,
+    String? sessionCacheUserId,
+    EventDetailSnapshotFlagReader? snapshotIsFromCache,
+    EventDetailSnapshotFlagReader? snapshotHasPendingWrites,
   }) {
+    _ensureSessionCacheLifecycleRegistered();
     final eventRef = eventReferenceForId(eventId);
     final loader = snapshotStream ?? _watchEventSnapshot;
+    final cacheKey = _eventDetailCacheKey(
+      userId: sessionCacheUserId,
+      normalizedEventId: eventRef.id,
+    );
+    final cacheWatcherToken =
+        cacheKey == null ? null : _registerEventDetailWatcherRequest(cacheKey);
+    final usesInjectedSnapshots = snapshotStream != null;
+    final isFromCache = snapshotIsFromCache ??
+        (usesInjectedSnapshots ? _snapshotFlagIsFalse : _snapshotIsFromCache);
+    final hasPendingWrites = snapshotHasPendingWrites ??
+        (usesInjectedSnapshots
+            ? _snapshotFlagIsFalse
+            : _snapshotHasPendingWrites);
 
-    return loader(eventRef).map((snapshot) {
-      if (!snapshot.exists) {
-        return null;
-      }
-      return EventsRecord.fromSnapshot(snapshot);
-    });
+    return loader(eventRef)
+        .map((snapshot) {
+          if (snapshot.reference.path != eventRef.path) {
+            throw StateError(
+              'Event detail snapshot path "${snapshot.reference.path}" '
+              'does not match requested path "${eventRef.path}".',
+            );
+          }
+          return _EventDetailSnapshotEnvelope(
+            snapshot: snapshot,
+            isFromCache: isFromCache(snapshot),
+            hasPendingWrites: hasPendingWrites(snapshot),
+          );
+        })
+        .where(
+          (envelope) =>
+              envelope.snapshot.exists ||
+              (!envelope.isFromCache && !envelope.hasPendingWrites),
+        )
+        .map((envelope) {
+          final snapshot = envelope.snapshot;
+          if (!snapshot.exists) {
+            final authoritativeCacheKey = _authoritativeEventDetailCacheKey(
+              cacheKey,
+              cacheWatcherToken,
+            );
+            if (authoritativeCacheKey != null) {
+              _eventDetailSessionCache.remove(authoritativeCacheKey);
+            }
+            return null;
+          }
+
+          final event = EventsRecord.fromSnapshot(snapshot);
+          final isConfirmed =
+              !envelope.isFromCache && !envelope.hasPendingWrites;
+          if (isConfirmed) {
+            final authoritativeCacheKey = _authoritativeEventDetailCacheKey(
+              cacheKey,
+              cacheWatcherToken,
+            );
+            if (authoritativeCacheKey == null) {
+              return event;
+            }
+            _eventDetailSessionCache.write(
+              UxLoadedResult<EventsRecord>.data(
+                dataKey: authoritativeCacheKey,
+                data: event,
+              ),
+            );
+          }
+          return event;
+        });
+  }
+
+  static EventsRecord? cachedEventDetail({
+    required String eventId,
+    required String userId,
+  }) {
+    _ensureSessionCacheLifecycleRegistered();
+    final normalizedEventId = normalizeEventDetailId(eventId);
+    final cacheKey = _eventDetailCacheKey(
+      userId: userId,
+      normalizedEventId: normalizedEventId,
+    );
+    if (cacheKey == null) {
+      return null;
+    }
+    final cachedResult = _eventDetailSessionCache.read(cacheKey);
+    if (cachedResult == null) {
+      return null;
+    }
+    final watcherToken = _eventDetailCacheOwnerTokens.remove(cacheKey);
+    if (watcherToken == null) {
+      _eventDetailSessionCache.remove(cacheKey);
+      return null;
+    }
+    _eventDetailCacheOwnerTokens[cacheKey] = watcherToken;
+    return cachedResult.data;
+  }
+
+  static void invalidateCachedEventDetail({
+    required String eventId,
+    required String userId,
+  }) {
+    _ensureSessionCacheLifecycleRegistered();
+    final normalizedEventId = normalizeEventDetailId(eventId);
+    final cacheKey = _eventDetailCacheKey(
+      userId: userId,
+      normalizedEventId: normalizedEventId,
+    );
+    if (cacheKey != null) {
+      _eventDetailLatestRequestTokens.remove(cacheKey);
+      _eventDetailCacheOwnerTokens.remove(cacheKey);
+      _eventDetailSessionCache.remove(cacheKey);
+    }
+  }
+
+  static void clearEventDetailSessionCache() {
+    _ensureSessionCacheLifecycleRegistered();
+    _clearEventDetailSessionCacheState();
+  }
+
+  static void _clearEventDetailSessionCacheState() {
+    _eventDetailLatestRequestTokens.clear();
+    _eventDetailCacheOwnerTokens.clear();
+    _eventDetailSessionCache.clear();
+  }
+
+  static void _ensureSessionCacheLifecycleRegistered() {
+    if (_sessionCacheLifecycleRegistered) {
+      return;
+    }
+    _sessionCacheLifecycleRegistered = true;
+    UxSessionCacheLifecycle.register(_clearEventDetailSessionCacheState);
+  }
+
+  static int _registerEventDetailWatcherRequest(
+    _EventDetailCacheKey cacheKey,
+  ) {
+    final watcherToken = ++_eventDetailWatcherTokenSerial;
+    _eventDetailLatestRequestTokens.remove(cacheKey);
+    _eventDetailLatestRequestTokens[cacheKey] = watcherToken;
+    while (_eventDetailLatestRequestTokens.length >
+        _maxEventDetailSessionEntries) {
+      _eventDetailLatestRequestTokens.remove(
+        _eventDetailLatestRequestTokens.keys.first,
+      );
+    }
+    return watcherToken;
+  }
+
+  static _EventDetailCacheKey? _authoritativeEventDetailCacheKey(
+    _EventDetailCacheKey? cacheKey,
+    int? watcherToken,
+  ) {
+    if (cacheKey == null || watcherToken == null) {
+      return null;
+    }
+    if (_eventDetailCacheOwnerTokens[cacheKey] == watcherToken) {
+      _eventDetailCacheOwnerTokens.remove(cacheKey);
+      _eventDetailCacheOwnerTokens[cacheKey] = watcherToken;
+      return cacheKey;
+    }
+    if (_eventDetailLatestRequestTokens[cacheKey] != watcherToken) {
+      return null;
+    }
+    _eventDetailLatestRequestTokens.remove(cacheKey);
+    _eventDetailCacheOwnerTokens.remove(cacheKey);
+    _eventDetailCacheOwnerTokens[cacheKey] = watcherToken;
+    while (
+        _eventDetailCacheOwnerTokens.length > _maxEventDetailSessionEntries) {
+      final evictedCacheKey = _eventDetailCacheOwnerTokens.keys.first;
+      _eventDetailCacheOwnerTokens.remove(evictedCacheKey);
+      _eventDetailSessionCache.remove(evictedCacheKey);
+    }
+    return cacheKey;
   }
 
   static DocumentReference currentUserParticipantReference({
@@ -73,6 +261,16 @@ class EventDetailRepository {
 
     return loader(eventRef).map(_normalizedActiveParticipants);
   }
+}
+
+_EventDetailCacheKey? _eventDetailCacheKey({
+  required String? userId,
+  required String normalizedEventId,
+}) {
+  if (userId == null || userId.isEmpty) {
+    return null;
+  }
+  return (userId: userId, eventId: normalizedEventId);
 }
 
 String normalizeEventDetailId(String eventId) {
@@ -117,7 +315,17 @@ String normalizeEventDetailId(String eventId) {
 }
 
 Stream<DocumentSnapshot> _watchEventSnapshot(DocumentReference eventRef) =>
-    eventRef.snapshots();
+    eventRef.snapshots(includeMetadataChanges: true);
+
+bool _snapshotIsFromCache(DocumentSnapshot snapshot) {
+  return snapshot.metadata.isFromCache;
+}
+
+bool _snapshotHasPendingWrites(DocumentSnapshot snapshot) {
+  return snapshot.metadata.hasPendingWrites;
+}
+
+bool _snapshotFlagIsFalse(DocumentSnapshot _) => false;
 
 Stream<DocumentSnapshot> _watchParticipantSnapshot(
   DocumentReference participantRef,
@@ -162,4 +370,16 @@ int _compareActiveParticipants(
   }
 
   return left.reference.id.compareTo(right.reference.id);
+}
+
+class _EventDetailSnapshotEnvelope {
+  const _EventDetailSnapshotEnvelope({
+    required this.snapshot,
+    required this.isFromCache,
+    required this.hasPendingWrites,
+  });
+
+  final DocumentSnapshot snapshot;
+  final bool isFromCache;
+  final bool hasPendingWrites;
 }

@@ -1,7 +1,9 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:rxdart/rxdart.dart';
 
 import '../base_auth_user_provider.dart';
+import '/services/ux_session_cache_lifecycle.dart';
 // ─── SUBSCRIPTION REWORK ───────────────────────────────────────────────
 // RevenueCat needs the Firebase uid as its App User ID. We hook the
 // auth stream so login/logout in RC happens transparently whenever
@@ -64,10 +66,23 @@ class SmallTalkFirebaseUser extends BaseAuthUser {
       SmallTalkFirebaseUser(user);
 }
 
-Stream<BaseAuthUser> smallTalkFirebaseUserStream() => FirebaseAuth.instance
-        .authStateChanges()
-        .startWith(FirebaseAuth.instance.currentUser)
-        .map<BaseAuthUser>(
+@visibleForTesting
+Stream<T> withUxSessionCacheLifecycle<T>(
+  Stream<T> authStateStream,
+  String? Function(T authState) userIdOf,
+) =>
+    authStateStream.doOnData(
+      (authState) =>
+          UxSessionCacheLifecycle.updateAuthenticatedUser(userIdOf(authState)),
+    );
+
+Stream<BaseAuthUser> smallTalkFirebaseUserStream() =>
+    withUxSessionCacheLifecycle<User?>(
+      FirebaseAuth.instance
+          .authStateChanges()
+          .startWith(FirebaseAuth.instance.currentUser),
+      (user) => user?.uid,
+    ).map<BaseAuthUser>(
       (user) {
         currentUser = SmallTalkFirebaseUser(user);
         // ─── SUBSCRIPTION REWORK ───────────────────────────────────────
