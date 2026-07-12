@@ -30,6 +30,7 @@ import '/services/event_list_repository.dart';
 import '/services/event_level_helper.dart';
 import '/services/event_language_catalog.dart';
 import '/services/events_analytics_service.dart';
+import '/services/user_public_profile_preload_repository.dart';
 
 const ValueKey<String> eventListCreateButtonKey =
     ValueKey<String>('event_list_create_button');
@@ -102,9 +103,17 @@ typedef EventListActiveParticipantsLoader
     = Future<List<EventParticipantsRecord>> Function(
   DocumentReference eventRef,
 );
+typedef EventListPublicProfilesLoader = Future<UserPublicProfilePreloadResult>
+    Function(Iterable<String> userIds);
 
 const int _eventListPageSize = 20;
 const int _eventListParticipantPreviewLimit = 6;
+const int _eventListInitialProfileCardBudget = 2;
+const int _eventListProfileCardWindow = 2;
+const int _eventListEarlyProfileParticipantLimit =
+    _eventListParticipantPreviewLimit - 1;
+const int _eventListInitialProfileUserBudget =
+    _eventListInitialProfileCardBudget * _eventListParticipantPreviewLimit;
 const int _eventListCardsCacheMaxEntries = 24;
 const Duration _eventListCardsCacheTtl = Duration(minutes: 5);
 const double _eventListHorizontalPadding = 17.0;
@@ -153,8 +162,13 @@ final _eventListCardsCache = _EventListCardsMemoryCache(
   maxEntries: _eventListCardsCacheMaxEntries,
   ttl: _eventListCardsCacheTtl,
 );
+final _eventListPublicProfilePreloadRepository =
+    UserPublicProfilePreloadRepository();
 
-void debugClearEventListCache() => _eventListCardsCache.clear();
+void debugClearEventListCache() {
+  _eventListCardsCache.clear();
+  _eventListPublicProfilePreloadRepository.clear();
+}
 
 class EventListParticipantViewModel {
   const EventListParticipantViewModel({
@@ -253,6 +267,35 @@ class EventListCardViewModel {
     }
     return count < participants.length ? participants.length : count;
   }
+
+  EventListCardViewModel copyWithParticipants(
+    List<EventListParticipantViewModel> updatedParticipants,
+  ) {
+    return EventListCardViewModel(
+      eventId: eventId,
+      countryCode: countryCode,
+      cityKey: cityKey,
+      organizerDisplayName: organizerDisplayName,
+      organizerPhotoUrl: organizerPhotoUrl,
+      participants: List.unmodifiable(updatedParticipants),
+      participantsCount: participantsCount,
+      capacity: capacity,
+      joinCtaState: joinCtaState,
+      chatCtaState: chatCtaState,
+      membershipState: membershipState,
+      reserveParticipantPreviewSpace: reserveParticipantPreviewSpace,
+      languageCode: languageCode,
+      languageNameEn: languageNameEn,
+      languageNameRu: languageNameRu,
+      title: title,
+      description: description,
+      levelMin: levelMin,
+      levelMax: levelMax,
+      startsAt: startsAt,
+      timeZoneId: timeZoneId,
+      locationName: locationName,
+    );
+  }
 }
 
 class EventListWidget extends StatefulWidget {
@@ -270,6 +313,7 @@ class EventListWidget extends StatefulWidget {
     this.eventPageLoader,
     this.currentUserParticipantLoader,
     this.activeParticipantsLoader,
+    this.publicProfilesLoader,
     this.nowUtcProvider,
   });
 
@@ -288,6 +332,7 @@ class EventListWidget extends StatefulWidget {
   final EventListPageLoader? eventPageLoader;
   final EventListCurrentUserParticipantLoader? currentUserParticipantLoader;
   final EventListActiveParticipantsLoader? activeParticipantsLoader;
+  final EventListPublicProfilesLoader? publicProfilesLoader;
   final EventListNowProvider? nowUtcProvider;
 
   @override
@@ -295,6 +340,7 @@ class EventListWidget extends StatefulWidget {
 }
 
 class _EventListWidgetState extends State<EventListWidget> {
+  final ScrollController _scrollController = ScrollController();
   late EventSelectedCity? _selectedCity;
   EventListDateFilter? _selectedDateFilter;
   String? _selectedLevel;
@@ -309,12 +355,24 @@ class _EventListWidgetState extends State<EventListWidget> {
   Future<List<EventListCardViewModel>>? _eventCardsFuture;
   List<EventListCardViewModel>? _eventCardsFutureInitialCards;
   _EventListLoadedCards? _lastLoadedCards;
+  _EventListPublicProfileSession? _publicProfileSession;
+  double _eventListProfileScrollOriginPixels = 0;
+  bool _eventListScrollResetPending = false;
   int _eventListLoadGeneration = 0;
 
   @override
   void initState() {
     super.initState();
     _selectedCity = widget.initialSelectedCity;
+    _scrollController.addListener(_handleEventListScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController
+      ..removeListener(_handleEventListScroll)
+      ..dispose();
+    super.dispose();
   }
 
   @override
@@ -339,6 +397,7 @@ class _EventListWidgetState extends State<EventListWidget> {
         oldWidget.currentUserParticipantLoader !=
             widget.currentUserParticipantLoader ||
         oldWidget.activeParticipantsLoader != widget.activeParticipantsLoader ||
+        oldWidget.publicProfilesLoader != widget.publicProfilesLoader ||
         oldWidget.nowUtcProvider != widget.nowUtcProvider) {
       _resetEventCardsLoadState(clearLastLoadedCards: true);
     }
@@ -455,6 +514,7 @@ class _EventListWidgetState extends State<EventListWidget> {
                       const SizedBox(height: 10),
                       Expanded(
                         child: SingleChildScrollView(
+                          controller: _scrollController,
                           padding: const EdgeInsetsDirectional.only(
                             bottom: ExpatlioDesign.pageBottomSpacing,
                           ),
@@ -676,7 +736,7 @@ class _EventListWidgetState extends State<EventListWidget> {
 
     final nowUtc = (widget.nowUtcProvider ?? _eventListNowUtc)();
     final normalizedNowUtc = nowUtc.isUtc ? nowUtc : nowUtc.toUtc();
-    final viewerUserId = currentUserUid.trim();
+    final viewerUserId = currentUserUid;
     final selectedDateFilter = _selectedDateFilter;
     final localDateRange = selectedDateFilter == null
         ? null
@@ -693,27 +753,37 @@ class _EventListWidgetState extends State<EventListWidget> {
       localStartDate: localDateRange?.startDate,
       localExclusiveEndDate: localDateRange?.exclusiveEndDate,
       selectedLevel: _selectedLevel,
-      pageLoaderIdentity: widget.eventPageLoader == null
-          ? 0
-          : identityHashCode(widget.eventPageLoader),
+      pageLoaderIdentity: widget.eventPageLoader,
       currentUserId: viewerUserId,
-      participantLoaderIdentity: widget.currentUserParticipantLoader == null
-          ? 0
-          : identityHashCode(widget.currentUserParticipantLoader),
-      activeParticipantsLoaderIdentity: widget.activeParticipantsLoader == null
-          ? 0
-          : identityHashCode(widget.activeParticipantsLoader),
+      participantLoaderIdentity: widget.currentUserParticipantLoader,
+      activeParticipantsLoaderIdentity: widget.activeParticipantsLoader,
+      publicProfilesLoaderIdentity: widget.publicProfilesLoader,
     );
     if (_eventListLoadKey != key || _eventCardsFuture == null) {
+      if (_eventListLoadKey != null && _eventListLoadKey != key) {
+        _eventListProfileScrollOriginPixels = 0;
+        _scheduleEventListScrollReset();
+      }
       _eventListLoadGeneration += 1;
       _eventListLoadKey = key;
       final loadGeneration = _eventListLoadGeneration;
-      final cachedCards = _eventListCardsCache.read(
+      final cacheOwnerToken = _eventListCardsCache.claim(key);
+      final cachedEntry = _eventListCardsCache.read(
         key,
         nowUtc: normalizedNowUtc,
       );
+      final cachedCards = cachedEntry?.cards;
       if (cachedCards != null) {
         _rememberLoadedCards(key, cachedCards);
+        _startCachedPublicProfileSession(
+          key: key,
+          loadGeneration: loadGeneration,
+          cards: cachedCards,
+          nowUtc: cachedEntry!.fetchedAtUtc,
+          currentUserId: viewerUserId,
+          hydratedProfileCardCount: cachedEntry.hydratedProfileCardCount,
+          cacheOwnerToken: cacheOwnerToken,
+        );
       }
       _eventCardsFutureInitialCards = cachedCards;
       _eventCardsFuture = cachedCards == null
@@ -735,6 +805,7 @@ class _EventListWidgetState extends State<EventListWidget> {
                       nowUtc: normalizedNowUtc,
                       currentUserId: viewerUserId,
                       loadGeneration: loadGeneration,
+                      cacheOwnerToken: cacheOwnerToken,
                     ),
                   );
                 }
@@ -782,7 +853,7 @@ class _EventListWidgetState extends State<EventListWidget> {
     setState(() {
       final key = _eventListLoadKey;
       if (key != null) {
-        _eventListCardsCache.remove(key);
+        _eventListCardsCache.invalidate(key);
       }
       _resetEventCardsLoadState(clearLastLoadedCards: false);
     });
@@ -793,9 +864,25 @@ class _EventListWidgetState extends State<EventListWidget> {
     _eventListLoadKey = null;
     _eventCardsFuture = null;
     _eventCardsFutureInitialCards = null;
+    _publicProfileSession = null;
+    _eventListProfileScrollOriginPixels = 0;
+    _scheduleEventListScrollReset();
     if (clearLastLoadedCards) {
       _lastLoadedCards = null;
     }
+  }
+
+  void _scheduleEventListScrollReset() {
+    _eventListScrollResetPending = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      if (_scrollController.hasClients) {
+        _scrollController.jumpTo(0);
+      }
+      _eventListScrollResetPending = false;
+    });
   }
 
   Future<_EventListBaseCardsLoad> _loadBaseEventCards({
@@ -854,22 +941,375 @@ class _EventListWidgetState extends State<EventListWidget> {
     required DateTime nowUtc,
     required String currentUserId,
     required int loadGeneration,
+    required int cacheOwnerToken,
   }) async {
     final currentParticipantsFuture =
         _loadCurrentUserParticipantRecordsByEventId(
       events: events,
       currentUserId: currentUserId,
     );
-    final activeParticipantsFuture =
-        _loadActiveParticipantRecordsByEventId(events: events);
-    final membershipLoad = await currentParticipantsFuture;
-    final activeParticipantRecordsByEventId = await activeParticipantsFuture;
+    final initialEvents =
+        events.take(_eventListInitialProfileCardBudget).toList(
+              growable: false,
+            );
+    final remainingEvents = events.skip(initialEvents.length).toList(
+          growable: false,
+        );
+    final initialActiveParticipantsFuture =
+        _loadActiveParticipantRecordsByEventId(events: initialEvents);
+    final remainingActiveParticipantsFuture =
+        _loadActiveParticipantRecordsByEventId(events: remainingEvents);
+    final initialActiveParticipantRecordsByEventId =
+        await initialActiveParticipantsFuture;
 
     if (!_eventListLoadIsCurrent(key, loadGeneration)) {
       return;
     }
 
-    final enrichedCards = events
+    final provisionalCards = _eventListCardsFromParticipantRecords(
+      events: events,
+      fallbackTimeZoneId: fallbackTimeZoneId,
+      nowUtc: nowUtc,
+      currentUserId: currentUserId,
+      activeParticipantRecordsByEventId:
+          initialActiveParticipantRecordsByEventId,
+    );
+    final canPreloadProfiles =
+        _canPreloadEventListPublicProfiles(currentUserId);
+    final earlyProfileIds = canPreloadProfiles
+        ? _eventListVisibleParticipantUserIds(
+            provisionalCards.take(_eventListInitialProfileCardBudget),
+            participantLimit: _eventListEarlyProfileParticipantLimit,
+          )
+        : const <String>{};
+    final earlyProfilesFuture = canPreloadProfiles
+        ? _preloadEventListPublicProfiles(
+            earlyProfileIds,
+            currentUserId: currentUserId,
+          )
+        : Future<UserPublicProfilePreloadResult>.value(
+            UserPublicProfilePreloadResult(),
+          );
+    final remainingActiveParticipantRecordsByEventId =
+        await remainingActiveParticipantsFuture;
+    final activeParticipantRecordsByEventId =
+        <String, List<EventParticipantsRecord>>{
+      ...initialActiveParticipantRecordsByEventId,
+      ...remainingActiveParticipantRecordsByEventId,
+    };
+    final membershipLoad = await currentParticipantsFuture;
+
+    if (!_eventListLoadIsCurrent(key, loadGeneration)) {
+      return;
+    }
+
+    final participantCards = _eventListCardsFromParticipantRecords(
+      events: events,
+      fallbackTimeZoneId: fallbackTimeZoneId,
+      nowUtc: nowUtc,
+      currentUserId: currentUserId,
+      activeParticipantRecordsByEventId: activeParticipantRecordsByEventId,
+      membershipLoad: membershipLoad,
+    );
+    final finalProfileIds = canPreloadProfiles
+        ? _eventListVisibleParticipantUserIds(
+            participantCards.take(_eventListInitialProfileCardBudget),
+          )
+        : const <String>{};
+    final additionalProfileIds = LinkedHashSet<String>();
+    final remainingProfileBudget =
+        _eventListInitialProfileUserBudget - earlyProfileIds.length;
+    for (final userId in finalProfileIds) {
+      if (!earlyProfileIds.contains(userId)) {
+        additionalProfileIds.add(userId);
+      }
+      if (additionalProfileIds.length >= remainingProfileBudget) {
+        break;
+      }
+    }
+    final additionalProfilesFuture = canPreloadProfiles
+        ? _preloadEventListPublicProfiles(
+            additionalProfileIds,
+            currentUserId: currentUserId,
+          )
+        : Future<UserPublicProfilePreloadResult>.value(
+            UserPublicProfilePreloadResult(),
+          );
+
+    if (!canPreloadProfiles) {
+      if (participantCards.isNotEmpty &&
+          membershipLoad.failedEventIds.isEmpty) {
+        _eventListCardsCache.writeIfOwner(
+          key,
+          cacheOwnerToken,
+          participantCards,
+          fetchedAtUtc: nowUtc,
+          hydratedProfileCardCount: participantCards.length,
+        );
+      }
+      setState(() {
+        _eventCardsFutureInitialCards = participantCards;
+        _eventCardsFuture =
+            Future<List<EventListCardViewModel>>.value(participantCards);
+        _rememberLoadedCards(key, participantCards);
+      });
+      return;
+    }
+
+    final session = _EventListPublicProfileSession(
+      key: key,
+      loadGeneration: loadGeneration,
+      currentUserId: currentUserId,
+      nowUtc: nowUtc,
+      cards: participantCards,
+      targetCardCount: math.min(
+        participantCards.length,
+        _eventListInitialProfileCardBudget,
+      ),
+      completedCardCount: 0,
+      scrollStartPixels: _eventListProfileScrollOriginPixels,
+      canCacheCards: membershipLoad.failedEventIds.isEmpty,
+      requestedUserIds: <String>{
+        ...earlyProfileIds,
+        ...additionalProfileIds,
+      },
+      requestInFlight: true,
+      cacheOwnerToken: cacheOwnerToken,
+    );
+    if (!_eventListScrollResetPending) {
+      session.targetCardCount = math.max(
+        session.targetCardCount,
+        _eventListProfileCardBudget(session),
+      );
+    }
+    _publicProfileSession = session;
+    setState(() {
+      _eventCardsFutureInitialCards = participantCards;
+      _eventCardsFuture =
+          Future<List<EventListCardViewModel>>.value(participantCards);
+      _rememberLoadedCards(key, participantCards);
+    });
+
+    final profileLoads = await Future.wait([
+      earlyProfilesFuture,
+      additionalProfilesFuture,
+    ]);
+    session.requestInFlight = false;
+    if (!_eventListPublicProfileSessionIsCurrent(session)) {
+      return;
+    }
+
+    final profileLoad = _mergeEventListPublicProfileLoads(profileLoads);
+    session.completedCardCount = math.min(
+      participantCards.length,
+      _eventListInitialProfileCardBudget,
+    );
+    _applyEventListPublicProfileLoad(session, profileLoad);
+    await _pumpEventListPublicProfileSession(session);
+  }
+
+  bool _canPreloadEventListPublicProfiles(String currentUserId) {
+    return currentUserId.isNotEmpty &&
+        (widget.publicProfilesLoader != null || widget.eventPageLoader == null);
+  }
+
+  void _startCachedPublicProfileSession({
+    required _EventListLoadKey key,
+    required int loadGeneration,
+    required List<EventListCardViewModel> cards,
+    required DateTime nowUtc,
+    required String currentUserId,
+    required int hydratedProfileCardCount,
+    required int cacheOwnerToken,
+  }) {
+    if (cards.isEmpty ||
+        !_canPreloadEventListPublicProfiles(currentUserId) ||
+        !_eventListLoadIsCurrent(key, loadGeneration)) {
+      return;
+    }
+    final completedCardCount = math.min(
+      cards.length,
+      math.max(0, hydratedProfileCardCount),
+    );
+    final targetCardCount = math.max(
+      completedCardCount,
+      math.min(
+        cards.length,
+        _eventListInitialProfileCardBudget,
+      ),
+    );
+    final session = _EventListPublicProfileSession(
+      key: key,
+      loadGeneration: loadGeneration,
+      currentUserId: currentUserId,
+      nowUtc: nowUtc,
+      cards: cards,
+      targetCardCount: targetCardCount,
+      completedCardCount: completedCardCount,
+      scrollStartPixels: _eventListProfileScrollOriginPixels,
+      canCacheCards: true,
+      requestedUserIds: _eventListVisibleParticipantUserIds(
+        cards.take(completedCardCount),
+      ),
+      cacheOwnerToken: cacheOwnerToken,
+    );
+    if (!_eventListScrollResetPending) {
+      session.targetCardCount = math.max(
+        session.targetCardCount,
+        _eventListProfileCardBudget(session),
+      );
+    }
+    _publicProfileSession = session;
+    unawaited(_pumpEventListPublicProfileSession(session));
+  }
+
+  int _eventListProfileCardBudget(_EventListPublicProfileSession session) {
+    final totalCardCount = session.cards.length;
+    final initialCardCount = math.min(
+      totalCardCount,
+      _eventListInitialProfileCardBudget,
+    );
+    if (totalCardCount <= initialCardCount) {
+      return totalCardCount;
+    }
+    var cardBudget = initialCardCount;
+    if (_scrollController.hasClients) {
+      final position = _scrollController.position;
+      if (!position.hasViewportDimension) {
+        return cardBudget;
+      }
+      final viewportDimension = position.viewportDimension;
+      final scrollDistance = math.max(
+        0.0,
+        position.pixels - session.scrollStartPixels,
+      );
+      if (viewportDimension > 0 && scrollDistance >= viewportDimension) {
+        final traversedWindows = (scrollDistance / viewportDimension).floor();
+        cardBudget += traversedWindows * _eventListProfileCardWindow;
+      }
+    }
+    return math.min(totalCardCount, cardBudget);
+  }
+
+  void _handleEventListScroll() {
+    final session = _publicProfileSession;
+    if (session == null || !_eventListPublicProfileSessionIsCurrent(session)) {
+      return;
+    }
+    final targetCardCount = _eventListProfileCardBudget(session);
+    if (targetCardCount <= session.targetCardCount) {
+      return;
+    }
+    session.targetCardCount = targetCardCount;
+    unawaited(_pumpEventListPublicProfileSession(session));
+  }
+
+  bool _eventListPublicProfileSessionIsCurrent(
+    _EventListPublicProfileSession session,
+  ) {
+    return identical(_publicProfileSession, session) &&
+        _eventListLoadIsCurrent(session.key, session.loadGeneration);
+  }
+
+  Future<void> _pumpEventListPublicProfileSession(
+    _EventListPublicProfileSession session,
+  ) async {
+    while (_eventListPublicProfileSessionIsCurrent(session) &&
+        !session.requestInFlight &&
+        session.completedCardCount < session.targetCardCount) {
+      final windowStart = session.completedCardCount;
+      final windowEnd = math.min(
+        session.targetCardCount,
+        windowStart + _eventListProfileCardWindow,
+      );
+      final windowUserIds = _eventListVisibleParticipantUserIds(
+        session.cards.skip(windowStart).take(windowEnd - windowStart),
+      );
+      final pendingUserIds = windowUserIds.difference(
+        session.requestedUserIds,
+      );
+      if (pendingUserIds.isEmpty) {
+        session.completedCardCount = windowEnd;
+        _writeEventListPublicProfileSessionCache(session);
+        continue;
+      }
+
+      session
+        ..requestInFlight = true
+        ..requestedUserIds.addAll(pendingUserIds);
+      _eventListCardsCache.removeIfOwner(
+        session.key,
+        session.cacheOwnerToken,
+      );
+      final profileLoad = await _preloadEventListPublicProfiles(
+        pendingUserIds,
+        currentUserId: session.currentUserId,
+      );
+      session.requestInFlight = false;
+      if (!_eventListPublicProfileSessionIsCurrent(session)) {
+        return;
+      }
+      session.completedCardCount = windowEnd;
+      _applyEventListPublicProfileLoad(session, profileLoad);
+    }
+  }
+
+  void _applyEventListPublicProfileLoad(
+    _EventListPublicProfileSession session,
+    UserPublicProfilePreloadResult profileLoad,
+  ) {
+    if (!_eventListPublicProfileSessionIsCurrent(session)) {
+      return;
+    }
+    if (profileLoad.failedUserIds.isNotEmpty ||
+        profileLoad.missingUserIds.isNotEmpty) {
+      session.canCacheCards = false;
+      _eventListCardsCache.removeIfOwner(
+        session.key,
+        session.cacheOwnerToken,
+      );
+    }
+    session.cards = _eventListCardsWithPublicProfiles(
+      session.cards,
+      profileLoad.profilesByUserId,
+    );
+    _writeEventListPublicProfileSessionCache(session);
+    setState(() {
+      _eventCardsFutureInitialCards = session.cards;
+      _eventCardsFuture =
+          Future<List<EventListCardViewModel>>.value(session.cards);
+      _rememberLoadedCards(session.key, session.cards);
+    });
+  }
+
+  void _writeEventListPublicProfileSessionCache(
+    _EventListPublicProfileSession session,
+  ) {
+    if (session.cards.isEmpty ||
+        !session.canCacheCards ||
+        session.requestInFlight ||
+        !_eventListPublicProfileSessionIsCurrent(session)) {
+      return;
+    }
+    _eventListCardsCache.writeIfOwner(
+      session.key,
+      session.cacheOwnerToken,
+      session.cards,
+      fetchedAtUtc: session.nowUtc,
+      hydratedProfileCardCount: session.completedCardCount,
+    );
+  }
+
+  List<EventListCardViewModel> _eventListCardsFromParticipantRecords({
+    required List<EventsRecord> events,
+    required String fallbackTimeZoneId,
+    required DateTime nowUtc,
+    required String currentUserId,
+    required Map<String, List<EventParticipantsRecord>>
+        activeParticipantRecordsByEventId,
+    _EventListMembershipLoad? membershipLoad,
+  }) {
+    return events
         .map(
           (event) => _eventListCardFromRecord(
             event,
@@ -877,42 +1317,78 @@ class _EventListWidgetState extends State<EventListWidget> {
             nowUtc: nowUtc,
             currentUserId: currentUserId,
             currentUserParticipant:
-                membershipLoad.recordsByEventId[event.reference.id],
+                membershipLoad?.recordsByEventId[event.reference.id],
             activeParticipants:
                 activeParticipantRecordsByEventId[event.reference.id] ??
                     const <EventParticipantsRecord>[],
-            membershipState:
-                membershipLoad.failedEventIds.contains(event.reference.id)
+            membershipState: membershipLoad == null
+                ? _eventListMembershipNeedsLookup(event, currentUserId)
+                    ? EventListMembershipState.pending
+                    : EventListMembershipState.resolved
+                : membershipLoad.failedEventIds.contains(event.reference.id)
                     ? EventListMembershipState.lookupFailed
                     : EventListMembershipState.resolved,
           ),
         )
         .whereType<EventListCardViewModel>()
         .toList(growable: false);
-    if (!_eventListLoadIsCurrent(key, loadGeneration)) {
-      return;
+  }
+
+  Future<UserPublicProfilePreloadResult> _preloadEventListPublicProfiles(
+    Set<String> userIds, {
+    required String currentUserId,
+  }) async {
+    if (userIds.isEmpty || currentUserId.isEmpty) {
+      return UserPublicProfilePreloadResult();
+    }
+    final injectedLoader = widget.publicProfilesLoader;
+    if (injectedLoader == null && widget.eventPageLoader != null) {
+      return UserPublicProfilePreloadResult();
     }
 
-    if (enrichedCards.isNotEmpty && membershipLoad.failedEventIds.isEmpty) {
-      _eventListCardsCache.write(
-        key,
-        enrichedCards,
-        fetchedAtUtc: nowUtc,
+    final requestedUserIds = Set<String>.unmodifiable(userIds);
+    UserPublicProfilePreloadResult loaded;
+    try {
+      loaded = await (injectedLoader ??
+              _eventListPublicProfilePreloadRepository.preload)
+          .call(requestedUserIds);
+    } catch (_) {
+      return UserPublicProfilePreloadResult(
+        failedUserIds: requestedUserIds,
       );
     }
-    setState(() {
-      _eventCardsFutureInitialCards = enrichedCards;
-      _eventCardsFuture =
-          Future<List<EventListCardViewModel>>.value(enrichedCards);
-      _rememberLoadedCards(key, enrichedCards);
-    });
+
+    final profilesByUserId = <String, UserPublicProfilesRecord>{};
+    for (final entry in loaded.profilesByUserId.entries) {
+      final userId = entry.key;
+      if (requestedUserIds.contains(userId) &&
+          isValidUserPublicProfileRecordForUserId(entry.value, userId)) {
+        profilesByUserId[userId] = entry.value;
+      }
+    }
+    final failedUserIds =
+        loaded.failedUserIds.where(requestedUserIds.contains).toSet();
+    final missingUserIds =
+        loaded.missingUserIds.where(requestedUserIds.contains).toSet();
+    for (final userId in requestedUserIds) {
+      if (!profilesByUserId.containsKey(userId) &&
+          !failedUserIds.contains(userId) &&
+          !missingUserIds.contains(userId)) {
+        missingUserIds.add(userId);
+      }
+    }
+    return UserPublicProfilePreloadResult(
+      profilesByUserId: profilesByUserId,
+      missingUserIds: missingUserIds,
+      failedUserIds: failedUserIds,
+    );
   }
 
   Future<_EventListMembershipLoad> _loadCurrentUserParticipantRecordsByEventId({
     required List<EventsRecord> events,
     required String currentUserId,
   }) async {
-    final userId = currentUserId.trim();
+    final userId = currentUserId;
     if (events.isEmpty || userId.isEmpty) {
       return const _EventListMembershipLoad();
     }
@@ -1423,6 +1899,37 @@ class _EventListMembershipLoad {
   final Set<String> failedEventIds;
 }
 
+class _EventListPublicProfileSession {
+  _EventListPublicProfileSession({
+    required this.key,
+    required this.loadGeneration,
+    required this.currentUserId,
+    required this.nowUtc,
+    required List<EventListCardViewModel> cards,
+    required this.targetCardCount,
+    required this.completedCardCount,
+    required this.scrollStartPixels,
+    required this.canCacheCards,
+    required Set<String> requestedUserIds,
+    required this.cacheOwnerToken,
+    this.requestInFlight = false,
+  })  : cards = List<EventListCardViewModel>.unmodifiable(cards),
+        requestedUserIds = <String>{...requestedUserIds};
+
+  final _EventListLoadKey key;
+  final int loadGeneration;
+  final String currentUserId;
+  final DateTime nowUtc;
+  List<EventListCardViewModel> cards;
+  final Set<String> requestedUserIds;
+  final int cacheOwnerToken;
+  int targetCardCount;
+  int completedCardCount;
+  final double scrollStartPixels;
+  bool canCacheCards;
+  bool requestInFlight;
+}
+
 class _EventListMembershipLookupResult {
   const _EventListMembershipLookupResult({
     required this.eventId,
@@ -1448,6 +1955,7 @@ class _EventListLoadKey {
     required this.currentUserId,
     required this.participantLoaderIdentity,
     required this.activeParticipantsLoaderIdentity,
+    required this.publicProfilesLoaderIdentity,
   });
 
   final String countryCode;
@@ -1457,10 +1965,11 @@ class _EventListLoadKey {
   final DateTime? localStartDate;
   final DateTime? localExclusiveEndDate;
   final String? selectedLevel;
-  final int pageLoaderIdentity;
+  final Object? pageLoaderIdentity;
   final String currentUserId;
-  final int participantLoaderIdentity;
-  final int activeParticipantsLoaderIdentity;
+  final Object? participantLoaderIdentity;
+  final Object? activeParticipantsLoaderIdentity;
+  final Object? publicProfilesLoaderIdentity;
 
   _EventListActiveDataKey get activeDataKey => _EventListActiveDataKey(
         countryCode: countryCode,
@@ -1480,11 +1989,20 @@ class _EventListLoadKey {
         other.localStartDate == localStartDate &&
         other.localExclusiveEndDate == localExclusiveEndDate &&
         other.selectedLevel == selectedLevel &&
-        other.pageLoaderIdentity == pageLoaderIdentity &&
+        identical(other.pageLoaderIdentity, pageLoaderIdentity) &&
         other.currentUserId == currentUserId &&
-        other.participantLoaderIdentity == participantLoaderIdentity &&
-        other.activeParticipantsLoaderIdentity ==
-            activeParticipantsLoaderIdentity;
+        identical(
+          other.participantLoaderIdentity,
+          participantLoaderIdentity,
+        ) &&
+        identical(
+          other.activeParticipantsLoaderIdentity,
+          activeParticipantsLoaderIdentity,
+        ) &&
+        identical(
+          other.publicProfilesLoaderIdentity,
+          publicProfilesLoaderIdentity,
+        );
   }
 
   @override
@@ -1500,6 +2018,7 @@ class _EventListLoadKey {
         currentUserId,
         participantLoaderIdentity,
         activeParticipantsLoaderIdentity,
+        publicProfilesLoaderIdentity,
       );
 }
 
@@ -1551,8 +2070,20 @@ class _EventListCardsMemoryCache {
   final Duration ttl;
   final _entries =
       LinkedHashMap<_EventListLoadKey, _EventListCardsCacheEntry>();
+  final _ownerTokens = LinkedHashMap<_EventListLoadKey, int>();
+  int _nextOwnerToken = 0;
 
-  List<EventListCardViewModel>? read(
+  int claim(_EventListLoadKey key) {
+    final ownerToken = ++_nextOwnerToken;
+    _ownerTokens.remove(key);
+    _ownerTokens[key] = ownerToken;
+    while (_ownerTokens.length > maxEntries * 2) {
+      _ownerTokens.remove(_ownerTokens.keys.first);
+    }
+    return ownerToken;
+  }
+
+  _EventListCardsCacheEntry? read(
     _EventListLoadKey key, {
     required DateTime nowUtc,
   }) {
@@ -1564,30 +2095,47 @@ class _EventListCardsMemoryCache {
       return null;
     }
     _entries[key] = entry;
-    return entry.cards;
+    return entry;
   }
 
-  void write(
+  bool writeIfOwner(
     _EventListLoadKey key,
+    int ownerToken,
     List<EventListCardViewModel> cards, {
     required DateTime fetchedAtUtc,
+    required int hydratedProfileCardCount,
   }) {
+    if (_ownerTokens[key] != ownerToken) {
+      return false;
+    }
     _entries.remove(key);
     _entries[key] = _EventListCardsCacheEntry(
       cards: List.unmodifiable(cards),
       fetchedAtUtc: fetchedAtUtc,
+      hydratedProfileCardCount: hydratedProfileCardCount,
     );
     while (_entries.length > maxEntries) {
       _entries.remove(_entries.keys.first);
     }
+    return true;
   }
 
-  void remove(_EventListLoadKey key) {
+  bool removeIfOwner(_EventListLoadKey key, int ownerToken) {
+    if (_ownerTokens[key] != ownerToken) {
+      return false;
+    }
     _entries.remove(key);
+    return true;
+  }
+
+  void invalidate(_EventListLoadKey key) {
+    _entries.remove(key);
+    claim(key);
   }
 
   void clear() {
     _entries.clear();
+    _ownerTokens.clear();
   }
 }
 
@@ -1595,16 +2143,19 @@ class _EventListCardsCacheEntry {
   const _EventListCardsCacheEntry({
     required this.cards,
     required this.fetchedAtUtc,
+    required this.hydratedProfileCardCount,
   });
 
   final List<EventListCardViewModel> cards;
   final DateTime fetchedAtUtc;
+  final int hydratedProfileCardCount;
 
   bool isFresh({
     required DateTime nowUtc,
     required Duration ttl,
   }) {
-    return nowUtc.difference(fetchedAtUtc) < ttl;
+    final age = nowUtc.difference(fetchedAtUtc);
+    return !age.isNegative && age < ttl;
   }
 }
 
@@ -1614,13 +2165,11 @@ Future<EventParticipantsRecord?> _loadEventListParticipant(
   DocumentReference eventRef,
   String userId,
 ) async {
-  final trimmedUserId = userId.trim();
-  if (trimmedUserId.isEmpty) {
+  if (userId.isEmpty) {
     return null;
   }
   final snapshot =
-      await EventParticipantsRecord.createDoc(eventRef, id: trimmedUserId)
-          .get();
+      await EventParticipantsRecord.createDoc(eventRef, id: userId).get();
   if (!snapshot.exists) {
     return null;
   }
@@ -1659,9 +2208,9 @@ EventListCardViewModel? _eventListCardFromRecord(
   final participantsCount =
       event.hasParticipantsCount() ? event.participantsCount : null;
   final capacity = event.hasCapacity() ? event.capacity : null;
-  final viewerUserId = currentUserId.trim();
+  final viewerUserId = currentUserId;
   final isOrganizer =
-      viewerUserId.isNotEmpty && event.organizerId.trim() == viewerUserId;
+      viewerUserId.isNotEmpty && event.organizerId == viewerUserId;
   final isActiveParticipant = _eventListParticipantIsActiveForUser(
     currentUserParticipant,
     eventReference: event.reference,
@@ -1715,8 +2264,7 @@ bool _eventListMembershipNeedsLookup(
   EventsRecord event,
   String currentUserId,
 ) {
-  final userId = currentUserId.trim();
-  return userId.isNotEmpty && event.organizerId.trim() != userId;
+  return currentUserId.isNotEmpty && event.organizerId != currentUserId;
 }
 
 bool _eventListParticipantIsActiveForUser(
@@ -1724,14 +2272,13 @@ bool _eventListParticipantIsActiveForUser(
   required DocumentReference eventReference,
   required String userId,
 }) {
-  final trimmedUserId = userId.trim();
-  if (participant == null || trimmedUserId.isEmpty) {
+  if (participant == null || userId.isEmpty) {
     return false;
   }
-  final participantUserId = participant.userId.trim();
+  final participantUserId = participant.userId;
   final belongsToUser = participantUserId.isEmpty
-      ? participant.reference.id == trimmedUserId
-      : participantUserId == trimmedUserId;
+      ? participant.reference.id == userId
+      : participantUserId == userId;
   if (!belongsToUser ||
       participant.parentReference.path != eventReference.path) {
     return false;
@@ -1746,13 +2293,13 @@ List<EventListParticipantViewModel> _eventListParticipantsForRecord(
   List<EventParticipantsRecord> activeParticipants =
       const <EventParticipantsRecord>[],
 }) {
-  final viewerUserId = currentUserId.trim();
+  final viewerUserId = currentUserId;
   EventListParticipantViewModel participantViewModel(
     EventParticipantsRecord participant,
   ) {
     final participantUserId = _eventListParticipantUserId(participant);
-    final isOrganizer = event.organizerId.trim().isNotEmpty &&
-        participantUserId == event.organizerId.trim();
+    final isOrganizer =
+        event.organizerId.isNotEmpty && participantUserId == event.organizerId;
     final isCurrentUser =
         viewerUserId.isNotEmpty && participantUserId == viewerUserId;
     final displayName = _eventListVisibleParticipantDisplayName(
@@ -1800,7 +2347,7 @@ List<EventListParticipantViewModel> _eventListParticipantsForRecord(
           (photoUrl != null && photoUrl.isNotEmpty))) {
     participantViewModels.add(
       EventListParticipantViewModel(
-        userId: event.organizerId.trim(),
+        userId: event.organizerId,
         displayName: displayName,
         photoUrl: photoUrl,
       ),
@@ -1813,7 +2360,7 @@ List<EventListParticipantViewModel> _eventListParticipantsForRecord(
         userId: viewerUserId,
       ) &&
       !participantViewModels.any(
-        (participant) => participant.userId.trim() == viewerUserId,
+        (participant) => participant.userId == viewerUserId,
       )) {
     participantViewModels.add(participantViewModel(currentUserParticipant!));
     _eventListKeepParticipantVisible(
@@ -1829,19 +2376,82 @@ List<EventListParticipantViewModel> _eventListParticipantsForRecord(
   return List.unmodifiable(participantViewModels);
 }
 
+Set<String> _eventListVisibleParticipantUserIds(
+  Iterable<EventListCardViewModel> cards, {
+  int participantLimit = _eventListParticipantPreviewLimit,
+}) {
+  final userIds = LinkedHashSet<String>();
+  for (final card in cards) {
+    for (final participant in card.participants.take(participantLimit)) {
+      final userId = participant.userId;
+      if (isValidUserPublicProfileUserId(userId)) {
+        userIds.add(userId);
+      }
+    }
+  }
+  return Set<String>.unmodifiable(userIds);
+}
+
+UserPublicProfilePreloadResult _mergeEventListPublicProfileLoads(
+  Iterable<UserPublicProfilePreloadResult> loads,
+) {
+  final profilesByUserId = <String, UserPublicProfilesRecord>{};
+  final missingUserIds = <String>{};
+  final failedUserIds = <String>{};
+  for (final load in loads) {
+    profilesByUserId.addAll(load.profilesByUserId);
+    missingUserIds.addAll(load.missingUserIds);
+    failedUserIds.addAll(load.failedUserIds);
+  }
+  missingUserIds.removeAll(profilesByUserId.keys);
+  failedUserIds.removeAll(profilesByUserId.keys);
+  return UserPublicProfilePreloadResult(
+    profilesByUserId: profilesByUserId,
+    missingUserIds: missingUserIds,
+    failedUserIds: failedUserIds,
+  );
+}
+
+List<EventListCardViewModel> _eventListCardsWithPublicProfiles(
+  Iterable<EventListCardViewModel> cards,
+  Map<String, UserPublicProfilesRecord> profilesByUserId,
+) {
+  return cards.map((card) {
+    final participants = card.participants.map((participant) {
+      final userId = participant.userId;
+      final profile = profilesByUserId[userId];
+      if (profile == null ||
+          !isValidUserPublicProfileRecordForUserId(profile, userId)) {
+        return participant;
+      }
+      final publicDisplayName = profile.displayName.trim();
+      final displayName = publicDisplayName.isEmpty
+          ? participant.displayName
+          : publicDisplayName;
+      final publicPhotoUrl = profile.photoUrl.trim();
+      final photoUrl = publicPhotoUrl.isEmpty ? null : publicPhotoUrl;
+      return EventListParticipantViewModel(
+        userId: participant.userId,
+        displayName: displayName,
+        photoUrl: photoUrl,
+      );
+    }).toList(growable: false);
+    return card.copyWithParticipants(participants);
+  }).toList(growable: false);
+}
+
 void _eventListKeepParticipantVisible(
   List<EventListParticipantViewModel> participants, {
   required String userId,
   required int visibleLimit,
 }) {
-  final normalizedUserId = userId.trim();
-  if (normalizedUserId.isEmpty ||
+  if (userId.isEmpty ||
       visibleLimit <= 0 ||
       participants.length <= visibleLimit) {
     return;
   }
   final index = participants.indexWhere(
-    (participant) => participant.userId.trim() == normalizedUserId,
+    (participant) => participant.userId == userId,
   );
   if (index < visibleLimit || index < 0) {
     return;
@@ -1851,8 +2461,8 @@ void _eventListKeepParticipantVisible(
 }
 
 String _eventListParticipantUserId(EventParticipantsRecord participant) {
-  final userId = participant.userId.trim();
-  return userId.isNotEmpty ? userId : participant.reference.id.trim();
+  final userId = participant.userId;
+  return userId.isNotEmpty ? userId : participant.reference.id;
 }
 
 String _eventListVisibleParticipantDisplayName(String displayName) {

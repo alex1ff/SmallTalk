@@ -31,6 +31,7 @@ import 'package:small_talk/services/event_list_repository.dart';
 import 'package:small_talk/services/event_level_helper.dart';
 import 'package:small_talk/services/event_language_catalog.dart';
 import 'package:small_talk/services/events_analytics_service.dart';
+import 'package:small_talk/services/user_public_profile_preload_repository.dart';
 
 const _supportedLocales = [
   Locale('ru'),
@@ -1407,6 +1408,78 @@ void main() {
     expect(calls, 1);
     expect(find.text('Cached loaded event'), findsOneWidget);
     expect(find.byKey(eventListLoadingStateKey), findsNothing);
+  });
+
+  testWidgets('reloads cached event cards when the clock moves backwards',
+      (tester) async {
+    var calls = 0;
+    var nowUtc = DateTime.utc(2035, 6, 14, 9);
+    currentUserDocument = _userFixture(
+      uid: 'profile-city-cache-rollback-user',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+    final EventListNowProvider nowUtcProvider = () => nowUtc;
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) async {
+      calls += 1;
+      return FFFirestorePage<EventsRecord>(
+        [
+          _eventsRecordFixture(
+            'rollback-cached-event',
+            title: 'Rollback cached event $calls',
+            startsAt: DateTime.utc(2035, 6, 14, 15),
+          ),
+        ],
+        null,
+        null,
+      );
+    };
+    final EventListCurrentUserParticipantLoader currentUserParticipantLoader =
+        (_, __) async => null;
+    final EventListActiveParticipantsLoader activeParticipantsLoader =
+        (_) async => const <EventParticipantsRecord>[];
+
+    Widget buildList() => _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            nowUtcProvider: nowUtcProvider,
+            eventPageLoader: pageLoader,
+            currentUserParticipantLoader: currentUserParticipantLoader,
+            activeParticipantsLoader: activeParticipantsLoader,
+          ),
+        );
+
+    await tester.pumpWidget(buildList());
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+    expect(find.text('Rollback cached event 1'), findsOneWidget);
+
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    await tester.pumpAndSettle();
+    nowUtc = nowUtc.subtract(const Duration(minutes: 1));
+    await tester.pumpWidget(buildList());
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(find.text('Rollback cached event 2'), findsOneWidget);
+    expect(find.text('Rollback cached event 1'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('reuses cached event cards for an authenticated user',
@@ -3125,6 +3198,1597 @@ void main() {
     },
   );
 
+  testWidgets(
+    'preloads visible participant profiles before membership finishes',
+    (tester) async {
+      currentUser = _TestAuthUser('profile-preload-viewer');
+      currentUserDocument = _userFixture(
+        uid: 'profile-preload-viewer',
+        data: {
+          'display_name': 'Current Viewer',
+          'profileCity': _profileCityFixture(
+            countryCode: 'RU',
+            cityKey: 'moscow',
+            catalogVersion: _catalog.catalogVersion,
+          ).toMap(),
+        },
+      );
+      final membershipCompleter = Completer<EventParticipantsRecord?>();
+      final profilesCompleter = Completer<UserPublicProfilePreloadResult>();
+      addTearDown(() {
+        if (!membershipCompleter.isCompleted) {
+          membershipCompleter.complete(null);
+        }
+        if (!profilesCompleter.isCompleted) {
+          profilesCompleter.complete(UserPublicProfilePreloadResult());
+        }
+      });
+      final profileRequests = <Set<String>>[];
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: _selectedCityFixture(),
+            nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+            eventPageLoader: (
+              collection,
+              recordBuilder, {
+              queryBuilder,
+              nextPageMarker,
+              required pageSize,
+              required isStream,
+            }) async {
+              return FFFirestorePage<EventsRecord>(
+                [
+                  _eventsRecordFixture(
+                    'profile-preload-event',
+                    title: 'Profile preload event',
+                    startsAt: DateTime.utc(2035, 6, 14, 15),
+                  ),
+                ],
+                null,
+                null,
+              );
+            },
+            currentUserParticipantLoader: (_, __) => membershipCompleter.future,
+            activeParticipantsLoader: (eventRef) async => [
+              _eventParticipantRecordFixture(
+                eventRef,
+                userId: 'organizer-user',
+                displayName: 'Snapshot Organizer',
+                role: 'organizer',
+                joinedAt: DateTime.utc(2035, 6, 14, 8),
+              ),
+              _eventParticipantRecordFixture(
+                eventRef,
+                userId: 'profile-participant',
+                displayName: 'Snapshot Person',
+                joinedAt: DateTime.utc(2035, 6, 14, 9),
+              ),
+            ],
+            publicProfilesLoader: (userIds) {
+              profileRequests.add(userIds.toSet());
+              return profilesCompleter.future;
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(profileRequests, [
+        <String>{'organizer-user', 'profile-participant'},
+      ]);
+      expect(membershipCompleter.isCompleted, isFalse);
+      expect(find.text('Проверяем участие'), findsOneWidget);
+
+      final eventRef = EventsRecord.collection.doc('profile-preload-event');
+      membershipCompleter.complete(
+        _eventParticipantRecordFixture(
+          eventRef,
+          userId: 'profile-preload-viewer',
+          displayName: 'Viewer Snapshot',
+          joinedAt: DateTime.utc(2035, 6, 14, 10),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(profileRequests, [
+        <String>{'organizer-user', 'profile-participant'},
+        <String>{'profile-preload-viewer'},
+      ]);
+      expect(
+        find.descendant(
+          of: _participantAvatarFinder(1),
+          matching: find.text('S'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: _participantAvatarFinder(1),
+          matching: find.text('P'),
+        ),
+        findsNothing,
+      );
+      expect(find.text('Вы участвуете'), findsOneWidget);
+      final beforeGeometry = _eventCardGeometry(tester);
+      final beforeStack =
+          tester.getRect(find.byKey(eventListParticipantAvatarStackKey));
+      final beforeSlots = _participantAvatarSlotRects(tester, count: 3);
+
+      profilesCompleter.complete(
+        UserPublicProfilePreloadResult(
+          profilesByUserId: {
+            'organizer-user': _userPublicProfileFixture(
+              'organizer-user',
+              displayName: 'Organizer Public',
+            ),
+            'profile-participant': _userPublicProfileFixture(
+              'profile-participant',
+              displayName: 'Profile Person',
+              photoUrl: 'not-a-valid-profile-url',
+            ),
+            'profile-preload-viewer': _userPublicProfileFixture(
+              'profile-preload-viewer',
+              displayName: 'Hydrated Viewer',
+            ),
+          },
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        find.descendant(
+          of: _participantAvatarFinder(1),
+          matching: find.text('S'),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: _participantAvatarFinder(1),
+          matching: find.text('P'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: _participantAvatarFinder(2),
+          matching: find.text('H'),
+        ),
+        findsOneWidget,
+      );
+      final profileImageFinder = find.descendant(
+        of: _participantAvatarFinder(1),
+        matching: find.byType(CachedNetworkImage),
+      );
+      expect(profileImageFinder, findsOneWidget);
+      expect(
+        tester.widget<CachedNetworkImage>(profileImageFinder).imageUrl,
+        'not-a-valid-profile-url',
+      );
+      expect(_eventCardGeometry(tester), beforeGeometry);
+      expect(
+        tester.getRect(find.byKey(eventListParticipantAvatarStackKey)),
+        beforeStack,
+      );
+      expect(_participantAvatarSlotRects(tester, count: 3), beforeSlots);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'caps two full-card profile reads when pending membership changes a visible slot',
+    (tester) async {
+      currentUser = _TestAuthUser('profile-budget-viewer');
+      currentUserDocument = _userFixture(
+        uid: 'profile-budget-viewer',
+        data: {
+          'display_name': 'Budget Viewer',
+          'profileCity': _profileCityFixture(
+            countryCode: 'RU',
+            cityKey: 'moscow',
+            catalogVersion: _catalog.catalogVersion,
+          ).toMap(),
+        },
+      );
+      final membershipCompleter = Completer<EventParticipantsRecord?>();
+      addTearDown(() {
+        if (!membershipCompleter.isCompleted) {
+          membershipCompleter.complete(null);
+        }
+      });
+      final profileRequests = <List<String>>[];
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: _selectedCityFixture(),
+            nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+            eventPageLoader: (
+              collection,
+              recordBuilder, {
+              queryBuilder,
+              nextPageMarker,
+              required pageSize,
+              required isStream,
+            }) async {
+              return FFFirestorePage<EventsRecord>(
+                [
+                  for (var cardIndex = 0; cardIndex < 2; cardIndex += 1)
+                    _eventsRecordFixture(
+                      'profile-budget-event-$cardIndex',
+                      title: 'Profile budget event $cardIndex',
+                      startsAt: DateTime.utc(2035, 6, 14, 15 + cardIndex),
+                    ),
+                ],
+                null,
+                null,
+              );
+            },
+            currentUserParticipantLoader: (eventRef, _) {
+              if (eventRef.id == 'profile-budget-event-0') {
+                return membershipCompleter.future;
+              }
+              return Future<EventParticipantsRecord?>.value(null);
+            },
+            activeParticipantsLoader: (eventRef) async {
+              final cardIndex = int.parse(eventRef.id.split('-').last);
+              return [
+                for (var participantIndex = 0;
+                    participantIndex < 6;
+                    participantIndex += 1)
+                  _eventParticipantRecordFixture(
+                    eventRef,
+                    userId: 'profile-budget-$cardIndex-$participantIndex',
+                    displayName:
+                        'Budget $cardIndex participant $participantIndex',
+                    joinedAt: DateTime.utc(2035, 6, 14, 10)
+                        .add(Duration(minutes: participantIndex)),
+                  ),
+              ];
+            },
+            publicProfilesLoader: (userIds) async {
+              final requested = List<String>.of(userIds);
+              profileRequests.add(requested);
+              return UserPublicProfilePreloadResult(
+                profilesByUserId: {
+                  for (final userId in requested)
+                    userId: _userPublicProfileFixture(userId),
+                },
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      final expectedEarlyUserIds = <String>{
+        for (var cardIndex = 0; cardIndex < 2; cardIndex += 1)
+          for (var participantIndex = 0;
+              participantIndex < 5;
+              participantIndex += 1)
+            'profile-budget-$cardIndex-$participantIndex',
+      };
+      expect(membershipCompleter.isCompleted, isFalse);
+      expect(profileRequests, hasLength(1));
+      expect(profileRequests.single, hasLength(10));
+      expect(profileRequests.single.toSet(), expectedEarlyUserIds);
+
+      final firstEventRef =
+          EventsRecord.collection.doc('profile-budget-event-0');
+      membershipCompleter.complete(
+        _eventParticipantRecordFixture(
+          firstEventRef,
+          userId: 'profile-budget-viewer',
+          displayName: 'Budget Viewer',
+          joinedAt: DateTime.utc(2035, 6, 14, 12),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final expectedAdditionalUserIds = <String>{
+        'profile-budget-viewer',
+        'profile-budget-1-5',
+      };
+      final expectedFinalVisibleUserIds = <String>{
+        for (var participantIndex = 0;
+            participantIndex < 5;
+            participantIndex += 1)
+          'profile-budget-0-$participantIndex',
+        'profile-budget-viewer',
+        for (var participantIndex = 0;
+            participantIndex < 6;
+            participantIndex += 1)
+          'profile-budget-1-$participantIndex',
+      };
+      expect(profileRequests, hasLength(2));
+      expect(profileRequests[1], hasLength(2));
+      expect(profileRequests[1].toSet(), expectedAdditionalUserIds);
+      final requestedUserIds =
+          profileRequests.expand((request) => request).toList(growable: false);
+      expect(requestedUserIds, hasLength(12));
+      expect(requestedUserIds.length, lessThanOrEqualTo(12));
+      expect(requestedUserIds.toSet(), expectedFinalVisibleUserIds);
+      expect(requestedUserIds.toSet(), hasLength(requestedUserIds.length));
+      expect(requestedUserIds, isNot(contains('profile-budget-0-5')));
+      expect(find.text('Вы участвуете'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'starts initial profile preload while an outside-window participant load is pending',
+    (tester) async {
+      currentUser = _TestAuthUser('early-window-profile-viewer');
+      currentUserDocument = _userFixture(
+        uid: 'early-window-profile-viewer',
+        data: {
+          'profileCity': _profileCityFixture(
+            countryCode: 'RU',
+            cityKey: 'moscow',
+            catalogVersion: _catalog.catalogVersion,
+          ).toMap(),
+        },
+      );
+      final outsideParticipantsCompleter =
+          Completer<List<EventParticipantsRecord>>();
+      addTearDown(() {
+        if (!outsideParticipantsCompleter.isCompleted) {
+          outsideParticipantsCompleter.complete(
+            const <EventParticipantsRecord>[],
+          );
+        }
+      });
+      final profileRequests = <Set<String>>[];
+      var outsideParticipantLoads = 0;
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: _selectedCityFixture(),
+            nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+            eventPageLoader: (
+              collection,
+              recordBuilder, {
+              queryBuilder,
+              nextPageMarker,
+              required pageSize,
+              required isStream,
+            }) async {
+              return FFFirestorePage<EventsRecord>(
+                [
+                  for (var cardIndex = 0; cardIndex < 3; cardIndex += 1)
+                    _eventsRecordFixture(
+                      'early-window-event-$cardIndex',
+                      title: 'Early window event $cardIndex',
+                      startsAt: DateTime.utc(2035, 6, 14, 15)
+                          .add(Duration(minutes: cardIndex)),
+                    ),
+                ],
+                null,
+                null,
+              );
+            },
+            currentUserParticipantLoader: (_, __) async => null,
+            activeParticipantsLoader: (eventRef) {
+              final cardIndex = int.parse(eventRef.id.split('-').last);
+              if (cardIndex == 2) {
+                outsideParticipantLoads += 1;
+                return outsideParticipantsCompleter.future;
+              }
+              return Future<List<EventParticipantsRecord>>.value([
+                _eventParticipantRecordFixture(
+                  eventRef,
+                  userId: 'early-window-user-$cardIndex',
+                  displayName: 'Early user $cardIndex',
+                  joinedAt: DateTime.utc(2035, 6, 14, 10, cardIndex),
+                ),
+              ]);
+            },
+            publicProfilesLoader: (userIds) async {
+              final requested = userIds.toSet();
+              profileRequests.add(requested);
+              return UserPublicProfilePreloadResult(
+                profilesByUserId: {
+                  for (final userId in requested)
+                    userId: _userPublicProfileFixture(userId),
+                },
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(outsideParticipantLoads, 1);
+      expect(outsideParticipantsCompleter.isCompleted, isFalse);
+      expect(profileRequests, [
+        <String>{
+          'early-window-user-0',
+          'early-window-user-1',
+        },
+      ]);
+
+      final outsideEventRef =
+          EventsRecord.collection.doc('early-window-event-2');
+      outsideParticipantsCompleter.complete([
+        _eventParticipantRecordFixture(
+          outsideEventRef,
+          userId: 'early-window-user-2',
+          displayName: 'Early user 2',
+          joinedAt: DateTime.utc(2035, 6, 14, 10, 2),
+        ),
+      ]);
+      await tester.pumpAndSettle();
+
+      expect(profileRequests, hasLength(1));
+      expect(find.text('Early window event 2'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('deduplicates profile preload to the first six slots per card',
+      (tester) async {
+    currentUser = _TestAuthUser('profile-dedup-viewer');
+    currentUserDocument = _userFixture(
+      uid: 'profile-dedup-viewer',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+    final profileRequests = <List<String>>[];
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: _selectedCityFixture(),
+          nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+          eventPageLoader: (
+            collection,
+            recordBuilder, {
+            queryBuilder,
+            nextPageMarker,
+            required pageSize,
+            required isStream,
+          }) async {
+            return FFFirestorePage<EventsRecord>(
+              [
+                _eventsRecordFixture(
+                  'profile-dedup-a',
+                  title: 'Profile dedup A',
+                  startsAt: DateTime.utc(2035, 6, 14, 15),
+                ),
+                _eventsRecordFixture(
+                  'profile-dedup-b',
+                  title: 'Profile dedup B',
+                  startsAt: DateTime.utc(2035, 6, 14, 16),
+                ),
+              ],
+              null,
+              null,
+            );
+          },
+          currentUserParticipantLoader: (_, __) async => null,
+          activeParticipantsLoader: (eventRef) async {
+            final prefix = eventRef.id == 'profile-dedup-a' ? 'a' : 'b';
+            return [
+              _eventParticipantRecordFixture(
+                eventRef,
+                userId: 'shared-profile',
+                displayName: 'Shared',
+                joinedAt: DateTime.utc(2035, 6, 14, 8),
+              ),
+              for (var index = 1; index <= 6; index += 1)
+                _eventParticipantRecordFixture(
+                  eventRef,
+                  userId: '$prefix-$index',
+                  displayName: '$prefix $index',
+                  joinedAt: DateTime.utc(2035, 6, 14, 8, index),
+                ),
+            ];
+          },
+          publicProfilesLoader: (userIds) async {
+            final requested = List<String>.of(userIds);
+            profileRequests.add(requested);
+            return UserPublicProfilePreloadResult(
+              profilesByUserId: {
+                for (final userId in requested)
+                  userId: _userPublicProfileFixture(userId),
+              },
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(profileRequests, hasLength(2));
+    expect(profileRequests.first.toSet(), {
+      'shared-profile',
+      'a-1',
+      'a-2',
+      'a-3',
+      'a-4',
+      'b-1',
+      'b-2',
+      'b-3',
+      'b-4',
+    });
+    expect(profileRequests[1].toSet(), {'a-5', 'b-5'});
+    final requestedUserIds =
+        profileRequests.expand((request) => request).toList(growable: false);
+    expect(requestedUserIds, hasLength(11));
+    expect(
+      requestedUserIds.where((userId) => userId == 'shared-profile'),
+      hasLength(1),
+    );
+    expect(requestedUserIds.toSet(), {
+      'shared-profile',
+      'a-1',
+      'a-2',
+      'a-3',
+      'a-4',
+      'a-5',
+      'b-1',
+      'b-2',
+      'b-3',
+      'b-4',
+      'b-5',
+    });
+    expect(requestedUserIds.toSet(), hasLength(requestedUserIds.length));
+    expect(requestedUserIds, isNot(contains('a-6')));
+    expect(requestedUserIds, isNot(contains('b-6')));
+    expect(find.text('Profile dedup A'), findsOneWidget);
+    expect(find.text('Profile dedup B'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'bounds profile preload to visible card windows while scrolling',
+    (tester) async {
+      tester.view.physicalSize = const Size(320, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      currentUser = _TestAuthUser('bounded-profile-viewer');
+      currentUserDocument = _userFixture(
+        uid: 'bounded-profile-viewer',
+        data: {
+          'profileCity': _profileCityFixture(
+            countryCode: 'RU',
+            cityKey: 'moscow',
+            catalogVersion: _catalog.catalogVersion,
+          ).toMap(),
+        },
+      );
+      final profileRequests = <List<String>>[];
+      String participantUserId(int cardIndex, int participantIndex) {
+        if (cardIndex == 2 && participantIndex == 0) {
+          return 'bounded-0-0';
+        }
+        return 'bounded-$cardIndex-$participantIndex';
+      }
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: _selectedCityFixture(),
+            nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+            eventPageLoader: (
+              collection,
+              recordBuilder, {
+              queryBuilder,
+              nextPageMarker,
+              required pageSize,
+              required isStream,
+            }) async {
+              return FFFirestorePage<EventsRecord>(
+                [
+                  for (var cardIndex = 0; cardIndex < 20; cardIndex += 1)
+                    _eventsRecordFixture(
+                      'bounded-profile-event-$cardIndex',
+                      title: 'Bounded profile event $cardIndex',
+                      startsAt: DateTime.utc(2035, 6, 14, 15)
+                          .add(Duration(minutes: cardIndex)),
+                    ),
+                ],
+                null,
+                null,
+              );
+            },
+            currentUserParticipantLoader: (_, __) async => null,
+            activeParticipantsLoader: (eventRef) async {
+              final cardIndex = int.parse(eventRef.id.split('-').last);
+              return [
+                for (var participantIndex = 0;
+                    participantIndex < 6;
+                    participantIndex += 1)
+                  _eventParticipantRecordFixture(
+                    eventRef,
+                    userId: participantUserId(cardIndex, participantIndex),
+                    displayName:
+                        'Bounded $cardIndex participant $participantIndex',
+                    joinedAt: DateTime.utc(2035, 6, 14, 10)
+                        .add(Duration(minutes: participantIndex)),
+                  ),
+              ];
+            },
+            publicProfilesLoader: (userIds) async {
+              final requested = List<String>.of(userIds);
+              profileRequests.add(requested);
+              return UserPublicProfilePreloadResult(
+                profilesByUserId: {
+                  for (final userId in requested)
+                    userId: _userPublicProfileFixture(userId),
+                },
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      final expectedEarlyUserIds = <String>{
+        for (var cardIndex = 0; cardIndex < 2; cardIndex += 1)
+          for (var participantIndex = 0;
+              participantIndex < 5;
+              participantIndex += 1)
+            participantUserId(cardIndex, participantIndex),
+      };
+      final expectedPostMembershipUserIds = <String>{
+        for (var cardIndex = 0; cardIndex < 2; cardIndex += 1)
+          participantUserId(cardIndex, 5),
+      };
+      final expectedInitialUserIds = <String>{
+        for (var cardIndex = 0; cardIndex < 2; cardIndex += 1)
+          for (var participantIndex = 0;
+              participantIndex < 6;
+              participantIndex += 1)
+            participantUserId(cardIndex, participantIndex),
+      };
+      final allUserIds = <String>{
+        for (var cardIndex = 0; cardIndex < 20; cardIndex += 1)
+          for (var participantIndex = 0;
+              participantIndex < 6;
+              participantIndex += 1)
+            participantUserId(cardIndex, participantIndex),
+      };
+
+      expect(profileRequests, hasLength(2));
+      expect(profileRequests.first, hasLength(10));
+      expect(profileRequests.first.toSet(), expectedEarlyUserIds);
+      expect(profileRequests[1], hasLength(2));
+      expect(profileRequests[1].toSet(), expectedPostMembershipUserIds);
+      final initialRequestCount = profileRequests.length;
+      final initialUserIds =
+          profileRequests.expand((request) => request).toList(growable: false);
+      expect(initialUserIds, hasLength(12));
+      expect(initialUserIds.toSet(), expectedInitialUserIds);
+      expect(initialUserIds.toSet(), hasLength(initialUserIds.length));
+      expect(initialUserIds.toSet(), isNot(allUserIds));
+
+      final position = _eventListScrollPosition(tester);
+      final viewport = position.viewportDimension;
+      expect(viewport, greaterThan(1));
+      expect(position.maxScrollExtent, greaterThanOrEqualTo(viewport * 2));
+
+      position.jumpTo(viewport - 1);
+      await tester.pumpAndSettle();
+      expect(profileRequests, hasLength(initialRequestCount));
+
+      position.jumpTo(viewport);
+      await tester.pumpAndSettle();
+
+      final expectedFirstWindowUserIds = <String>{
+        for (var cardIndex = 2; cardIndex < 4; cardIndex += 1)
+          for (var participantIndex = 0;
+              participantIndex < 6;
+              participantIndex += 1)
+            participantUserId(cardIndex, participantIndex),
+      }.difference(expectedInitialUserIds);
+      expect(profileRequests, hasLength(initialRequestCount + 1));
+      expect(profileRequests[initialRequestCount], hasLength(11));
+      expect(
+        profileRequests[initialRequestCount].toSet(),
+        expectedFirstWindowUserIds,
+      );
+      expect(
+        profileRequests[initialRequestCount],
+        isNot(contains('bounded-0-0')),
+      );
+      expect(
+        profileRequests[initialRequestCount].length,
+        lessThanOrEqualTo(12),
+      );
+
+      position.jumpTo((viewport * 2) - 1);
+      await tester.pumpAndSettle();
+      expect(profileRequests, hasLength(initialRequestCount + 1));
+
+      position.jumpTo(viewport * 2);
+      await tester.pumpAndSettle();
+
+      final expectedSecondWindowUserIds = <String>{
+        for (var cardIndex = 4; cardIndex < 6; cardIndex += 1)
+          for (var participantIndex = 0;
+              participantIndex < 6;
+              participantIndex += 1)
+            participantUserId(cardIndex, participantIndex),
+      };
+      expect(profileRequests, hasLength(initialRequestCount + 2));
+      expect(profileRequests[initialRequestCount + 1], hasLength(12));
+      expect(
+        profileRequests[initialRequestCount + 1].toSet(),
+        expectedSecondWindowUserIds,
+      );
+      expect(
+        profileRequests[initialRequestCount + 1].length,
+        lessThanOrEqualTo(12),
+      );
+
+      final requestedUserIds =
+          profileRequests.expand((request) => request).toList(growable: false);
+      final expectedRequestedUserIds = <String>{
+        ...expectedInitialUserIds,
+        ...expectedFirstWindowUserIds,
+        ...expectedSecondWindowUserIds,
+      };
+      expect(requestedUserIds, hasLength(35));
+      expect(requestedUserIds.toSet(), expectedRequestedUserIds);
+      expect(requestedUserIds.toSet(), hasLength(requestedUserIds.length));
+      expect(requestedUserIds.toSet().difference(allUserIds), isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'reopens a cached hydrated prefix and requests only the next scroll window',
+    (tester) async {
+      tester.view.physicalSize = const Size(320, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      currentUser = _TestAuthUser('cached-prefix-profile-viewer');
+      currentUserDocument = _userFixture(
+        uid: 'cached-prefix-profile-viewer',
+        data: {
+          'profileCity': _profileCityFixture(
+            countryCode: 'RU',
+            cityKey: 'moscow',
+            catalogVersion: _catalog.catalogVersion,
+          ).toMap(),
+        },
+      );
+      var pageLoads = 0;
+      final profileRequests = <Set<String>>[];
+      final EventListNowProvider nowUtcProvider =
+          () => DateTime.utc(2035, 6, 14, 9);
+      final EventListPageLoader pageLoader = (
+        collection,
+        recordBuilder, {
+        queryBuilder,
+        nextPageMarker,
+        required pageSize,
+        required isStream,
+      }) async {
+        pageLoads += 1;
+        return FFFirestorePage<EventsRecord>(
+          [
+            for (var cardIndex = 0; cardIndex < 8; cardIndex += 1)
+              _eventsRecordFixture(
+                'cached-prefix-event-$cardIndex',
+                title: 'Cached prefix event $cardIndex',
+                startsAt: DateTime.utc(2035, 6, 14, 15)
+                    .add(Duration(minutes: cardIndex)),
+              ),
+          ],
+          null,
+          null,
+        );
+      };
+      final EventListCurrentUserParticipantLoader membershipLoader =
+          (_, __) async => null;
+      final EventListActiveParticipantsLoader participantsLoader =
+          (eventRef) async {
+        final cardIndex = int.parse(eventRef.id.split('-').last);
+        return [
+          _eventParticipantRecordFixture(
+            eventRef,
+            userId: 'cached-prefix-user-$cardIndex',
+            displayName: 'Cached user $cardIndex',
+            joinedAt: DateTime.utc(2035, 6, 14, 10, cardIndex),
+          ),
+        ];
+      };
+      final EventListPublicProfilesLoader profilesLoader = (userIds) async {
+        final requested = userIds.toSet();
+        profileRequests.add(requested);
+        return UserPublicProfilePreloadResult(
+          profilesByUserId: {
+            for (final userId in requested)
+              userId: _userPublicProfileFixture(userId),
+          },
+        );
+      };
+
+      Widget buildList() => _buildTestApp(
+            home: EventListWidget(
+              key: const ValueKey<String>('cached-prefix-profile-list'),
+              cityCatalogOverride: _catalog,
+              languageCatalogOverride: _languageCatalog,
+              initialSelectedCity: _selectedCityFixture(),
+              nowUtcProvider: nowUtcProvider,
+              eventPageLoader: pageLoader,
+              currentUserParticipantLoader: membershipLoader,
+              activeParticipantsLoader: participantsLoader,
+              publicProfilesLoader: profilesLoader,
+            ),
+          );
+
+      await tester.pumpWidget(buildList());
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(pageLoads, 1);
+      expect(profileRequests, [
+        <String>{
+          'cached-prefix-user-0',
+          'cached-prefix-user-1',
+        },
+      ]);
+
+      await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(buildList());
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(pageLoads, 1);
+      expect(profileRequests, hasLength(1));
+
+      final position = _eventListScrollPosition(tester);
+      final viewport = position.viewportDimension;
+      expect(position.maxScrollExtent, greaterThanOrEqualTo(viewport));
+      position.jumpTo(viewport);
+      await tester.pumpAndSettle();
+
+      expect(pageLoads, 1);
+      expect(profileRequests, [
+        <String>{
+          'cached-prefix-user-0',
+          'cached-prefix-user-1',
+        },
+        <String>{
+          'cached-prefix-user-2',
+          'cached-prefix-user-3',
+        },
+      ]);
+      final requestedUserIds =
+          profileRequests.expand((request) => request).toList(growable: false);
+      expect(requestedUserIds.toSet(), hasLength(requestedUserIds.length));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'treats participant user ids as opaque when preloading profiles',
+    (tester) async {
+      currentUser = _TestAuthUser('opaque-profile-viewer');
+      currentUserDocument = _userFixture(
+        uid: 'opaque-profile-viewer',
+        data: {
+          'profileCity': _profileCityFixture(
+            countryCode: 'RU',
+            cityKey: 'moscow',
+            catalogVersion: _catalog.catalogVersion,
+          ).toMap(),
+        },
+      );
+      final profileRequests = <List<String>>[];
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: _selectedCityFixture(),
+            nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+            eventPageLoader: (
+              collection,
+              recordBuilder, {
+              queryBuilder,
+              nextPageMarker,
+              required pageSize,
+              required isStream,
+            }) async {
+              return FFFirestorePage<EventsRecord>(
+                [
+                  _eventsRecordFixture(
+                    'opaque-profile-event',
+                    title: 'Opaque profile event',
+                    startsAt: DateTime.utc(2035, 6, 14, 15),
+                  ),
+                ],
+                null,
+                null,
+              );
+            },
+            currentUserParticipantLoader: (_, __) async => null,
+            activeParticipantsLoader: (eventRef) async => [
+              _eventParticipantRecordFixture(
+                eventRef,
+                userId: 'alice',
+                displayName: 'Alice Snapshot',
+                joinedAt: DateTime.utc(2035, 6, 14, 8),
+              ),
+              _eventParticipantRecordFixture(
+                eventRef,
+                userId: 'alice ',
+                displayName: 'Whitespace Snapshot',
+                joinedAt: DateTime.utc(2035, 6, 14, 9),
+              ),
+            ],
+            publicProfilesLoader: (userIds) async {
+              final requested = List<String>.of(userIds);
+              profileRequests.add(requested);
+              return UserPublicProfilePreloadResult(
+                profilesByUserId: {
+                  'alice': _userPublicProfileFixture(
+                    'alice',
+                    displayName: 'Hydrated Alice',
+                  ),
+                },
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(
+        profileRequests.expand((request) => request),
+        orderedEquals(<String>['alice']),
+      );
+      expect(
+        find.descendant(
+          of: _participantAvatarFinder(0),
+          matching: find.text('H'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: _participantAvatarFinder(1),
+          matching: find.text('W'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: _participantAvatarFinder(1),
+          matching: find.text('H'),
+        ),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'does not trim or hydrate an edge-whitespace organizer fallback id',
+    (tester) async {
+      currentUser = _TestAuthUser('opaque-organizer-viewer');
+      currentUserDocument = _userFixture(
+        uid: 'opaque-organizer-viewer',
+        data: {
+          'profileCity': _profileCityFixture(
+            countryCode: 'RU',
+            cityKey: 'moscow',
+            catalogVersion: _catalog.catalogVersion,
+          ).toMap(),
+        },
+      );
+      final profileRequests = <Set<String>>[];
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: _selectedCityFixture(),
+            nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+            eventPageLoader: (
+              collection,
+              recordBuilder, {
+              queryBuilder,
+              nextPageMarker,
+              required pageSize,
+              required isStream,
+            }) async {
+              return FFFirestorePage<EventsRecord>(
+                [
+                  _eventsRecordFixture(
+                    'opaque-organizer-event',
+                    title: 'Opaque organizer event',
+                    startsAt: DateTime.utc(2035, 6, 14, 15),
+                    organizerId: 'alice ',
+                    organizerDisplayName: 'Whitespace Organizer',
+                  ),
+                ],
+                null,
+                null,
+              );
+            },
+            currentUserParticipantLoader: (_, __) async => null,
+            activeParticipantsLoader: (_) async =>
+                const <EventParticipantsRecord>[],
+            publicProfilesLoader: (userIds) async {
+              profileRequests.add(userIds.toSet());
+              return UserPublicProfilePreloadResult(
+                profilesByUserId: {
+                  'alice': _userPublicProfileFixture(
+                    'alice',
+                    displayName: 'Hydrated Alice',
+                  ),
+                },
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(profileRequests, isEmpty);
+      expect(
+        find.descendant(
+          of: _participantAvatarFinder(0),
+          matching: find.text('W'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: _participantAvatarFinder(0),
+          matching: find.text('H'),
+        ),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'replaces hydrated cards when the public profile loader identity changes',
+    (tester) async {
+      currentUser = _TestAuthUser('profile-loader-identity-viewer');
+      currentUserDocument = _userFixture(
+        uid: 'profile-loader-identity-viewer',
+        data: {
+          'profileCity': _profileCityFixture(
+            countryCode: 'RU',
+            cityKey: 'moscow',
+            catalogVersion: _catalog.catalogVersion,
+          ).toMap(),
+        },
+      );
+      var pageLoads = 0;
+      var firstProfileLoads = 0;
+      var secondProfileLoads = 0;
+      final EventListNowProvider nowUtcProvider =
+          () => DateTime.utc(2035, 6, 14, 9);
+      final EventListPageLoader pageLoader = (
+        collection,
+        recordBuilder, {
+        queryBuilder,
+        nextPageMarker,
+        required pageSize,
+        required isStream,
+      }) async {
+        pageLoads += 1;
+        return FFFirestorePage<EventsRecord>(
+          [
+            _eventsRecordFixture(
+              'profile-loader-identity-event',
+              title: 'Profile loader identity event',
+              startsAt: DateTime.utc(2035, 6, 14, 15),
+            ),
+          ],
+          null,
+          null,
+        );
+      };
+      final EventListCurrentUserParticipantLoader membershipLoader =
+          (_, __) async => null;
+      final EventListActiveParticipantsLoader participantsLoader =
+          (eventRef) async => [
+                _eventParticipantRecordFixture(
+                  eventRef,
+                  userId: 'profile-loader-user',
+                  displayName: 'Snapshot Person',
+                  joinedAt: DateTime.utc(2035, 6, 14, 8),
+                ),
+              ];
+      final EventListPublicProfilesLoader firstProfilesLoader =
+          (userIds) async {
+        firstProfileLoads += 1;
+        return UserPublicProfilePreloadResult(
+          profilesByUserId: {
+            'profile-loader-user': _userPublicProfileFixture(
+              'profile-loader-user',
+              displayName: 'Alpha Public',
+            ),
+          },
+        );
+      };
+      final EventListPublicProfilesLoader secondProfilesLoader =
+          (userIds) async {
+        secondProfileLoads += 1;
+        return UserPublicProfilePreloadResult(
+          profilesByUserId: {
+            'profile-loader-user': _userPublicProfileFixture(
+              'profile-loader-user',
+              displayName: 'Beta Public',
+            ),
+          },
+        );
+      };
+
+      Widget buildList(EventListPublicProfilesLoader profilesLoader) =>
+          _buildTestApp(
+            home: EventListWidget(
+              key: const ValueKey<String>('profile-loader-identity-list'),
+              cityCatalogOverride: _catalog,
+              languageCatalogOverride: _languageCatalog,
+              initialSelectedCity: _selectedCityFixture(),
+              nowUtcProvider: nowUtcProvider,
+              eventPageLoader: pageLoader,
+              currentUserParticipantLoader: membershipLoader,
+              activeParticipantsLoader: participantsLoader,
+              publicProfilesLoader: profilesLoader,
+            ),
+          );
+
+      await tester.pumpWidget(buildList(firstProfilesLoader));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(pageLoads, 1);
+      expect(firstProfileLoads, 1);
+      expect(secondProfileLoads, 0);
+      expect(
+        find.descendant(
+          of: _participantAvatarFinder(0),
+          matching: find.text('A'),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.pumpWidget(buildList(secondProfilesLoader));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(pageLoads, 2);
+      expect(firstProfileLoads, 1);
+      expect(secondProfileLoads, 1);
+      expect(
+        find.descendant(
+          of: _participantAvatarFinder(0),
+          matching: find.text('A'),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: _participantAvatarFinder(0),
+          matching: find.text('B'),
+        ),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+      'late profile completion after disposal cannot seed the remount cache',
+      (tester) async {
+    currentUser = _TestAuthUser('disposed-profile-viewer');
+    currentUserDocument = _userFixture(
+      uid: 'disposed-profile-viewer',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+    final profilesCompleter = Completer<UserPublicProfilePreloadResult>();
+    addTearDown(() {
+      if (!profilesCompleter.isCompleted) {
+        profilesCompleter.complete(UserPublicProfilePreloadResult());
+      }
+    });
+    var pageLoads = 0;
+    var profileLoads = 0;
+    final EventListNowProvider nowUtcProvider =
+        () => DateTime.utc(2035, 6, 14, 9);
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) async {
+      pageLoads += 1;
+      return FFFirestorePage<EventsRecord>(
+        [
+          _eventsRecordFixture(
+            'disposed-profile-event',
+            title: 'Disposed profile event',
+            startsAt: DateTime.utc(2035, 6, 14, 15),
+          ),
+        ],
+        null,
+        null,
+      );
+    };
+    final EventListCurrentUserParticipantLoader membershipLoader =
+        (_, __) async => null;
+    final EventListActiveParticipantsLoader participantsLoader =
+        (eventRef) async => [
+              _eventParticipantRecordFixture(
+                eventRef,
+                userId: 'disposed-profile-user',
+                displayName: 'Disposed Snapshot',
+                joinedAt: DateTime.utc(2035, 6, 14, 8),
+              ),
+            ];
+    final EventListPublicProfilesLoader profilesLoader = (_) {
+      profileLoads += 1;
+      if (profileLoads == 1) {
+        return profilesCompleter.future;
+      }
+      return Future<UserPublicProfilePreloadResult>.value(
+        UserPublicProfilePreloadResult(
+          profilesByUserId: {
+            'disposed-profile-user': _userPublicProfileFixture(
+              'disposed-profile-user',
+              displayName: 'Fresh Profile',
+            ),
+          },
+        ),
+      );
+    };
+
+    Widget buildList() => _buildTestApp(
+          home: EventListWidget(
+            key: const ValueKey<String>('disposed-profile-list'),
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: _selectedCityFixture(),
+            nowUtcProvider: nowUtcProvider,
+            eventPageLoader: pageLoader,
+            currentUserParticipantLoader: membershipLoader,
+            activeParticipantsLoader: participantsLoader,
+            publicProfilesLoader: profilesLoader,
+          ),
+        );
+
+    await tester.pumpWidget(buildList());
+    await tester.pump();
+    await tester.pump();
+
+    expect(pageLoads, 1);
+    expect(profileLoads, 1);
+
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    profilesCompleter.complete(
+      UserPublicProfilePreloadResult(
+        profilesByUserId: {
+          'disposed-profile-user': _userPublicProfileFixture(
+            'disposed-profile-user',
+            displayName: 'Late Profile',
+          ),
+        },
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Disposed profile event'), findsNothing);
+
+    await tester.pumpWidget(buildList());
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(pageLoads, 2);
+    expect(profileLoads, 2);
+    expect(
+      find.descendant(
+        of: _participantAvatarFinder(0),
+        matching: find.text('F'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: _participantAvatarFinder(0),
+        matching: find.text('L'),
+      ),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('does not preload public profiles for a signed-out viewer',
+      (tester) async {
+    var profileLoads = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: _selectedCityFixture(),
+          nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+          eventPageLoader: (
+            collection,
+            recordBuilder, {
+            queryBuilder,
+            nextPageMarker,
+            required pageSize,
+            required isStream,
+          }) async {
+            return FFFirestorePage<EventsRecord>(
+              [
+                _eventsRecordFixture(
+                  'signed-out-profile-event',
+                  title: 'Signed out profile event',
+                  startsAt: DateTime.utc(2035, 6, 14, 15),
+                ),
+              ],
+              null,
+              null,
+            );
+          },
+          activeParticipantsLoader: (eventRef) async => [
+            _eventParticipantRecordFixture(
+              eventRef,
+              userId: 'signed-out-participant',
+              displayName: 'Signed Out Participant',
+              joinedAt: DateTime.utc(2035, 6, 14, 8),
+            ),
+          ],
+          publicProfilesLoader: (_) async {
+            profileLoads += 1;
+            return UserPublicProfilePreloadResult();
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(profileLoads, 0);
+    expect(find.text('Signed out profile event'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final failureMode in <String>['missing', 'failed', 'throw']) {
+    testWidgets(
+      '$failureMode public profile result is not card-cached and retries on remount',
+      (tester) async {
+        currentUser = _TestAuthUser('$failureMode-profile-viewer');
+        currentUserDocument = _userFixture(
+          uid: '$failureMode-profile-viewer',
+          data: {
+            'profileCity': _profileCityFixture(
+              countryCode: 'RU',
+              cityKey: 'moscow',
+              catalogVersion: _catalog.catalogVersion,
+            ).toMap(),
+          },
+        );
+        var pageLoads = 0;
+        var profileLoads = 0;
+        final profileRequests = <Set<String>>[];
+        final EventListNowProvider nowUtcProvider =
+            () => DateTime.utc(2035, 6, 14, 9);
+        final EventListPageLoader pageLoader = (
+          collection,
+          recordBuilder, {
+          queryBuilder,
+          nextPageMarker,
+          required pageSize,
+          required isStream,
+        }) async {
+          pageLoads += 1;
+          return FFFirestorePage<EventsRecord>(
+            [
+              _eventsRecordFixture(
+                '$failureMode-profile-event',
+                title: '$failureMode profile event',
+                startsAt: DateTime.utc(2035, 6, 14, 15),
+              ),
+            ],
+            null,
+            null,
+          );
+        };
+        final EventListCurrentUserParticipantLoader membershipLoader =
+            (_, __) async => null;
+        final EventListActiveParticipantsLoader participantsLoader =
+            (eventRef) async => [
+                  _eventParticipantRecordFixture(
+                    eventRef,
+                    userId: 'profile-one',
+                    displayName: 'Snapshot One',
+                    photoUrl: 'old-snapshot-photo',
+                    joinedAt: DateTime.utc(2035, 6, 14, 8),
+                  ),
+                  _eventParticipantRecordFixture(
+                    eventRef,
+                    userId: 'profile-two',
+                    displayName: 'Snapshot Two',
+                    joinedAt: DateTime.utc(2035, 6, 14, 9),
+                  ),
+                ];
+        final EventListPublicProfilesLoader profilesLoader = (userIds) async {
+          profileLoads += 1;
+          profileRequests.add(userIds.toSet());
+          if (profileLoads == 1) {
+            if (failureMode == 'throw') {
+              throw StateError('profile loader failed');
+            }
+            return UserPublicProfilePreloadResult(
+              profilesByUserId: {
+                'profile-one': _userPublicProfileFixture(
+                  'profile-one',
+                  displayName: 'Public One',
+                ),
+              },
+              missingUserIds: failureMode == 'missing'
+                  ? const <String>{'profile-two'}
+                  : const <String>{},
+              failedUserIds: failureMode == 'failed'
+                  ? const <String>{'profile-two'}
+                  : const <String>{},
+            );
+          }
+          return UserPublicProfilePreloadResult(
+            profilesByUserId: {
+              'profile-one': _userPublicProfileFixture(
+                'profile-one',
+                displayName: 'Fresh One',
+              ),
+              'profile-two': _userPublicProfileFixture(
+                'profile-two',
+                displayName: 'Recovered Two',
+              ),
+            },
+          );
+        };
+
+        Widget buildList() => _buildTestApp(
+              home: EventListWidget(
+                key: ValueKey<String>('$failureMode-profile-list'),
+                cityCatalogOverride: _catalog,
+                languageCatalogOverride: _languageCatalog,
+                initialSelectedCity: _selectedCityFixture(),
+                nowUtcProvider: nowUtcProvider,
+                eventPageLoader: pageLoader,
+                currentUserParticipantLoader: membershipLoader,
+                activeParticipantsLoader: participantsLoader,
+                publicProfilesLoader: profilesLoader,
+              ),
+            );
+
+        await tester.pumpWidget(buildList());
+        await tester.pump();
+        await tester.pumpAndSettle();
+
+        expect(pageLoads, 1);
+        expect(profileLoads, 1);
+        expect(profileRequests, [
+          <String>{'profile-one', 'profile-two'},
+        ]);
+        if (failureMode == 'throw') {
+          expect(
+            find.descendant(
+              of: _participantAvatarFinder(0),
+              matching: find.text('S'),
+            ),
+            findsOneWidget,
+          );
+          expect(
+            find.descendant(
+              of: _participantAvatarFinder(0),
+              matching: find.byType(CachedNetworkImage),
+            ),
+            findsOneWidget,
+          );
+        } else {
+          expect(
+            find.descendant(
+              of: _participantAvatarFinder(0),
+              matching: find.text('P'),
+            ),
+            findsOneWidget,
+          );
+          expect(
+            find.descendant(
+              of: _participantAvatarFinder(0),
+              matching: find.byType(CachedNetworkImage),
+            ),
+            findsNothing,
+          );
+        }
+        expect(
+          find.descendant(
+            of: _participantAvatarFinder(1),
+            matching: find.text('S'),
+          ),
+          findsOneWidget,
+        );
+        expect(find.byKey(eventListErrorStateKey), findsNothing);
+
+        await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+        await tester.pumpAndSettle();
+        await tester.pumpWidget(buildList());
+        await tester.pump();
+        await tester.pumpAndSettle();
+
+        expect(pageLoads, 2);
+        expect(profileLoads, 2);
+        expect(profileRequests, [
+          <String>{'profile-one', 'profile-two'},
+          <String>{'profile-one', 'profile-two'},
+        ]);
+        expect(
+          find.descendant(
+            of: _participantAvatarFinder(0),
+            matching: find.text('F'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: _participantAvatarFinder(1),
+            matching: find.text('R'),
+          ),
+          findsOneWidget,
+        );
+        expect(find.byKey(eventListErrorStateKey), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets('keeps base card geometry when participant enrichment fails',
       (tester) async {
     final participantsCompleter = Completer<List<EventParticipantsRecord>>();
@@ -3549,6 +5213,354 @@ void main() {
       findsNothing,
     );
   });
+
+  testWidgets('discards stale A-B-A public profile UI and cache writes',
+      (tester) async {
+    currentUser = _TestAuthUser('profile-race-viewer');
+    currentUserDocument = _userFixture(
+      uid: 'profile-race-viewer',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+    final staleProfilesCompleter = Completer<UserPublicProfilePreloadResult>();
+    addTearDown(() {
+      if (!staleProfilesCompleter.isCompleted) {
+        staleProfilesCompleter.complete(UserPublicProfilePreloadResult());
+      }
+    });
+    var pageLoads = 0;
+    var profileLoads = 0;
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) async {
+      pageLoads += 1;
+      return FFFirestorePage<EventsRecord>(
+        [
+          _eventsRecordFixture(
+            'public-profile-race-event',
+            title: 'Public profile race event',
+            startsAt: DateTime.utc(2035, 6, 15, 15),
+          ),
+        ],
+        null,
+        null,
+      );
+    };
+    final EventListCurrentUserParticipantLoader membershipLoader =
+        (_, __) async => null;
+    final EventListActiveParticipantsLoader participantsLoader =
+        (eventRef) async => [
+              _eventParticipantRecordFixture(
+                eventRef,
+                userId: 'profile-race-user',
+                displayName: 'Snapshot Profile',
+                joinedAt: DateTime.utc(2035, 6, 15, 10),
+              ),
+            ];
+    final EventListPublicProfilesLoader profilesLoader = (userIds) {
+      profileLoads += 1;
+      if (profileLoads == 1) {
+        return staleProfilesCompleter.future;
+      }
+      final displayName =
+          profileLoads == 2 ? 'Between Profile' : 'Fresh Profile';
+      return Future<UserPublicProfilePreloadResult>.value(
+        UserPublicProfilePreloadResult(
+          profilesByUserId: {
+            'profile-race-user': _userPublicProfileFixture(
+              'profile-race-user',
+              displayName: displayName,
+            ),
+          },
+        ),
+      );
+    };
+
+    Widget buildList() => _buildTestApp(
+          home: EventListWidget(
+            key: const ValueKey<String>('public-profile-race-list'),
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: _selectedCityFixture(),
+            nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+            eventPageLoader: pageLoader,
+            currentUserParticipantLoader: membershipLoader,
+            activeParticipantsLoader: participantsLoader,
+            publicProfilesLoader: profilesLoader,
+          ),
+        );
+
+    await tester.pumpWidget(buildList());
+    await tester.pump();
+    await tester.pump();
+
+    expect(pageLoads, 1);
+    expect(profileLoads, 1);
+    expect(
+      find.descendant(
+        of: _participantAvatarFinder(0),
+        matching: find.text('S'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(_dateFilterFinder(EventListDateFilter.tomorrow));
+    await tester.pumpAndSettle();
+
+    expect(pageLoads, 2);
+    expect(profileLoads, 2);
+    expect(
+      find.descendant(
+        of: _participantAvatarFinder(0),
+        matching: find.text('B'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(_dateFilterFinder(EventListDateFilter.tomorrow));
+    await tester.pumpAndSettle();
+
+    expect(pageLoads, 3);
+    expect(profileLoads, 3);
+    expect(
+      find.descendant(
+        of: _participantAvatarFinder(0),
+        matching: find.text('F'),
+      ),
+      findsOneWidget,
+    );
+
+    staleProfilesCompleter.complete(
+      UserPublicProfilePreloadResult(
+        profilesByUserId: {
+          'profile-race-user': _userPublicProfileFixture(
+            'profile-race-user',
+            displayName: 'Stale Profile',
+          ),
+        },
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      find.descendant(
+        of: _participantAvatarFinder(0),
+        matching: find.text('F'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: _participantAvatarFinder(0),
+        matching: find.text('S'),
+      ),
+      findsNothing,
+    );
+
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(buildList());
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(pageLoads, 3);
+    expect(profileLoads, 3);
+    expect(
+      find.descendant(
+        of: _participantAvatarFinder(0),
+        matching: find.text('F'),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final lateOldOutcome in <String>['success', 'missing']) {
+    testWidgets(
+      'late old $lateOldOutcome from a parallel list cannot replace the newer shared cache',
+      (tester) async {
+        currentUser = _TestAuthUser('parallel-profile-viewer');
+        currentUserDocument = _userFixture(
+          uid: 'parallel-profile-viewer',
+          data: {
+            'profileCity': _profileCityFixture(
+              countryCode: 'RU',
+              cityKey: 'moscow',
+              catalogVersion: _catalog.catalogVersion,
+            ).toMap(),
+          },
+        );
+        final oldProfilesCompleter =
+            Completer<UserPublicProfilePreloadResult>();
+        final newerProfilesCompleter =
+            Completer<UserPublicProfilePreloadResult>();
+        addTearDown(() {
+          if (!oldProfilesCompleter.isCompleted) {
+            oldProfilesCompleter.complete(UserPublicProfilePreloadResult());
+          }
+          if (!newerProfilesCompleter.isCompleted) {
+            newerProfilesCompleter.complete(UserPublicProfilePreloadResult());
+          }
+        });
+        var pageLoads = 0;
+        var profileLoads = 0;
+        final EventListNowProvider nowUtcProvider =
+            () => DateTime.utc(2035, 6, 14, 9);
+        final EventListPageLoader pageLoader = (
+          collection,
+          recordBuilder, {
+          queryBuilder,
+          nextPageMarker,
+          required pageSize,
+          required isStream,
+        }) async {
+          pageLoads += 1;
+          return FFFirestorePage<EventsRecord>(
+            [
+              _eventsRecordFixture(
+                'parallel-profile-event',
+                title: 'Parallel profile event',
+                startsAt: DateTime.utc(2035, 6, 14, 15),
+              ),
+            ],
+            null,
+            null,
+          );
+        };
+        final EventListCurrentUserParticipantLoader membershipLoader =
+            (_, __) async => null;
+        final EventListActiveParticipantsLoader participantsLoader =
+            (eventRef) async => [
+                  _eventParticipantRecordFixture(
+                    eventRef,
+                    userId: 'parallel-profile-user',
+                    displayName: 'Snapshot Profile',
+                    joinedAt: DateTime.utc(2035, 6, 14, 8),
+                  ),
+                ];
+        final EventListPublicProfilesLoader profilesLoader = (_) {
+          profileLoads += 1;
+          return switch (profileLoads) {
+            1 => oldProfilesCompleter.future,
+            2 => newerProfilesCompleter.future,
+            _ => Future<UserPublicProfilePreloadResult>.value(
+                UserPublicProfilePreloadResult(
+                  profilesByUserId: {
+                    'parallel-profile-user': _userPublicProfileFixture(
+                      'parallel-profile-user',
+                      displayName: 'Unexpected Reload',
+                    ),
+                  },
+                ),
+              ),
+          };
+        };
+
+        EventListWidget buildList(String key) => EventListWidget(
+              key: ValueKey<String>(key),
+              cityCatalogOverride: _catalog,
+              languageCatalogOverride: _languageCatalog,
+              initialSelectedCity: _selectedCityFixture(),
+              nowUtcProvider: nowUtcProvider,
+              eventPageLoader: pageLoader,
+              currentUserParticipantLoader: membershipLoader,
+              activeParticipantsLoader: participantsLoader,
+              publicProfilesLoader: profilesLoader,
+            );
+
+        await tester.pumpWidget(
+          _buildTestApp(
+            home: Stack(
+              fit: StackFit.expand,
+              children: [
+                buildList('parallel-profile-old-list'),
+                buildList('parallel-profile-new-list'),
+              ],
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        expect(pageLoads, 2);
+        expect(profileLoads, 2);
+
+        newerProfilesCompleter.complete(
+          UserPublicProfilePreloadResult(
+            profilesByUserId: {
+              'parallel-profile-user': _userPublicProfileFixture(
+                'parallel-profile-user',
+                displayName: 'Newer Profile',
+              ),
+            },
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        oldProfilesCompleter.complete(
+          lateOldOutcome == 'missing'
+              ? UserPublicProfilePreloadResult(
+                  missingUserIds: const <String>{'parallel-profile-user'},
+                )
+              : UserPublicProfilePreloadResult(
+                  profilesByUserId: {
+                    'parallel-profile-user': _userPublicProfileFixture(
+                      'parallel-profile-user',
+                      displayName: 'Older Profile',
+                    ),
+                  },
+                ),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+        await tester.pumpAndSettle();
+        await tester.pumpWidget(
+          _buildTestApp(home: buildList('parallel-profile-remount-list')),
+        );
+        await tester.pump();
+        await tester.pumpAndSettle();
+
+        expect(pageLoads, 2);
+        expect(profileLoads, 2);
+        expect(
+          find.descendant(
+            of: _participantAvatarFinder(0),
+            matching: find.text('N'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: _participantAvatarFinder(0),
+            matching: find.text('O'),
+          ),
+          findsNothing,
+        );
+        expect(
+          find.descendant(
+            of: _participantAvatarFinder(0),
+            matching: find.text('U'),
+          ),
+          findsNothing,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets(
     'loaded event uses current profile for generic participant preview',
@@ -5590,6 +7602,24 @@ void _expectWhereCondition(
   );
 }
 
+ScrollPosition _eventListScrollPosition(WidgetTester tester) {
+  final verticalScrollView = find.byWidgetPredicate(
+    (widget) =>
+        widget is SingleChildScrollView &&
+        widget.scrollDirection == Axis.vertical,
+  );
+  expect(verticalScrollView, findsOneWidget);
+  final scrollable = find.descendant(
+    of: verticalScrollView,
+    matching: find.byWidgetPredicate(
+      (widget) =>
+          widget is Scrollable && widget.axisDirection == AxisDirection.down,
+    ),
+  );
+  expect(scrollable, findsOneWidget);
+  return tester.state<ScrollableState>(scrollable).position;
+}
+
 Finder _participantAvatarFinder(int index) =>
     find.byKey(ValueKey<String>('event_list_participant_avatar_$index'));
 
@@ -5733,12 +7763,29 @@ EventParticipantsRecord _eventParticipantRecordFixture(
   );
 }
 
+UserPublicProfilesRecord _userPublicProfileFixture(
+  String userId, {
+  String? displayName,
+  String? photoUrl,
+}) {
+  return UserPublicProfilesRecord.getDocumentFromData(
+    {
+      'userId': userId,
+      'display_name': displayName ?? 'Profile $userId',
+      if (photoUrl != null) 'photo_url': photoUrl,
+    },
+    UserPublicProfilesRecord.collection.doc(userId),
+  );
+}
+
 EventsRecord _eventsRecordFixture(
   String id, {
   String title = 'Разговорный клуб',
   DateTime? startsAt,
   bool includeCapacity = true,
   bool includeParticipantsCount = true,
+  String organizerId = 'organizer-user',
+  String organizerDisplayName = 'Анастасия Иванова',
 }) {
   return EventsRecord.getDocumentFromData(
     {
@@ -5756,8 +7803,8 @@ EventsRecord _eventsRecordFixture(
       'timeZoneId': 'Europe/Moscow',
       if (includeCapacity) 'capacity': 10,
       if (includeParticipantsCount) 'participantsCount': 1,
-      'organizerId': 'organizer-user',
-      'organizerDisplayName': 'Анастасия Иванова',
+      'organizerId': organizerId,
+      'organizerDisplayName': organizerDisplayName,
       'organizerPhotoUrl': '',
       'status': eventStatusActive,
     },
