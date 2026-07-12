@@ -155,6 +155,13 @@ const double _eventListActionTextHeight = 1.0;
 const Color _eventListBorderColor = Color(0xFFEBEBEB);
 const Color _eventListChipBackground = ExpatlioDesign.card;
 const Color _eventListSoftPrimaryBackground = Color(0xFFF0E6FF);
+final RegExp _eventListInvisibleAvatarCharacters = RegExp(
+  r'[\u0000-\u001F\u007F-\u009F\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180B-\u180F\u200B-\u200F\u202A-\u202E\u2060-\u206F\u3164\uFE00-\uFE0F\uFEFF\uFFA0]',
+);
+final RegExp _eventListAvatarInitialLetterOrNumber = RegExp(
+  r'[\p{L}\p{N}]',
+  unicode: true,
+);
 
 final DateTime _eventListAllEventsUpperBoundUtc = DateTime.utc(9999, 12, 31);
 
@@ -2275,10 +2282,9 @@ bool _eventListParticipantIsActiveForUser(
   if (participant == null || userId.isEmpty) {
     return false;
   }
-  final participantUserId = participant.userId;
-  final belongsToUser = participantUserId.isEmpty
-      ? participant.reference.id == userId
-      : participantUserId == userId;
+  final belongsToUser =
+      _eventListParticipantHasCanonicalIdentity(participant) &&
+          participant.reference.id == userId;
   if (!belongsToUser ||
       participant.parentReference.path != eventReference.path) {
     return false;
@@ -2302,18 +2308,20 @@ List<EventListParticipantViewModel> _eventListParticipantsForRecord(
         event.organizerId.isNotEmpty && participantUserId == event.organizerId;
     final isCurrentUser =
         viewerUserId.isNotEmpty && participantUserId == viewerUserId;
-    final displayName = _eventListVisibleParticipantDisplayName(
+    final displayName = _eventListUsableParticipantDisplayName(
       participant.displayName,
     );
     final currentDisplayName = isCurrentUser
-        ? _eventListVisibleParticipantDisplayName(currentUserDisplayName)
+        ? _eventListUsableParticipantDisplayName(currentUserDisplayName)
         : '';
     final resolvedDisplayName = displayName.isNotEmpty
         ? displayName
         : currentDisplayName.isNotEmpty
             ? currentDisplayName
             : isOrganizer
-                ? event.organizerDisplayName.trim()
+                ? _eventListUsableParticipantDisplayName(
+                    event.organizerDisplayName,
+                  )
                 : '';
     final participantPhotoUrl = participant.photoUrl.trim();
     final currentPhotoUrl = isCurrentUser ? currentUserPhoto.trim() : '';
@@ -2336,7 +2344,8 @@ List<EventListParticipantViewModel> _eventListParticipantsForRecord(
       .map(participantViewModel)
       .toList();
 
-  final displayName = event.organizerDisplayName.trim();
+  final displayName =
+      _eventListUsableParticipantDisplayName(event.organizerDisplayName);
   final photoUrl =
       event.hasOrganizerPhotoUrl() ? event.organizerPhotoUrl.trim() : null;
   final participantsCount =
@@ -2424,7 +2433,8 @@ List<EventListCardViewModel> _eventListCardsWithPublicProfiles(
           !isValidUserPublicProfileRecordForUserId(profile, userId)) {
         return participant;
       }
-      final publicDisplayName = profile.displayName.trim();
+      final publicDisplayName =
+          _eventListUsableParticipantDisplayName(profile.displayName);
       final displayName = publicDisplayName.isEmpty
           ? participant.displayName
           : publicDisplayName;
@@ -2461,8 +2471,17 @@ void _eventListKeepParticipantVisible(
 }
 
 String _eventListParticipantUserId(EventParticipantsRecord participant) {
-  final userId = participant.userId;
-  return userId.isNotEmpty ? userId : participant.reference.id;
+  return participant.reference.id;
+}
+
+bool _eventListParticipantHasCanonicalIdentity(
+  EventParticipantsRecord participant,
+) {
+  final referenceUserId = participant.reference.id;
+  return referenceUserId.isNotEmpty &&
+      (!participant.hasUserId() ||
+          participant.userId.isEmpty ||
+          participant.userId == referenceUserId);
 }
 
 String _eventListVisibleParticipantDisplayName(String displayName) {
@@ -2472,6 +2491,27 @@ String _eventListVisibleParticipantDisplayName(String displayName) {
     return '';
   }
   return normalized;
+}
+
+String _eventListUsableParticipantDisplayName(String displayName) {
+  final normalized = _eventListVisibleParticipantDisplayName(displayName);
+  return _eventListParticipantAvatarInitial(normalized) == null
+      ? ''
+      : normalized;
+}
+
+String? _eventListParticipantAvatarInitial(String displayName) {
+  final normalized = _eventListVisibleParticipantDisplayName(displayName);
+  if (normalized.isEmpty) {
+    return null;
+  }
+  final initial = ExpatlioDesign.avatarInitial(normalized);
+  final visibleInitial =
+      initial.replaceAll(_eventListInvisibleAvatarCharacters, '').trim();
+  return visibleInitial.isEmpty ||
+          !_eventListAvatarInitialLetterOrNumber.hasMatch(visibleInitial)
+      ? null
+      : initial;
 }
 
 EventListJoinCtaState _eventListJoinStateForRecord({
@@ -3703,40 +3743,60 @@ class _EventParticipantAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final normalizedPhotoUrl = participant.photoUrl?.trim() ?? '';
-    return Container(
-      width: dimension,
-      height: dimension,
-      padding: const EdgeInsets.all(1),
-      decoration: BoxDecoration(
-        color: ExpatlioDesign.card,
-        shape: BoxShape.circle,
-        border: Border.all(color: ExpatlioDesign.border, width: 1),
-      ),
-      child: ClipOval(
-        child: normalizedPhotoUrl.isEmpty
-            ? _fallback(context)
-            : CachedNetworkImage(
-                imageUrl: normalizedPhotoUrl,
-                width: dimension,
-                height: dimension,
-                fit: BoxFit.cover,
-                fadeInDuration: Duration.zero,
-                fadeOutDuration: Duration.zero,
-                memCacheWidth:
-                    (dimension * MediaQuery.devicePixelRatioOf(context))
-                        .round(),
-                memCacheHeight:
-                    (dimension * MediaQuery.devicePixelRatioOf(context))
-                        .round(),
-                placeholder: (context, _) => _fallback(context),
-                errorWidget: (context, _, __) => _fallback(context),
-              ),
+    final displayName =
+        _eventListUsableParticipantDisplayName(participant.displayName);
+    final semanticsLabel = displayName.isEmpty
+        ? FFLocalizations.of(context).getVariableText(
+            ruText: 'Участник события',
+            enText: 'Event participant',
+          )
+        : FFLocalizations.of(context).getVariableText(
+            ruText: 'Участник: $displayName',
+            enText: 'Participant: $displayName',
+          );
+    return Semantics(
+      container: true,
+      image: true,
+      excludeSemantics: true,
+      label: semanticsLabel,
+      child: Container(
+        width: dimension,
+        height: dimension,
+        padding: const EdgeInsets.all(1),
+        decoration: BoxDecoration(
+          color: ExpatlioDesign.card,
+          shape: BoxShape.circle,
+          border: Border.all(color: ExpatlioDesign.border, width: 1),
+        ),
+        child: ClipOval(
+          child: normalizedPhotoUrl.isEmpty
+              ? _fallback(context)
+              : CachedNetworkImage(
+                  imageUrl: normalizedPhotoUrl,
+                  width: dimension,
+                  height: dimension,
+                  fit: BoxFit.cover,
+                  fadeInDuration: Duration.zero,
+                  fadeOutDuration: Duration.zero,
+                  memCacheWidth:
+                      (dimension * MediaQuery.devicePixelRatioOf(context))
+                          .round(),
+                  memCacheHeight:
+                      (dimension * MediaQuery.devicePixelRatioOf(context))
+                          .round(),
+                  placeholder: (context, _) => _fallback(context),
+                  errorWidget: (context, _, __) => _fallback(context),
+                ),
+        ),
       ),
     );
   }
 
   Widget _fallback(BuildContext context) {
-    if (participant.displayName.trim().isEmpty) {
+    final initial = _eventListParticipantAvatarInitial(
+      participant.displayName,
+    );
+    if (initial == null) {
       return Container(
         color: ExpatlioDesign.avatarFallbackBackground,
         alignment: Alignment.center,
@@ -3751,7 +3811,7 @@ class _EventParticipantAvatar extends StatelessWidget {
       color: ExpatlioDesign.avatarFallbackBackground,
       alignment: Alignment.center,
       child: Text(
-        ExpatlioDesign.avatarInitial(participant.displayName),
+        initial,
         maxLines: 1,
         style: ExpatlioDesign.textStyle(
           context,

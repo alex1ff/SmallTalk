@@ -3199,6 +3199,344 @@ void main() {
   );
 
   testWidgets(
+    'keeps a known participant fallback stable while its profile loads',
+    (tester) async {
+      const participantId = 'known-fallback-participant';
+      _setEventProfileFallbackViewer('known-fallback-viewer');
+      final profilesCompleter = Completer<UserPublicProfilePreloadResult>();
+      addTearDown(() {
+        if (!profilesCompleter.isCompleted) {
+          profilesCompleter.complete(UserPublicProfilePreloadResult());
+        }
+      });
+      final profileRequests = <Set<String>>[];
+
+      await tester.pumpWidget(
+        _buildEventProfileFallbackTestApp(
+          eventId: 'known-fallback-event',
+          activeParticipantsLoader: (eventRef) async => [
+            _eventParticipantIdentityRecordFixture(
+              eventRef,
+              documentId: participantId,
+              storedUserId: participantId,
+            ),
+          ],
+          publicProfilesLoader: (userIds) {
+            profileRequests.add(userIds.toSet());
+            return profilesCompleter.future;
+          },
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(profileRequests, [
+        <String>{participantId}
+      ]);
+      _expectGenericParticipantAvatar(0);
+      final beforeSlot = tester.getRect(_participantAvatarFinder(0));
+      expect(beforeSlot.size, const Size.square(24));
+      final beforeCard = _eventCardGeometry(tester);
+      final beforeStack =
+          tester.getRect(find.byKey(eventListParticipantAvatarStackKey));
+      final beforeSlots = _participantAvatarSlotRects(tester, count: 6);
+      final beforeSemantics = _participantAvatarImageSemanticsNode(tester, 0);
+      expect(beforeSemantics.flagsCollection.isImage, isTrue);
+      expect(beforeSemantics.label, isNotEmpty);
+      expect(beforeSemantics.label, isNot(contains(participantId)));
+      final beforeSemanticsId = beforeSemantics.id;
+      final beforeSemanticsRect = beforeSemantics.rect;
+
+      profilesCompleter.complete(
+        UserPublicProfilePreloadResult(
+          profilesByUserId: {
+            participantId: _userPublicProfileFixture(
+              participantId,
+              displayName: 'Marco',
+            ),
+          },
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      final participantSlot = _participantAvatarFinder(0);
+      expect(
+        find.descendant(of: participantSlot, matching: find.text('M')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: participantSlot,
+          matching: find.byIcon(Icons.person_outline),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: participantSlot,
+          matching: find.byType(CachedNetworkImage),
+        ),
+        findsNothing,
+      );
+      expect(tester.getRect(participantSlot), beforeSlot);
+      expect(_eventCardGeometry(tester), beforeCard);
+      expect(
+        tester.getRect(find.byKey(eventListParticipantAvatarStackKey)),
+        beforeStack,
+      );
+      expect(_participantAvatarSlotRects(tester, count: 6), beforeSlots);
+      final afterSemantics = _participantAvatarImageSemanticsNode(tester, 0);
+      expect(afterSemantics.id, beforeSemanticsId);
+      expect(afterSemantics.rect, beforeSemanticsRect);
+      expect(afterSemantics.flagsCollection.isImage, isTrue);
+      expect(afterSemantics.label, isNotEmpty);
+      expect(afterSemantics.label, isNot(contains(participantId)));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final invisibleName in <String, String>{
+    'zero-width controls': '\u200B\u2060\uFEFF',
+    'braille blank': '\u2800',
+    'supplementary controls': '\u{E0001}\u{E0100}',
+  }.entries) {
+    testWidgets(
+      'keeps the known fallback icon for ${invisibleName.key}',
+      (tester) async {
+        final participantId =
+            'invisible-profile-participant-${invisibleName.key}';
+        _setEventProfileFallbackViewer(
+          'invisible-profile-viewer-${invisibleName.key}',
+        );
+
+        await tester.pumpWidget(
+          _buildEventProfileFallbackTestApp(
+            eventId: 'invisible-profile-event-${invisibleName.key}',
+            activeParticipantsLoader: (eventRef) async => [
+              _eventParticipantIdentityRecordFixture(
+                eventRef,
+                documentId: participantId,
+                storedUserId: participantId,
+              ),
+            ],
+            publicProfilesLoader: (_) async => UserPublicProfilePreloadResult(
+              profilesByUserId: {
+                participantId: _userPublicProfileFixture(
+                  participantId,
+                  displayName: invisibleName.value,
+                ),
+              },
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pumpAndSettle();
+
+        _expectGenericParticipantAvatar(0);
+        final semantics = _participantAvatarImageSemanticsNode(tester, 0);
+        expect(semantics.flagsCollection.isImage, isTrue);
+        expect(semantics.label, isNotEmpty);
+        expect(semantics.label, isNot(contains(participantId)));
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  for (final failureMode in <String>['missing', 'failed', 'throw']) {
+    testWidgets(
+      '$failureMode public profile result preserves a known fallback',
+      (tester) async {
+        final participantId = '$failureMode-known-fallback-participant';
+        _setEventProfileFallbackViewer('$failureMode-fallback-viewer');
+        final profilesCompleter = Completer<UserPublicProfilePreloadResult>();
+        addTearDown(() {
+          if (!profilesCompleter.isCompleted) {
+            profilesCompleter.complete(UserPublicProfilePreloadResult());
+          }
+        });
+
+        await tester.pumpWidget(
+          _buildEventProfileFallbackTestApp(
+            eventId: '$failureMode-known-fallback-event',
+            activeParticipantsLoader: (eventRef) async => [
+              _eventParticipantIdentityRecordFixture(
+                eventRef,
+                documentId: participantId,
+                storedUserId: participantId,
+              ),
+            ],
+            publicProfilesLoader: (_) => profilesCompleter.future,
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        _expectGenericParticipantAvatar(0);
+        final beforeCard = _eventCardGeometry(tester);
+        final beforeStack =
+            tester.getRect(find.byKey(eventListParticipantAvatarStackKey));
+        final beforeSlots = _participantAvatarSlotRects(tester, count: 6);
+        final beforeSemantics = _participantAvatarImageSemanticsNode(tester, 0);
+        final beforeSemanticsId = beforeSemantics.id;
+        final beforeSemanticsLabel = beforeSemantics.label;
+        final beforeSemanticsRect = beforeSemantics.rect;
+
+        if (failureMode == 'throw') {
+          profilesCompleter.completeError(
+            StateError('public profile failed'),
+          );
+        } else {
+          profilesCompleter.complete(
+            UserPublicProfilePreloadResult(
+              missingUserIds: failureMode == 'missing'
+                  ? <String>{participantId}
+                  : const <String>{},
+              failedUserIds: failureMode == 'failed'
+                  ? <String>{participantId}
+                  : const <String>{},
+            ),
+          );
+        }
+        await tester.pump();
+        await tester.pump();
+
+        _expectGenericParticipantAvatar(0);
+        expect(_eventCardGeometry(tester), beforeCard);
+        expect(
+          tester.getRect(find.byKey(eventListParticipantAvatarStackKey)),
+          beforeStack,
+        );
+        expect(_participantAvatarSlotRects(tester, count: 6), beforeSlots);
+        final afterSemantics = _participantAvatarImageSemanticsNode(tester, 0);
+        expect(afterSemantics.id, beforeSemanticsId);
+        expect(afterSemantics.label, beforeSemanticsLabel);
+        expect(afterSemantics.rect, beforeSemanticsRect);
+        expect(afterSemantics.flagsCollection.isImage, isTrue);
+        expect(afterSemantics.label, isNot(contains(participantId)));
+        expect(find.byKey(eventListErrorStateKey), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'uses participant document ids for fallback and profile identity',
+    (tester) async {
+      const canonicalId = 'canonical-participant';
+      const missingFieldId = 'missing-field-participant';
+      const spoofedId = 'spoofed-profile-id';
+      _setEventProfileFallbackViewer('canonical-identity-viewer');
+      final profileRequests = <Set<String>>[];
+
+      await tester.pumpWidget(
+        _buildEventProfileFallbackTestApp(
+          eventId: 'canonical-identity-event',
+          activeParticipantsLoader: (eventRef) async => [
+            _eventParticipantIdentityRecordFixture(
+              eventRef,
+              documentId: canonicalId,
+              storedUserId: spoofedId,
+              joinedAt: DateTime.utc(2035, 6, 14, 8),
+            ),
+            _eventParticipantIdentityRecordFixture(
+              eventRef,
+              documentId: missingFieldId,
+              joinedAt: DateTime.utc(2035, 6, 14, 9),
+            ),
+          ],
+          publicProfilesLoader: (userIds) async {
+            final requested = userIds.toSet();
+            profileRequests.add(requested);
+            return UserPublicProfilePreloadResult(
+              missingUserIds: requested,
+            );
+          },
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(profileRequests, [
+        <String>{canonicalId, missingFieldId}
+      ]);
+      expect(
+        profileRequests.expand((request) => request),
+        isNot(contains(spoofedId)),
+      );
+      for (var index = 0; index < 2; index += 1) {
+        _expectGenericParticipantAvatar(index);
+        final semantics = _participantAvatarImageSemanticsNode(tester, index);
+        expect(semantics.flagsCollection.isImage, isTrue);
+        expect(semantics.label, isNotEmpty);
+        expect(semantics.label, isNot(contains(canonicalId)));
+        expect(semantics.label, isNot(contains(missingFieldId)));
+        expect(semantics.label, isNot(contains(spoofedId)));
+      }
+      expect(find.byKey(eventListErrorStateKey), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'keeps count-only and reserved slots out of participant semantics',
+    (tester) async {
+      const participantId = 'semantic-known-participant';
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: _selectedCityFixture(),
+            eventCardsOverride: [
+              _eventCardFixture(
+                participants: const [
+                  EventListParticipantViewModel(
+                    userId: participantId,
+                    displayName: '',
+                  ),
+                ],
+                participantsCount: 3,
+                capacity: 5,
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      _expectGenericParticipantAvatar(0);
+      final knownSemantics = _participantAvatarImageSemanticsNode(tester, 0);
+      expect(knownSemantics.flagsCollection.isImage, isTrue);
+      expect(knownSemantics.label, isNotEmpty);
+      expect(knownSemantics.label, isNot(contains(participantId)));
+      for (var index = 1; index < 5; index += 1) {
+        expect(_participantAvatarImageSemanticsFinder(index), findsNothing);
+        expect(tester.getRect(_participantAvatarFinder(index)).size,
+            const Size.square(24));
+      }
+      expect(
+        _participantPlaceholderFillColor(tester, 1),
+        ExpatlioDesign.avatarFallbackBackground,
+      );
+      expect(
+        _participantPlaceholderFillColor(tester, 2),
+        ExpatlioDesign.avatarFallbackBackground,
+      );
+      expect(
+        _participantPlaceholderFillColor(tester, 3),
+        ExpatlioDesign.card,
+      );
+      expect(
+        _participantPlaceholderFillColor(tester, 4),
+        ExpatlioDesign.card,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'preloads visible participant profiles before membership finishes',
     (tester) async {
       currentUser = _TestAuthUser('profile-preload-viewer');
@@ -7623,6 +7961,55 @@ ScrollPosition _eventListScrollPosition(WidgetTester tester) {
 Finder _participantAvatarFinder(int index) =>
     find.byKey(ValueKey<String>('event_list_participant_avatar_$index'));
 
+Finder _participantAvatarImageSemanticsFinder(int index) => find.descendant(
+      of: _participantAvatarFinder(index),
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is Semantics &&
+            widget.container &&
+            widget.properties.image == true,
+      ),
+    );
+
+SemanticsNode _participantAvatarImageSemanticsNode(
+  WidgetTester tester,
+  int index,
+) {
+  final finder = _participantAvatarImageSemanticsFinder(index);
+  expect(finder, findsOneWidget);
+  return tester.getSemantics(finder);
+}
+
+void _expectGenericParticipantAvatar(int index) {
+  final avatar = _participantAvatarFinder(index);
+  expect(avatar, findsOneWidget);
+  expect(
+    find.descendant(
+      of: avatar,
+      matching: find.byIcon(Icons.person_outline),
+    ),
+    findsOneWidget,
+  );
+  expect(
+    find.descendant(of: avatar, matching: find.byType(Text)),
+    findsNothing,
+  );
+  expect(
+    find.descendant(of: avatar, matching: find.byType(CachedNetworkImage)),
+    findsNothing,
+  );
+}
+
+Color? _participantPlaceholderFillColor(WidgetTester tester, int index) {
+  final decoratedBox = find.descendant(
+    of: _participantAvatarFinder(index),
+    matching: find.byType(DecoratedBox),
+  );
+  expect(decoratedBox, findsWidgets);
+  final decoration = tester.widget<DecoratedBox>(decoratedBox.last).decoration;
+  return decoration is BoxDecoration ? decoration.color : null;
+}
+
 List<Rect> _participantAvatarSlotRects(
   WidgetTester tester, {
   required int count,
@@ -7760,6 +8147,78 @@ EventParticipantsRecord _eventParticipantRecordFixture(
       joinedAt: joinedAt,
     ),
     EventParticipantsRecord.createDoc(eventRef, id: userId),
+  );
+}
+
+EventParticipantsRecord _eventParticipantIdentityRecordFixture(
+  DocumentReference eventRef, {
+  required String documentId,
+  String? storedUserId,
+  String displayName = 'Участник',
+  DateTime? joinedAt,
+}) {
+  return EventParticipantsRecord.getDocumentFromData(
+    createEventParticipantsRecordData(
+      userId: storedUserId,
+      displayName: displayName,
+      role: 'participant',
+      status: eventStatusActive,
+      joinedAt: joinedAt ?? DateTime.utc(2035, 6, 14, 8),
+    ),
+    EventParticipantsRecord.createDoc(eventRef, id: documentId),
+  );
+}
+
+void _setEventProfileFallbackViewer(String userId) {
+  currentUser = _TestAuthUser(userId);
+  currentUserDocument = _userFixture(
+    uid: userId,
+    data: {
+      'display_name': 'Fallback Viewer',
+      'profileCity': _profileCityFixture(
+        countryCode: 'RU',
+        cityKey: 'moscow',
+        catalogVersion: _catalog.catalogVersion,
+      ).toMap(),
+    },
+  );
+}
+
+Widget _buildEventProfileFallbackTestApp({
+  required String eventId,
+  required EventListActiveParticipantsLoader activeParticipantsLoader,
+  required EventListPublicProfilesLoader publicProfilesLoader,
+}) {
+  return _buildTestApp(
+    home: EventListWidget(
+      cityCatalogOverride: _catalog,
+      languageCatalogOverride: _languageCatalog,
+      initialSelectedCity: _selectedCityFixture(),
+      nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+      eventPageLoader: (
+        collection,
+        recordBuilder, {
+        queryBuilder,
+        nextPageMarker,
+        required pageSize,
+        required isStream,
+      }) async {
+        return FFFirestorePage<EventsRecord>(
+          [
+            _eventsRecordFixture(
+              eventId,
+              title: 'Known participant fallback event',
+              startsAt: DateTime.utc(2035, 6, 14, 15),
+            ),
+          ],
+          null,
+          null,
+        );
+      },
+      currentUserParticipantLoader: (_, __) async => null,
+      activeParticipantsLoader: activeParticipantsLoader,
+      publicProfilesLoader: publicProfilesLoader,
+    ),
   );
 }
 
