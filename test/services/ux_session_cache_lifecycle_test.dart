@@ -15,9 +15,17 @@ void main() {
     }
 
     UxSessionCacheLifecycle.register(clearCache);
+    expect(
+      UxSessionCacheLifecycle.sessionUserIdOrFallback('fallback-user'),
+      'fallback-user',
+    );
 
     UxSessionCacheLifecycle.updateAuthenticatedUser('user-a');
     expect(clearCalls, 1);
+    expect(
+      UxSessionCacheLifecycle.sessionUserIdOrFallback('stale-user'),
+      'user-a',
+    );
 
     UxSessionCacheLifecycle.updateAuthenticatedUser('user-a');
     expect(clearCalls, 1);
@@ -30,6 +38,10 @@ void main() {
 
     UxSessionCacheLifecycle.updateAuthenticatedUser(null);
     expect(clearCalls, 4);
+    expect(
+      UxSessionCacheLifecycle.sessionUserIdOrFallback('stale-user'),
+      isEmpty,
+    );
 
     UxSessionCacheLifecycle.updateAuthenticatedUser('');
     expect(clearCalls, 5);

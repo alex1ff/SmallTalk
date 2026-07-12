@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
+import '/components/ux_refreshing_indicator_overlay.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/chat_thread/open_chat_thread.dart';
 import '/shared_pages/design/expatlio_design.dart';
@@ -14,6 +15,7 @@ import '/services/event_action_error_mapper.dart';
 import '/services/event_actions_repository.dart';
 import '/services/event_detail_repository.dart';
 import '/services/events_analytics_service.dart';
+import '/services/ux_session_cache_lifecycle.dart';
 
 const ValueKey<String> eventDetailRouteLoadingKey =
     ValueKey<String>('event_detail_route_loading');
@@ -21,6 +23,8 @@ const ValueKey<String> eventDetailRouteMissingKey =
     ValueKey<String>('event_detail_route_missing');
 const ValueKey<String> eventDetailRouteErrorKey =
     ValueKey<String>('event_detail_route_error');
+const ValueKey<String> eventDetailRouteRefreshingIndicatorKey =
+    ValueKey<String>('event_detail_route_refreshing_indicator');
 const ValueKey<String> eventDetailCancelErrorSnackBarKey =
     ValueKey<String>('event_detail_cancel_error_snack_bar');
 const ValueKey<String> eventDetailJoinErrorSnackBarKey =
@@ -50,6 +54,13 @@ typedef EventChatThreadOpener = Future<void> Function(
   required DocumentReference? conversationRef,
   ConversationsRecord? initialConversation,
 });
+typedef _EventDetailRouteDataKey = ({String eventId, String userId});
+
+_EventDetailRouteDataKey _eventDetailRouteDataKey({
+  required String eventId,
+  required String userId,
+}) =>
+    (eventId: normalizeEventDetailId(eventId), userId: userId);
 
 class EventDetailRouteWidget extends StatefulWidget {
   const EventDetailRouteWidget({
@@ -85,7 +96,8 @@ class EventDetailRouteWidget extends StatefulWidget {
 
 class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
   late Stream<EventsRecord?> _eventStream;
-  late String _eventStreamUserId;
+  late _EventDetailRouteDataKey _eventStreamDataKey;
+  EventsRecord? _eventInitialData;
   Timer? _startsAtRefreshTimer;
   String? _startsAtRefreshEventId;
   DateTime? _startsAtRefreshAt;
@@ -111,19 +123,22 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
   @override
   void initState() {
     super.initState();
-    _eventStreamUserId = _sessionCacheUserId;
-    _eventStream = _watchEvent(sessionCacheUserId: _eventStreamUserId);
+    _configureEventStream(sessionCacheUserId: _sessionCacheUserId);
   }
 
   @override
   void didUpdateWidget(covariant EventDetailRouteWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
     final sessionCacheUserId = _sessionCacheUserId;
+    final nextDataKey = _eventDetailRouteDataKey(
+      eventId: widget.eventId,
+      userId: sessionCacheUserId,
+    );
+    final dataKeyChanged = _eventStreamDataKey != nextDataKey;
     if (oldWidget.eventId != widget.eventId ||
         oldWidget.snapshotStream != widget.snapshotStream ||
-        _eventStreamUserId != sessionCacheUserId) {
-      _eventStreamUserId = sessionCacheUserId;
-      _eventStream = _watchEvent(sessionCacheUserId: sessionCacheUserId);
+        dataKeyChanged) {
+      _configureEventStream(sessionCacheUserId: sessionCacheUserId);
       _clearStartsAtRefreshTimer();
       _locallyStartedEventId = null;
       _locallyStartedAt = null;
@@ -133,7 +148,9 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       _locallyLeftEventId = null;
       _locallyLeftParticipantsCount = null;
       _currentDetailEventId = null;
-      _lastTrackedEventDetailOpenKey = null;
+      if (dataKeyChanged) {
+        _lastTrackedEventDetailOpenKey = null;
+      }
       _lastTrackedCanceledEventId = null;
       _lastTrackedJoinedEventId = null;
       _lastTrackedLeftEventId = null;
@@ -151,7 +168,22 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
     super.dispose();
   }
 
-  String get _sessionCacheUserId => currentUser?.uid ?? currentUserUid;
+  String get _sessionCacheUserId =>
+      UxSessionCacheLifecycle.sessionUserIdOrFallback(
+        currentUser?.uid ?? currentUserUid,
+      );
+
+  void _configureEventStream({required String sessionCacheUserId}) {
+    _eventStreamDataKey = _eventDetailRouteDataKey(
+      eventId: widget.eventId,
+      userId: sessionCacheUserId,
+    );
+    _eventInitialData = EventDetailRepository.cachedEventDetail(
+      eventId: _eventStreamDataKey.eventId,
+      userId: _eventStreamDataKey.userId,
+    );
+    _eventStream = _watchEvent(sessionCacheUserId: sessionCacheUserId);
+  }
 
   Stream<EventsRecord?> _watchEvent({required String sessionCacheUserId}) =>
       EventDetailRepository.watchEventDetail(
@@ -489,7 +521,9 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<EventsRecord?>(
+      key: ValueKey<_EventDetailRouteDataKey>(_eventStreamDataKey),
       stream: _eventStream,
+      initialData: _eventInitialData,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           _currentDetailEventId = null;
@@ -502,7 +536,9 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
           );
         }
 
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        final event = snapshot.data;
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            event == null) {
           _currentDetailEventId = null;
           return const _EventDetailRouteStateScaffold(
             stateKey: eventDetailRouteLoadingKey,
@@ -514,7 +550,6 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
           );
         }
 
-        final event = snapshot.data;
         if (event == null) {
           _currentDetailEventId = null;
           return const _EventDetailRouteStateScaffold(
@@ -625,7 +660,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
                   isLocallyJoined: isLocallyJoined,
                 );
 
-                return EventDetailWidget(
+                final content = EventDetailWidget(
                   eventId: eventId,
                   showReportAction: canAttemptReport,
                   onReportPressed: canAttemptReport && !_isReportingEvent
@@ -685,6 +720,24 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
                                   )
                               : null
                       : null,
+                );
+                final refreshingLabel =
+                    FFLocalizations.of(context).getVariableText(
+                  ruText: 'Обновляем событие',
+                  enText: 'Refreshing event',
+                );
+                return UxRefreshingIndicatorOverlay(
+                  key: eventDetailRouteRefreshingIndicatorKey,
+                  isRefreshing:
+                      snapshot.connectionState == ConnectionState.waiting,
+                  semanticsLabel: refreshingLabel,
+                  padding: EdgeInsets.fromLTRB(
+                    ExpatlioDesign.space8,
+                    MediaQuery.paddingOf(context).top + ExpatlioDesign.space8,
+                    ExpatlioDesign.space8,
+                    ExpatlioDesign.space8,
+                  ),
+                  child: content,
                 );
               },
             );

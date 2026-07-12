@@ -18,6 +18,13 @@ final class UxSessionCacheLifecycle {
     _clearers.remove(clearer);
   }
 
+  static String sessionUserIdOrFallback(String fallbackUserId) {
+    if (!_hasObservedAuthState) {
+      return fallbackUserId;
+    }
+    return _activeUserId ?? '';
+  }
+
   static void updateAuthenticatedUser(String? userId) {
     if (_hasObservedAuthState && _activeUserId == userId) {
       return;

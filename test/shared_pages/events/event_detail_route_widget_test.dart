@@ -9,8 +9,10 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:small_talk/auth/firebase_auth/auth_util.dart';
 import 'package:small_talk/backend/backend.dart';
+import 'package:small_talk/components/ux_refreshing_indicator_overlay.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/flutter_flow/nav/nav.dart';
+import 'package:small_talk/shared_pages/design/expatlio_design.dart';
 import 'package:small_talk/shared_pages/events/event_detail_route_widget.dart';
 import 'package:small_talk/shared_pages/events/event_detail_widget.dart';
 import 'package:small_talk/shared_pages/events/event_group_chat_widget.dart';
@@ -43,6 +45,53 @@ Widget _buildTestApp({
     home: home,
   );
 }
+
+Widget _buildDetailRouteTestApp({
+  required String eventId,
+  required EventDetailSnapshotStream snapshotStream,
+  EventsAnalyticsTracker? analyticsTracker,
+  Locale locale = const Locale('ru'),
+  EdgeInsets mediaQueryPadding = EdgeInsets.zero,
+}) {
+  Widget route = EventDetailRouteWidget(
+    eventId: eventId,
+    snapshotStream: snapshotStream,
+    participantSnapshotStream: (participantRef) =>
+        Stream<DocumentSnapshot>.value(
+      _FakeEventDocumentSnapshot(
+        reference: participantRef,
+        exists: false,
+      ),
+    ),
+    participantsStream: (_) => Stream<List<EventParticipantsRecord>>.value(
+      const <EventParticipantsRecord>[],
+    ),
+    analyticsTracker: analyticsTracker,
+  );
+  if (mediaQueryPadding != EdgeInsets.zero) {
+    route = MediaQuery(
+      data: MediaQueryData(padding: mediaQueryPadding),
+      child: route,
+    );
+  }
+  return _buildTestApp(home: route, locale: locale);
+}
+
+Future<void> _cacheEventDetailForTest({
+  required String eventId,
+  required String userId,
+  required String title,
+}) =>
+    EventDetailRepository.watchEventDetail(
+      eventId: eventId,
+      sessionCacheUserId: userId,
+      snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+        _FakeEventDocumentSnapshot(
+          reference: eventRef,
+          data: _eventData(title: title),
+        ),
+      ),
+    ).drain<void>();
 
 Widget _buildRouterTestApp(
   GoRouter router, {
@@ -199,6 +248,307 @@ void main() {
       )?.title,
       'user-b event',
     );
+  });
+
+  testWidgets('cold detail load keeps the full loading state', (tester) async {
+    final controller = StreamController<DocumentSnapshot>.broadcast(sync: true);
+
+    await tester.pumpWidget(
+      _buildDetailRouteTestApp(
+        eventId: 'event-1',
+        snapshotStream: (_) => controller.stream,
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(eventDetailRouteLoadingKey), findsOneWidget);
+    expect(
+      find.byKey(eventDetailRouteRefreshingIndicatorKey),
+      findsNothing,
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await controller.close();
+  });
+
+  testWidgets('warm detail cache replaces full loader with refresh indicator',
+      (tester) async {
+    await _cacheEventDetailForTest(
+      eventId: 'event-1',
+      userId: 'organizer-1',
+      title: 'Cached event title',
+    );
+    final controller = StreamController<DocumentSnapshot>.broadcast(sync: true);
+
+    await tester.pumpWidget(
+      _buildDetailRouteTestApp(
+        eventId: 'event-1',
+        snapshotStream: (_) => controller.stream,
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Cached event title'), findsOneWidget);
+    expect(find.byKey(eventDetailRouteLoadingKey), findsNothing);
+    var refreshOverlay = tester.widget<UxRefreshingIndicatorOverlay>(
+      find.byKey(eventDetailRouteRefreshingIndicatorKey),
+    );
+    expect(refreshOverlay.isRefreshing, isTrue);
+    expect(find.bySemanticsLabel('Обновляем событие'), findsOneWidget);
+
+    controller.add(
+      _FakeEventDocumentSnapshot(
+        reference: EventsRecord.collection.doc('event-1'),
+        data: _eventData(title: 'Fresh event title'),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Fresh event title'), findsOneWidget);
+    expect(find.text('Cached event title'), findsNothing);
+    refreshOverlay = tester.widget<UxRefreshingIndicatorOverlay>(
+      find.byKey(eventDetailRouteRefreshingIndicatorKey),
+    );
+    expect(refreshOverlay.isRefreshing, isFalse);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await controller.close();
+  });
+
+  testWidgets('refresh indicator respects safe area and English semantics',
+      (tester) async {
+    await _cacheEventDetailForTest(
+      eventId: 'event-1',
+      userId: 'organizer-1',
+      title: 'Cached event title',
+    );
+    final controller = StreamController<DocumentSnapshot>.broadcast(sync: true);
+    const systemTopInset = 44.0;
+
+    await tester.pumpWidget(
+      _buildDetailRouteTestApp(
+        eventId: 'event-1',
+        snapshotStream: (_) => controller.stream,
+        locale: const Locale('en'),
+        mediaQueryPadding: const EdgeInsets.only(top: systemTopInset),
+      ),
+    );
+    await tester.pump();
+
+    final refreshOverlay = tester.widget<UxRefreshingIndicatorOverlay>(
+      find.byKey(eventDetailRouteRefreshingIndicatorKey),
+    );
+    final resolvedPadding = refreshOverlay.padding.resolve(TextDirection.ltr);
+    expect(
+      resolvedPadding.top,
+      systemTopInset + ExpatlioDesign.space8,
+    );
+    expect(find.bySemanticsLabel('Refreshing event'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await controller.close();
+  });
+
+  testWidgets('same-key stream restart keeps the shown detail', (tester) async {
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
+    await tester.pumpWidget(
+      _buildDetailRouteTestApp(
+        eventId: 'event-1',
+        analyticsTracker: analyticsTracker,
+        snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+          _FakeEventDocumentSnapshot(
+            reference: eventRef,
+            data: _eventData(title: 'Shown event title'),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      analyticsTracker.payloadsFor('event_detail_opened'),
+      hasLength(1),
+    );
+    final refreshController =
+        StreamController<DocumentSnapshot>.broadcast(sync: true);
+
+    await tester.pumpWidget(
+      _buildDetailRouteTestApp(
+        eventId: 'event-1',
+        analyticsTracker: analyticsTracker,
+        snapshotStream: (_) => refreshController.stream,
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Shown event title'), findsOneWidget);
+    expect(find.byKey(eventDetailRouteLoadingKey), findsNothing);
+    expect(
+      tester
+          .widget<UxRefreshingIndicatorOverlay>(
+            find.byKey(eventDetailRouteRefreshingIndicatorKey),
+          )
+          .isRefreshing,
+      isTrue,
+    );
+
+    refreshController.add(
+      _FakeEventDocumentSnapshot(
+        reference: EventsRecord.collection.doc('event-1'),
+        data: _eventData(title: 'Refreshed event title'),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Refreshed event title'), findsOneWidget);
+    expect(find.text('Shown event title'), findsNothing);
+    expect(
+      analyticsTracker.payloadsFor('event_detail_opened'),
+      hasLength(1),
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await refreshController.close();
+  });
+
+  testWidgets('event key change never shows the previous event',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildDetailRouteTestApp(
+        eventId: 'event-1',
+        snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+          _FakeEventDocumentSnapshot(
+            reference: eventRef,
+            data: _eventData(title: 'Event one title'),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final nextEventController =
+        StreamController<DocumentSnapshot>.broadcast(sync: true);
+
+    await tester.pumpWidget(
+      _buildDetailRouteTestApp(
+        eventId: 'event-2',
+        snapshotStream: (_) => nextEventController.stream,
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Event one title'), findsNothing);
+    expect(find.byKey(eventDetailRouteLoadingKey), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await nextEventController.close();
+  });
+
+  testWidgets('user key change never shows the previous user detail',
+      (tester) async {
+    currentUser = _TestAuthUser('user-a');
+    UxSessionCacheLifecycle.updateAuthenticatedUser('user-a');
+    await tester.pumpWidget(
+      _buildDetailRouteTestApp(
+        eventId: 'event-1',
+        snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+          _FakeEventDocumentSnapshot(
+            reference: eventRef,
+            data: _eventData(title: 'User A detail'),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final userBController =
+        StreamController<DocumentSnapshot>.broadcast(sync: true);
+
+    currentUser = _TestAuthUser('user-b');
+    UxSessionCacheLifecycle.updateAuthenticatedUser('user-b');
+    await tester.pumpWidget(
+      _buildDetailRouteTestApp(
+        eventId: 'event-1',
+        snapshotStream: (_) => userBController.stream,
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('User A detail'), findsNothing);
+    expect(find.byKey(eventDetailRouteLoadingKey), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await userBController.close();
+  });
+
+  testWidgets('auth lifecycle wins when auth sources temporarily disagree',
+      (tester) async {
+    currentUser = _TestAuthUser('stale-user');
+    UxSessionCacheLifecycle.updateAuthenticatedUser('active-user');
+    await _cacheEventDetailForTest(
+      eventId: 'event-1',
+      userId: 'stale-user',
+      title: 'Stale user detail',
+    );
+    final controller = StreamController<DocumentSnapshot>.broadcast(sync: true);
+
+    await tester.pumpWidget(
+      _buildDetailRouteTestApp(
+        eventId: 'event-1',
+        snapshotStream: (_) => controller.stream,
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Stale user detail'), findsNothing);
+    expect(find.byKey(eventDetailRouteLoadingKey), findsOneWidget);
+
+    controller.add(
+      _FakeEventDocumentSnapshot(
+        reference: EventsRecord.collection.doc('event-1'),
+        data: _eventData(title: 'Active user detail'),
+      ),
+    );
+    await tester.pump();
+    expect(
+      EventDetailRepository.cachedEventDetail(
+        eventId: 'event-1',
+        userId: 'active-user',
+      )?.title,
+      'Active user detail',
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await controller.close();
+  });
+
+  testWidgets('confirmed missing replaces cached detail', (tester) async {
+    await _cacheEventDetailForTest(
+      eventId: 'event-1',
+      userId: 'organizer-1',
+      title: 'Cached before missing',
+    );
+    final controller = StreamController<DocumentSnapshot>.broadcast(sync: true);
+
+    await tester.pumpWidget(
+      _buildDetailRouteTestApp(
+        eventId: 'event-1',
+        snapshotStream: (_) => controller.stream,
+      ),
+    );
+    await tester.pump();
+    expect(find.text('Cached before missing'), findsOneWidget);
+
+    controller.add(
+      _FakeEventDocumentSnapshot(
+        reference: EventsRecord.collection.doc('event-1'),
+        exists: false,
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Cached before missing'), findsNothing);
+    expect(find.byKey(eventDetailRouteMissingKey), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await controller.close();
   });
 
   testWidgets('organizer confirmation cancels event through callable once',
@@ -3095,13 +3445,14 @@ FirebaseFunctionsException _leaveDomainError(
 class _FakeEventDocumentSnapshot implements DocumentSnapshot<Object?> {
   _FakeEventDocumentSnapshot({
     required this.reference,
+    this.exists = true,
     Map<String, dynamic>? data,
   }) : _data = data;
 
   final Map<String, dynamic>? _data;
 
   @override
-  final bool exists = true;
+  final bool exists;
 
   @override
   final DocumentReference<Object?> reference;

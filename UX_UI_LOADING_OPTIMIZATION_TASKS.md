@@ -367,7 +367,7 @@ Retry behavior:
 ## UX Phase 5: Event Detail
 
 - [x] Кэшировать последний detail snapshot события на время сессии.
-- [ ] При обновлении event snapshot не заменять весь экран loader-ом.
+- [x] При обновлении event snapshot не заменять весь экран loader-ом.
 - [ ] Join/leave на странице события делать optimistic.
 - [ ] Сразу менять CTA, счетчик мест и список участников после join/leave.
 - [ ] Подтягивать public profiles участников параллельно с participant snapshot.
