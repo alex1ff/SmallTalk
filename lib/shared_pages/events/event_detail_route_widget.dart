@@ -15,6 +15,7 @@ import '/services/event_action_error_mapper.dart';
 import '/services/event_actions_repository.dart';
 import '/services/event_detail_repository.dart';
 import '/services/events_analytics_service.dart';
+import '/services/user_public_profile_preload_repository.dart';
 import '/services/ux_session_cache_lifecycle.dart';
 
 const ValueKey<String> eventDetailRouteLoadingKey =
@@ -54,6 +55,10 @@ typedef EventChatThreadOpener = Future<void> Function(
   required DocumentReference? conversationRef,
   ConversationsRecord? initialConversation,
 });
+typedef EventDetailPublicProfilesLoader = Future<UserPublicProfilePreloadResult>
+    Function(
+  Iterable<String> userIds,
+);
 typedef _EventDetailRouteDataKey = ({String eventId, String userId});
 typedef _EventDetailPendingMembershipIntent = ({
   _EventDetailRouteDataKey dataKey,
@@ -68,6 +73,9 @@ _EventDetailRouteDataKey _eventDetailRouteDataKey({
 }) =>
     (eventId: normalizeEventDetailId(eventId), userId: userId);
 
+final _eventDetailPublicProfilePreloadRepository =
+    UserPublicProfilePreloadRepository();
+
 class EventDetailRouteWidget extends StatefulWidget {
   const EventDetailRouteWidget({
     super.key,
@@ -79,6 +87,7 @@ class EventDetailRouteWidget extends StatefulWidget {
     this.reportEventInvoker,
     this.participantSnapshotStream,
     this.participantsStream,
+    this.publicProfilesLoader,
     this.openOrganizerChatInvoker,
     this.chatThreadOpener,
     this.analyticsTracker,
@@ -92,6 +101,7 @@ class EventDetailRouteWidget extends StatefulWidget {
   final EventCallableInvoker? reportEventInvoker;
   final EventParticipantSnapshotStream? participantSnapshotStream;
   final EventActiveParticipantsStream? participantsStream;
+  final EventDetailPublicProfilesLoader? publicProfilesLoader;
   final EventCallableInvoker? openOrganizerChatInvoker;
   final EventChatThreadOpener? chatThreadOpener;
   final EventsAnalyticsTracker? analyticsTracker;
@@ -748,6 +758,8 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
                 participantsStream: widget.participantsStream,
               ),
               builder: (context, participantsSnapshot) {
+                final participantRecords = participantsSnapshot.data ??
+                    const <EventParticipantsRecord>[];
                 final confirmedDesiredJoined = isLocallyLeft
                     ? false
                     : isLocallyJoined || isActiveParticipant
@@ -763,12 +775,11 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
                     currentUserDocumentForPreview != null &&
                         currentUserDocumentForPreview.reference.id ==
                             participantUserId;
-                final participantViewModels =
+                final baseParticipantViewModels =
                     _eventDetailParticipantViewModelsWithMembershipOverride(
                   participants: _eventDetailParticipantViewModelsForRoute(
                     event: event,
-                    participants: participantsSnapshot.data ??
-                        const <EventParticipantsRecord>[],
+                    participants: participantRecords,
                   ),
                   currentUserId: participantUserId,
                   desiredJoined: desiredJoined,
@@ -787,7 +798,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
                 final displayedParticipantsCount =
                     _eventDetailDisplayedParticipantsCount(
                   participantsCount: participantsCount,
-                  participantTileCount: participantViewModels.length,
+                  participantTileCount: baseParticipantViewModels.length,
                 );
                 final pendingDesiredJoined =
                     activePendingMembershipIntent?.desiredJoined;
@@ -814,90 +825,126 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
                 final canLeave = !isOrganizerActiveParticipant &&
                     joinCtaState == EventDetailJoinCtaState.joined;
 
-                final content = EventDetailWidget(
+                Widget buildContent(
+                  List<EventDetailParticipantViewModel>
+                      resolvedParticipantViewModels,
+                ) {
+                  final content = EventDetailWidget(
+                    eventId: eventId,
+                    showReportAction: canAttemptReport,
+                    onReportPressed: canAttemptReport && !_isReportingEvent
+                        ? () => _showReportEventDialog(event)
+                        : null,
+                    levelMin: event.levelMin,
+                    levelMax: event.levelMax,
+                    languageCode: event.languageCode,
+                    languageNameEn: event.languageNameEn,
+                    languageNameRu: event.languageNameRu,
+                    title: event.title,
+                    description: event.description,
+                    organizerDisplayName: event.organizerDisplayName,
+                    organizerPhotoUrl: event.organizerPhotoUrl,
+                    onOrganizerMessagePressed: canMessageOrganizer
+                        ? () => _handleOrganizerMessage(event)
+                        : null,
+                    showOrganizerControls: canManage && isActive && !isCanceled,
+                    onOrganizerEditPressed: _isCanceling
+                        ? null
+                        : () {
+                            context.pushNamed(
+                              EventEditWidget.routeName,
+                              pathParameters: <String, String>{
+                                'eventId': eventId,
+                              },
+                            );
+                          },
+                    onOrganizerCancelPressed: _isCanceling || isCanceled
+                        ? null
+                        : () => _handleOrganizerCancel(event),
+                    startsAt: event.startsAt,
+                    timeZoneId: event.timeZoneId,
+                    locationName: event.locationName,
+                    participants: resolvedParticipantViewModels,
+                    participantsCount: participantsCount,
+                    capacity: event.hasCapacity() ? event.capacity : null,
+                    joinCtaState: joinCtaState,
+                    onChatPressed: canOpenChat
+                        ? () {
+                            _trackEventChatOpened(event);
+                            context.pushNamed(
+                              EventGroupChatWidget.routeName,
+                              pathParameters: <String, String>{
+                                'eventId': eventId,
+                              },
+                            );
+                          }
+                        : null,
+                    onPrimaryCtaPressed: isActive && !_isJoining && !_isLeaving
+                        ? canJoin
+                            ? () => _handleJoin(
+                                  event,
+                                  displayedParticipantsCount:
+                                      displayedParticipantsCount,
+                                )
+                            : canLeave
+                                ? () => _handleLeave(
+                                      event,
+                                      isActiveParticipant: isActiveParticipant,
+                                      displayedParticipantsCount:
+                                          displayedParticipantsCount,
+                                    )
+                                : null
+                        : null,
+                  );
+                  final refreshingLabel =
+                      FFLocalizations.of(context).getVariableText(
+                    ruText: 'Обновляем событие',
+                    enText: 'Refreshing event',
+                  );
+                  return UxRefreshingIndicatorOverlay(
+                    key: eventDetailRouteRefreshingIndicatorKey,
+                    isRefreshing:
+                        snapshot.connectionState == ConnectionState.waiting,
+                    semanticsLabel: refreshingLabel,
+                    padding: EdgeInsets.fromLTRB(
+                      ExpatlioDesign.space8,
+                      MediaQuery.paddingOf(context).top + ExpatlioDesign.space8,
+                      ExpatlioDesign.space8,
+                      ExpatlioDesign.space8,
+                    ),
+                    child: content,
+                  );
+                }
+
+                final injectedPublicProfilesLoader =
+                    widget.publicProfilesLoader;
+                final hasResolvedParticipantsSnapshot =
+                    participantsSnapshot.data != null ||
+                        (!participantsSnapshot.hasError &&
+                            participantsSnapshot.connectionState !=
+                                ConnectionState.waiting);
+                final publicProfileUserIds =
+                    _eventDetailPublicProfileUserIdsForRoute(
                   eventId: eventId,
-                  showReportAction: canAttemptReport,
-                  onReportPressed: canAttemptReport && !_isReportingEvent
-                      ? () => _showReportEventDialog(event)
-                      : null,
-                  levelMin: event.levelMin,
-                  levelMax: event.levelMax,
-                  languageCode: event.languageCode,
-                  languageNameEn: event.languageNameEn,
-                  languageNameRu: event.languageNameRu,
-                  title: event.title,
-                  description: event.description,
-                  organizerDisplayName: event.organizerDisplayName,
-                  organizerPhotoUrl: event.organizerPhotoUrl,
-                  onOrganizerMessagePressed: canMessageOrganizer
-                      ? () => _handleOrganizerMessage(event)
-                      : null,
-                  showOrganizerControls: canManage && isActive && !isCanceled,
-                  onOrganizerEditPressed: _isCanceling
-                      ? null
-                      : () {
-                          context.pushNamed(
-                            EventEditWidget.routeName,
-                            pathParameters: <String, String>{
-                              'eventId': eventId,
-                            },
-                          );
-                        },
-                  onOrganizerCancelPressed: _isCanceling || isCanceled
-                      ? null
-                      : () => _handleOrganizerCancel(event),
-                  startsAt: event.startsAt,
-                  timeZoneId: event.timeZoneId,
-                  locationName: event.locationName,
-                  participants: participantViewModels,
-                  participantsCount: participantsCount,
-                  capacity: event.hasCapacity() ? event.capacity : null,
-                  joinCtaState: joinCtaState,
-                  onChatPressed: canOpenChat
-                      ? () {
-                          _trackEventChatOpened(event);
-                          context.pushNamed(
-                            EventGroupChatWidget.routeName,
-                            pathParameters: <String, String>{
-                              'eventId': eventId,
-                            },
-                          );
-                        }
-                      : null,
-                  onPrimaryCtaPressed: isActive && !_isJoining && !_isLeaving
-                      ? canJoin
-                          ? () => _handleJoin(
-                                event,
-                                displayedParticipantsCount:
-                                    displayedParticipantsCount,
-                              )
-                          : canLeave
-                              ? () => _handleLeave(
-                                    event,
-                                    isActiveParticipant: isActiveParticipant,
-                                    displayedParticipantsCount:
-                                        displayedParticipantsCount,
-                                  )
-                              : null
-                      : null,
+                  organizerId: event.organizerId,
+                  currentUserId: participantUserId,
+                  includeCurrentUser: desiredJoined == true,
+                  participantRecords: participantRecords,
+                  visibleParticipants: baseParticipantViewModels,
                 );
-                final refreshingLabel =
-                    FFLocalizations.of(context).getVariableText(
-                  ruText: 'Обновляем событие',
-                  enText: 'Refreshing event',
-                );
-                return UxRefreshingIndicatorOverlay(
-                  key: eventDetailRouteRefreshingIndicatorKey,
-                  isRefreshing:
-                      snapshot.connectionState == ConnectionState.waiting,
-                  semanticsLabel: refreshingLabel,
-                  padding: EdgeInsets.fromLTRB(
-                    ExpatlioDesign.space8,
-                    MediaQuery.paddingOf(context).top + ExpatlioDesign.space8,
-                    ExpatlioDesign.space8,
-                    ExpatlioDesign.space8,
-                  ),
-                  child: content,
+                return _EventDetailPublicProfileEnricher(
+                  dataKey: _eventStreamDataKey,
+                  participants: baseParticipantViewModels,
+                  userIds: publicProfileUserIds,
+                  enabled: hasResolvedParticipantsSnapshot &&
+                      participantUserId.isNotEmpty &&
+                      (injectedPublicProfilesLoader != null ||
+                          widget.participantsStream == null),
+                  loader: injectedPublicProfilesLoader ??
+                      _eventDetailPublicProfilePreloadRepository.preload,
+                  loaderIdentity: injectedPublicProfilesLoader ??
+                      _eventDetailPublicProfilePreloadRepository,
+                  builder: buildContent,
                 );
               },
             );
@@ -1130,6 +1177,222 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       ),
     );
   }
+}
+
+typedef _EventDetailPublicProfileBuilder = Widget Function(
+  List<EventDetailParticipantViewModel> participants,
+);
+
+class _EventDetailPublicProfileEnricher extends StatefulWidget {
+  const _EventDetailPublicProfileEnricher({
+    required this.dataKey,
+    required this.participants,
+    required this.userIds,
+    required this.enabled,
+    required this.loader,
+    required this.loaderIdentity,
+    required this.builder,
+  });
+
+  final _EventDetailRouteDataKey dataKey;
+  final List<EventDetailParticipantViewModel> participants;
+  final List<String> userIds;
+  final bool enabled;
+  final EventDetailPublicProfilesLoader loader;
+  final Object loaderIdentity;
+  final _EventDetailPublicProfileBuilder builder;
+
+  @override
+  State<_EventDetailPublicProfileEnricher> createState() =>
+      _EventDetailPublicProfileEnricherState();
+}
+
+class _EventDetailPublicProfileEnricherState
+    extends State<_EventDetailPublicProfileEnricher> {
+  _EventDetailPublicProfileRequestKey? _requestKey;
+  Future<Map<String, UserPublicProfilesRecord>>? _profilesFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _configureRequest();
+  }
+
+  @override
+  void didUpdateWidget(covariant _EventDetailPublicProfileEnricher oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _configureRequest();
+  }
+
+  void _configureRequest() {
+    final userIds = widget.enabled ? widget.userIds : const <String>[];
+    final nextRequestKey = userIds.isEmpty
+        ? null
+        : _EventDetailPublicProfileRequestKey(
+            dataKey: widget.dataKey,
+            userIds: userIds,
+            loaderIdentity: widget.loaderIdentity,
+          );
+    if (nextRequestKey == _requestKey) {
+      return;
+    }
+    _requestKey = nextRequestKey;
+    _profilesFuture = nextRequestKey == null
+        ? null
+        : _loadEventDetailPublicProfiles(
+            userIds: nextRequestKey.userIds,
+            loader: widget.loader,
+          );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final profilesFuture = _profilesFuture;
+    if (profilesFuture == null) {
+      return widget.builder(widget.participants);
+    }
+
+    return FutureBuilder<Map<String, UserPublicProfilesRecord>>(
+      key: ValueKey<_EventDetailPublicProfileRequestKey?>(_requestKey),
+      future: profilesFuture,
+      builder: (context, snapshot) {
+        final profilesByUserId = snapshot.data;
+        final participants = profilesByUserId == null
+            ? widget.participants
+            : _eventDetailParticipantViewModelsWithPublicProfiles(
+                participants: widget.participants,
+                profilesByUserId: profilesByUserId,
+              );
+        return widget.builder(participants);
+      },
+    );
+  }
+}
+
+class _EventDetailPublicProfileRequestKey {
+  _EventDetailPublicProfileRequestKey({
+    required this.dataKey,
+    required List<String> userIds,
+    required this.loaderIdentity,
+  }) : userIds = List<String>.unmodifiable(userIds);
+
+  final _EventDetailRouteDataKey dataKey;
+  final List<String> userIds;
+  final Object loaderIdentity;
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) {
+      return true;
+    }
+    if (other is! _EventDetailPublicProfileRequestKey ||
+        other.dataKey != dataKey ||
+        !identical(other.loaderIdentity, loaderIdentity) ||
+        other.userIds.length != userIds.length) {
+      return false;
+    }
+    for (var index = 0; index < userIds.length; index += 1) {
+      if (other.userIds[index] != userIds[index]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        dataKey,
+        identityHashCode(loaderIdentity),
+        Object.hashAll(userIds),
+      );
+}
+
+List<String> _eventDetailPublicProfileUserIdsForRoute({
+  required String eventId,
+  required String organizerId,
+  required String currentUserId,
+  required bool includeCurrentUser,
+  required List<EventParticipantsRecord> participantRecords,
+  required List<EventDetailParticipantViewModel> visibleParticipants,
+}) {
+  final eligibleUserIds = <String>{};
+  final eventPath = EventsRecord.collection.doc(eventId).path;
+  for (final participant in participantRecords) {
+    final userId = participant.userId.trim();
+    if (participant.userId == userId &&
+        isValidUserPublicProfileUserId(userId) &&
+        participant.reference.id == userId &&
+        participant.reference.parent.parent?.path == eventPath) {
+      eligibleUserIds.add(userId);
+    }
+  }
+
+  final normalizedOrganizerId = organizerId.trim();
+  if (isValidUserPublicProfileUserId(normalizedOrganizerId)) {
+    eligibleUserIds.add(normalizedOrganizerId);
+  }
+  final normalizedCurrentUserId = currentUserId.trim();
+  if (includeCurrentUser &&
+      isValidUserPublicProfileUserId(normalizedCurrentUserId)) {
+    eligibleUserIds.add(normalizedCurrentUserId);
+  }
+
+  final visibleUserIds = visibleParticipants
+      .map((participant) => participant.userId.trim())
+      .toSet();
+  return eligibleUserIds.where(visibleUserIds.contains).toList(growable: false)
+    ..sort();
+}
+
+Future<Map<String, UserPublicProfilesRecord>> _loadEventDetailPublicProfiles({
+  required List<String> userIds,
+  required EventDetailPublicProfilesLoader loader,
+}) async {
+  final requestedUserIds = Set<String>.unmodifiable(userIds);
+  try {
+    final result = await Future<UserPublicProfilePreloadResult>.sync(
+      () => loader(requestedUserIds),
+    );
+    final profilesByUserId = <String, UserPublicProfilesRecord>{};
+    for (final entry in result.profilesByUserId.entries) {
+      final userId = entry.key;
+      if (requestedUserIds.contains(userId) &&
+          isValidUserPublicProfileRecordForUserId(entry.value, userId)) {
+        profilesByUserId[userId] = entry.value;
+      }
+    }
+    return Map<String, UserPublicProfilesRecord>.unmodifiable(
+      profilesByUserId,
+    );
+  } catch (_) {
+    return const <String, UserPublicProfilesRecord>{};
+  }
+}
+
+List<EventDetailParticipantViewModel>
+    _eventDetailParticipantViewModelsWithPublicProfiles({
+  required List<EventDetailParticipantViewModel> participants,
+  required Map<String, UserPublicProfilesRecord> profilesByUserId,
+}) {
+  return participants.map((participant) {
+    final userId = participant.userId.trim();
+    final profile = profilesByUserId[userId];
+    if (profile == null ||
+        !isValidUserPublicProfileRecordForUserId(profile, userId)) {
+      return participant;
+    }
+
+    final publicDisplayName =
+        _eventDetailVisibleParticipantDisplayName(profile.displayName);
+    final publicPhotoUrl = profile.photoUrl.trim();
+    return EventDetailParticipantViewModel(
+      userId: participant.userId,
+      displayName: publicDisplayName.isEmpty
+          ? participant.displayName
+          : publicDisplayName,
+      photoUrl: publicPhotoUrl.isEmpty ? participant.photoUrl : publicPhotoUrl,
+    );
+  }).toList(growable: false);
 }
 
 class _EventReportDialogResult {

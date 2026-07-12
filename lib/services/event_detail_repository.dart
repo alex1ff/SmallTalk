@@ -337,6 +337,7 @@ Stream<List<EventParticipantsRecord>> _watchActiveParticipantRecords(
 ) =>
     queryEventParticipantsRecord(
       parent: eventRef,
+      limit: 50,
       queryBuilder: (participantsQuery) => participantsQuery
           .where('status', isEqualTo: 'active')
           .orderBy('joinedAt'),

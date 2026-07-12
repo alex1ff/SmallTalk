@@ -370,7 +370,7 @@ Retry behavior:
 - [x] При обновлении event snapshot не заменять весь экран loader-ом.
 - [x] Join/leave на странице события делать optimistic.
 - [x] Сразу менять CTA, счетчик мест и список участников после join/leave.
-- [ ] Подтягивать public profiles участников параллельно с participant snapshot.
+- [x] Подтягивать public profiles участников параллельно с participant snapshot.
 - [ ] Не показывать blank-заглушку участника: если профиль уже был известен, сохранять его; если известен только ref, показывать стабильный fallback avatar/initial slot.
 - [ ] Зафиксировать размеры блоков организатора, даты/времени/места и участников.
 - [ ] Sticky bottom action bar не должен прыгать при обновлении данных.
