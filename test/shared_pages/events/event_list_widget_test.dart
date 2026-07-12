@@ -6621,6 +6621,10 @@ void main() {
         beforeStack,
       );
       expect(_participantAvatarSlotRects(tester, count: 6), beforeSlots);
+      expect(
+        find.byKey(eventListParticipantActionErrorSnackBarKey),
+        findsNothing,
+      );
       expect(tester.takeException(), isNull);
     },
   );
@@ -6774,6 +6778,10 @@ void main() {
         beforeStack,
       );
       expect(_participantAvatarSlotRects(tester, count: 6), beforeSlots);
+      expect(
+        find.byKey(eventListParticipantActionErrorSnackBarKey),
+        findsNothing,
+      );
       expect(tester.takeException(), isNull);
     },
   );
@@ -6842,6 +6850,10 @@ void main() {
           .flagsCollection
           .isEnabled,
       isFalse,
+    );
+    expect(
+      find.byKey(eventListParticipantActionErrorSnackBarKey),
+      findsNothing,
     );
     expect(tester.takeException(), isNull);
   });
@@ -6937,6 +6949,158 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('remounted list receives one pending action failure',
+      (tester) async {
+    const userId = 'optimistic-error-remount-user';
+    const eventId = 'optimistic-error-remount-event';
+    currentUser = _TestAuthUser(userId);
+    currentUserDocument = _userFixture(
+      uid: userId,
+      data: const {'display_name': 'Error Remount User'},
+    );
+    final joinCompleter = Completer<Object?>();
+    addTearDown(() {
+      if (!joinCompleter.isCompleted) {
+        joinCompleter.complete(
+          _eventListJoinResponse(
+            eventId: eventId,
+            participantsCount: 2,
+          ),
+        );
+      }
+    });
+    var calls = 0;
+    final rawCards = <EventListCardViewModel>[
+      _eventCardFixture(
+        eventId: eventId,
+        participantsCount: 1,
+        capacity: 6,
+        reserveParticipantPreviewSpace: true,
+      ),
+    ];
+
+    Widget app(String stateKey) => _buildTestApp(
+          home: EventListWidget(
+            key: ValueKey<String>(stateKey),
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: _selectedCityFixture(),
+            nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+            eventCardsOverride: rawCards,
+            joinEventInvoker: (_, __) {
+              calls += 1;
+              return joinCompleter.future;
+            },
+          ),
+        );
+
+    await tester.pumpWidget(app('error-remount-first'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventListCardPrimaryCtaKey));
+    await tester.pump();
+    expect(find.text('Присоединяемся...'), findsOneWidget);
+    final firstState = tester.state<State<EventListWidget>>(
+      find.byType(EventListWidget),
+    );
+
+    await tester.pumpWidget(app('error-remount-second'));
+    await tester.pump();
+    final secondState = tester.state<State<EventListWidget>>(
+      find.byType(EventListWidget),
+    );
+    expect(identical(firstState, secondState), isFalse);
+    expect(firstState.mounted, isFalse);
+    expect(find.text('Присоединяемся...'), findsOneWidget);
+    expect(TickerMode.of(tester.element(find.byType(EventListWidget))), isTrue);
+
+    joinCompleter.completeError(StateError('join failed'));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    expect(calls, 1);
+    expect(find.text('Присоединиться'), findsOneWidget);
+    expect(find.text('1/6 мест'), findsOneWidget);
+    expect(
+      find.byKey(eventListParticipantActionErrorSnackBarKey),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('current list consumes one failure with a sibling route mounted',
+      (tester) async {
+    const userId = 'optimistic-current-list-error-user';
+    const eventId = 'optimistic-current-list-error-event';
+    currentUser = _TestAuthUser(userId);
+    currentUserDocument = _userFixture(
+      uid: userId,
+      data: const {'display_name': 'Current List Error User'},
+    );
+    final joinCompleter = Completer<Object?>();
+    addTearDown(() {
+      if (!joinCompleter.isCompleted) {
+        joinCompleter.complete(
+          _eventListJoinResponse(
+            eventId: eventId,
+            participantsCount: 2,
+          ),
+        );
+      }
+    });
+    final rawCards = <EventListCardViewModel>[
+      _eventCardFixture(
+        eventId: eventId,
+        participantsCount: 1,
+        capacity: 6,
+        reserveParticipantPreviewSpace: true,
+      ),
+    ];
+
+    EventListWidget list({EventCallableInvoker? joinInvoker}) =>
+        EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: _selectedCityFixture(),
+          nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+          eventCardsOverride: rawCards,
+          joinEventInvoker: joinInvoker,
+        );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: list(joinInvoker: (_, __) => joinCompleter.future),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventListCardPrimaryCtaKey));
+    await tester.pump();
+    expect(find.text('Присоединяемся...'), findsOneWidget);
+
+    final navigator =
+        tester.state<NavigatorState>(find.byType(Navigator).first);
+    unawaited(
+      navigator.push<void>(
+        MaterialPageRoute<void>(builder: (_) => list()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Присоединяемся...'), findsOneWidget);
+
+    joinCompleter.completeError(StateError('join failed'));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Присоединиться'), findsOneWidget);
+    expect(find.text('1/6 мест'), findsOneWidget);
+    expect(
+      find.byKey(eventListParticipantActionErrorSnackBarKey),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'only a post-action raw source can bypass the optimistic overlay',
@@ -7439,7 +7603,6 @@ void main() {
           );
         }
       });
-
       await tester.pumpWidget(
         _buildTestApp(
           home: EventListWidget(
@@ -7496,7 +7659,14 @@ void main() {
             .isEnabled,
         isTrue,
       );
-      expect(find.byType(SnackBar), findsNothing);
+      expect(
+        find.byKey(eventListParticipantActionErrorSnackBarKey),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Не удалось выполнить действие. Попробуйте снова.'),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
     },
   );
@@ -7578,6 +7748,466 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('late action failure is not shown to another account',
+      (tester) async {
+    const firstUserId = 'optimistic-error-account-a';
+    const secondUserId = 'optimistic-error-account-b';
+    const eventId = 'optimistic-error-account-event';
+    final joinCompleter = Completer<Object?>();
+    addTearDown(() {
+      if (!joinCompleter.isCompleted) {
+        joinCompleter.complete(
+          _eventListJoinResponse(
+            eventId: eventId,
+            participantsCount: 2,
+          ),
+        );
+      }
+    });
+    var calls = 0;
+
+    Widget app() => _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: _selectedCityFixture(),
+            nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+            eventCardsOverride: [
+              _eventCardFixture(
+                eventId: eventId,
+                participantsCount: 1,
+                capacity: 6,
+                reserveParticipantPreviewSpace: true,
+              ),
+            ],
+            joinEventInvoker: (_, __) {
+              calls += 1;
+              return joinCompleter.future;
+            },
+          ),
+        );
+
+    currentUser = _TestAuthUser(firstUserId);
+    currentUserDocument = _userFixture(
+      uid: firstUserId,
+      data: const {'display_name': 'Error Account Alpha'},
+    );
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventListCardPrimaryCtaKey));
+    await tester.pump();
+    expect(find.text('Присоединяемся...'), findsOneWidget);
+
+    currentUser = _TestAuthUser(secondUserId);
+    currentUserDocument = _userFixture(
+      uid: secondUserId,
+      data: const {'display_name': 'Error Account Beta'},
+    );
+    await tester.pumpWidget(app());
+    await tester.pump();
+    expect(find.text('Присоединиться'), findsOneWidget);
+
+    joinCompleter.completeError(StateError('join failed'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(calls, 1);
+    expect(find.text('Присоединиться'), findsOneWidget);
+    expect(
+      find.byKey(eventListParticipantActionErrorSnackBarKey),
+      findsNothing,
+    );
+
+    currentUser = _TestAuthUser(firstUserId);
+    currentUserDocument = _userFixture(
+      uid: firstUserId,
+      data: const {'display_name': 'Error Account Alpha'},
+    );
+    await tester.pumpWidget(app());
+    await tester.pump();
+
+    expect(find.text('Присоединиться'), findsOneWidget);
+    expect(
+      find.byKey(eventListParticipantActionErrorSnackBarKey),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('action failure is not shown on another route or after return',
+      (tester) async {
+    const userId = 'optimistic-hidden-route-user';
+    const eventId = 'optimistic-hidden-route-event';
+    currentUser = _TestAuthUser(userId);
+    currentUserDocument = _userFixture(
+      uid: userId,
+      data: const {'display_name': 'Hidden Route User'},
+    );
+    final joinCompleter = Completer<Object?>();
+    addTearDown(() {
+      if (!joinCompleter.isCompleted) {
+        joinCompleter.complete(
+          _eventListJoinResponse(
+            eventId: eventId,
+            participantsCount: 2,
+          ),
+        );
+      }
+    });
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: _selectedCityFixture(),
+          nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+          eventCardsOverride: [
+            _eventCardFixture(
+              eventId: eventId,
+              participantsCount: 1,
+              capacity: 6,
+              reserveParticipantPreviewSpace: true,
+            ),
+          ],
+          joinEventInvoker: (_, __) => joinCompleter.future,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventListCardPrimaryCtaKey));
+    await tester.pump();
+    expect(find.text('Присоединяемся...'), findsOneWidget);
+
+    final navigator =
+        tester.state<NavigatorState>(find.byType(Navigator).first);
+    unawaited(
+      navigator.push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => const Scaffold(body: Text('Another route')),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    joinCompleter.completeError(StateError('join failed'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Another route'), findsOneWidget);
+    expect(
+      find.byKey(eventListParticipantActionErrorSnackBarKey),
+      findsNothing,
+    );
+
+    navigator.pop();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Присоединиться'), findsOneWidget);
+    expect(find.text('1/6 мест'), findsOneWidget);
+    expect(
+      find.byKey(eventListParticipantActionErrorSnackBarKey),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('visible action failure clears on route change before retry',
+      (tester) async {
+    const userId = 'optimistic-visible-route-error-user';
+    const eventId = 'optimistic-visible-route-error-event';
+    currentUser = _TestAuthUser(userId);
+    currentUserDocument = _userFixture(
+      uid: userId,
+      data: const {'display_name': 'Visible Route Error User'},
+    );
+    var calls = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: _selectedCityFixture(),
+          nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+          eventCardsOverride: [
+            _eventCardFixture(
+              eventId: eventId,
+              participantsCount: 1,
+              capacity: 6,
+              reserveParticipantPreviewSpace: true,
+            ),
+          ],
+          joinEventInvoker: (_, __) async {
+            calls += 1;
+            if (calls == 1) {
+              throw StateError('join failed');
+            }
+            return _eventListJoinResponse(
+              eventId: eventId,
+              participantsCount: 2,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventListCardPrimaryCtaKey));
+    await tester.pump();
+    await tester.pump();
+    expect(
+      find.byKey(eventListParticipantActionErrorSnackBarKey),
+      findsOneWidget,
+    );
+
+    final navigator =
+        tester.state<NavigatorState>(find.byType(Navigator).first);
+    unawaited(
+      navigator.push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => const Scaffold(body: Text('Retry route')),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Retry route'), findsOneWidget);
+    expect(
+      find.byKey(eventListParticipantActionErrorSnackBarKey),
+      findsNothing,
+    );
+
+    navigator.pop();
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(eventListParticipantActionErrorSnackBarKey),
+      findsNothing,
+    );
+
+    await tester.tap(find.byKey(eventListCardPrimaryCtaKey));
+    await tester.pump();
+    await tester.pump();
+    expect(calls, 2);
+    expect(find.text('Покинуть'), findsOneWidget);
+    expect(find.text('2/6 мест'), findsOneWidget);
+    expect(
+      find.byKey(eventListParticipantActionErrorSnackBarKey),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('visible action failure clears on list remount before retry',
+      (tester) async {
+    const userId = 'optimistic-visible-remount-error-user';
+    const eventId = 'optimistic-visible-remount-error-event';
+    currentUser = _TestAuthUser(userId);
+    currentUserDocument = _userFixture(
+      uid: userId,
+      data: const {'display_name': 'Visible Remount Error User'},
+    );
+    var calls = 0;
+    final rawCards = <EventListCardViewModel>[
+      _eventCardFixture(
+        eventId: eventId,
+        participantsCount: 1,
+        capacity: 6,
+        reserveParticipantPreviewSpace: true,
+      ),
+    ];
+
+    Widget app(String stateKey) => _buildTestApp(
+          home: EventListWidget(
+            key: ValueKey<String>(stateKey),
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: _selectedCityFixture(),
+            nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+            eventCardsOverride: rawCards,
+            joinEventInvoker: (_, __) async {
+              calls += 1;
+              if (calls == 1) {
+                throw StateError('join failed');
+              }
+              return _eventListJoinResponse(
+                eventId: eventId,
+                participantsCount: 2,
+              );
+            },
+          ),
+        );
+
+    await tester.pumpWidget(app('visible-remount-error-first'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventListCardPrimaryCtaKey));
+    await tester.pump();
+    await tester.pump();
+    expect(
+      find.byKey(eventListParticipantActionErrorSnackBarKey),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(app('visible-remount-error-second'));
+    await tester.pump();
+    expect(
+      find.byKey(eventListParticipantActionErrorSnackBarKey),
+      findsNothing,
+    );
+
+    await tester.tap(find.byKey(eventListCardPrimaryCtaKey));
+    await tester.pump();
+    await tester.pump();
+    expect(calls, 2);
+    expect(find.text('Покинуть'), findsOneWidget);
+    expect(find.text('2/6 мест'), findsOneWidget);
+    expect(
+      find.byKey(eventListParticipantActionErrorSnackBarKey),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('visible action failure clears across account changes',
+      (tester) async {
+    const firstUserId = 'optimistic-visible-error-account-a';
+    const secondUserId = 'optimistic-visible-error-account-b';
+    const eventId = 'optimistic-visible-error-account-event';
+    var calls = 0;
+    final rawCards = <EventListCardViewModel>[
+      _eventCardFixture(
+        eventId: eventId,
+        participantsCount: 1,
+        capacity: 6,
+        reserveParticipantPreviewSpace: true,
+      ),
+    ];
+
+    Widget app() => _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: _selectedCityFixture(),
+            nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+            eventCardsOverride: rawCards,
+            joinEventInvoker: (_, __) async {
+              calls += 1;
+              if (calls == 1) {
+                throw StateError('join failed');
+              }
+              return _eventListJoinResponse(
+                eventId: eventId,
+                participantsCount: 2,
+              );
+            },
+          ),
+        );
+
+    currentUser = _TestAuthUser(firstUserId);
+    currentUserDocument = _userFixture(
+      uid: firstUserId,
+      data: const {'display_name': 'Visible Error Account Alpha'},
+    );
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventListCardPrimaryCtaKey));
+    await tester.pump();
+    await tester.pump();
+    expect(
+      find.byKey(eventListParticipantActionErrorSnackBarKey),
+      findsOneWidget,
+    );
+
+    currentUser = _TestAuthUser(secondUserId);
+    currentUserDocument = _userFixture(
+      uid: secondUserId,
+      data: const {'display_name': 'Visible Error Account Beta'},
+    );
+    await tester.pumpWidget(app());
+    await tester.pump();
+    await tester.pump();
+    expect(
+      find.byKey(eventListParticipantActionErrorSnackBarKey),
+      findsNothing,
+    );
+
+    currentUser = _TestAuthUser(firstUserId);
+    currentUserDocument = _userFixture(
+      uid: firstUserId,
+      data: const {'display_name': 'Visible Error Account Alpha'},
+    );
+    await tester.pumpWidget(app());
+    await tester.pump();
+    expect(
+      find.byKey(eventListParticipantActionErrorSnackBarKey),
+      findsNothing,
+    );
+
+    await tester.tap(find.byKey(eventListCardPrimaryCtaKey));
+    await tester.pump();
+    await tester.pump();
+    expect(calls, 2);
+    expect(find.text('Покинуть'), findsOneWidget);
+    expect(find.text('2/6 мест'), findsOneWidget);
+    expect(
+      find.byKey(eventListParticipantActionErrorSnackBarKey),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('stale cleared action failure does not show feedback',
+      (tester) async {
+    const userId = 'optimistic-stale-error-user';
+    const eventId = 'event-1';
+    currentUser = _TestAuthUser(userId);
+    currentUserDocument = _userFixture(
+      uid: userId,
+      data: const {'display_name': 'Stale Error User'},
+    );
+    final joinCompleter = Completer<Object?>();
+    addTearDown(() {
+      if (!joinCompleter.isCompleted) {
+        joinCompleter.complete(
+          _eventListJoinResponse(
+            eventId: eventId,
+            participantsCount: 2,
+          ),
+        );
+      }
+    });
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: _selectedCityFixture(),
+          eventCardsOverride: [_eventCardFixture()],
+          joinEventInvoker: (_, __) => joinCompleter.future,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventListCardPrimaryCtaKey));
+    await tester.pump();
+    expect(find.text('Присоединяемся...'), findsOneWidget);
+
+    debugClearEventListCache();
+    await tester.pump();
+    expect(find.text('Присоединиться'), findsOneWidget);
+
+    joinCompleter.completeError(StateError('join failed'));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Присоединиться'), findsOneWidget);
+    expect(
+      find.byKey(eventListParticipantActionErrorSnackBarKey),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'same event cards share one optimistic action without changing others',
@@ -8134,7 +8764,7 @@ void main() {
   );
 
   testWidgets(
-    'failed optimistic action silently restores the prior card state',
+    'failed optimistic action restores the card and shows an error',
     (tester) async {
       const userId = 'optimistic-rollback-user';
       const eventId = 'optimistic-rollback-event';
@@ -8154,6 +8784,7 @@ void main() {
           );
         }
       });
+      var calls = 0;
 
       await tester.pumpWidget(
         _buildTestApp(
@@ -8170,7 +8801,10 @@ void main() {
                 reserveParticipantPreviewSpace: true,
               ),
             ],
-            joinEventInvoker: (_, __) => joinCompleter.future,
+            joinEventInvoker: (_, __) {
+              calls += 1;
+              return joinCompleter.future;
+            },
           ),
         ),
       );
@@ -8188,11 +8822,16 @@ void main() {
         findsOneWidget,
       );
 
+      await tester.tap(find.byKey(eventListCardPrimaryCtaKey));
+      await tester.pump();
+      expect(calls, 1);
+
       joinCompleter.completeError(StateError('join failed'));
       await tester.pump();
       await tester.pump();
 
       expect(find.text('Присоединиться'), findsOneWidget);
+      expect(calls, 1);
       expect(find.text('1/6 мест'), findsOneWidget);
       expect(
         find.descendant(
@@ -8201,12 +8840,267 @@ void main() {
         ),
         findsNothing,
       );
-      expect(find.byType(SnackBar), findsNothing);
+      expect(
+        find.byKey(eventListParticipantActionErrorSnackBarKey),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Не удалось выполнить действие. Попробуйте снова.'),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
     },
   );
 
-  testWidgets('mismatched action result silently restores the prior card',
+  testWidgets('participant action error uses the safe localized mapper',
+      (tester) async {
+    const userId = 'optimistic-mapped-error-user';
+    currentUser = _TestAuthUser(userId);
+    currentUserDocument = _userFixture(
+      uid: userId,
+      data: const {'display_name': 'Mapped Error User'},
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: _selectedCityFixture(),
+          eventCardsOverride: [
+            _eventCardFixture(
+              participantsCount: 1,
+              capacity: 6,
+              reserveParticipantPreviewSpace: true,
+            ),
+          ],
+          joinEventInvoker: (_, __) async {
+            throw FirebaseException(
+              plugin: 'cloud_functions',
+              code: 'unavailable',
+              message: 'Raw backend details must stay hidden',
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventListCardPrimaryCtaKey));
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      find.byKey(eventListParticipantActionErrorSnackBarKey),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Проверьте подключение и попробуйте снова.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Raw backend'), findsNothing);
+    expect(find.text('Присоединиться'), findsOneWidget);
+    expect(
+      tester
+          .getSemantics(
+            find.byKey(eventListParticipantActionErrorSnackBarKey),
+          )
+          .flagsCollection
+          .isLiveRegion,
+      isTrue,
+    );
+
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(eventListParticipantActionErrorSnackBarKey),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('participant action error preserves an unrelated snackbar',
+      (tester) async {
+    const userId = 'optimistic-unrelated-snackbar-user';
+    currentUser = _TestAuthUser(userId);
+    currentUserDocument = _userFixture(
+      uid: userId,
+      data: const {'display_name': 'Unrelated Snackbar User'},
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: _selectedCityFixture(),
+          eventCardsOverride: [
+            _eventCardFixture(
+              participantsCount: 1,
+              capacity: 6,
+              reserveParticipantPreviewSpace: true,
+            ),
+          ],
+          joinEventInvoker: (_, __) async {
+            throw StateError('join failed');
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventListCardChatCtaKey));
+    await tester.pump();
+    expect(
+      find.byKey(eventListChatParticipantRequiredSnackBarKey),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(eventListCardPrimaryCtaKey));
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      find.byKey(eventListParticipantActionErrorSnackBarKey),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(eventListChatParticipantRequiredSnackBarKey),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('repeated errors replace the snackbar and retry clears it',
+      (tester) async {
+    const userId = 'optimistic-repeated-error-user';
+    currentUser = _TestAuthUser(userId);
+    currentUserDocument = _userFixture(
+      uid: userId,
+      data: const {'display_name': 'Repeated Error User'},
+    );
+    var calls = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: _selectedCityFixture(),
+          eventCardsOverride: [
+            _eventCardFixture(
+              participantsCount: 1,
+              capacity: 6,
+              reserveParticipantPreviewSpace: true,
+            ),
+          ],
+          joinEventInvoker: (_, __) async {
+            calls += 1;
+            if (calls == 1) {
+              throw FirebaseException(
+                plugin: 'cloud_functions',
+                code: 'unavailable',
+                message: 'first failure',
+              );
+            }
+            if (calls == 3) {
+              return _eventListJoinResponse(
+                eventId: 'event-1',
+                participantsCount: 2,
+              );
+            }
+            throw StateError('join failed $calls');
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    for (var attempt = 1; attempt <= 2; attempt += 1) {
+      await tester.tap(find.byKey(eventListCardPrimaryCtaKey));
+      await tester.pump();
+      await tester.pump();
+      expect(calls, attempt);
+      expect(
+        find.byKey(eventListParticipantActionErrorSnackBarKey),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          attempt == 1
+              ? 'Проверьте подключение и попробуйте снова.'
+              : 'Не удалось выполнить действие. Попробуйте снова.',
+        ),
+        findsOneWidget,
+      );
+    }
+
+    expect(
+      find.text('Проверьте подключение и попробуйте снова.'),
+      findsNothing,
+    );
+
+    await tester.tap(find.byKey(eventListCardPrimaryCtaKey));
+    await tester.pump();
+    await tester.pump();
+
+    expect(calls, 3);
+    expect(find.text('Покинуть'), findsOneWidget);
+    expect(find.text('2/6 мест'), findsOneWidget);
+    expect(
+      find.byKey(eventListParticipantActionErrorSnackBarKey),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('malformed action response rolls back with a generic error',
+      (tester) async {
+    const userId = 'optimistic-malformed-response-user';
+    currentUser = _TestAuthUser(userId);
+    currentUserDocument = _userFixture(
+      uid: userId,
+      data: const {'display_name': 'Malformed Response User'},
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: _selectedCityFixture(),
+          eventCardsOverride: [
+            _eventCardFixture(
+              participantsCount: 1,
+              capacity: 6,
+              reserveParticipantPreviewSpace: true,
+            ),
+          ],
+          joinEventInvoker: (_, __) async => <String, dynamic>{
+            'unexpected': 'Raw malformed response',
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventListCardPrimaryCtaKey));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Присоединиться'), findsOneWidget);
+    expect(find.text('1/6 мест'), findsOneWidget);
+    expect(
+      find.byKey(eventListParticipantActionErrorSnackBarKey),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Не удалось выполнить действие. Попробуйте снова.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Raw malformed'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('mismatched action result restores the card and shows an error',
       (tester) async {
     const userId = 'optimistic-mismatch-user';
     currentUser = _TestAuthUser(userId);
@@ -8249,7 +9143,14 @@ void main() {
     expect(find.text('Присоединиться'), findsOneWidget);
     expect(find.text('0/6 мест'), findsOneWidget);
     expect(find.text('Покинуть'), findsNothing);
-    expect(find.byType(SnackBar), findsNothing);
+    expect(
+      find.byKey(eventListParticipantActionErrorSnackBarKey),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Не удалось выполнить действие. Попробуйте снова.'),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -8337,7 +9238,16 @@ void main() {
         findsOneWidget,
         reason: scenario.name,
       );
-      expect(find.byType(SnackBar), findsNothing, reason: scenario.name);
+      expect(
+        find.byKey(eventListParticipantActionErrorSnackBarKey),
+        findsOneWidget,
+        reason: scenario.name,
+      );
+      expect(
+        find.text('Не удалось выполнить действие. Попробуйте снова.'),
+        findsOneWidget,
+        reason: scenario.name,
+      );
       expect(tester.takeException(), isNull, reason: scenario.name);
     }
   });

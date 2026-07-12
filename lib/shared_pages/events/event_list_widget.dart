@@ -19,6 +19,7 @@ import '/shared_pages/events/event_create_widget.dart';
 import '/shared_pages/events/event_detail_widget.dart';
 import '/shared_pages/events/event_group_chat_widget.dart';
 import '/shared_pages/design/expatlio_design.dart';
+import '/services/event_action_error_mapper.dart';
 import '/services/event_actions_repository.dart';
 import '/services/event_city_catalog.dart';
 import '/services/event_city_chip_source.dart';
@@ -69,6 +70,8 @@ const ValueKey<String> eventListCardChatCtaKey =
     ValueKey<String>('event_list_card_chat_cta');
 const ValueKey<String> eventListChatParticipantRequiredSnackBarKey =
     ValueKey<String>('event_list_chat_participant_required_snack_bar');
+const ValueKey<String> eventListParticipantActionErrorSnackBarKey =
+    ValueKey<String>('event_list_participant_action_error_snack_bar');
 const ValueKey<String> eventListCardOrganizerAvatarKey =
     ValueKey<String>('event_list_card_organizer_avatar');
 const ValueKey<String> eventListCardOrganizerNameKey =
@@ -475,6 +478,10 @@ class _EventListWidgetState extends State<EventListWidget> {
   bool _eventListScrollResetPending = false;
   int _eventListLoadGeneration = 0;
   late int _eventCardsOverrideSourceRevision;
+  _EventListParticipantActionFailure? _participantActionError;
+  Timer? _participantActionErrorTimer;
+  int _participantActionErrorGeneration = 0;
+  bool _participantActionErrorDismissalScheduled = false;
 
   @override
   void initState() {
@@ -495,6 +502,7 @@ class _EventListWidgetState extends State<EventListWidget> {
     _eventListParticipantActionCoordinator.removeListener(
       _handleEventListParticipantActionChange,
     );
+    _dismissEventListParticipantActionFailure(notify: false);
     _scrollController
       ..removeListener(_handleEventListScroll)
       ..dispose();
@@ -502,15 +510,107 @@ class _EventListWidgetState extends State<EventListWidget> {
   }
 
   void _handleEventListParticipantActionChange() {
-    if (mounted) {
-      setState(() {});
+    if (!mounted) {
+      return;
     }
+    final viewerUserId = currentUserUid;
+    final failure = viewerUserId.isNotEmpty &&
+            _canPresentEventListParticipantActionFeedback()
+        ? _eventListParticipantActionCoordinator.takeFailureForUser(
+            viewerUserId,
+          )
+        : null;
+    setState(() {});
+    if (failure != null) {
+      _scheduleEventListParticipantActionFailure(failure);
+    }
+  }
+
+  bool _eventListParticipantActionRouteIsCurrent() {
+    final route = ModalRoute.of(context);
+    return route == null || route.isCurrent;
+  }
+
+  bool _canPresentEventListParticipantActionFeedback() {
+    return _eventListParticipantActionRouteIsCurrent() &&
+        TickerMode.of(context);
+  }
+
+  void _scheduleEventListParticipantActionFailure(
+    _EventListParticipantActionFailure failure,
+  ) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          currentUserUid != failure.userId ||
+          !_canPresentEventListParticipantActionFeedback()) {
+        return;
+      }
+      _showEventListParticipantActionFailure(failure);
+    });
+  }
+
+  void _showEventListParticipantActionFailure(
+    _EventListParticipantActionFailure failure,
+  ) {
+    if (!mounted) {
+      return;
+    }
+    _participantActionErrorTimer?.cancel();
+    final generation = ++_participantActionErrorGeneration;
+    setState(() {
+      _participantActionError = failure;
+    });
+    _participantActionErrorTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted || generation != _participantActionErrorGeneration) {
+        return;
+      }
+      _participantActionErrorTimer = null;
+      setState(() {
+        _participantActionError = null;
+      });
+    });
+  }
+
+  void _dismissEventListParticipantActionFailure({bool notify = true}) {
+    _participantActionErrorTimer?.cancel();
+    _participantActionErrorTimer = null;
+    _participantActionErrorGeneration += 1;
+    if (_participantActionError == null) {
+      return;
+    }
+    if (notify && mounted) {
+      setState(() {
+        _participantActionError = null;
+      });
+    } else {
+      _participantActionError = null;
+    }
+  }
+
+  void _scheduleParticipantActionFailureDismissalIfNeeded() {
+    if (_participantActionError == null ||
+        _participantActionErrorDismissalScheduled) {
+      return;
+    }
+    _participantActionErrorDismissalScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _participantActionErrorDismissalScheduled = false;
+      final failure = _participantActionError;
+      if (!mounted || failure == null) {
+        return;
+      }
+      if (failure.userId != currentUserUid ||
+          !_canPresentEventListParticipantActionFeedback()) {
+        _dismissEventListParticipantActionFailure();
+      }
+    });
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _cityCatalogFuture ??= _loadCityCatalog();
+    _scheduleParticipantActionFailureDismissalIfNeeded();
   }
 
   @override
@@ -566,6 +666,15 @@ class _EventListWidgetState extends State<EventListWidget> {
             final canShowEventCards = selectedState?.canLoadEvents ?? false;
             final hasEventListError = widget.eventListErrorMessage != null;
             final viewerUserId = currentUserUid;
+            final participantActionFailure = _participantActionError;
+            final showParticipantActionFailure =
+                participantActionFailure != null &&
+                    participantActionFailure.userId == viewerUserId &&
+                    _canPresentEventListParticipantActionFeedback();
+            if (participantActionFailure != null &&
+                !showParticipantActionFailure) {
+              _scheduleParticipantActionFailureDismissalIfNeeded();
+            }
             final renderNowUtc = _currentEventListNowUtc();
             List<EventListCardViewModel> visibleCards(
               List<EventListCardViewModel> cards,
@@ -611,6 +720,16 @@ class _EventListWidgetState extends State<EventListWidget> {
 
             return Scaffold(
               backgroundColor: ExpatlioDesign.background,
+              floatingActionButton: showParticipantActionFailure
+                  ? _EventListParticipantActionErrorNotice(
+                      message: eventActionFailureMessage(
+                        context,
+                        participantActionFailure.error,
+                      ),
+                    )
+                  : null,
+              floatingActionButtonLocation:
+                  FloatingActionButtonLocation.centerFloat,
               body: SafeArea(
                 bottom: false,
                 child: Padding(
@@ -1976,6 +2095,7 @@ class _EventListWidgetState extends State<EventListWidget> {
     if (request == null) {
       return;
     }
+    _dismissEventListParticipantActionFailure();
 
     _invalidateEventListParticipantActionCache(
       userId: userId,
@@ -2000,15 +2120,21 @@ class _EventListWidgetState extends State<EventListWidget> {
       if (result.eventId != eventId ||
           result.participantsCount < minimumParticipantsCount ||
           exceedsCapacity) {
-        _eventListParticipantActionCoordinator.rollback(request);
+        _eventListParticipantActionCoordinator.rollback(
+          request,
+          failure: const _EventListParticipantActionInvalidResult(),
+        );
         return;
       }
       _eventListParticipantActionCoordinator.complete(
         request,
         participantsCount: result.participantsCount,
       );
-    } catch (_) {
-      _eventListParticipantActionCoordinator.rollback(request);
+    } catch (error) {
+      _eventListParticipantActionCoordinator.rollback(
+        request,
+        failure: error,
+      );
     } finally {
       _invalidateEventListParticipantActionCache(
         userId: userId,
@@ -2083,6 +2209,56 @@ class _EventListWidgetState extends State<EventListWidget> {
     context.pushNamed(
       EventGroupChatWidget.routeName,
       pathParameters: <String, String>{'eventId': eventId},
+    );
+  }
+}
+
+class _EventListParticipantActionErrorNotice extends StatelessWidget {
+  const _EventListParticipantActionErrorNotice({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final snackBarTheme = theme.snackBarTheme;
+    final contentStyle = snackBarTheme.contentTextStyle ??
+        theme.textTheme.bodyMedium?.copyWith(
+          color: theme.colorScheme.onInverseSurface,
+        );
+
+    return SizedBox(
+      width: math.min(
+        600,
+        math.max(0, MediaQuery.widthOf(context) - ExpatlioDesign.space32),
+      ),
+      child: Semantics(
+        container: true,
+        liveRegion: true,
+        child: Material(
+          key: eventListParticipantActionErrorSnackBarKey,
+          color:
+              snackBarTheme.backgroundColor ?? theme.colorScheme.inverseSurface,
+          elevation: snackBarTheme.elevation ?? 6,
+          shape: snackBarTheme.shape ??
+              const RoundedRectangleBorder(
+                borderRadius: BorderRadius.all(Radius.circular(4)),
+              ),
+          clipBehavior: Clip.antiAlias,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: ExpatlioDesign.space16,
+              vertical: ExpatlioDesign.space12,
+            ),
+            child: Text(
+              message,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: contentStyle,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -2288,6 +2464,22 @@ class _EventListParticipantActionRequest {
   final _EventListParticipantActionOverlay? previousOverlay;
 }
 
+class _EventListParticipantActionFailure {
+  const _EventListParticipantActionFailure({
+    required this.userId,
+    required this.eventId,
+    required this.error,
+  });
+
+  final String userId;
+  final String eventId;
+  final Object error;
+}
+
+class _EventListParticipantActionInvalidResult implements Exception {
+  const _EventListParticipantActionInvalidResult();
+}
+
 class _EventListParticipantActionCoordinator extends ChangeNotifier {
   static const int _maxRetainedOverlays = 64;
 
@@ -2297,6 +2489,7 @@ class _EventListParticipantActionCoordinator extends ChangeNotifier {
           _EventListParticipantActionOverlay>();
   final Expando<int> _overrideSourceRevisions =
       Expando<int>('eventListParticipantActionSourceRevision');
+  _EventListParticipantActionFailure? _failure;
   int _generation = 0;
   int _confirmedRevision = 0;
 
@@ -2321,6 +2514,15 @@ class _EventListParticipantActionCoordinator extends ChangeNotifier {
   }) {
     return _overlays[
         _EventListParticipantActionKey(userId: userId, eventId: eventId)];
+  }
+
+  _EventListParticipantActionFailure? takeFailureForUser(String userId) {
+    final failure = _failure;
+    if (failure == null || failure.userId != userId) {
+      return null;
+    }
+    _failure = null;
+    return failure;
   }
 
   _EventListParticipantActionRequest? begin({
@@ -2382,10 +2584,13 @@ class _EventListParticipantActionCoordinator extends ChangeNotifier {
     notifyListeners();
   }
 
-  void rollback(_EventListParticipantActionRequest request) {
+  bool rollback(
+    _EventListParticipantActionRequest request, {
+    Object? failure,
+  }) {
     final current = _overlays[request.key];
     if (current == null || current.generation != request.generation) {
-      return;
+      return false;
     }
     final previousOverlay = request.previousOverlay;
     if (previousOverlay == null) {
@@ -2395,7 +2600,21 @@ class _EventListParticipantActionCoordinator extends ChangeNotifier {
       _overlays[request.key] = previousOverlay;
     }
     _trimRetainedOverlays();
-    notifyListeners();
+    if (failure == null) {
+      notifyListeners();
+    } else {
+      _failure = _EventListParticipantActionFailure(
+        userId: request.key.userId,
+        eventId: request.key.eventId,
+        error: failure,
+      );
+      try {
+        notifyListeners();
+      } finally {
+        _failure = null;
+      }
+    }
+    return true;
   }
 
   void _trimRetainedOverlays() {
@@ -2433,10 +2652,12 @@ class _EventListParticipantActionCoordinator extends ChangeNotifier {
   }
 
   void clear() {
-    if (_overlays.isEmpty) {
+    final hadState = _overlays.isNotEmpty || _failure != null;
+    if (!hadState) {
       return;
     }
     _overlays.clear();
+    _failure = null;
     notifyListeners();
   }
 }

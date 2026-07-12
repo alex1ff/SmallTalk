@@ -362,7 +362,7 @@ Retry behavior:
 - [x] Подтягивать public profiles участников заранее для видимых карточек.
 - [x] Не показывать blank-заглушки участников: для известных participant refs использовать стабильный fallback avatar/initial slot до загрузки профиля.
 - [x] Join/leave на карточке делать optimistic: кнопка, счетчик мест и участники меняются сразу.
-- [ ] При ошибке join/leave откатывать optimistic-состояние и показывать короткую ошибку.
+- [x] При ошибке join/leave откатывать optimistic-состояние и показывать короткую ошибку.
 
 ## UX Phase 5: Event Detail
 
