@@ -19,6 +19,7 @@ import '/shared_pages/events/event_create_widget.dart';
 import '/shared_pages/events/event_detail_widget.dart';
 import '/shared_pages/events/event_group_chat_widget.dart';
 import '/shared_pages/design/expatlio_design.dart';
+import '/services/event_actions_repository.dart';
 import '/services/event_city_catalog.dart';
 import '/services/event_city_chip_source.dart';
 import '/services/event_city_resolution.dart';
@@ -155,6 +156,7 @@ const double _eventListActionTextHeight = 1.0;
 const Color _eventListBorderColor = Color(0xFFEBEBEB);
 const Color _eventListChipBackground = ExpatlioDesign.card;
 const Color _eventListSoftPrimaryBackground = Color(0xFFF0E6FF);
+const Color _eventListDestructiveCtaBackground = Color(0xFFB42318);
 final RegExp _eventListInvisibleAvatarCharacters = RegExp(
   r'[\u0000-\u001F\u007F-\u009F\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180B-\u180F\u200B-\u200F\u202A-\u202E\u2060-\u206F\u3164\uFE00-\uFE0F\uFEFF\uFFA0]',
 );
@@ -171,10 +173,13 @@ final _eventListCardsCache = _EventListCardsMemoryCache(
 );
 final _eventListPublicProfilePreloadRepository =
     UserPublicProfilePreloadRepository();
+final _eventListParticipantActionCoordinator =
+    _EventListParticipantActionCoordinator();
 
 void debugClearEventListCache() {
   _eventListCardsCache.clear();
   _eventListPublicProfilePreloadRepository.clear();
+  _eventListParticipantActionCoordinator.clear();
 }
 
 class EventListParticipantViewModel {
@@ -191,7 +196,10 @@ class EventListParticipantViewModel {
 
 enum EventListJoinCtaState {
   join,
+  joining,
   joined,
+  leaving,
+  joinedLocked,
   full,
   canceled,
   past,
@@ -232,6 +240,7 @@ class EventListCardViewModel {
     this.chatCtaState = EventListChatCtaState.participantOnly,
     this.membershipState = EventListMembershipState.resolved,
     this.reserveParticipantPreviewSpace = false,
+    this.participantActionSourceRevision = 0,
   });
 
   final String organizerDisplayName;
@@ -246,6 +255,7 @@ class EventListCardViewModel {
   final EventListChatCtaState chatCtaState;
   final EventListMembershipState membershipState;
   final bool reserveParticipantPreviewSpace;
+  final int participantActionSourceRevision;
   final String languageCode;
   final String? languageNameEn;
   final String? languageNameRu;
@@ -291,6 +301,100 @@ class EventListCardViewModel {
       chatCtaState: chatCtaState,
       membershipState: membershipState,
       reserveParticipantPreviewSpace: reserveParticipantPreviewSpace,
+      participantActionSourceRevision: participantActionSourceRevision,
+      languageCode: languageCode,
+      languageNameEn: languageNameEn,
+      languageNameRu: languageNameRu,
+      title: title,
+      description: description,
+      levelMin: levelMin,
+      levelMax: levelMax,
+      startsAt: startsAt,
+      timeZoneId: timeZoneId,
+      locationName: locationName,
+    );
+  }
+
+  EventListCardViewModel copyWithParticipantAction({
+    required List<EventListParticipantViewModel> updatedParticipants,
+    required int updatedParticipantsCount,
+    required EventListJoinCtaState updatedJoinCtaState,
+    required EventListChatCtaState updatedChatCtaState,
+  }) {
+    return EventListCardViewModel(
+      eventId: eventId,
+      countryCode: countryCode,
+      cityKey: cityKey,
+      organizerDisplayName: organizerDisplayName,
+      organizerPhotoUrl: organizerPhotoUrl,
+      participants: List.unmodifiable(updatedParticipants),
+      participantsCount: updatedParticipantsCount,
+      capacity: capacity,
+      joinCtaState: updatedJoinCtaState,
+      chatCtaState: updatedChatCtaState,
+      membershipState: EventListMembershipState.resolved,
+      reserveParticipantPreviewSpace: reserveParticipantPreviewSpace,
+      participantActionSourceRevision: participantActionSourceRevision,
+      languageCode: languageCode,
+      languageNameEn: languageNameEn,
+      languageNameRu: languageNameRu,
+      title: title,
+      description: description,
+      levelMin: levelMin,
+      levelMax: levelMax,
+      startsAt: startsAt,
+      timeZoneId: timeZoneId,
+      locationName: locationName,
+    );
+  }
+
+  EventListCardViewModel copyWithJoinCtaState(
+    EventListJoinCtaState updatedJoinCtaState,
+  ) {
+    return EventListCardViewModel(
+      eventId: eventId,
+      countryCode: countryCode,
+      cityKey: cityKey,
+      organizerDisplayName: organizerDisplayName,
+      organizerPhotoUrl: organizerPhotoUrl,
+      participants: participants,
+      participantsCount: participantsCount,
+      capacity: capacity,
+      joinCtaState: updatedJoinCtaState,
+      chatCtaState: chatCtaState,
+      membershipState: membershipState,
+      reserveParticipantPreviewSpace: reserveParticipantPreviewSpace,
+      participantActionSourceRevision: participantActionSourceRevision,
+      languageCode: languageCode,
+      languageNameEn: languageNameEn,
+      languageNameRu: languageNameRu,
+      title: title,
+      description: description,
+      levelMin: levelMin,
+      levelMax: levelMax,
+      startsAt: startsAt,
+      timeZoneId: timeZoneId,
+      locationName: locationName,
+    );
+  }
+
+  EventListCardViewModel copyWithParticipantActionSourceRevision(
+    int updatedParticipantActionSourceRevision,
+  ) {
+    return EventListCardViewModel(
+      eventId: eventId,
+      countryCode: countryCode,
+      cityKey: cityKey,
+      organizerDisplayName: organizerDisplayName,
+      organizerPhotoUrl: organizerPhotoUrl,
+      participants: participants,
+      participantsCount: participantsCount,
+      capacity: capacity,
+      joinCtaState: joinCtaState,
+      chatCtaState: chatCtaState,
+      membershipState: membershipState,
+      reserveParticipantPreviewSpace: reserveParticipantPreviewSpace,
+      participantActionSourceRevision: updatedParticipantActionSourceRevision,
       languageCode: languageCode,
       languageNameEn: languageNameEn,
       languageNameRu: languageNameRu,
@@ -322,6 +426,8 @@ class EventListWidget extends StatefulWidget {
     this.activeParticipantsLoader,
     this.publicProfilesLoader,
     this.nowUtcProvider,
+    this.joinEventInvoker,
+    this.leaveEventInvoker,
   });
 
   static String routeName = 'events';
@@ -341,6 +447,8 @@ class EventListWidget extends StatefulWidget {
   final EventListActiveParticipantsLoader? activeParticipantsLoader;
   final EventListPublicProfilesLoader? publicProfilesLoader;
   final EventListNowProvider? nowUtcProvider;
+  final EventCallableInvoker? joinEventInvoker;
+  final EventCallableInvoker? leaveEventInvoker;
 
   @override
   State<EventListWidget> createState() => _EventListWidgetState();
@@ -366,20 +474,37 @@ class _EventListWidgetState extends State<EventListWidget> {
   double _eventListProfileScrollOriginPixels = 0;
   bool _eventListScrollResetPending = false;
   int _eventListLoadGeneration = 0;
+  late int _eventCardsOverrideSourceRevision;
 
   @override
   void initState() {
     super.initState();
     _selectedCity = widget.initialSelectedCity;
+    _eventCardsOverrideSourceRevision =
+        _eventListParticipantActionCoordinator.sourceRevisionForOverride(
+      widget.eventCardsOverride,
+    );
     _scrollController.addListener(_handleEventListScroll);
+    _eventListParticipantActionCoordinator.addListener(
+      _handleEventListParticipantActionChange,
+    );
   }
 
   @override
   void dispose() {
+    _eventListParticipantActionCoordinator.removeListener(
+      _handleEventListParticipantActionChange,
+    );
     _scrollController
       ..removeListener(_handleEventListScroll)
       ..dispose();
     super.dispose();
+  }
+
+  void _handleEventListParticipantActionChange() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
@@ -391,6 +516,12 @@ class _EventListWidgetState extends State<EventListWidget> {
   @override
   void didUpdateWidget(covariant EventListWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.eventCardsOverride, widget.eventCardsOverride)) {
+      _eventCardsOverrideSourceRevision =
+          _eventListParticipantActionCoordinator.sourceRevisionForOverride(
+        widget.eventCardsOverride,
+      );
+    }
     if (oldWidget.initialSelectedCity != widget.initialSelectedCity) {
       _selectedCity = widget.initialSelectedCity;
     }
@@ -399,7 +530,7 @@ class _EventListWidgetState extends State<EventListWidget> {
       _cityChipsFuture = null;
       _cityChipsCatalog = null;
     }
-    if (oldWidget.eventCardsOverride != widget.eventCardsOverride ||
+    if (!identical(oldWidget.eventCardsOverride, widget.eventCardsOverride) ||
         oldWidget.eventPageLoader != widget.eventPageLoader ||
         oldWidget.currentUserParticipantLoader !=
             widget.currentUserParticipantLoader ||
@@ -434,8 +565,32 @@ class _EventListWidgetState extends State<EventListWidget> {
             );
             final canShowEventCards = selectedState?.canLoadEvents ?? false;
             final hasEventListError = widget.eventListErrorMessage != null;
-            final eventCards =
-                widget.eventCardsOverride ?? const <EventListCardViewModel>[];
+            final viewerUserId = currentUserUid;
+            final renderNowUtc = _currentEventListNowUtc();
+            List<EventListCardViewModel> visibleCards(
+              List<EventListCardViewModel> cards,
+            ) =>
+                _eventListCardsWithParticipantActionOverlays(
+                  cards,
+                  currentUserId: viewerUserId,
+                  nowUtc: renderNowUtc,
+                );
+            final eventCardsOverride = widget.eventCardsOverride;
+            final eventCards = visibleCards(
+              eventCardsOverride == null
+                  ? const <EventListCardViewModel>[]
+                  : _eventListCardsWithParticipantActionSourceRevision(
+                      eventCardsOverride,
+                      _eventCardsOverrideSourceRevision,
+                    ),
+            );
+            final ValueChanged<EventListCardViewModel>? onPrimaryPressed =
+                viewerUserId.isEmpty
+                    ? null
+                    : (event) => _handleEventListParticipantAction(
+                          event,
+                          expectedUserId: viewerUserId,
+                        );
             final hasVisibleEventCards = eventCards.isNotEmpty;
             final eventCardsFuture =
                 widget.eventCardsOverride == null && !hasEventListError
@@ -565,6 +720,7 @@ class _EventListWidgetState extends State<EventListWidget> {
                                       isRefreshing: true,
                                       canOpenEventCardChat:
                                           _canOpenEventCardChat,
+                                      onPrimaryPressed: onPrimaryPressed,
                                       openEventCardDetail: _openEventCardDetail,
                                       openEventCardChat: _openEventCardChat,
                                       showParticipantRequiredSnackBar: () =>
@@ -589,6 +745,7 @@ class _EventListWidgetState extends State<EventListWidget> {
                                       selectedCity: selectedState?.selected,
                                       canOpenEventCardChat:
                                           _canOpenEventCardChat,
+                                      onPrimaryPressed: onPrimaryPressed,
                                       openEventCardDetail: _openEventCardDetail,
                                       openEventCardChat: _openEventCardChat,
                                       showParticipantRequiredSnackBar: () =>
@@ -617,11 +774,13 @@ class _EventListWidgetState extends State<EventListWidget> {
                                             return const _EventListEmptyState();
                                           }
                                           return _EventListCards(
-                                            eventCards: initialCards,
+                                            eventCards:
+                                                visibleCards(initialCards),
                                             selectedCity:
                                                 selectedState?.selected,
                                             canOpenEventCardChat:
                                                 _canOpenEventCardChat,
+                                            onPrimaryPressed: onPrimaryPressed,
                                             openEventCardDetail:
                                                 _openEventCardDetail,
                                             openEventCardChat:
@@ -634,7 +793,8 @@ class _EventListWidgetState extends State<EventListWidget> {
                                         }
                                         if (previousCards != null) {
                                           return _EventListPreviousCardsState(
-                                            cards: previousCards.cards,
+                                            cards: visibleCards(
+                                                previousCards.cards),
                                             selectedCity:
                                                 selectedState?.selected,
                                             isRefreshing: true,
@@ -643,6 +803,7 @@ class _EventListWidgetState extends State<EventListWidget> {
                                                 activeLoadKey?.activeDataKey,
                                             canOpenEventCardChat:
                                                 _canOpenEventCardChat,
+                                            onPrimaryPressed: onPrimaryPressed,
                                             openEventCardDetail:
                                                 _openEventCardDetail,
                                             openEventCardChat:
@@ -658,7 +819,8 @@ class _EventListWidgetState extends State<EventListWidget> {
                                       if (eventsSnapshot.hasError) {
                                         if (previousCards != null) {
                                           return _EventListPreviousCardsState(
-                                            cards: previousCards.cards,
+                                            cards: visibleCards(
+                                                previousCards.cards),
                                             selectedCity:
                                                 selectedState?.selected,
                                             errorMessage: null,
@@ -666,6 +828,7 @@ class _EventListWidgetState extends State<EventListWidget> {
                                                 _retryEventCardsLoad,
                                             canOpenEventCardChat:
                                                 _canOpenEventCardChat,
+                                            onPrimaryPressed: onPrimaryPressed,
                                             openEventCardDetail:
                                                 _openEventCardDetail,
                                             openEventCardChat:
@@ -682,8 +845,10 @@ class _EventListWidgetState extends State<EventListWidget> {
                                         );
                                       }
 
-                                      final loadedCards = eventsSnapshot.data ??
-                                          const <EventListCardViewModel>[];
+                                      final loadedCards = visibleCards(
+                                        eventsSnapshot.data ??
+                                            const <EventListCardViewModel>[],
+                                      );
                                       if (loadedCards.isEmpty) {
                                         return const _EventListEmptyState();
                                       }
@@ -693,6 +858,7 @@ class _EventListWidgetState extends State<EventListWidget> {
                                         selectedCity: selectedState?.selected,
                                         canOpenEventCardChat:
                                             _canOpenEventCardChat,
+                                        onPrimaryPressed: onPrimaryPressed,
                                         openEventCardDetail:
                                             _openEventCardDetail,
                                         openEventCardChat: _openEventCardChat,
@@ -710,6 +876,7 @@ class _EventListWidgetState extends State<EventListWidget> {
                                     eventCards: eventCards,
                                     selectedCity: selectedState?.selected,
                                     canOpenEventCardChat: _canOpenEventCardChat,
+                                    onPrimaryPressed: onPrimaryPressed,
                                     openEventCardDetail: _openEventCardDetail,
                                     openEventCardChat: _openEventCardChat,
                                     showParticipantRequiredSnackBar: () =>
@@ -741,8 +908,7 @@ class _EventListWidgetState extends State<EventListWidget> {
       return null;
     }
 
-    final nowUtc = (widget.nowUtcProvider ?? _eventListNowUtc)();
-    final normalizedNowUtc = nowUtc.isUtc ? nowUtc : nowUtc.toUtc();
+    final normalizedNowUtc = _currentEventListNowUtc();
     final viewerUserId = currentUserUid;
     final selectedDateFilter = _selectedDateFilter;
     final localDateRange = selectedDateFilter == null
@@ -774,6 +940,8 @@ class _EventListWidgetState extends State<EventListWidget> {
       _eventListLoadGeneration += 1;
       _eventListLoadKey = key;
       final loadGeneration = _eventListLoadGeneration;
+      final participantActionSourceRevision =
+          _eventListParticipantActionCoordinator.currentConfirmedRevision;
       final cacheOwnerToken = _eventListCardsCache.claim(key);
       final cachedEntry = _eventListCardsCache.read(
         key,
@@ -781,6 +949,11 @@ class _EventListWidgetState extends State<EventListWidget> {
       );
       final cachedCards = cachedEntry?.cards;
       if (cachedCards != null) {
+        _eventListCardsCache.registerEventsIfOwner(
+          key,
+          cacheOwnerToken,
+          cachedCards.map((card) => card.eventId),
+        );
         _rememberLoadedCards(key, cachedCards);
         _startCachedPublicProfileSession(
           key: key,
@@ -800,7 +973,13 @@ class _EventListWidgetState extends State<EventListWidget> {
               nowUtc: normalizedNowUtc,
               selectedLevel: _selectedLevel,
               currentUserId: viewerUserId,
+              participantActionSourceRevision: participantActionSourceRevision,
             ).then((baseLoad) {
+              _eventListCardsCache.registerEventsIfOwner(
+                key,
+                cacheOwnerToken,
+                baseLoad.events.map((event) => event.reference.id),
+              );
               if (_eventListLoadIsCurrent(key, loadGeneration)) {
                 _rememberLoadedCards(key, baseLoad.cards);
                 if (baseLoad.cards.isNotEmpty) {
@@ -813,6 +992,8 @@ class _EventListWidgetState extends State<EventListWidget> {
                       currentUserId: viewerUserId,
                       loadGeneration: loadGeneration,
                       cacheOwnerToken: cacheOwnerToken,
+                      participantActionSourceRevision:
+                          participantActionSourceRevision,
                     ),
                   );
                 }
@@ -822,6 +1003,11 @@ class _EventListWidgetState extends State<EventListWidget> {
           : Future<List<EventListCardViewModel>>.value(cachedCards);
     }
     return _eventCardsFuture;
+  }
+
+  DateTime _currentEventListNowUtc() {
+    final nowUtc = (widget.nowUtcProvider ?? _eventListNowUtc)();
+    return nowUtc.isUtc ? nowUtc : nowUtc.toUtc();
   }
 
   bool _eventListLoadIsCurrent(_EventListLoadKey key, int loadGeneration) {
@@ -898,6 +1084,7 @@ class _EventListWidgetState extends State<EventListWidget> {
     required DateTime nowUtc,
     required String? selectedLevel,
     required String currentUserId,
+    required int participantActionSourceRevision,
   }) async {
     final page = localDateRange == null
         ? await EventListRepository.loadLevelFilteredActiveEventPage(
@@ -928,6 +1115,7 @@ class _EventListWidgetState extends State<EventListWidget> {
             fallbackTimeZoneId: selected.city.timeZoneId,
             nowUtc: nowUtc,
             currentUserId: currentUserId,
+            participantActionSourceRevision: participantActionSourceRevision,
             membershipState: _eventListMembershipNeedsLookup(
               event,
               currentUserId,
@@ -949,6 +1137,7 @@ class _EventListWidgetState extends State<EventListWidget> {
     required String currentUserId,
     required int loadGeneration,
     required int cacheOwnerToken,
+    required int participantActionSourceRevision,
   }) async {
     final currentParticipantsFuture =
         _loadCurrentUserParticipantRecordsByEventId(
@@ -978,6 +1167,7 @@ class _EventListWidgetState extends State<EventListWidget> {
       fallbackTimeZoneId: fallbackTimeZoneId,
       nowUtc: nowUtc,
       currentUserId: currentUserId,
+      participantActionSourceRevision: participantActionSourceRevision,
       activeParticipantRecordsByEventId:
           initialActiveParticipantRecordsByEventId,
     );
@@ -1015,6 +1205,7 @@ class _EventListWidgetState extends State<EventListWidget> {
       fallbackTimeZoneId: fallbackTimeZoneId,
       nowUtc: nowUtc,
       currentUserId: currentUserId,
+      participantActionSourceRevision: participantActionSourceRevision,
       activeParticipantRecordsByEventId: activeParticipantRecordsByEventId,
       membershipLoad: membershipLoad,
     );
@@ -1312,6 +1503,7 @@ class _EventListWidgetState extends State<EventListWidget> {
     required String fallbackTimeZoneId,
     required DateTime nowUtc,
     required String currentUserId,
+    required int participantActionSourceRevision,
     required Map<String, List<EventParticipantsRecord>>
         activeParticipantRecordsByEventId,
     _EventListMembershipLoad? membershipLoad,
@@ -1323,6 +1515,7 @@ class _EventListWidgetState extends State<EventListWidget> {
             fallbackTimeZoneId: fallbackTimeZoneId,
             nowUtc: nowUtc,
             currentUserId: currentUserId,
+            participantActionSourceRevision: participantActionSourceRevision,
             currentUserParticipant:
                 membershipLoad?.recordsByEventId[event.reference.id],
             activeParticipants:
@@ -1686,6 +1879,157 @@ class _EventListWidgetState extends State<EventListWidget> {
     );
   }
 
+  List<EventListCardViewModel> _eventListCardsWithParticipantActionOverlays(
+    List<EventListCardViewModel> cards, {
+    required String currentUserId,
+    required DateTime nowUtc,
+  }) {
+    if (cards.isEmpty) {
+      return cards;
+    }
+    var changed = false;
+    final resolvedCards = cards.map((card) {
+      final timeResolvedCard = _eventListCardWithCurrentActionTime(
+        card,
+        nowUtc: nowUtc,
+      );
+      final overlay = currentUserId.isEmpty
+          ? null
+          : _eventListParticipantActionCoordinator.overlayFor(
+              userId: currentUserId,
+              eventId: timeResolvedCard.eventId.trim(),
+            );
+      if (overlay == null) {
+        changed = changed || !identical(timeResolvedCard, card);
+        return timeResolvedCard;
+      }
+      final resolved = _eventListCardWithParticipantActionOverlay(
+        timeResolvedCard,
+        overlay: overlay,
+        currentUserId: currentUserId,
+        nowUtc: nowUtc,
+      );
+      changed = changed || !identical(resolved, card);
+      return resolved;
+    }).toList(growable: false);
+    return changed ? List.unmodifiable(resolvedCards) : cards;
+  }
+
+  Future<void> _handleEventListParticipantAction(
+    EventListCardViewModel event, {
+    required String expectedUserId,
+  }) async {
+    final eventId = event.eventId.trim();
+    final userId = currentUserUid;
+    if (eventId.isEmpty ||
+        userId.isEmpty ||
+        userId != expectedUserId ||
+        event.membershipState != EventListMembershipState.resolved) {
+      return;
+    }
+
+    final desiredJoined = switch (event.joinCtaState) {
+      EventListJoinCtaState.join => true,
+      EventListJoinCtaState.joined => false,
+      EventListJoinCtaState.joining ||
+      EventListJoinCtaState.leaving ||
+      EventListJoinCtaState.joinedLocked ||
+      EventListJoinCtaState.full ||
+      EventListJoinCtaState.canceled ||
+      EventListJoinCtaState.past =>
+        null,
+    };
+    if (desiredJoined == null) {
+      return;
+    }
+    final nowUtc = _currentEventListNowUtc();
+    if (!event.startsAt.isAfter(nowUtc)) {
+      if (mounted) {
+        setState(() {});
+      }
+      return;
+    }
+    final capacity = event.capacity;
+    if (desiredJoined &&
+        capacity != null &&
+        capacity > 0 &&
+        event.resolvedParticipantsCount >= capacity) {
+      if (mounted) {
+        setState(() {});
+      }
+      return;
+    }
+
+    final participant = desiredJoined
+        ? _eventListCurrentUserParticipantViewModel(userId)
+        : null;
+    final optimisticParticipantsCount = desiredJoined
+        ? math.max(2, event.resolvedParticipantsCount + 1)
+        : math.max(1, event.resolvedParticipantsCount - 1);
+    final request = _eventListParticipantActionCoordinator.begin(
+      userId: userId,
+      eventId: eventId,
+      desiredJoined: desiredJoined,
+      participantsCount: optimisticParticipantsCount,
+      participant: participant,
+    );
+    if (request == null) {
+      return;
+    }
+
+    _invalidateEventListParticipantActionCache(
+      userId: userId,
+      eventId: eventId,
+    );
+
+    try {
+      final result = desiredJoined
+          ? await EventActionsRepository.joinEvent(
+              eventId: eventId,
+              invoker: widget.joinEventInvoker,
+            )
+          : await EventActionsRepository.leaveEvent(
+              eventId: eventId,
+              invoker: widget.leaveEventInvoker,
+            );
+      final minimumParticipantsCount = desiredJoined ? 2 : 1;
+      final exceedsCapacity = desiredJoined &&
+          capacity != null &&
+          capacity > 0 &&
+          result.participantsCount > capacity;
+      if (result.eventId != eventId ||
+          result.participantsCount < minimumParticipantsCount ||
+          exceedsCapacity) {
+        _eventListParticipantActionCoordinator.rollback(request);
+        return;
+      }
+      _eventListParticipantActionCoordinator.complete(
+        request,
+        participantsCount: result.participantsCount,
+      );
+    } catch (_) {
+      _eventListParticipantActionCoordinator.rollback(request);
+    } finally {
+      _invalidateEventListParticipantActionCache(
+        userId: userId,
+        eventId: eventId,
+      );
+    }
+  }
+
+  void _invalidateEventListParticipantActionCache({
+    required String userId,
+    required String eventId,
+  }) {
+    _eventListCardsCache.invalidateEvent(
+      eventId: eventId,
+    );
+    final activeKey = _eventListLoadKey;
+    if (activeKey != null && activeKey.currentUserId == userId) {
+      _eventListCardsCache.invalidate(activeKey);
+    }
+  }
+
   bool _canOpenEventCardChat(EventListCardViewModel event) {
     return event.chatCtaState == EventListChatCtaState.enabled &&
         event.eventId.trim().isNotEmpty;
@@ -1748,6 +2092,7 @@ class _EventListCards extends StatelessWidget {
     required this.eventCards,
     required this.selectedCity,
     required this.canOpenEventCardChat,
+    required this.onPrimaryPressed,
     required this.openEventCardDetail,
     required this.openEventCardChat,
     required this.showParticipantRequiredSnackBar,
@@ -1756,6 +2101,7 @@ class _EventListCards extends StatelessWidget {
   final List<EventListCardViewModel> eventCards;
   final EventSelectedCity? selectedCity;
   final bool Function(EventListCardViewModel event) canOpenEventCardChat;
+  final ValueChanged<EventListCardViewModel>? onPrimaryPressed;
   final ValueChanged<EventListCardViewModel> openEventCardDetail;
   final void Function({
     required EventListCardViewModel event,
@@ -1774,6 +2120,9 @@ class _EventListCards extends StatelessWidget {
             onPressed: eventCard.eventId.trim().isEmpty
                 ? null
                 : () => openEventCardDetail(eventCard),
+            onPrimaryPressed: onPrimaryPressed == null
+                ? null
+                : () => onPrimaryPressed?.call(eventCard),
             onChatPressed: canOpenEventCardChat(eventCard)
                 ? () => openEventCardChat(
                       event: eventCard,
@@ -1798,6 +2147,7 @@ class _EventListPreviousCardsState extends StatelessWidget {
     required this.cards,
     required this.selectedCity,
     required this.canOpenEventCardChat,
+    required this.onPrimaryPressed,
     required this.openEventCardDetail,
     required this.openEventCardChat,
     required this.showParticipantRequiredSnackBar,
@@ -1814,6 +2164,7 @@ class _EventListPreviousCardsState extends StatelessWidget {
   final bool isRefreshing;
   final bool showEmptyState;
   final bool Function(EventListCardViewModel event) canOpenEventCardChat;
+  final ValueChanged<EventListCardViewModel>? onPrimaryPressed;
   final ValueChanged<EventListCardViewModel> openEventCardDetail;
   final void Function({
     required EventListCardViewModel event,
@@ -1851,6 +2202,7 @@ class _EventListPreviousCardsState extends StatelessWidget {
             eventCards: cards,
             selectedCity: selectedCity,
             canOpenEventCardChat: canOpenEventCardChat,
+            onPrimaryPressed: onPrimaryPressed,
             openEventCardDetail: openEventCardDetail,
             openEventCardChat: openEventCardChat,
             showParticipantRequiredSnackBar: showParticipantRequiredSnackBar,
@@ -1884,6 +2236,209 @@ class _EventListLoadedCards {
 
   final _EventListLoadKey key;
   final List<EventListCardViewModel> cards;
+}
+
+class _EventListParticipantActionKey {
+  const _EventListParticipantActionKey({
+    required this.userId,
+    required this.eventId,
+  });
+
+  final String userId;
+  final String eventId;
+
+  @override
+  bool operator ==(Object other) {
+    return other is _EventListParticipantActionKey &&
+        other.userId == userId &&
+        other.eventId == eventId;
+  }
+
+  @override
+  int get hashCode => Object.hash(userId, eventId);
+}
+
+class _EventListParticipantActionOverlay {
+  const _EventListParticipantActionOverlay({
+    required this.desiredJoined,
+    required this.participantsCount,
+    required this.participant,
+    required this.pending,
+    required this.generation,
+    required this.confirmedRevision,
+  });
+
+  final bool desiredJoined;
+  final int participantsCount;
+  final EventListParticipantViewModel? participant;
+  final bool pending;
+  final int generation;
+  final int confirmedRevision;
+}
+
+class _EventListParticipantActionRequest {
+  const _EventListParticipantActionRequest({
+    required this.key,
+    required this.generation,
+    required this.previousOverlay,
+  });
+
+  final _EventListParticipantActionKey key;
+  final int generation;
+  final _EventListParticipantActionOverlay? previousOverlay;
+}
+
+class _EventListParticipantActionCoordinator extends ChangeNotifier {
+  static const int _maxRetainedOverlays = 64;
+
+  final LinkedHashMap<_EventListParticipantActionKey,
+          _EventListParticipantActionOverlay> _overlays =
+      LinkedHashMap<_EventListParticipantActionKey,
+          _EventListParticipantActionOverlay>();
+  final Expando<int> _overrideSourceRevisions =
+      Expando<int>('eventListParticipantActionSourceRevision');
+  int _generation = 0;
+  int _confirmedRevision = 0;
+
+  int get currentConfirmedRevision => _confirmedRevision;
+
+  int sourceRevisionForOverride(List<EventListCardViewModel>? cards) {
+    if (cards == null) {
+      return currentConfirmedRevision;
+    }
+    final existingRevision = _overrideSourceRevisions[cards];
+    if (existingRevision != null) {
+      return existingRevision;
+    }
+    final revision = currentConfirmedRevision;
+    _overrideSourceRevisions[cards] = revision;
+    return revision;
+  }
+
+  _EventListParticipantActionOverlay? overlayFor({
+    required String userId,
+    required String eventId,
+  }) {
+    return _overlays[
+        _EventListParticipantActionKey(userId: userId, eventId: eventId)];
+  }
+
+  _EventListParticipantActionRequest? begin({
+    required String userId,
+    required String eventId,
+    required bool desiredJoined,
+    required int participantsCount,
+    required EventListParticipantViewModel? participant,
+  }) {
+    final key = _EventListParticipantActionKey(
+      userId: userId,
+      eventId: eventId,
+    );
+    final previousOverlay = _overlays[key];
+    if (previousOverlay?.pending == true) {
+      return null;
+    }
+    if (previousOverlay == null && !_makeRoomForNewOverlay()) {
+      return null;
+    }
+    final generation = ++_generation;
+    _overlays.remove(key);
+    _overlays[key] = _EventListParticipantActionOverlay(
+      desiredJoined: desiredJoined,
+      participantsCount: math.max(0, participantsCount),
+      participant: participant,
+      pending: true,
+      generation: generation,
+      confirmedRevision: 0,
+    );
+    _trimRetainedOverlays();
+    notifyListeners();
+    return _EventListParticipantActionRequest(
+      key: key,
+      generation: generation,
+      previousOverlay: previousOverlay,
+    );
+  }
+
+  void complete(
+    _EventListParticipantActionRequest request, {
+    required int participantsCount,
+  }) {
+    final current = _overlays[request.key];
+    if (current == null || current.generation != request.generation) {
+      return;
+    }
+    _overlays.remove(request.key);
+    final confirmedRevision = ++_confirmedRevision;
+    _overlays[request.key] = _EventListParticipantActionOverlay(
+      desiredJoined: current.desiredJoined,
+      participantsCount: math.max(0, participantsCount),
+      participant: current.participant,
+      pending: false,
+      generation: current.generation,
+      confirmedRevision: confirmedRevision,
+    );
+    _trimRetainedOverlays();
+    notifyListeners();
+  }
+
+  void rollback(_EventListParticipantActionRequest request) {
+    final current = _overlays[request.key];
+    if (current == null || current.generation != request.generation) {
+      return;
+    }
+    final previousOverlay = request.previousOverlay;
+    if (previousOverlay == null) {
+      _overlays.remove(request.key);
+    } else {
+      _overlays.remove(request.key);
+      _overlays[request.key] = previousOverlay;
+    }
+    _trimRetainedOverlays();
+    notifyListeners();
+  }
+
+  void _trimRetainedOverlays() {
+    while (_overlays.length > _maxRetainedOverlays) {
+      _EventListParticipantActionKey? removableKey;
+      for (final entry in _overlays.entries) {
+        if (!entry.value.pending) {
+          removableKey = entry.key;
+          break;
+        }
+      }
+      if (removableKey == null) {
+        return;
+      }
+      _overlays.remove(removableKey);
+    }
+  }
+
+  bool _makeRoomForNewOverlay() {
+    if (_overlays.length < _maxRetainedOverlays) {
+      return true;
+    }
+    _EventListParticipantActionKey? removableKey;
+    for (final entry in _overlays.entries) {
+      if (!entry.value.pending) {
+        removableKey = entry.key;
+        break;
+      }
+    }
+    if (removableKey == null) {
+      return false;
+    }
+    _overlays.remove(removableKey);
+    return true;
+  }
+
+  void clear() {
+    if (_overlays.isEmpty) {
+      return;
+    }
+    _overlays.clear();
+    notifyListeners();
+  }
 }
 
 class _EventListBaseCardsLoad {
@@ -2078,16 +2633,42 @@ class _EventListCardsMemoryCache {
   final _entries =
       LinkedHashMap<_EventListLoadKey, _EventListCardsCacheEntry>();
   final _ownerTokens = LinkedHashMap<_EventListLoadKey, int>();
+  final _ownerMutationEpochs = LinkedHashMap<_EventListLoadKey, int>();
+  final _eventIdsByOwner = LinkedHashMap<_EventListLoadKey, Set<String>>();
   int _nextOwnerToken = 0;
+  int _mutationEpoch = 0;
 
   int claim(_EventListLoadKey key) {
     final ownerToken = ++_nextOwnerToken;
     _ownerTokens.remove(key);
     _ownerTokens[key] = ownerToken;
+    _ownerMutationEpochs.remove(key);
+    _ownerMutationEpochs[key] = _mutationEpoch;
+    _eventIdsByOwner.remove(key);
     while (_ownerTokens.length > maxEntries * 2) {
-      _ownerTokens.remove(_ownerTokens.keys.first);
+      final staleKey = _ownerTokens.keys.first;
+      _ownerTokens.remove(staleKey);
+      _ownerMutationEpochs.remove(staleKey);
+      _eventIdsByOwner.remove(staleKey);
     }
     return ownerToken;
+  }
+
+  bool registerEventsIfOwner(
+    _EventListLoadKey key,
+    int ownerToken,
+    Iterable<String> eventIds,
+  ) {
+    if (!_isCurrentOwner(key, ownerToken)) {
+      return false;
+    }
+    _eventIdsByOwner.remove(key);
+    _eventIdsByOwner[key] = Set<String>.unmodifiable(
+      eventIds
+          .map((eventId) => eventId.trim())
+          .where((eventId) => eventId.isNotEmpty),
+    );
+    return true;
   }
 
   _EventListCardsCacheEntry? read(
@@ -2112,7 +2693,14 @@ class _EventListCardsMemoryCache {
     required DateTime fetchedAtUtc,
     required int hydratedProfileCardCount,
   }) {
-    if (_ownerTokens[key] != ownerToken) {
+    if (!_isCurrentOwner(key, ownerToken)) {
+      return false;
+    }
+    if (!registerEventsIfOwner(
+      key,
+      ownerToken,
+      cards.map((card) => card.eventId),
+    )) {
       return false;
     }
     _entries.remove(key);
@@ -2128,7 +2716,7 @@ class _EventListCardsMemoryCache {
   }
 
   bool removeIfOwner(_EventListLoadKey key, int ownerToken) {
-    if (_ownerTokens[key] != ownerToken) {
+    if (!_isCurrentOwner(key, ownerToken)) {
       return false;
     }
     _entries.remove(key);
@@ -2140,9 +2728,39 @@ class _EventListCardsMemoryCache {
     claim(key);
   }
 
+  void invalidateEvent({
+    required String eventId,
+  }) {
+    _mutationEpoch += 1;
+    final matchingKeys = <_EventListLoadKey>{
+      ..._entries.entries
+          .where(
+            (entry) => entry.value.cards.any(
+              (card) => card.eventId.trim() == eventId,
+            ),
+          )
+          .map((entry) => entry.key),
+      ..._eventIdsByOwner.entries
+          .where(
+            (entry) => entry.value.contains(eventId),
+          )
+          .map((entry) => entry.key),
+    };
+    for (final key in matchingKeys) {
+      invalidate(key);
+    }
+  }
+
+  bool _isCurrentOwner(_EventListLoadKey key, int ownerToken) {
+    return _ownerTokens[key] == ownerToken &&
+        _ownerMutationEpochs[key] == _mutationEpoch;
+  }
+
   void clear() {
     _entries.clear();
     _ownerTokens.clear();
+    _ownerMutationEpochs.clear();
+    _eventIdsByOwner.clear();
   }
 }
 
@@ -2200,6 +2818,7 @@ EventListCardViewModel? _eventListCardFromRecord(
   required String fallbackTimeZoneId,
   required DateTime nowUtc,
   required String currentUserId,
+  required int participantActionSourceRevision,
   EventParticipantsRecord? currentUserParticipant,
   List<EventParticipantsRecord> activeParticipants =
       const <EventParticipantsRecord>[],
@@ -2256,6 +2875,7 @@ EventListCardViewModel? _eventListCardFromRecord(
       event: event,
       nowUtc: nowUtc,
       isJoined: isJoined,
+      canLeave: isActiveParticipant && !isOrganizer && startsAt.isAfter(nowUtc),
       participantsCount: participantsCount,
       capacity: capacity,
     ),
@@ -2264,6 +2884,7 @@ EventListCardViewModel? _eventListCardFromRecord(
         : EventListChatCtaState.participantOnly,
     membershipState: membershipState,
     reserveParticipantPreviewSpace: true,
+    participantActionSourceRevision: participantActionSourceRevision,
   );
 }
 
@@ -2470,6 +3091,29 @@ void _eventListKeepParticipantVisible(
   participants.insert(visibleLimit - 1, participant);
 }
 
+void _eventListTrimParticipantPreviewToCount(
+  List<EventListParticipantViewModel> participants, {
+  required int participantsCount,
+  required String? preservedUserId,
+}) {
+  final maxKnownParticipants = math.max(0, participantsCount);
+  final canPreserveUser = maxKnownParticipants > 0 &&
+      preservedUserId != null &&
+      preservedUserId.isNotEmpty;
+  while (participants.length > maxKnownParticipants) {
+    var removeIndex = participants.length - 1;
+    if (canPreserveUser) {
+      for (var index = participants.length - 1; index >= 0; index -= 1) {
+        if (participants[index].userId != preservedUserId) {
+          removeIndex = index;
+          break;
+        }
+      }
+    }
+    participants.removeAt(removeIndex);
+  }
+}
+
 String _eventListParticipantUserId(EventParticipantsRecord participant) {
   return participant.reference.id;
 }
@@ -2514,10 +3158,174 @@ String? _eventListParticipantAvatarInitial(String displayName) {
       : initial;
 }
 
+EventListParticipantViewModel _eventListCurrentUserParticipantViewModel(
+  String userId,
+) {
+  final user =
+      currentUserDocument?.reference.id == userId ? currentUserDocument : null;
+  final displayName = _eventListUsableParticipantDisplayName(
+    user?.displayName ?? '',
+  );
+  final photoUrl = user?.photoUrl.trim() ?? '';
+  return EventListParticipantViewModel(
+    userId: userId,
+    displayName: displayName,
+    photoUrl: photoUrl.isEmpty ? null : photoUrl,
+  );
+}
+
+List<EventListCardViewModel> _eventListCardsWithParticipantActionSourceRevision(
+  List<EventListCardViewModel> cards,
+  int participantActionSourceRevision,
+) {
+  var changed = false;
+  final revisedCards = cards.map((card) {
+    if (card.participantActionSourceRevision ==
+        participantActionSourceRevision) {
+      return card;
+    }
+    changed = true;
+    return card.copyWithParticipantActionSourceRevision(
+      participantActionSourceRevision,
+    );
+  }).toList(growable: false);
+  return changed ? List.unmodifiable(revisedCards) : cards;
+}
+
+EventListCardViewModel _eventListCardWithCurrentActionTime(
+  EventListCardViewModel card, {
+  required DateTime nowUtc,
+}) {
+  if (card.startsAt.isAfter(nowUtc)) {
+    final capacity = card.capacity;
+    if (card.joinCtaState == EventListJoinCtaState.join &&
+        capacity != null &&
+        capacity > 0 &&
+        card.resolvedParticipantsCount >= capacity) {
+      return card.copyWithJoinCtaState(EventListJoinCtaState.full);
+    }
+    return card;
+  }
+  return switch (card.joinCtaState) {
+    EventListJoinCtaState.join =>
+      card.copyWithJoinCtaState(EventListJoinCtaState.past),
+    EventListJoinCtaState.joined =>
+      card.copyWithJoinCtaState(EventListJoinCtaState.joinedLocked),
+    EventListJoinCtaState.joining ||
+    EventListJoinCtaState.leaving ||
+    EventListJoinCtaState.joinedLocked ||
+    EventListJoinCtaState.full ||
+    EventListJoinCtaState.canceled ||
+    EventListJoinCtaState.past =>
+      card,
+  };
+}
+
+EventListCardViewModel _eventListCardWithParticipantActionOverlay(
+  EventListCardViewModel card, {
+  required _EventListParticipantActionOverlay overlay,
+  required String currentUserId,
+  required DateTime nowUtc,
+}) {
+  final rawSourceCaughtUp = !overlay.pending &&
+      overlay.confirmedRevision > 0 &&
+      card.membershipState == EventListMembershipState.resolved &&
+      card.participantActionSourceRevision >= overlay.confirmedRevision;
+  if (rawSourceCaughtUp) {
+    final rawParticipantsCount = card.participantsCount;
+    if (rawParticipantsCount == null ||
+        card.participants.length <= rawParticipantsCount) {
+      return card;
+    }
+    final reconciledParticipants =
+        List<EventListParticipantViewModel>.from(card.participants);
+    _eventListTrimParticipantPreviewToCount(
+      reconciledParticipants,
+      participantsCount: rawParticipantsCount,
+      preservedUserId: overlay.desiredJoined ? currentUserId : null,
+    );
+    return card.copyWithParticipantAction(
+      updatedParticipants: reconciledParticipants,
+      updatedParticipantsCount: rawParticipantsCount,
+      updatedJoinCtaState: card.joinCtaState,
+      updatedChatCtaState: card.chatCtaState,
+    );
+  }
+
+  final participants = List<EventListParticipantViewModel>.from(
+    card.participants,
+  );
+  if (overlay.desiredJoined) {
+    final participant = overlay.participant;
+    if (participant != null &&
+        !participants.any((item) => item.userId == currentUserId)) {
+      participants.add(participant);
+    }
+    _eventListKeepParticipantVisible(
+      participants,
+      userId: currentUserId,
+      visibleLimit: _eventListParticipantPreviewLimit,
+    );
+  } else {
+    participants.removeWhere(
+      (participant) => participant.userId == currentUserId,
+    );
+  }
+  _eventListTrimParticipantPreviewToCount(
+    participants,
+    participantsCount: overlay.participantsCount,
+    preservedUserId: overlay.desiredJoined ? currentUserId : null,
+  );
+
+  final joinCtaState = overlay.pending
+      ? overlay.desiredJoined
+          ? EventListJoinCtaState.joining
+          : EventListJoinCtaState.leaving
+      : _eventListResolvedJoinStateForParticipantAction(
+          card,
+          desiredJoined: overlay.desiredJoined,
+          participantsCount: overlay.participantsCount,
+          nowUtc: nowUtc,
+        );
+  return card.copyWithParticipantAction(
+    updatedParticipants: participants,
+    updatedParticipantsCount: overlay.participantsCount,
+    updatedJoinCtaState: joinCtaState,
+    updatedChatCtaState: overlay.desiredJoined && !overlay.pending
+        ? EventListChatCtaState.enabled
+        : EventListChatCtaState.participantOnly,
+  );
+}
+
+EventListJoinCtaState _eventListResolvedJoinStateForParticipantAction(
+  EventListCardViewModel card, {
+  required bool desiredJoined,
+  required int participantsCount,
+  required DateTime nowUtc,
+}) {
+  if (card.joinCtaState == EventListJoinCtaState.canceled) {
+    return EventListJoinCtaState.canceled;
+  }
+  if (desiredJoined) {
+    return card.startsAt.isAfter(nowUtc)
+        ? EventListJoinCtaState.joined
+        : EventListJoinCtaState.joinedLocked;
+  }
+  if (!card.startsAt.isAfter(nowUtc)) {
+    return EventListJoinCtaState.past;
+  }
+  final capacity = card.capacity;
+  if (capacity != null && capacity > 0 && participantsCount >= capacity) {
+    return EventListJoinCtaState.full;
+  }
+  return EventListJoinCtaState.join;
+}
+
 EventListJoinCtaState _eventListJoinStateForRecord({
   required EventsRecord event,
   required DateTime nowUtc,
   required bool isJoined,
+  required bool canLeave,
   required int? participantsCount,
   required int? capacity,
 }) {
@@ -2525,7 +3333,9 @@ EventListJoinCtaState _eventListJoinStateForRecord({
     return EventListJoinCtaState.canceled;
   }
   if (isJoined) {
-    return EventListJoinCtaState.joined;
+    return canLeave
+        ? EventListJoinCtaState.joined
+        : EventListJoinCtaState.joinedLocked;
   }
   final startsAt = event.startsAt;
   if (startsAt == null || !startsAt.isAfter(nowUtc)) {
@@ -2837,12 +3647,14 @@ class _EventCardShell extends StatelessWidget {
   const _EventCardShell({
     required this.card,
     this.onPressed,
+    this.onPrimaryPressed,
     this.onChatPressed,
     this.onChatParticipantRequiredPressed,
   });
 
   final EventListCardViewModel? card;
   final VoidCallback? onPressed;
+  final VoidCallback? onPrimaryPressed;
   final VoidCallback? onChatPressed;
   final VoidCallback? onChatParticipantRequiredPressed;
 
@@ -2885,18 +3697,13 @@ class _EventCardShell extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: _eventListCardFooterActionsGap),
-                InkWell(
-                  onTap:
-                      card?.membershipState == EventListMembershipState.resolved
-                          ? onPressed
-                          : null,
-                  child: _EventCardActionsShell(
-                    card: card,
-                    metrics: metrics,
-                    onChatPressed: onChatPressed,
-                    onChatParticipantRequiredPressed:
-                        onChatParticipantRequiredPressed,
-                  ),
+                _EventCardActionsShell(
+                  card: card,
+                  metrics: metrics,
+                  onPrimaryPressed: onPrimaryPressed,
+                  onChatPressed: onChatPressed,
+                  onChatParticipantRequiredPressed:
+                      onChatParticipantRequiredPressed,
                 ),
               ],
             ),
@@ -3904,12 +4711,14 @@ class _EventCardActionsShell extends StatelessWidget {
   const _EventCardActionsShell({
     required this.card,
     required this.metrics,
+    this.onPrimaryPressed,
     this.onChatPressed,
     this.onChatParticipantRequiredPressed,
   });
 
   final EventListCardViewModel? card;
   final _EventCardLayoutMetrics metrics;
+  final VoidCallback? onPrimaryPressed;
   final VoidCallback? onChatPressed;
   final VoidCallback? onChatParticipantRequiredPressed;
 
@@ -3932,6 +4741,7 @@ class _EventCardActionsShell extends StatelessWidget {
         membershipState: event.membershipState,
         height: metrics.actionHeight,
         maxLines: metrics.actionMaxLines,
+        onPressed: onPrimaryPressed,
       );
       secondaryAction = _EventCardChatCta(
         state: event.chatCtaState,
@@ -3986,67 +4796,90 @@ class _EventCardPrimaryCta extends StatelessWidget {
     required this.membershipState,
     required this.height,
     required this.maxLines,
+    required this.onPressed,
   });
 
   final EventListJoinCtaState state;
   final EventListMembershipState membershipState;
   final double height;
   final int maxLines;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
     final membershipResolved =
         membershipState == EventListMembershipState.resolved;
-    final enabled = membershipResolved && state == EventListJoinCtaState.join;
+    final enabled = membershipResolved &&
+        onPressed != null &&
+        (state == EventListJoinCtaState.join ||
+            state == EventListJoinCtaState.joined);
     final backgroundColor = enabled
-        ? ExpatlioDesign.primary
+        ? state == EventListJoinCtaState.joined
+            ? _eventListDestructiveCtaBackground
+            : ExpatlioDesign.primary
         : ExpatlioDesign.secondarySystemBackground;
-    final textColor = !membershipResolved
-        ? ExpatlioDesign.muted
-        : enabled
-            ? Colors.white
-            : state == EventListJoinCtaState.joined
-                ? ExpatlioDesign.primary
-                : ExpatlioDesign.muted;
+    final textColor = enabled ? Colors.white : ExpatlioDesign.muted;
+    final actionPending = state == EventListJoinCtaState.joining ||
+        state == EventListJoinCtaState.leaving;
+    final visibleLabel = switch (membershipState) {
+      EventListMembershipState.pending =>
+        FFLocalizations.of(context).getVariableText(
+          ruText: 'Проверяем участие',
+          enText: 'Checking status',
+        ),
+      EventListMembershipState.lookupFailed =>
+        FFLocalizations.of(context).getVariableText(
+          ruText: 'Статус недоступен',
+          enText: 'Status unavailable',
+        ),
+      EventListMembershipState.resolved =>
+        _eventPrimaryCtaLabel(context, state),
+    };
+    final semanticsLabel = membershipResolved
+        ? _eventPrimaryCtaSemanticsLabel(context, state)
+        : visibleLabel;
 
     return Semantics(
+      key: eventListCardPrimaryCtaKey,
+      container: true,
       button: true,
       enabled: enabled,
-      child: Container(
-        key: eventListCardPrimaryCtaKey,
-        height: height,
-        alignment: Alignment.center,
-        padding: const EdgeInsetsDirectional.symmetric(
-          horizontal: ExpatlioDesign.space8,
-        ),
-        decoration: BoxDecoration(
+      liveRegion: actionPending,
+      label: semanticsLabel,
+      onTap: enabled ? onPressed : null,
+      child: ExcludeSemantics(
+        child: Material(
           color: backgroundColor,
           borderRadius: BorderRadius.circular(_eventListActionRadius),
-        ),
-        child: Text(
-          switch (membershipState) {
-            EventListMembershipState.pending =>
-              FFLocalizations.of(context).getVariableText(
-                ruText: 'Проверяем участие',
-                enText: 'Checking status',
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: enabled ? onPressed : null,
+            overlayColor: WidgetStatePropertyAll(
+              Colors.white.withValues(alpha: 0.10),
+            ),
+            child: SizedBox(
+              height: height,
+              child: Padding(
+                padding: const EdgeInsetsDirectional.symmetric(
+                  horizontal: ExpatlioDesign.space8,
+                ),
+                child: Center(
+                  child: Text(
+                    visibleLabel,
+                    maxLines: maxLines,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: ExpatlioDesign.textStyle(
+                      context,
+                      color: textColor,
+                      size: _eventListActionFontSize,
+                      weight: FontWeight.w700,
+                      height: _eventListActionTextHeight,
+                    ),
+                  ),
+                ),
               ),
-            EventListMembershipState.lookupFailed =>
-              FFLocalizations.of(context).getVariableText(
-                ruText: 'Статус недоступен',
-                enText: 'Status unavailable',
-              ),
-            EventListMembershipState.resolved =>
-              _eventPrimaryCtaLabel(context, state),
-          },
-          maxLines: maxLines,
-          overflow: TextOverflow.ellipsis,
-          textAlign: TextAlign.center,
-          style: ExpatlioDesign.textStyle(
-            context,
-            color: textColor,
-            size: _eventListActionFontSize,
-            weight: FontWeight.w700,
-            height: _eventListActionTextHeight,
+            ),
           ),
         ),
       ),
@@ -4198,7 +5031,22 @@ String _eventPrimaryCtaLabel(
         ruText: 'Присоединиться',
         enText: 'Join',
       ),
+    EventListJoinCtaState.joining =>
+      FFLocalizations.of(context).getVariableText(
+        ruText: 'Присоединяемся...',
+        enText: 'Joining...',
+      ),
     EventListJoinCtaState.joined => FFLocalizations.of(context).getVariableText(
+        ruText: 'Покинуть',
+        enText: 'Leave',
+      ),
+    EventListJoinCtaState.leaving =>
+      FFLocalizations.of(context).getVariableText(
+        ruText: 'Покидаем...',
+        enText: 'Leaving...',
+      ),
+    EventListJoinCtaState.joinedLocked =>
+      FFLocalizations.of(context).getVariableText(
         ruText: 'Вы участвуете',
         enText: 'Joined',
       ),
@@ -4214,6 +5062,47 @@ String _eventPrimaryCtaLabel(
     EventListJoinCtaState.past => FFLocalizations.of(context).getVariableText(
         ruText: 'Уже началось',
         enText: 'Past',
+      ),
+  };
+}
+
+String _eventPrimaryCtaSemanticsLabel(
+  BuildContext context,
+  EventListJoinCtaState state,
+) {
+  return switch (state) {
+    EventListJoinCtaState.join => _eventPrimaryCtaLabel(context, state),
+    EventListJoinCtaState.joining =>
+      FFLocalizations.of(context).getVariableText(
+        ruText: 'Присоединяемся к событию',
+        enText: 'Joining event',
+      ),
+    EventListJoinCtaState.joined => FFLocalizations.of(context).getVariableText(
+        ruText: 'Вы участвуете. Покинуть событие',
+        enText: 'Joined. Leave event',
+      ),
+    EventListJoinCtaState.leaving =>
+      FFLocalizations.of(context).getVariableText(
+        ruText: 'Покидаем событие',
+        enText: 'Leaving event',
+      ),
+    EventListJoinCtaState.joinedLocked =>
+      FFLocalizations.of(context).getVariableText(
+        ruText: 'Вы участвуете',
+        enText: 'Joined',
+      ),
+    EventListJoinCtaState.full => FFLocalizations.of(context).getVariableText(
+        ruText: 'Мест нет',
+        enText: 'Event is full',
+      ),
+    EventListJoinCtaState.canceled =>
+      FFLocalizations.of(context).getVariableText(
+        ruText: 'Событие отменено',
+        enText: 'Event canceled',
+      ),
+    EventListJoinCtaState.past => FFLocalizations.of(context).getVariableText(
+        ruText: 'Событие уже началось',
+        enText: 'Event already started',
       ),
   };
 }
