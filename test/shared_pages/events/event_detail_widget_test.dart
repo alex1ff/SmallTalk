@@ -2041,6 +2041,135 @@ void main() {
     }
   });
 
+  testWidgets('content block slots keep geometry during data hydration',
+      (tester) async {
+    Future<void> pumpDetail({required bool hydrated}) async {
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventDetailWidget(
+            eventId: 'event-123',
+            organizerDisplayName: hydrated
+                ? 'A very long organizer name that must stay on one line'
+                : 'Ana',
+            startsAt: hydrated
+                ? DateTime.utc(2036, 12, 30, 18, 45)
+                : DateTime.utc(2035, 6, 15, 2, 30),
+            timeZoneId: 'America/New_York',
+            locationName: hydrated
+                ? 'Central Library, a very long avenue name, building 42, '
+                    'second floor near the main conference hall'
+                : '',
+            participantsCount: 2,
+            capacity: 2,
+            participants: hydrated
+                ? const [
+                    EventDetailParticipantViewModel(
+                      displayName: 'A long hydrated participant name',
+                    ),
+                    EventDetailParticipantViewModel(
+                      displayName: 'Second hydrated participant',
+                    ),
+                  ]
+                : const [
+                    EventDetailParticipantViewModel(displayName: ''),
+                  ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    List<Rect> contentGeometry() => [
+          tester.getRect(find.byKey(eventDetailOrganizerCardKey)),
+          tester.getRect(find.byKey(eventDetailDetailsBlockKey)),
+          tester.getRect(find.byKey(eventDetailDateRowKey)),
+          tester.getRect(find.byKey(eventDetailTimeRowKey)),
+          tester.getRect(find.byKey(eventDetailPlaceRowKey)),
+          tester.getRect(find.byKey(eventDetailParticipantsSectionKey)),
+          tester.getRect(find.byKey(eventDetailParticipantTileKey(0))),
+        ];
+
+    await pumpDetail(hydrated: false);
+    final fallbackGeometry = contentGeometry();
+    expect(fallbackGeometry.last.height, greaterThan(52));
+
+    await pumpDetail(hydrated: true);
+    final hydratedGeometry = contentGeometry();
+
+    expect(hydratedGeometry, fallbackGeometry);
+    expect(
+      find.text(
+        'Central Library, a very long avenue name, building 42, '
+        'second floor near the main conference hall',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('A long hydrated participant name'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('content slots remain stable on narrow large-text layouts',
+      (tester) async {
+    tester.view.physicalSize = const Size(640, 1800);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    Future<void> pumpDetail({required bool hydrated}) async {
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(3)),
+          child: _buildTestApp(
+            home: EventDetailWidget(
+              eventId: 'event-123',
+              organizerDisplayName: hydrated
+                  ? 'A very long organizer name that is visually truncated'
+                  : 'Ana',
+              startsAt: hydrated
+                  ? DateTime.utc(2036, 12, 30, 18, 45)
+                  : DateTime.utc(2035, 6, 15, 2, 30),
+              timeZoneId: 'America/New_York',
+              locationName: hydrated
+                  ? 'Central Library, a very long avenue name, building 42, '
+                      'second floor near the main conference hall'
+                  : '',
+              participantsCount: 1,
+              capacity: 1,
+              participants: [
+                EventDetailParticipantViewModel(
+                  displayName: hydrated
+                      ? 'A long participant name that takes two lines'
+                      : '',
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    List<Rect> contentGeometry() => [
+          tester.getRect(find.byKey(eventDetailOrganizerCardKey)),
+          tester.getRect(find.byKey(eventDetailDetailsBlockKey)),
+          tester.getRect(find.byKey(eventDetailDateRowKey)),
+          tester.getRect(find.byKey(eventDetailTimeRowKey)),
+          tester.getRect(find.byKey(eventDetailPlaceRowKey)),
+          tester.getRect(find.byKey(eventDetailParticipantsSectionKey)),
+          tester.getRect(find.byKey(eventDetailParticipantTileKey(0))),
+        ];
+
+    await pumpDetail(hydrated: false);
+    final fallbackGeometry = contentGeometry();
+
+    await pumpDetail(hydrated: true);
+
+    expect(contentGeometry(), fallbackGeometry);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('participants grid fits at most five avatars per row',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));

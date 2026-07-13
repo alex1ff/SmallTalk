@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -93,6 +94,17 @@ const double _eventDetailSectionGap = 16;
 const double _eventDetailActionHeight = 48;
 const double _eventDetailButtonRadius = 16;
 const double _eventDetailCompactButtonRadius = 12;
+const double _eventDetailOrganizerAvatarDimension = 44;
+const double _eventDetailDetailsIconDimension = 34;
+const double _eventDetailParticipantAvatarDimension = 52;
+const double _eventDetailOrganizerNameFontSize = 14;
+const double _eventDetailOrganizerSubtitleFontSize = 12;
+const double _eventDetailDetailsLabelFontSize = 13;
+const double _eventDetailDetailsValueFontSize = 14;
+const double _eventDetailParticipantsHeaderFontSize = 15;
+const double _eventDetailOccupancyFontSize = 12;
+const double _eventDetailParticipantNameFontSize = 13;
+const double _eventDetailDefaultTextHeight = 1.28;
 const double _eventDetailContentBottomPadding = _eventDetailActionHeight +
     ExpatlioDesign.space16 * 2 +
     ExpatlioDesign.space16;
@@ -103,6 +115,86 @@ final RegExp _eventDetailParticipantNameLetterOrNumber = RegExp(
   r'[\p{L}\p{N}]',
   unicode: true,
 );
+
+class _EventDetailLayoutMetrics {
+  const _EventDetailLayoutMetrics({
+    required this.organizerInfoHeight,
+    required this.detailsRowMinHeight,
+    required this.detailsPlaceRowHeight,
+    required this.participantsHeaderHeight,
+    required this.participantNameSlotHeight,
+    required this.participantTileHeight,
+  });
+
+  factory _EventDetailLayoutMetrics.from(BuildContext context) {
+    final textScaler = MediaQuery.textScalerOf(context);
+    final participantNameSlotHeight = _eventDetailScaledLineHeight(
+      textScaler,
+      fontSize: _eventDetailParticipantNameFontSize,
+      maxLines: 2,
+    );
+    final detailsLabelLineHeight = _eventDetailScaledLineHeight(
+      textScaler,
+      fontSize: _eventDetailDetailsLabelFontSize,
+    );
+    final detailsValueLineHeight = _eventDetailScaledLineHeight(
+      textScaler,
+      fontSize: _eventDetailDetailsValueFontSize,
+    );
+    return _EventDetailLayoutMetrics(
+      organizerInfoHeight: math.max(
+        _eventDetailOrganizerAvatarDimension,
+        _eventDetailScaledLineHeight(
+              textScaler,
+              fontSize: _eventDetailOrganizerNameFontSize,
+            ) +
+            ExpatlioDesign.space4 +
+            _eventDetailScaledLineHeight(
+              textScaler,
+              fontSize: _eventDetailOrganizerSubtitleFontSize,
+            ),
+      ),
+      detailsRowMinHeight: math.max(
+        _eventDetailDetailsIconDimension,
+        detailsLabelLineHeight + 3 + detailsValueLineHeight,
+      ),
+      detailsPlaceRowHeight: math.max(
+        _eventDetailDetailsIconDimension,
+        detailsLabelLineHeight + 3 + (detailsValueLineHeight * 2),
+      ),
+      participantsHeaderHeight: math.max(
+        _eventDetailScaledLineHeight(
+          textScaler,
+          fontSize: _eventDetailParticipantsHeaderFontSize,
+        ),
+        _eventDetailScaledLineHeight(
+          textScaler,
+          fontSize: _eventDetailOccupancyFontSize,
+        ),
+      ),
+      participantNameSlotHeight: participantNameSlotHeight,
+      participantTileHeight: _eventDetailParticipantAvatarDimension +
+          ExpatlioDesign.space8 +
+          participantNameSlotHeight,
+    );
+  }
+
+  final double organizerInfoHeight;
+  final double detailsRowMinHeight;
+  final double detailsPlaceRowHeight;
+  final double participantsHeaderHeight;
+  final double participantNameSlotHeight;
+  final double participantTileHeight;
+}
+
+double _eventDetailScaledLineHeight(
+  TextScaler textScaler, {
+  required double fontSize,
+  int maxLines = 1,
+}) {
+  return (textScaler.scale(fontSize) * _eventDetailDefaultTextHeight * maxLines)
+      .ceilToDouble();
+}
 
 BoxDecoration _eventDetailCardDecoration() {
   return BoxDecoration(
@@ -637,6 +729,7 @@ class _EventDetailDetailsBlock extends StatelessWidget {
             eventLocalDateTime: localStartsAt,
             timeZoneId: timeZoneId,
           ),
+          valueMaxLines: 1,
         ),
         const SizedBox(height: 14),
         _EventDetailDetailsRow(
@@ -647,6 +740,7 @@ class _EventDetailDetailsBlock extends StatelessWidget {
             enText: 'Time',
           ),
           value: dateTimeFormat('Hm', localStartsAt, locale: locale),
+          valueMaxLines: 1,
         ),
       ],
       if (shouldShowPlace) ...[
@@ -659,6 +753,7 @@ class _EventDetailDetailsBlock extends StatelessWidget {
             enText: 'Place',
           ),
           value: placeValue,
+          valueMaxLines: 2,
         ),
       ],
     ];
@@ -686,64 +781,75 @@ class _EventDetailDetailsRow extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.value,
-  });
+    required this.valueMaxLines,
+  }) : assert(valueMaxLines == 1 || valueMaxLines == 2);
 
   final IconData icon;
   final String label;
   final String value;
+  final int valueMaxLines;
 
   @override
   Widget build(BuildContext context) {
+    final metrics = _EventDetailLayoutMetrics.from(context);
+    final rowHeight = valueMaxLines == 1
+        ? metrics.detailsRowMinHeight
+        : metrics.detailsPlaceRowHeight;
     return Semantics(
       label: '$label: $value',
       child: ExcludeSemantics(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 34,
-              height: 34,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: _eventDetailPrimaryBadgeFill,
-                borderRadius: BorderRadius.circular(12),
+        child: SizedBox(
+          height: rowHeight,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: _eventDetailDetailsIconDimension,
+                height: _eventDetailDetailsIconDimension,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: _eventDetailPrimaryBadgeFill,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  icon,
+                  color: ExpatlioDesign.primary,
+                  size: 17,
+                ),
               ),
-              child: Icon(
-                icon,
-                color: ExpatlioDesign.primary,
-                size: 17,
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: ExpatlioDesign.textStyle(
-                      context,
-                      color: _eventDetailMutedText,
-                      size: 13,
-                      weight: FontWeight.w500,
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: ExpatlioDesign.textStyle(
+                        context,
+                        color: _eventDetailMutedText,
+                        size: _eventDetailDetailsLabelFontSize,
+                        weight: FontWeight.w500,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    value,
-                    softWrap: true,
-                    style: ExpatlioDesign.textStyle(
-                      context,
-                      size: 14,
-                      weight: FontWeight.w600,
+                    const SizedBox(height: 3),
+                    Text(
+                      value,
+                      maxLines: valueMaxLines,
+                      overflow: TextOverflow.ellipsis,
+                      softWrap: true,
+                      style: ExpatlioDesign.textStyle(
+                        context,
+                        size: _eventDetailDetailsValueFontSize,
+                        weight: FontWeight.w600,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -862,44 +968,49 @@ class _EventDetailOrganizerInfo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        _EventDetailOrganizerAvatar(
-          displayName: displayName,
-          photoUrl: photoUrl,
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                key: eventDetailOrganizerNameKey,
-                displayName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: ExpatlioDesign.textStyle(
-                  context,
-                  size: 14,
-                  weight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: ExpatlioDesign.space4),
-              Text(
-                subtitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: ExpatlioDesign.textStyle(
-                  context,
-                  color: _eventDetailMutedText,
-                  size: 12,
-                  weight: FontWeight.w500,
-                ),
-              ),
-            ],
+    final metrics = _EventDetailLayoutMetrics.from(context);
+    return SizedBox(
+      height: metrics.organizerInfoHeight,
+      child: Row(
+        children: [
+          _EventDetailOrganizerAvatar(
+            displayName: displayName,
+            photoUrl: photoUrl,
           ),
-        ),
-      ],
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  key: eventDetailOrganizerNameKey,
+                  displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: ExpatlioDesign.textStyle(
+                    context,
+                    size: _eventDetailOrganizerNameFontSize,
+                    weight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: ExpatlioDesign.space4),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: ExpatlioDesign.textStyle(
+                    context,
+                    color: _eventDetailMutedText,
+                    size: _eventDetailOrganizerSubtitleFontSize,
+                    weight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1165,6 +1276,7 @@ class _EventDetailParticipantsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final metrics = _EventDetailLayoutMetrics.from(context);
     final title = FFLocalizations.of(context).getVariableText(
       ruText: 'Участники',
       enText: 'Participants',
@@ -1205,33 +1317,36 @@ class _EventDetailParticipantsSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Semantics(
-                  header: true,
-                  child: Text(
-                    key: eventDetailParticipantsTitleKey,
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: ExpatlioDesign.textStyle(
-                      context,
-                      size: 15,
-                      weight: FontWeight.w700,
+          SizedBox(
+            height: metrics.participantsHeaderHeight,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Semantics(
+                    header: true,
+                    child: Text(
+                      key: eventDetailParticipantsTitleKey,
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: ExpatlioDesign.textStyle(
+                        context,
+                        size: _eventDetailParticipantsHeaderFontSize,
+                        weight: FontWeight.w700,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              if (occupancyLabel != null) ...[
-                const SizedBox(width: ExpatlioDesign.space12),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 120),
-                  child: _EventDetailOccupancyLabel(label: occupancyLabel),
-                ),
+                if (occupancyLabel != null) ...[
+                  const SizedBox(width: ExpatlioDesign.space12),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 120),
+                    child: _EventDetailOccupancyLabel(label: occupancyLabel),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
           if (hasParticipantTiles) ...[
             const SizedBox(height: 16),
@@ -1253,12 +1368,14 @@ class _EventDetailParticipantsSection extends StatelessWidget {
                         key: eventDetailParticipantTileKey(index),
                         participant: participants[index],
                         width: tileWidth,
+                        metrics: metrics,
                       ),
                     for (var index = 0;
                         index < visibleOccupiedPlaceholderCount;
                         index += 1)
                       _EventDetailOccupiedParticipantTile(
                         width: tileWidth,
+                        metrics: metrics,
                       ),
                     for (var index = 0;
                         index < visibleFreeSlotCount;
@@ -1266,6 +1383,7 @@ class _EventDetailParticipantsSection extends StatelessWidget {
                       _EventDetailFreeParticipantTile(
                         label: freeSlotLabel,
                         width: tileWidth,
+                        metrics: metrics,
                       ),
                   ],
                 );
@@ -1304,7 +1422,7 @@ class _EventDetailOccupancyLabel extends StatelessWidget {
           style: ExpatlioDesign.textStyle(
             context,
             color: _eventDetailMutedText,
-            size: 12,
+            size: _eventDetailOccupancyFontSize,
             weight: FontWeight.w500,
           ),
         ),
@@ -1318,10 +1436,12 @@ class _EventDetailParticipantTile extends StatelessWidget {
     super.key,
     required this.participant,
     required this.width,
+    required this.metrics,
   });
 
   final EventDetailParticipantViewModel participant;
   final double width;
+  final _EventDetailLayoutMetrics metrics;
 
   @override
   Widget build(BuildContext context) {
@@ -1339,28 +1459,31 @@ class _EventDetailParticipantTile extends StatelessWidget {
       child: ExcludeSemantics(
         child: SizedBox(
           width: width,
+          height: metrics.participantTileHeight,
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             children: [
               _EventDetailParticipantAvatar(
                 participant: participant,
                 displayName: displayName,
               ),
-              if (displayName.isNotEmpty) ...[
-                const SizedBox(height: ExpatlioDesign.space8),
-                Text(
-                  displayName,
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: ExpatlioDesign.textStyle(
-                    context,
-                    color: _eventDetailMutedText,
-                    size: 13,
-                    weight: FontWeight.w500,
-                  ),
-                ),
-              ],
+              const SizedBox(height: ExpatlioDesign.space8),
+              SizedBox(
+                height: metrics.participantNameSlotHeight,
+                child: displayName.isEmpty
+                    ? null
+                    : Text(
+                        displayName,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: ExpatlioDesign.textStyle(
+                          context,
+                          color: _eventDetailMutedText,
+                          size: _eventDetailParticipantNameFontSize,
+                          weight: FontWeight.w500,
+                        ),
+                      ),
+              ),
             ],
           ),
         ),
@@ -1373,10 +1496,12 @@ class _EventDetailFreeParticipantTile extends StatelessWidget {
   const _EventDetailFreeParticipantTile({
     required this.label,
     required this.width,
+    required this.metrics,
   });
 
   final String label;
   final double width;
+  final _EventDetailLayoutMetrics metrics;
 
   @override
   Widget build(BuildContext context) {
@@ -1390,21 +1515,24 @@ class _EventDetailFreeParticipantTile extends StatelessWidget {
       child: ExcludeSemantics(
         child: SizedBox(
           width: width,
+          height: metrics.participantTileHeight,
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             children: [
               const _EventDetailFreeSlotAvatar(),
               const SizedBox(height: ExpatlioDesign.space8),
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: ExpatlioDesign.textStyle(
-                  context,
-                  color: _eventDetailMutedText,
-                  size: 12,
-                  weight: FontWeight.w500,
+              SizedBox(
+                height: metrics.participantNameSlotHeight,
+                child: Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: ExpatlioDesign.textStyle(
+                    context,
+                    color: _eventDetailMutedText,
+                    size: _eventDetailOrganizerSubtitleFontSize,
+                    weight: FontWeight.w500,
+                  ),
                 ),
               ),
             ],
@@ -1418,9 +1546,11 @@ class _EventDetailFreeParticipantTile extends StatelessWidget {
 class _EventDetailOccupiedParticipantTile extends StatelessWidget {
   const _EventDetailOccupiedParticipantTile({
     required this.width,
+    required this.metrics,
   });
 
   final double width;
+  final _EventDetailLayoutMetrics metrics;
 
   @override
   Widget build(BuildContext context) {
@@ -1434,10 +1564,12 @@ class _EventDetailOccupiedParticipantTile extends StatelessWidget {
       child: ExcludeSemantics(
         child: SizedBox(
           width: width,
+          height: metrics.participantTileHeight,
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             children: [
               const _EventDetailOccupiedSlotAvatar(),
+              const SizedBox(height: ExpatlioDesign.space8),
+              SizedBox(height: metrics.participantNameSlotHeight),
             ],
           ),
         ),
@@ -1449,7 +1581,7 @@ class _EventDetailOccupiedParticipantTile extends StatelessWidget {
 class _EventDetailOccupiedSlotAvatar extends StatelessWidget {
   const _EventDetailOccupiedSlotAvatar();
 
-  static const double _dimension = 52;
+  static const double _dimension = _eventDetailParticipantAvatarDimension;
 
   @override
   Widget build(BuildContext context) {
@@ -1476,7 +1608,7 @@ class _EventDetailOccupiedSlotAvatar extends StatelessWidget {
 class _EventDetailFreeSlotAvatar extends StatelessWidget {
   const _EventDetailFreeSlotAvatar();
 
-  static const double _dimension = 52;
+  static const double _dimension = _eventDetailParticipantAvatarDimension;
 
   @override
   Widget build(BuildContext context) {
@@ -1538,7 +1670,7 @@ class _EventDetailParticipantAvatar extends StatelessWidget {
     required this.displayName,
   });
 
-  static const double _dimension = 52;
+  static const double _dimension = _eventDetailParticipantAvatarDimension;
 
   final EventDetailParticipantViewModel participant;
   final String displayName;
@@ -2012,7 +2144,7 @@ class _EventDetailOrganizerAvatar extends StatelessWidget {
     required this.photoUrl,
   });
 
-  static const double _dimension = 44;
+  static const double _dimension = _eventDetailOrganizerAvatarDimension;
 
   final String displayName;
   final String? photoUrl;

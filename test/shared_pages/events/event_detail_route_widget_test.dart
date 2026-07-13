@@ -1235,6 +1235,10 @@ void main() {
         ),
         findsOneWidget,
       );
+      final fallbackParticipantTileSize =
+          tester.getSize(find.byKey(eventDetailParticipantTileKey(1)));
+      final fallbackParticipantsSectionSize =
+          tester.getSize(find.byKey(eventDetailParticipantsSectionKey));
       var participantSemantics =
           tester.getSemantics(find.byKey(eventDetailParticipantTileKey(1)));
       expect(participantSemantics.flagsCollection.isImage, isTrue);
@@ -1282,6 +1286,14 @@ void main() {
       expect(participantSemantics.label, 'Участник: 💡 Alice');
       expect(participantSemantics.label, isNot(contains('\u202E')));
       expect(participantSemantics.label, isNot(contains('student-2')));
+      expect(
+        tester.getSize(find.byKey(eventDetailParticipantTileKey(1))),
+        fallbackParticipantTileSize,
+      );
+      expect(
+        tester.getSize(find.byKey(eventDetailParticipantsSectionKey)),
+        fallbackParticipantsSectionSize,
+      );
     } finally {
       semanticsHandle.dispose();
     }
