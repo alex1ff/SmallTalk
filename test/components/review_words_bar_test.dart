@@ -6,12 +6,39 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:small_talk/components/review_words_bar.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 
-const _longCountText = '999999999999999999999999 words ready for review';
+const _dueCount = 1000;
 
 void main() {
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
     await FFLocalizations.initialize();
+  });
+
+  test('review count stays numeric and caps only the visible value', () {
+    expect(
+      <int>[-1, 0, 1, 9, 10, 99, 100, 1000].map(reviewWordsVisibleCount),
+      <String>['0', '0', '1', '9', '10', '99', '99+', '99+'],
+    );
+    expect(
+      reviewWordsCountSemanticsLabel(count: 1, languageCode: 'ru'),
+      '1 слово к повторению',
+    );
+    expect(
+      reviewWordsCountSemanticsLabel(count: 2, languageCode: 'ru'),
+      '2 слова к повторению',
+    );
+    expect(
+      reviewWordsCountSemanticsLabel(count: 11, languageCode: 'ru'),
+      '11 слов к повторению',
+    );
+    expect(
+      reviewWordsCountSemanticsLabel(count: 21, languageCode: 'ru'),
+      '21 слово к повторению',
+    );
+    expect(
+      reviewWordsCountSemanticsLabel(count: 1000, languageCode: 'en'),
+      '1000 words to review',
+    );
   });
 
   testWidgets('review bar geometry stays fixed across content states',
@@ -21,7 +48,7 @@ void main() {
     try {
       for (final locale in const <Locale>[Locale('ru'), Locale('en')]) {
         for (final enabled in <bool>[false, true]) {
-          for (final width in <double>[240.0, 320.0]) {
+          for (final width in <double>[208.0, 288.0, 358.0]) {
             for (final textScale in <double>[0.0, 1.0, 2.0, 3.0]) {
               await tester.pumpWidget(
                 _buildReviewBarApp(
@@ -39,16 +66,32 @@ void main() {
                 matching: find.byType(InkWell),
               );
               final countFinder = find.byKey(reviewWordsBarCountTextKey);
+              final countSlotFinder = find.byKey(reviewWordsBarCountSlotKey);
               final surfaceRect = tester.getRect(surfaceFinder);
+              final countRect = tester.getRect(countFinder);
+              final countSlotRect = tester.getRect(countSlotFinder);
               final count = tester.widget<Text>(countFinder);
 
               expect(surfaceRect.size, Size(width, reviewWordsBarHeight));
               expect(tester.getRect(inkWellFinder), surfaceRect);
+              expect(count.data, '99+');
               expect(count.maxLines, 1);
               expect(count.overflow, TextOverflow.ellipsis);
               expect(
                 count.textScaler?.scale(16.0),
                 16.0 * textScale.clamp(1.0, 2.0),
+              );
+              expect(
+                countRect.left,
+                greaterThanOrEqualTo(countSlotRect.left - 0.01),
+              );
+              expect(
+                countRect.right,
+                lessThanOrEqualTo(countSlotRect.right + 0.01),
+              );
+              expect(
+                find.byIcon(Icons.auto_awesome_outlined),
+                width < 272.0 ? findsNothing : findsOneWidget,
               );
 
               if (enabled) {
@@ -87,7 +130,7 @@ void main() {
               final paragraphs = tester.renderObjectList<RenderParagraph>(
                 find.descendant(
                   of: surfaceFinder,
-                  matching: find.byType(Text),
+                  matching: find.byType(RichText),
                 ),
               );
               for (final paragraph in paragraphs) {
@@ -96,10 +139,22 @@ void main() {
                   lessThanOrEqualTo(paragraph.size.height),
                 );
               }
+              final countParagraph = tester.renderObject<RenderParagraph>(
+                find.descendant(
+                  of: countFinder,
+                  matching: find.byType(RichText),
+                ),
+              );
+              expect(countParagraph.didExceedMaxLines, isFalse);
               expect(tester.takeException(), isNull);
 
               final semantics = tester.getSemantics(inkWellFinder);
-              expect(semantics.label, contains(_longCountText));
+              final expectedCountSemantics = reviewWordsCountSemanticsLabel(
+                count: _dueCount,
+                languageCode: locale.languageCode,
+              );
+              expect(semantics.label, contains(expectedCountSemantics));
+              expect(semantics.label, isNot(contains('99+')));
               expect(
                 semantics.getSemanticsData().hasAction(SemanticsAction.tap),
                 enabled,
@@ -179,7 +234,11 @@ Widget _buildReviewBarApp({
           child: SizedBox(
             width: width,
             child: ReviewWordsBar(
-              text: _longCountText,
+              text: reviewWordsVisibleCount(_dueCount),
+              semanticsLabel: reviewWordsCountSemanticsLabel(
+                count: _dueCount,
+                languageCode: locale.languageCode,
+              ),
               onTap: onTap,
             ),
           ),

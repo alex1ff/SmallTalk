@@ -59,13 +59,6 @@ class _WordsWidgetState extends State<WordsWidget> {
     super.dispose();
   }
 
-  String _dueCountLabel(int dueCount) {
-    if (dueCount > 99) {
-      return '99+';
-    }
-    return dueCount.toString();
-  }
-
   int _dueWordsCount(List<WordReviewsRecord> reviews) {
     final now = DateTime.now();
     return reviews
@@ -73,28 +66,6 @@ class _WordsWidgetState extends State<WordsWidget> {
           (review) => review.dueAt != null && !review.dueAt!.isAfter(now),
         )
         .length;
-  }
-
-  String _ruWordsPlural(int count) {
-    final mod100 = count % 100;
-    final mod10 = count % 10;
-    if (mod100 >= 11 && mod100 <= 14) {
-      return 'слов';
-    }
-    if (mod10 == 1) {
-      return 'слово';
-    }
-    if (mod10 >= 2 && mod10 <= 4) {
-      return 'слова';
-    }
-    return 'слов';
-  }
-
-  String _reviewCountText(BuildContext context, int dueCount) {
-    return FFLocalizations.of(context).getVariableText(
-      ruText: '${_dueCountLabel(dueCount)} ${_ruWordsPlural(dueCount)}',
-      enText: '${_dueCountLabel(dueCount)} ${dueCount == 1 ? 'word' : 'words'}',
-    );
   }
 
   double _reviewBarBottomOffset(BuildContext context) {
@@ -261,7 +232,11 @@ class _WordsWidgetState extends State<WordsWidget> {
                   end: ExpatlioDesign.pagePadding,
                   bottom: _reviewBarBottomOffset(context),
                   child: ReviewWordsBar(
-                    text: _reviewCountText(context, dueCount),
+                    text: reviewWordsVisibleCount(dueCount),
+                    semanticsLabel: reviewWordsCountSemanticsLabel(
+                      count: dueCount,
+                      languageCode: FFLocalizations.of(context).languageCode,
+                    ),
                     onTap: hasDueWords
                         ? () {
                             context.pushNamed(FlashcardWidget.routeName);
