@@ -2255,6 +2255,27 @@ void main() {
       expect(find.text('Присоединиться'), findsOneWidget);
       expect(find.text('5/10 мест'), findsOneWidget);
       expect(find.text('Марко Росси'), findsNothing);
+      final initialBottomBarRect =
+          tester.getRect(find.byKey(eventDetailBottomActionBarKey));
+      final initialPrimaryCtaRect =
+          tester.getRect(find.byKey(eventDetailPrimaryCtaKey));
+      final initialChatSlotRect =
+          tester.getRect(find.byKey(eventDetailChatCtaSlotKey));
+
+      void expectStableBottomActionGeometry() {
+        expect(
+          tester.getRect(find.byKey(eventDetailBottomActionBarKey)),
+          initialBottomBarRect,
+        );
+        expect(
+          tester.getRect(find.byKey(eventDetailPrimaryCtaKey)),
+          initialPrimaryCtaRect,
+        );
+        expect(
+          tester.getRect(find.byKey(eventDetailChatCtaSlotKey)),
+          initialChatSlotRect,
+        );
+      }
 
       await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
       await tester.pump();
@@ -2282,6 +2303,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.byKey(eventDetailChatCtaKey), findsNothing);
+      expectStableBottomActionGeometry();
       expect(profileRequests, [
         <String>['organizer-1'],
         <String>['organizer-1', 'student-1'],
@@ -2324,6 +2346,7 @@ void main() {
       expect(find.text('6/10 мест'), findsOneWidget);
       expect(find.text('Покинуть'), findsOneWidget);
       expect(find.byKey(eventDetailChatCtaKey), findsNothing);
+      expectStableBottomActionGeometry();
 
       snapshotController.add(
         _FakeEventDocumentSnapshot(
@@ -2365,6 +2388,7 @@ void main() {
       expect(find.text('Покинуть'), findsOneWidget);
       expect(find.text('6/10 мест'), findsOneWidget);
       expect(find.text('Марко Росси'), findsOneWidget);
+      expectStableBottomActionGeometry();
 
       completer.complete(_joinEventResponse());
       await tester.pumpAndSettle();
@@ -2375,6 +2399,7 @@ void main() {
       expect(find.text('6/10 мест'), findsOneWidget);
       expect(find.text('Марко Росси'), findsOneWidget);
       expect(find.byKey(eventDetailChatCtaKey), findsOneWidget);
+      expectStableBottomActionGeometry();
       primarySemantics =
           tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
       expect(primarySemantics.flagsCollection.isEnabled, isTrue);

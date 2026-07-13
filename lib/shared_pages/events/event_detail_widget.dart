@@ -76,6 +76,8 @@ const ValueKey<String> eventDetailBottomActionBarKey =
     ValueKey<String>('event_detail_bottom_action_bar');
 const ValueKey<String> eventDetailPrimaryCtaKey =
     ValueKey<String>('event_detail_primary_cta');
+const ValueKey<String> eventDetailChatCtaSlotKey =
+    ValueKey<String>('event_detail_chat_cta_slot');
 const ValueKey<String> eventDetailChatCtaKey =
     ValueKey<String>('event_detail_chat_cta');
 const String _eventDetailFallbackRoutePath = '/events';
@@ -104,6 +106,7 @@ const double _eventDetailDetailsValueFontSize = 14;
 const double _eventDetailParticipantsHeaderFontSize = 15;
 const double _eventDetailOccupancyFontSize = 12;
 const double _eventDetailParticipantNameFontSize = 13;
+const double _eventDetailActionFontSize = 15;
 const double _eventDetailDefaultTextHeight = 1.28;
 const double _eventDetailContentBottomPadding = _eventDetailActionHeight +
     ExpatlioDesign.space16 * 2 +
@@ -124,6 +127,7 @@ class _EventDetailLayoutMetrics {
     required this.participantsHeaderHeight,
     required this.participantNameSlotHeight,
     required this.participantTileHeight,
+    required this.bottomActionHeight,
   });
 
   factory _EventDetailLayoutMetrics.from(BuildContext context) {
@@ -176,6 +180,13 @@ class _EventDetailLayoutMetrics {
       participantTileHeight: _eventDetailParticipantAvatarDimension +
           ExpatlioDesign.space8 +
           participantNameSlotHeight,
+      bottomActionHeight: math.max(
+        _eventDetailActionHeight,
+        _eventDetailScaledLineHeight(
+          textScaler,
+          fontSize: _eventDetailActionFontSize,
+        ),
+      ),
     );
   }
 
@@ -185,6 +196,7 @@ class _EventDetailLayoutMetrics {
   final double participantsHeaderHeight;
   final double participantNameSlotHeight;
   final double participantTileHeight;
+  final double bottomActionHeight;
 }
 
 double _eventDetailScaledLineHeight(
@@ -1787,6 +1799,7 @@ class _EventDetailBottomActionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final metrics = _EventDetailLayoutMetrics.from(context);
     return DecoratedBox(
       key: eventDetailBottomActionBarKey,
       decoration: const BoxDecoration(
@@ -1823,31 +1836,37 @@ class _EventDetailBottomActionBar extends StatelessWidget {
                       : _EventDetailChatCta(
                           onPressed: onChatPressed,
                         );
+                  final primarySlot = SizedBox(
+                    height: metrics.bottomActionHeight,
+                    child: primaryCta,
+                  );
 
                   if (constraints.maxWidth < 320) {
                     return Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        primaryCta,
-                        if (chatCta != null) ...[
-                          const SizedBox(height: ExpatlioDesign.space12),
-                          chatCta,
-                        ],
+                        primarySlot,
+                        const SizedBox(height: ExpatlioDesign.space12),
+                        SizedBox(
+                          key: eventDetailChatCtaSlotKey,
+                          height: metrics.bottomActionHeight,
+                          child: chatCta,
+                        ),
                       ],
                     );
                   }
 
                   return Row(
                     children: [
-                      Expanded(child: primaryCta),
-                      if (chatCta != null) ...[
-                        const SizedBox(width: ExpatlioDesign.space12),
-                        SizedBox(
-                          width: 78,
-                          child: chatCta,
-                        ),
-                      ],
+                      Expanded(child: primarySlot),
+                      const SizedBox(width: ExpatlioDesign.space12),
+                      SizedBox(
+                        key: eventDetailChatCtaSlotKey,
+                        width: 78,
+                        height: metrics.bottomActionHeight,
+                        child: chatCta,
+                      ),
                     ],
                   );
                 },
@@ -2048,7 +2067,7 @@ class _EventDetailPrimaryCtaState extends State<_EventDetailPrimaryCta> {
                         style: ExpatlioDesign.textStyle(
                           context,
                           color: textColor,
-                          size: 15,
+                          size: _eventDetailActionFontSize,
                           weight: FontWeight.w600,
                         ),
                       ),
@@ -2063,7 +2082,7 @@ class _EventDetailPrimaryCtaState extends State<_EventDetailPrimaryCta> {
                   style: ExpatlioDesign.textStyle(
                     context,
                     color: textColor,
-                    size: 15,
+                    size: _eventDetailActionFontSize,
                     weight: FontWeight.w600,
                   ),
                 ),
@@ -2128,7 +2147,7 @@ class _EventDetailChatCta extends StatelessWidget {
             disabledForegroundColor: foregroundColor,
             textStyle: ExpatlioDesign.textStyle(
               context,
-              size: 15,
+              size: _eventDetailActionFontSize,
               weight: FontWeight.w600,
             ),
           ),

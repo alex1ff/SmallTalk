@@ -200,6 +200,63 @@ void main() {
     }
   });
 
+  testWidgets('bottom action slots keep geometry across all data states',
+      (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+    try {
+      Future<void> pumpState(
+        EventDetailJoinCtaState state, {
+        required bool showChat,
+      }) async {
+        await tester.pumpWidget(
+          _buildTestApp(
+            home: EventDetailWidget(
+              eventId: 'event-123',
+              joinCtaState: state,
+              onPrimaryCtaPressed: () {},
+              onChatPressed: showChat ? () {} : null,
+            ),
+          ),
+        );
+        await tester.pump();
+      }
+
+      await pumpState(EventDetailJoinCtaState.join, showChat: false);
+      final barRect = tester.getRect(find.byKey(eventDetailBottomActionBarKey));
+      final primaryRect = tester.getRect(find.byKey(eventDetailPrimaryCtaKey));
+      final chatSlotRect =
+          tester.getRect(find.byKey(eventDetailChatCtaSlotKey));
+      expect(chatSlotRect.width, 78);
+      expect(find.byKey(eventDetailChatCtaKey), findsNothing);
+      expect(find.bySemanticsLabel('Чат'), findsNothing);
+
+      for (final state in EventDetailJoinCtaState.values) {
+        final showChat = state == EventDetailJoinCtaState.joined ||
+            state == EventDetailJoinCtaState.joinedLocked ||
+            state == EventDetailJoinCtaState.optimisticLeft;
+        await pumpState(state, showChat: showChat);
+
+        expect(
+          tester.getRect(find.byKey(eventDetailBottomActionBarKey)),
+          barRect,
+        );
+        expect(
+            tester.getRect(find.byKey(eventDetailPrimaryCtaKey)), primaryRect);
+        expect(
+          tester.getRect(find.byKey(eventDetailChatCtaSlotKey)),
+          chatSlotRect,
+        );
+        expect(
+          find.byKey(eventDetailChatCtaKey),
+          showChat ? findsOneWidget : findsNothing,
+        );
+      }
+      expect(tester.takeException(), isNull);
+    } finally {
+      semanticsHandle.dispose();
+    }
+  });
+
   testWidgets('bottom action bar callbacks fire once', (tester) async {
     var joinTapCount = 0;
     var chatTapCount = 0;
@@ -936,6 +993,53 @@ void main() {
     expect(find.byKey(eventDetailPrimaryCtaKey), findsOneWidget);
     expect(find.byKey(eventDetailChatCtaKey), findsNothing);
     expect(find.text('Событие отменено'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('bottom action geometry stays stable on narrow large text',
+      (tester) async {
+    tester.view.physicalSize = const Size(640, 1200);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    Future<void> pumpState({required bool joined}) async {
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(3)),
+          child: _buildTestApp(
+            home: EventDetailWidget(
+              eventId: 'event-123',
+              joinCtaState: joined
+                  ? EventDetailJoinCtaState.joined
+                  : EventDetailJoinCtaState.join,
+              onPrimaryCtaPressed: () {},
+              onChatPressed: joined ? () {} : null,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    await pumpState(joined: false);
+    final barRect = tester.getRect(find.byKey(eventDetailBottomActionBarKey));
+    final primaryRect = tester.getRect(find.byKey(eventDetailPrimaryCtaKey));
+    final chatSlotRect = tester.getRect(find.byKey(eventDetailChatCtaSlotKey));
+    expect(chatSlotRect.height, greaterThan(48));
+    expect(find.byKey(eventDetailChatCtaKey), findsNothing);
+
+    await pumpState(joined: true);
+
+    expect(tester.getRect(find.byKey(eventDetailBottomActionBarKey)), barRect);
+    expect(tester.getRect(find.byKey(eventDetailPrimaryCtaKey)), primaryRect);
+    expect(
+      tester.getRect(find.byKey(eventDetailChatCtaSlotKey)),
+      chatSlotRect,
+    );
+    expect(find.byKey(eventDetailChatCtaKey), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
