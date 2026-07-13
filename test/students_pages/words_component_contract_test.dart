@@ -65,8 +65,12 @@ void main() {
     final pageSource =
         File('lib/students_pages/words/words_widget.dart').readAsStringSync();
 
-    expect(pageSource, contains('separatorBuilder'));
+    expect(pageSource, contains('return ListView.separated('));
+    expect(pageSource, contains('itemCount: words.length'));
+    expect(pageSource, contains('separatorBuilder:'));
     expect(pageSource, contains('Divider('));
+    expect(pageSource, contains('height: 1.0'));
+    expect(pageSource, contains('thickness: 1.0'));
     expect(pageSource, contains('ExpatlioDesign.border'));
   });
 }
