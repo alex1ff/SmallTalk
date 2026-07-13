@@ -27,6 +27,8 @@ const ValueKey<String> eventDetailRouteErrorKey =
     ValueKey<String>('event_detail_route_error');
 const ValueKey<String> eventDetailRouteRefreshingIndicatorKey =
     ValueKey<String>('event_detail_route_refreshing_indicator');
+const ValueKey<String> eventDetailRouteRefreshErrorIndicatorKey =
+    ValueKey<String>('event_detail_route_refresh_error_indicator');
 const ValueKey<String> eventDetailCancelErrorSnackBarKey =
     ValueKey<String>('event_detail_cancel_error_snack_bar');
 const ValueKey<String> eventDetailJoinErrorSnackBarKey =
@@ -84,6 +86,134 @@ final RegExp _eventDetailParticipantNameLetterOrNumber = RegExp(
   unicode: true,
 );
 
+class _EventDetailSnapshotSummary {
+  const _EventDetailSnapshotSummary({
+    required this.connectionState,
+    required this.hasResolvedResult,
+    required this.event,
+    required this.error,
+  });
+
+  factory _EventDetailSnapshotSummary.initial(EventsRecord? initialEvent) {
+    return _EventDetailSnapshotSummary(
+      connectionState: ConnectionState.none,
+      hasResolvedResult: initialEvent != null,
+      event: initialEvent,
+      error: null,
+    );
+  }
+
+  final ConnectionState connectionState;
+  final bool hasResolvedResult;
+  final EventsRecord? event;
+  final Object? error;
+
+  bool get hasError => error != null;
+  bool get isConfirmedMissing => hasResolvedResult && event == null;
+
+  _EventDetailSnapshotSummary copyWith({
+    ConnectionState? connectionState,
+    bool? hasResolvedResult,
+    EventsRecord? event,
+    bool replaceEvent = false,
+    Object? error,
+    bool clearError = false,
+  }) {
+    return _EventDetailSnapshotSummary(
+      connectionState: connectionState ?? this.connectionState,
+      hasResolvedResult: hasResolvedResult ?? this.hasResolvedResult,
+      event: replaceEvent ? event : this.event,
+      error: clearError ? null : error ?? this.error,
+    );
+  }
+}
+
+typedef _EventDetailSnapshotSummaryBuilder = Widget Function(
+  BuildContext context,
+  _EventDetailSnapshotSummary summary,
+);
+
+class _EventDetailSnapshotBuilder
+    extends StreamBuilderBase<EventsRecord?, _EventDetailSnapshotSummary> {
+  const _EventDetailSnapshotBuilder({
+    super.key,
+    required super.stream,
+    required this.initialEvent,
+    required this.builder,
+  });
+
+  final EventsRecord? initialEvent;
+  final _EventDetailSnapshotSummaryBuilder builder;
+
+  @override
+  _EventDetailSnapshotSummary initial() =>
+      _EventDetailSnapshotSummary.initial(initialEvent);
+
+  @override
+  _EventDetailSnapshotSummary afterConnected(
+    _EventDetailSnapshotSummary current,
+  ) {
+    final retainedEvent =
+        current.hasResolvedResult ? current.event : initialEvent;
+    return current.copyWith(
+      connectionState: ConnectionState.waiting,
+      hasResolvedResult: current.hasResolvedResult || initialEvent != null,
+      event: retainedEvent,
+      replaceEvent: true,
+      clearError: true,
+    );
+  }
+
+  @override
+  _EventDetailSnapshotSummary afterData(
+    _EventDetailSnapshotSummary current,
+    EventsRecord? data,
+  ) {
+    return current.copyWith(
+      connectionState: ConnectionState.active,
+      hasResolvedResult: true,
+      event: data,
+      replaceEvent: true,
+      clearError: true,
+    );
+  }
+
+  @override
+  _EventDetailSnapshotSummary afterError(
+    _EventDetailSnapshotSummary current,
+    Object error,
+    StackTrace stackTrace,
+  ) {
+    return current.copyWith(
+      connectionState: ConnectionState.active,
+      error: error,
+    );
+  }
+
+  @override
+  _EventDetailSnapshotSummary afterDone(
+    _EventDetailSnapshotSummary current,
+  ) {
+    return current.copyWith(connectionState: ConnectionState.done);
+  }
+
+  @override
+  _EventDetailSnapshotSummary afterDisconnected(
+    _EventDetailSnapshotSummary current,
+  ) {
+    return current.copyWith(
+      connectionState: ConnectionState.none,
+      clearError: true,
+    );
+  }
+
+  @override
+  Widget build(
+      BuildContext context, _EventDetailSnapshotSummary currentSummary) {
+    return builder(context, currentSummary);
+  }
+}
+
 class EventDetailRouteWidget extends StatefulWidget {
   const EventDetailRouteWidget({
     super.key,
@@ -122,6 +252,13 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
   late Stream<EventsRecord?> _eventStream;
   late _EventDetailRouteDataKey _eventStreamDataKey;
   EventsRecord? _eventInitialData;
+  Stream<EventParticipantsRecord?>? _currentUserParticipantStream;
+  String? _currentUserParticipantStreamEventId;
+  String? _currentUserParticipantStreamUserId;
+  Object? _currentUserParticipantStreamLoaderIdentity;
+  Stream<List<EventParticipantsRecord>>? _activeParticipantsStream;
+  String? _activeParticipantsStreamEventId;
+  Object? _activeParticipantsStreamLoaderIdentity;
   Timer? _startsAtRefreshTimer;
   String? _startsAtRefreshEventId;
   DateTime? _startsAtRefreshAt;
@@ -166,29 +303,30 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         oldWidget.snapshotStream != widget.snapshotStream ||
         dataKeyChanged) {
       _configureEventStream(sessionCacheUserId: sessionCacheUserId);
-      _clearStartsAtRefreshTimer();
-      _locallyStartedEventId = null;
-      _locallyStartedAt = null;
-      _locallyCanceledEventId = null;
-      _locallyJoinedEventId = null;
-      _locallyJoinedParticipantsCountEventId = null;
-      _locallyJoinedParticipantsCount = null;
-      _locallyLeftEventId = null;
-      _locallyLeftParticipantsCountEventId = null;
-      _locallyLeftParticipantsCount = null;
-      _currentDetailEventId = null;
       if (dataKeyChanged) {
+        _clearNestedEventStreams();
+        _clearStartsAtRefreshTimer();
+        _locallyStartedEventId = null;
+        _locallyStartedAt = null;
+        _locallyCanceledEventId = null;
+        _locallyJoinedEventId = null;
+        _locallyJoinedParticipantsCountEventId = null;
+        _locallyJoinedParticipantsCount = null;
+        _locallyLeftEventId = null;
+        _locallyLeftParticipantsCountEventId = null;
+        _locallyLeftParticipantsCount = null;
+        _currentDetailEventId = null;
         _lastTrackedEventDetailOpenKey = null;
         _pendingMembershipIntent = null;
         _participantActionGeneration += 1;
         _isLeaving = false;
         _isJoining = false;
+        _lastTrackedCanceledEventId = null;
+        _lastTrackedJoinedEventId = null;
+        _lastTrackedLeftEventId = null;
+        _isOpeningOrganizerChat = false;
+        _isReportingEvent = false;
       }
-      _lastTrackedCanceledEventId = null;
-      _lastTrackedJoinedEventId = null;
-      _lastTrackedLeftEventId = null;
-      _isOpeningOrganizerChat = false;
-      _isReportingEvent = false;
     }
   }
 
@@ -221,6 +359,68 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         snapshotStream: widget.snapshotStream,
         sessionCacheUserId: sessionCacheUserId,
       );
+
+  Stream<EventParticipantsRecord?>? _currentParticipantStreamFor({
+    required String eventId,
+    required String userId,
+  }) {
+    if (userId.isEmpty) {
+      _currentUserParticipantStream = null;
+      _currentUserParticipantStreamEventId = null;
+      _currentUserParticipantStreamUserId = null;
+      _currentUserParticipantStreamLoaderIdentity = null;
+      return null;
+    }
+    final loaderIdentity = widget.participantSnapshotStream;
+    if (_currentUserParticipantStream == null ||
+        _currentUserParticipantStreamEventId != eventId ||
+        _currentUserParticipantStreamUserId != userId ||
+        !identical(
+          _currentUserParticipantStreamLoaderIdentity,
+          loaderIdentity,
+        )) {
+      _currentUserParticipantStreamEventId = eventId;
+      _currentUserParticipantStreamUserId = userId;
+      _currentUserParticipantStreamLoaderIdentity = loaderIdentity;
+      _currentUserParticipantStream =
+          EventDetailRepository.watchCurrentUserParticipant(
+        eventId: eventId,
+        userId: userId,
+        snapshotStream: widget.participantSnapshotStream,
+      );
+    }
+    return _currentUserParticipantStream;
+  }
+
+  Stream<List<EventParticipantsRecord>> _activeParticipantsStreamFor(
+    String eventId,
+  ) {
+    final loaderIdentity = widget.participantsStream;
+    if (_activeParticipantsStream == null ||
+        _activeParticipantsStreamEventId != eventId ||
+        !identical(
+          _activeParticipantsStreamLoaderIdentity,
+          loaderIdentity,
+        )) {
+      _activeParticipantsStreamEventId = eventId;
+      _activeParticipantsStreamLoaderIdentity = loaderIdentity;
+      _activeParticipantsStream = EventDetailRepository.watchActiveParticipants(
+        eventId: eventId,
+        participantsStream: widget.participantsStream,
+      );
+    }
+    return _activeParticipantsStream!;
+  }
+
+  void _clearNestedEventStreams() {
+    _currentUserParticipantStream = null;
+    _currentUserParticipantStreamEventId = null;
+    _currentUserParticipantStreamUserId = null;
+    _currentUserParticipantStreamLoaderIdentity = null;
+    _activeParticipantsStream = null;
+    _activeParticipantsStreamEventId = null;
+    _activeParticipantsStreamLoaderIdentity = null;
+  }
 
   bool _isCurrentParticipantAction({
     required int generation,
@@ -556,12 +756,14 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
     }
 
     final eventId = event.reference.id;
+    final dataKey = _eventStreamDataKey;
     final reportRequest = await showDialog<_EventReportDialogResult>(
       context: context,
       builder: (context) => const _EventReportDialog(),
     );
     if (reportRequest == null ||
         !mounted ||
+        dataKey != _eventStreamDataKey ||
         _currentDetailEventId != eventId ||
         widget.eventId.trim() != eventId) {
       return;
@@ -626,12 +828,12 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<EventsRecord?>(
+    return _EventDetailSnapshotBuilder(
       key: ValueKey<_EventDetailRouteDataKey>(_eventStreamDataKey),
       stream: _eventStream,
-      initialData: _eventInitialData,
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
+      initialEvent: _eventInitialData,
+      builder: (context, summary) {
+        if (summary.hasError && !summary.hasResolvedResult) {
           _currentDetailEventId = null;
           return const _EventDetailRouteStateScaffold(
             stateKey: eventDetailRouteErrorKey,
@@ -642,9 +844,9 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
           );
         }
 
-        final event = snapshot.data;
-        if (snapshot.connectionState == ConnectionState.waiting &&
-            event == null) {
+        if (!summary.hasResolvedResult &&
+            (summary.connectionState == ConnectionState.none ||
+                summary.connectionState == ConnectionState.waiting)) {
           _currentDetailEventId = null;
           return const _EventDetailRouteStateScaffold(
             stateKey: eventDetailRouteLoadingKey,
@@ -656,14 +858,20 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
           );
         }
 
+        final event = summary.event;
         if (event == null) {
           _currentDetailEventId = null;
-          return const _EventDetailRouteStateScaffold(
+          _clearNestedEventStreams();
+          const missingState = _EventDetailRouteStateScaffold(
             stateKey: eventDetailRouteMissingKey,
             titleRu: 'Событие не найдено',
             titleEn: 'Event not found',
             messageRu: 'Возможно, событие удалено или ссылка устарела.',
             messageEn: 'The event may have been deleted or the link expired.',
+          );
+          return _EventDetailRefreshErrorOverlay(
+            isVisible: summary.hasError && summary.isConfirmedMissing,
+            child: missingState,
           );
         }
 
@@ -703,13 +911,10 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         );
 
         final participantUserId = currentUserUid.trim();
-        final participantStream = participantUserId.isEmpty
-            ? null
-            : EventDetailRepository.watchCurrentUserParticipant(
-                eventId: eventId,
-                userId: participantUserId,
-                snapshotStream: widget.participantSnapshotStream,
-              );
+        final participantStream = _currentParticipantStreamFor(
+          eventId: eventId,
+          userId: participantUserId,
+        );
 
         return StreamBuilder<EventParticipantsRecord?>(
           stream: participantStream,
@@ -761,10 +966,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
                 event.organizerId.trim() != currentUserUid.trim();
 
             return StreamBuilder<List<EventParticipantsRecord>>(
-              stream: EventDetailRepository.watchActiveParticipants(
-                eventId: eventId,
-                participantsStream: widget.participantsStream,
-              ),
+              stream: _activeParticipantsStreamFor(eventId),
               builder: (context, participantsSnapshot) {
                 final participantRecords = participantsSnapshot.data ??
                     const <EventParticipantsRecord>[];
@@ -909,10 +1111,10 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
                     ruText: 'Обновляем событие',
                     enText: 'Refreshing event',
                   );
-                  return UxRefreshingIndicatorOverlay(
+                  final refreshingContent = UxRefreshingIndicatorOverlay(
                     key: eventDetailRouteRefreshingIndicatorKey,
                     isRefreshing:
-                        snapshot.connectionState == ConnectionState.waiting,
+                        summary.connectionState == ConnectionState.waiting,
                     semanticsLabel: refreshingLabel,
                     padding: EdgeInsets.fromLTRB(
                       ExpatlioDesign.space8,
@@ -921,6 +1123,10 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
                       ExpatlioDesign.space8,
                     ),
                     child: content,
+                  );
+                  return _EventDetailRefreshErrorOverlay(
+                    isVisible: summary.hasError,
+                    child: refreshingContent,
                   );
                 }
 
@@ -1786,6 +1992,74 @@ String _eventDetailVisibleParticipantDisplayName(String displayName) {
     return '';
   }
   return visibleName;
+}
+
+class _EventDetailRefreshErrorOverlay extends StatelessWidget {
+  const _EventDetailRefreshErrorOverlay({
+    required this.isVisible,
+    required this.child,
+  });
+
+  final bool isVisible;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = FFLocalizations.of(context).getVariableText(
+      ruText: 'Не удалось обновить событие',
+      enText: 'Could not refresh event',
+    );
+    return UxRefreshingIndicatorOverlay(
+      isRefreshing: isVisible,
+      semanticsLabel: label,
+      padding: EdgeInsets.fromLTRB(
+        ExpatlioDesign.space8,
+        MediaQuery.paddingOf(context).top + ExpatlioDesign.space8,
+        ExpatlioDesign.space8,
+        ExpatlioDesign.space8,
+      ),
+      indicator: ExcludeSemantics(
+        child: Material(
+          key: eventDetailRouteRefreshErrorIndicatorKey,
+          color: ExpatlioDesign.card,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
+            side: const BorderSide(color: ExpatlioDesign.border),
+          ),
+          child: Padding(
+            padding: const EdgeInsetsDirectional.symmetric(
+              horizontal: ExpatlioDesign.space12,
+              vertical: ExpatlioDesign.space8,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.cloud_off_outlined,
+                  size: 16,
+                  color: ExpatlioDesign.systemRed,
+                ),
+                const SizedBox(width: ExpatlioDesign.space8),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: ExpatlioDesign.textStyle(
+                      context,
+                      size: 13,
+                      weight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      child: child,
+    );
+  }
 }
 
 class _EventDetailRouteStateScaffold extends StatelessWidget {

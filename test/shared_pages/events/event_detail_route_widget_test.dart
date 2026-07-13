@@ -273,6 +273,23 @@ void main() {
     await controller.close();
   });
 
+  testWidgets('cold detail error keeps the full error state', (tester) async {
+    await tester.pumpWidget(
+      _buildDetailRouteTestApp(
+        eventId: 'event-1',
+        snapshotStream: (_) => Stream<DocumentSnapshot>.error(
+          StateError('offline'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventDetailRouteErrorKey), findsOneWidget);
+    expect(find.byKey(eventDetailRouteLoadingKey), findsNothing);
+    expect(find.byKey(eventDetailRouteRefreshErrorIndicatorKey), findsNothing);
+    expect(find.byKey(eventDetailPrimaryCtaKey), findsNothing);
+  });
+
   testWidgets('warm detail cache replaces full loader with refresh indicator',
       (tester) async {
     await _cacheEventDetailForTest(
@@ -298,6 +315,20 @@ void main() {
     expect(refreshOverlay.isRefreshing, isTrue);
     expect(find.bySemanticsLabel('Обновляем событие'), findsOneWidget);
 
+    controller.addError(StateError('warm refresh failed'));
+    await tester.pump();
+
+    expect(find.text('Cached event title'), findsOneWidget);
+    expect(find.byKey(eventDetailRouteErrorKey), findsNothing);
+    expect(
+      find.byKey(eventDetailRouteRefreshErrorIndicatorKey),
+      findsOneWidget,
+    );
+    refreshOverlay = tester.widget<UxRefreshingIndicatorOverlay>(
+      find.byKey(eventDetailRouteRefreshingIndicatorKey),
+    );
+    expect(refreshOverlay.isRefreshing, isFalse);
+
     controller.add(
       _FakeEventDocumentSnapshot(
         reference: EventsRecord.collection.doc('event-1'),
@@ -308,6 +339,10 @@ void main() {
 
     expect(find.text('Fresh event title'), findsOneWidget);
     expect(find.text('Cached event title'), findsNothing);
+    expect(
+      find.byKey(eventDetailRouteRefreshErrorIndicatorKey),
+      findsNothing,
+    );
     refreshOverlay = tester.widget<UxRefreshingIndicatorOverlay>(
       find.byKey(eventDetailRouteRefreshingIndicatorKey),
     );
@@ -357,6 +392,7 @@ void main() {
       _buildDetailRouteTestApp(
         eventId: 'event-1',
         analyticsTracker: analyticsTracker,
+        locale: const Locale('en'),
         snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
           _FakeEventDocumentSnapshot(
             reference: eventRef,
@@ -370,6 +406,10 @@ void main() {
       analyticsTracker.payloadsFor('event_detail_opened'),
       hasLength(1),
     );
+    EventDetailRepository.invalidateCachedEventDetail(
+      eventId: 'event-1',
+      userId: 'organizer-1',
+    );
     final refreshController =
         StreamController<DocumentSnapshot>.broadcast(sync: true);
 
@@ -377,6 +417,7 @@ void main() {
       _buildDetailRouteTestApp(
         eventId: 'event-1',
         analyticsTracker: analyticsTracker,
+        locale: const Locale('en'),
         snapshotStream: (_) => refreshController.stream,
       ),
     );
@@ -393,6 +434,43 @@ void main() {
       isTrue,
     );
 
+    refreshController.addError(StateError('refresh failed'));
+    await tester.pump();
+
+    expect(find.text('Shown event title'), findsOneWidget);
+    expect(find.byKey(eventDetailRouteErrorKey), findsNothing);
+    expect(
+      find.byKey(eventDetailRouteRefreshErrorIndicatorKey),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widgetList<Semantics>(
+            find.ancestor(
+              of: find.byKey(eventDetailRouteRefreshErrorIndicatorKey),
+              matching: find.byType(Semantics),
+            ),
+          )
+          .any(
+            (semantics) =>
+                semantics.properties.label == 'Could not refresh event' &&
+                semantics.properties.liveRegion == true,
+          ),
+      isTrue,
+    );
+    expect(
+      tester
+          .widget<UxRefreshingIndicatorOverlay>(
+            find.byKey(eventDetailRouteRefreshingIndicatorKey),
+          )
+          .isRefreshing,
+      isFalse,
+    );
+    expect(
+      analyticsTracker.payloadsFor('event_detail_opened'),
+      hasLength(1),
+    );
+
     refreshController.add(
       _FakeEventDocumentSnapshot(
         reference: EventsRecord.collection.doc('event-1'),
@@ -404,12 +482,77 @@ void main() {
     expect(find.text('Refreshed event title'), findsOneWidget);
     expect(find.text('Shown event title'), findsNothing);
     expect(
+      find.byKey(eventDetailRouteRefreshErrorIndicatorKey),
+      findsNothing,
+    );
+    expect(
       analyticsTracker.payloadsFor('event_detail_opened'),
       hasLength(1),
     );
 
     await tester.pumpWidget(const SizedBox.shrink());
     await refreshController.close();
+  });
+
+  testWidgets('same-key replacement ignores errors from the old stream',
+      (tester) async {
+    final oldController =
+        StreamController<DocumentSnapshot>.broadcast(sync: true);
+    final newController =
+        StreamController<DocumentSnapshot>.broadcast(sync: true);
+    addTearDown(oldController.close);
+    addTearDown(newController.close);
+
+    await tester.pumpWidget(
+      _buildDetailRouteTestApp(
+        eventId: 'event-1',
+        snapshotStream: (_) => oldController.stream,
+      ),
+    );
+    await tester.pump();
+    oldController.add(
+      _FakeEventDocumentSnapshot(
+        reference: EventsRecord.collection.doc('event-1'),
+        data: _eventData(title: 'Retained old stream event'),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('Retained old stream event'), findsOneWidget);
+
+    await tester.pumpWidget(
+      _buildDetailRouteTestApp(
+        eventId: 'event-1',
+        snapshotStream: (_) => newController.stream,
+      ),
+    );
+    await tester.pump();
+    expect(find.text('Retained old stream event'), findsOneWidget);
+
+    oldController.addError(StateError('stale stream failed'));
+    await tester.pump();
+
+    expect(find.text('Retained old stream event'), findsOneWidget);
+    expect(
+      find.byKey(eventDetailRouteRefreshErrorIndicatorKey),
+      findsNothing,
+    );
+    expect(
+      tester
+          .widget<UxRefreshingIndicatorOverlay>(
+            find.byKey(eventDetailRouteRefreshingIndicatorKey),
+          )
+          .isRefreshing,
+      isTrue,
+    );
+
+    newController.addError(StateError('active stream failed'));
+    await tester.pump();
+
+    expect(find.text('Retained old stream event'), findsOneWidget);
+    expect(
+      find.byKey(eventDetailRouteRefreshErrorIndicatorKey),
+      findsOneWidget,
+    );
   });
 
   testWidgets('event key change never shows the previous event',
@@ -439,6 +582,13 @@ void main() {
 
     expect(find.text('Event one title'), findsNothing);
     expect(find.byKey(eventDetailRouteLoadingKey), findsOneWidget);
+
+    nextEventController.addError(StateError('event two failed'));
+    await tester.pump();
+
+    expect(find.text('Event one title'), findsNothing);
+    expect(find.byKey(eventDetailRouteErrorKey), findsOneWidget);
+    expect(find.byKey(eventDetailRouteRefreshErrorIndicatorKey), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await nextEventController.close();
@@ -548,6 +698,33 @@ void main() {
 
     expect(find.text('Cached before missing'), findsNothing);
     expect(find.byKey(eventDetailRouteMissingKey), findsOneWidget);
+
+    controller.addError(StateError('refresh after missing failed'));
+    await tester.pump();
+
+    expect(find.text('Cached before missing'), findsNothing);
+    expect(find.byKey(eventDetailRouteMissingKey), findsOneWidget);
+    expect(find.byKey(eventDetailRouteErrorKey), findsNothing);
+    expect(
+      find.byKey(eventDetailRouteRefreshErrorIndicatorKey),
+      findsOneWidget,
+    );
+
+    controller.add(
+      _FakeEventDocumentSnapshot(
+        reference: EventsRecord.collection.doc('event-1'),
+        data: _eventData(title: 'Recovered after missing'),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Recovered after missing'), findsOneWidget);
+    expect(find.byKey(eventDetailRouteMissingKey), findsNothing);
+    expect(
+      find.byKey(eventDetailRouteRefreshErrorIndicatorKey),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await controller.close();
@@ -1906,15 +2083,76 @@ void main() {
   testWidgets('report dialog ignores submit after route event changes',
       (tester) async {
     currentUser = _TestAuthUser('student-1');
-    final streamController = StreamController<DocumentSnapshot>();
-    addTearDown(streamController.close);
     var reportCalls = 0;
+
+    Widget buildRoute(String eventId) => _buildTestApp(
+          home: EventDetailRouteWidget(
+            eventId: eventId,
+            snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: eventRef,
+                data: _eventData(
+                  title: 'Snapshot $eventId',
+                  organizerId: 'organizer-1',
+                ),
+              ),
+            ),
+            participantSnapshotStream: (participantRef) =>
+                Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: participantRef,
+                data: _participantData(
+                  userId: 'student-1',
+                  status: 'active',
+                ),
+              ),
+            ),
+            reportEventInvoker: (_, __) async {
+              reportCalls += 1;
+              return <String, dynamic>{
+                'eventId': eventId,
+                'reportId': 'report-1',
+                'status': 'submitted',
+                'reportedAt': '2026-06-16T10:00:00.000Z',
+              };
+            },
+          ),
+        );
+
+    await tester.pumpWidget(buildRoute('event-1'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(eventDetailReportButtonKey));
+    await tester.pumpAndSettle();
+    expect(find.byKey(eventDetailReportDialogKey), findsOneWidget);
+
+    await tester.pumpWidget(buildRoute('event-2'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(eventDetailReportDialogKey), findsOneWidget);
+
+    await tester.tap(find.byKey(eventDetailReportReasonKey('spam')));
+    await tester.pump();
+    await tester.tap(find.byKey(eventDetailReportSubmitButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(reportCalls, 0);
+    expect(find.byKey(eventDetailReportSuccessSnackBarKey), findsNothing);
+    expect(find.byKey(eventDetailReportErrorSnackBarKey), findsNothing);
+  });
+
+  testWidgets('report dialog submits after same-key refresh error',
+      (tester) async {
+    currentUser = _TestAuthUser('student-1');
+    final streamController =
+        StreamController<DocumentSnapshot>.broadcast(sync: true);
+    addTearDown(streamController.close);
+    Map<String, dynamic>? payload;
 
     await tester.pumpWidget(
       _buildTestApp(
         home: EventDetailRouteWidget(
           eventId: 'event-1',
-          snapshotStream: (eventRef) => streamController.stream,
+          snapshotStream: (_) => streamController.stream,
           participantSnapshotStream: (participantRef) =>
               Stream<DocumentSnapshot>.value(
             _FakeEventDocumentSnapshot(
@@ -1925,8 +2163,8 @@ void main() {
               ),
             ),
           ),
-          reportEventInvoker: (_, __) async {
-            reportCalls += 1;
+          reportEventInvoker: (_, calledPayload) async {
+            payload = calledPayload;
             return <String, dynamic>{
               'eventId': 'event-1',
               'reportId': 'report-1',
@@ -1938,7 +2176,6 @@ void main() {
       ),
     );
     await tester.pump();
-
     streamController.add(
       _FakeEventDocumentSnapshot(
         reference: EventsRecord.collection.doc('event-1'),
@@ -1949,24 +2186,25 @@ void main() {
 
     await tester.tap(find.byKey(eventDetailReportButtonKey));
     await tester.pumpAndSettle();
-    expect(find.byKey(eventDetailReportDialogKey), findsOneWidget);
+    streamController.addError(StateError('refresh failed'));
+    await tester.pump();
 
-    streamController.add(
-      _FakeEventDocumentSnapshot(
-        reference: EventsRecord.collection.doc('event-2'),
-        data: _eventData(title: 'Updated event', organizerId: 'organizer-1'),
-      ),
+    expect(find.byKey(eventDetailReportDialogKey), findsOneWidget);
+    expect(
+      find.byKey(eventDetailRouteRefreshErrorIndicatorKey),
+      findsOneWidget,
     );
-    await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(eventDetailReportReasonKey('spam')));
     await tester.pump();
     await tester.tap(find.byKey(eventDetailReportSubmitButtonKey));
     await tester.pumpAndSettle();
 
-    expect(reportCalls, 0);
-    expect(find.byKey(eventDetailReportSuccessSnackBarKey), findsNothing);
-    expect(find.byKey(eventDetailReportErrorSnackBarKey), findsNothing);
+    expect(payload, <String, dynamic>{
+      'eventId': 'event-1',
+      'reasonCode': 'spam',
+    });
+    expect(find.byKey(eventDetailReportSuccessSnackBarKey), findsOneWidget);
   });
 
   testWidgets('non-organizer cannot see cancel action or call backend',
@@ -2189,6 +2427,8 @@ void main() {
         StreamController<List<EventParticipantsRecord>>.broadcast(sync: true);
     final analyticsTracker = _RecordingEventsAnalyticsTracker();
     var joinCalls = 0;
+    var participantStreamCalls = 0;
+    var participantsStreamCalls = 0;
     String? functionName;
     Map<String, dynamic>? payload;
     final profileRequests = <List<String>>[];
@@ -2202,14 +2442,19 @@ void main() {
             eventId: ' event-1 ',
             analyticsTracker: analyticsTracker,
             snapshotStream: (_) => snapshotController.stream,
-            participantSnapshotStream: (participantRef) =>
-                Stream<DocumentSnapshot>.value(
-              _FakeEventDocumentSnapshot(
-                reference: participantRef,
-                exists: false,
-              ),
-            ),
-            participantsStream: (_) => participantsController.stream,
+            participantSnapshotStream: (participantRef) {
+              participantStreamCalls += 1;
+              return Stream<DocumentSnapshot>.value(
+                _FakeEventDocumentSnapshot(
+                  reference: participantRef,
+                  exists: false,
+                ),
+              );
+            },
+            participantsStream: (_) {
+              participantsStreamCalls += 1;
+              return participantsController.stream;
+            },
             publicProfilesLoader: (userIds) {
               final requested = userIds.toList(growable: false)..sort();
               profileRequests.add(requested);
@@ -2255,6 +2500,8 @@ void main() {
       expect(find.text('Присоединиться'), findsOneWidget);
       expect(find.text('5/10 мест'), findsOneWidget);
       expect(find.text('Марко Росси'), findsNothing);
+      expect(participantStreamCalls, 1);
+      expect(participantsStreamCalls, 1);
       final initialBottomBarRect =
           tester.getRect(find.byKey(eventDetailBottomActionBarKey));
       final initialPrimaryCtaRect =
@@ -2389,6 +2636,71 @@ void main() {
       expect(find.text('6/10 мест'), findsOneWidget);
       expect(find.text('Марко Росси'), findsOneWidget);
       expectStableBottomActionGeometry();
+
+      snapshotController.addError(StateError('detail refresh failed'));
+      await tester.pump();
+
+      expect(find.text('Updated conversation club'), findsOneWidget);
+      expect(find.text('Покинуть'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.text('6/10 мест'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(eventDetailParticipantTileKey(0)),
+          matching: find.text('Anastasia Ivanova'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Марко Росси'), findsOneWidget);
+      expect(find.byKey(eventDetailRouteErrorKey), findsNothing);
+      expect(
+        find.byKey(eventDetailRouteRefreshErrorIndicatorKey),
+        findsOneWidget,
+      );
+      expectStableBottomActionGeometry();
+      expect(profileRequests, hasLength(2));
+      expect(participantStreamCalls, 1);
+      expect(participantsStreamCalls, 1);
+
+      snapshotController.addError(StateError('detail refresh failed again'));
+      await tester.pump();
+      expect(
+        find.byKey(eventDetailRouteRefreshErrorIndicatorKey),
+        findsOneWidget,
+      );
+      expect(profileRequests, hasLength(2));
+      expect(participantStreamCalls, 1);
+      expect(participantsStreamCalls, 1);
+
+      snapshotController.add(
+        _FakeEventDocumentSnapshot(
+          reference: EventsRecord.collection.doc('event-1'),
+          data: _eventData(
+            title: 'Recovered conversation club',
+            participantsCount: 6,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Recovered conversation club'), findsOneWidget);
+      expect(
+        find.byKey(eventDetailRouteRefreshErrorIndicatorKey),
+        findsNothing,
+      );
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(eventDetailParticipantTileKey(0)),
+          matching: find.text('Anastasia Ivanova'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Марко Росси'), findsOneWidget);
+      expectStableBottomActionGeometry();
+      expect(profileRequests, hasLength(2));
+      expect(participantStreamCalls, 1);
+      expect(participantsStreamCalls, 1);
 
       completer.complete(_joinEventResponse());
       await tester.pumpAndSettle();
