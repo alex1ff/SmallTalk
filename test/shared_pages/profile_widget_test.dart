@@ -1,7 +1,11 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -693,6 +697,317 @@ void main() {
     _expectSameRects(tester, initialGeometry);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('avatar shell stays stable through real image stream transitions',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final cacheManager = _prepareControlledAvatarCacheManager();
+    final harness = _ProfileHarness(
+      userId: 'alice',
+      user: _user('alice', name: 'Alice', totalCalls: 7),
+      textScaler: const TextScaler.linear(3),
+      avatarCacheManager: cacheManager,
+    );
+    addTearDown(harness.close);
+    await tester.pumpWidget(harness.buildApp());
+    await tester.pump();
+
+    const trackedKeys = <Key>[
+      profileAvatarSemanticsKey,
+      profileAvatarSlotKey,
+      profileAvatarEditBadgeKey,
+      profileHeaderCardKey,
+      profileProgressSectionKey,
+    ];
+    final initialGeometry = _captureRects(tester, trackedKeys);
+    expect(
+        tester.getSize(find.byKey(profileAvatarSlotKey)), const Size(88, 88));
+    expect(
+      tester.getSize(find.byKey(profileAvatarEditBadgeKey)),
+      const Size(28, 28),
+    );
+    final initialSlot = tester.getRect(find.byKey(profileAvatarSlotKey));
+    final initialBadge = tester.getRect(find.byKey(profileAvatarEditBadgeKey));
+    expect(initialBadge.right, closeTo(initialSlot.right, 0.01));
+    expect(initialBadge.bottom, closeTo(initialSlot.bottom, 0.01));
+    expect(find.byKey(profileAvatarFallbackKey), findsOneWidget);
+    expect(_avatarFallbackText(tester), 'A');
+    final semanticsWidget = tester.widget<Semantics>(
+      find.byKey(profileAvatarSemanticsKey),
+    );
+    expect(semanticsWidget.excludeSemantics, isTrue);
+    expect(semanticsWidget.properties.image, isTrue);
+    expect(semanticsWidget.properties.label, 'Фото профиля: Alice');
+    final semanticsHandle = tester.ensureSemantics();
+    final initialSemantics =
+        tester.getSemantics(find.byKey(profileAvatarSemanticsKey));
+    final initialSemanticsId = initialSemantics.id;
+    final initialSemanticsRect = initialSemantics.rect;
+
+    const aliceAUrl = 'https://example.invalid/alice-a.png';
+    harness.user = _user(
+      'alice',
+      name: 'Alice',
+      totalCalls: 7,
+      photoUrl: '  $aliceAUrl  ',
+    );
+    await tester.pumpWidget(harness.buildApp());
+    await tester.pump();
+    expect(cacheManager.requestedUrls.last, aliceAUrl);
+    expect(find.byKey(profileAvatarFallbackKey), findsOneWidget);
+    expect(_avatarFallbackText(tester), 'A');
+    expect(_renderedAvatarImages(tester), isEmpty);
+    final aliceImageElement = tester.element(
+      find.byKey(profileAvatarImageIdentityKey('users/alice')),
+    );
+    _expectSameRects(tester, initialGeometry);
+
+    await cacheManager.complete(aliceAUrl);
+    await _pumpUntilAvatarFrame(tester);
+    expect(find.byKey(profileAvatarFallbackKey), findsNothing);
+    final aliceAImage = _renderedAvatarImages(tester).single;
+    expect(
+      tester.element(
+        find.byKey(profileAvatarImageIdentityKey('users/alice')),
+      ),
+      same(aliceImageElement),
+    );
+    _expectSameRects(tester, initialGeometry);
+
+    const aliceBUrl = 'https://example.invalid/alice-b.png';
+    harness.user = _user(
+      'alice',
+      name: 'Alice',
+      totalCalls: 7,
+      photoUrl: aliceBUrl,
+    );
+    await tester.pumpWidget(harness.buildApp());
+    await tester.pump();
+    expect(cacheManager.requestedUrls.last, aliceBUrl);
+    expect(find.byKey(profileAvatarFallbackKey), findsNothing);
+    expect(
+      _renderedAvatarImages(tester).any(
+        (image) => image.isCloneOf(aliceAImage),
+      ),
+      isTrue,
+      reason: 'the loaded A image must remain while B is pending',
+    );
+    expect(
+      tester.element(
+        find.byKey(profileAvatarImageIdentityKey('users/alice')),
+      ),
+      same(aliceImageElement),
+    );
+    _expectSameRects(tester, initialGeometry);
+
+    await cacheManager.complete(aliceBUrl);
+    await _pumpUntilAvatarFrame(tester, differentFrom: aliceAImage);
+    expect(find.byKey(profileAvatarFallbackKey), findsNothing);
+    final aliceBImage = _renderedAvatarImages(tester).single;
+    _expectSameRects(tester, initialGeometry);
+
+    const aliceErrorUrl = 'https://example.invalid/alice-error.png';
+    harness.user = _user(
+      'alice',
+      name: 'Alice',
+      totalCalls: 7,
+      photoUrl: aliceErrorUrl,
+    );
+    await tester.pumpWidget(harness.buildApp());
+    await tester.pump();
+    expect(cacheManager.requestedUrls.last, aliceErrorUrl);
+    expect(find.byKey(profileAvatarFallbackKey), findsNothing);
+    expect(
+      _renderedAvatarImages(tester).any(
+        (image) => image.isCloneOf(aliceBImage),
+      ),
+      isTrue,
+    );
+    _expectSameRects(tester, initialGeometry);
+
+    cacheManager.fail(aliceErrorUrl);
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(profileAvatarFallbackKey), findsOneWidget);
+    expect(_renderedAvatarImages(tester), isEmpty);
+    _expectSameRects(tester, initialGeometry);
+
+    const aliceCUrl = 'https://example.invalid/alice-c.png';
+    harness.user = _user(
+      'alice',
+      name: 'Alice',
+      totalCalls: 7,
+      photoUrl: aliceCUrl,
+    );
+    await tester.pumpWidget(harness.buildApp());
+    await tester.pump();
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+    await tester.idle();
+    await tester.pump();
+    expect(
+      tester
+          .widget<CachedNetworkImage>(
+            find.byKey(profileAvatarNetworkImageKey),
+          )
+          .imageUrl,
+      aliceCUrl,
+    );
+    expect(cacheManager.requestedUrls, contains(aliceCUrl));
+    expect(find.byKey(profileAvatarFallbackKey), findsOneWidget);
+    expect(_renderedAvatarImages(tester), isEmpty);
+    _expectSameRects(tester, initialGeometry);
+
+    await cacheManager.complete(aliceCUrl);
+    await _pumpUntilAvatarFrame(tester, differentFrom: aliceBImage);
+    expect(find.byKey(profileAvatarFallbackKey), findsNothing);
+    _expectSameRects(tester, initialGeometry);
+
+    harness.user = null;
+    await tester.pumpWidget(harness.buildApp());
+    await tester.pump();
+    expect(
+      tester.element(
+        find.byKey(profileAvatarImageIdentityKey('users/alice')),
+      ),
+      same(aliceImageElement),
+    );
+    expect(find.byKey(profileAvatarFallbackKey), findsNothing);
+    expect(_renderedAvatarImages(tester), isNotEmpty);
+    _expectSameRects(tester, initialGeometry);
+
+    expect(
+      tester.getSemantics(find.byKey(profileAvatarSemanticsKey)).id,
+      initialSemanticsId,
+    );
+    expect(
+      tester.getSemantics(find.byKey(profileAvatarSemanticsKey)).rect,
+      initialSemanticsRect,
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    await tester.pumpWidget(harness.buildApp());
+    await tester.pump();
+    expect(
+      find.byKey(profileAvatarImageIdentityKey('users/alice')),
+      findsOneWidget,
+    );
+    expect(find.byKey(profileInitialLoadingKey), findsNothing);
+    expect(find.byKey(profileAvatarFallbackKey), findsNothing);
+    expect(_renderedAvatarImages(tester), isNotEmpty);
+    _expectSameRects(tester, initialGeometry);
+
+    const bobUrl = 'https://example.invalid/bob.png';
+    harness.userId = 'bob';
+    harness.user = _user(
+      'bob',
+      name: 'Bob',
+      totalCalls: 3,
+      photoUrl: bobUrl,
+    );
+    await tester.pumpWidget(harness.buildApp());
+    await tester.pump();
+    expect(
+      find.byKey(profileAvatarImageIdentityKey('users/alice')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(profileAvatarImageIdentityKey('users/bob')),
+      findsOneWidget,
+    );
+    expect(cacheManager.requestedUrls.last, bobUrl);
+    expect(_avatarFallbackText(tester), 'B');
+    expect(_renderedAvatarImages(tester), isEmpty);
+    expect(
+      tester
+          .widget<Semantics>(find.byKey(profileAvatarSemanticsKey))
+          .properties
+          .label,
+      'Фото профиля: Bob',
+    );
+    _expectSameRects(tester, initialGeometry);
+
+    cacheManager.fail(bobUrl);
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(profileAvatarFallbackKey), findsOneWidget);
+    expect(_avatarFallbackText(tester), 'B');
+    expect(_renderedAvatarImages(tester), isEmpty);
+    _expectSameRects(tester, initialGeometry);
+
+    harness.isLoggedIn = false;
+    harness.userId = '';
+    harness.user = null;
+    await tester.pumpWidget(harness.buildApp());
+    await tester.pump();
+    expect(find.byKey(profileAvatarSlotKey), findsNothing);
+    expect(find.byKey(profileAvatarSemanticsKey), findsNothing);
+    semanticsHandle.dispose();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('production avatar image uses stable DPR-aware configuration',
+      (tester) async {
+    tester.view.physicalSize = const Size(1170, 2532);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final cacheManager = _prepareControlledAvatarCacheManager();
+    const imageUrl = 'https://example.invalid/alice-config.png';
+    final harness = _ProfileHarness(
+      userId: 'alice',
+      user: _user(
+        'alice',
+        name: 'Alice',
+        totalCalls: 7,
+        photoUrl: '  $imageUrl  ',
+      ),
+      locale: const Locale('en'),
+      avatarCacheManager: cacheManager,
+    );
+    addTearDown(harness.close);
+    await tester.pumpWidget(harness.buildApp());
+    await tester.pump();
+
+    final cachedImage = tester.widget<CachedNetworkImage>(
+      find.byKey(profileAvatarNetworkImageKey),
+    );
+    expect(cachedImage.imageUrl, imageUrl);
+    expect(cachedImage.cacheManager, same(cacheManager));
+    expect(cachedImage.width, 88);
+    expect(cachedImage.height, 88);
+    expect(cachedImage.fit, BoxFit.cover);
+    expect(cachedImage.fadeInDuration, Duration.zero);
+    expect(cachedImage.fadeOutDuration, Duration.zero);
+    expect(cachedImage.useOldImageOnUrlChange, isTrue);
+    expect(cachedImage.memCacheWidth, 264);
+    expect(cachedImage.memCacheHeight, 264);
+    expect(cachedImage.placeholder, isNotNull);
+    expect(cachedImage.errorWidget, isNotNull);
+    expect(cacheManager.requestedUrls.last, imageUrl);
+    expect(
+      tester
+          .widget<Semantics>(find.byKey(profileAvatarSemanticsKey))
+          .properties
+          .label,
+      'Profile photo: Alice',
+    );
+    expect(find.byKey(profileAvatarFallbackKey), findsOneWidget);
+    await cacheManager.complete(imageUrl);
+    await _pumpUntilAvatarFrame(tester);
+    expect(find.byKey(profileAvatarFallbackKey), findsNothing);
+    expect(_renderedAvatarImages(tester), isNotEmpty);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+  });
 }
 
 Future<void> _verifyEmailGeometryScenario(
@@ -828,6 +1143,92 @@ Future<void> _verifyEmailGeometryScenario(
   expect(tester.takeException(), isNull);
 }
 
+_ControlledAvatarCacheManager _prepareControlledAvatarCacheManager() {
+  PaintingBinding.instance.imageCache.clear();
+  PaintingBinding.instance.imageCache.clearLiveImages();
+  final manager = _ControlledAvatarCacheManager();
+  addTearDown(() async {
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
+    await manager.dispose();
+  });
+  return manager;
+}
+
+class _ControlledAvatarCacheManager extends CacheManager {
+  _ControlledAvatarCacheManager()
+      : super(
+          Config(
+            'profile-avatar-test-${_nextId++}',
+            repo: NonStoringObjectProvider(),
+            fileSystem: MemoryCacheSystem(),
+            fileService: _UnusedFileService(),
+          ),
+        );
+
+  static int _nextId = 0;
+  final MemoryCacheSystem _files = MemoryCacheSystem();
+  final Map<String, Completer<FileResponse>> _responses = {};
+  final List<String> requestedUrls = [];
+  int _fileId = 0;
+
+  @override
+  Stream<FileResponse> getFileStream(
+    String url, {
+    String? key,
+    Map<String, String>? headers,
+    bool withProgress = false,
+  }) {
+    requestedUrls.add(url);
+    return _responses
+        .putIfAbsent(url, Completer<FileResponse>.new)
+        .future
+        .asStream();
+  }
+
+  Future<void> complete(String url) async {
+    final responseCompleter = _responses[url];
+    if (responseCompleter == null) {
+      throw StateError('No pending avatar request for $url');
+    }
+    final file = await _files.createFile('avatar-${_fileId++}.png');
+    final bytes = await rootBundle.load('assets/images/favicon.png');
+    await file.writeAsBytes(
+      bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes),
+      flush: true,
+    );
+    responseCompleter.complete(
+      FileInfo(
+        file,
+        FileSource.Online,
+        DateTime.now().add(const Duration(days: 1)),
+        url,
+      ),
+    );
+  }
+
+  void fail(String url) {
+    final responseCompleter = _responses[url];
+    if (responseCompleter == null) {
+      throw StateError('No pending avatar request for $url');
+    }
+    responseCompleter.completeError(
+      StateError('Avatar failed for $url'),
+      StackTrace.current,
+    );
+  }
+}
+
+class _UnusedFileService extends FileService {
+  @override
+  Future<FileServiceResponse> get(
+    String url, {
+    Map<String, String>? headers,
+  }) {
+    throw UnsupportedError('Network is disabled in avatar tests.');
+  }
+}
+
 class _ProfileHarness {
   _ProfileHarness({
     required this.userId,
@@ -836,6 +1237,7 @@ class _ProfileHarness {
     this.textScaler = TextScaler.noScaling,
     this.locale = const Locale('ru'),
     this.nowProvider,
+    this.avatarCacheManager,
   });
 
   String userId;
@@ -846,6 +1248,7 @@ class _ProfileHarness {
   final TextScaler textScaler;
   final Locale locale;
   final DateTime Function()? nowProvider;
+  final BaseCacheManager? avatarCacheManager;
   Future<void> Function()? onSendEmailVerification;
   final _ProfileTestSources sources = _ProfileTestSources();
 
@@ -882,6 +1285,7 @@ class _ProfileHarness {
         emailVerificationSender:
             exposeEmailStatus ? sendEmailVerification : null,
         nowProvider: nowProvider,
+        avatarCacheManager: avatarCacheManager,
         wordsStreamFactory: sources.wordsFactory,
         statsStreamFactory: sources.statsFactory,
       ),
@@ -926,6 +1330,52 @@ class _ProfileTestSources {
 
 String _text(WidgetTester tester, Key key) =>
     tester.widget<Text>(find.byKey(key)).data!;
+
+String _avatarFallbackText(WidgetTester tester) => tester
+    .widget<Text>(
+      find.descendant(
+        of: find.byKey(profileAvatarFallbackKey),
+        matching: find.byType(Text),
+      ),
+    )
+    .data!;
+
+List<ui.Image> _renderedAvatarImages(WidgetTester tester) => tester
+    .widgetList<RawImage>(
+      find.descendant(
+        of: find.byKey(profileAvatarNetworkImageKey),
+        matching: find.byType(RawImage),
+      ),
+    )
+    .map((widget) => widget.image)
+    .whereType<ui.Image>()
+    .toList();
+
+Future<void> _pumpUntilAvatarFrame(
+  WidgetTester tester, {
+  ui.Image? differentFrom,
+}) async {
+  await tester.runAsync(
+    () => Future<void>.delayed(const Duration(milliseconds: 20)),
+  );
+  for (var attempt = 0; attempt < 30; attempt++) {
+    await tester.idle();
+    await tester.pump(const Duration(milliseconds: 10));
+    final images = _renderedAvatarImages(tester);
+    if (images.isNotEmpty &&
+        (differentFrom == null ||
+            images.any((image) => !image.isCloneOf(differentFrom)))) {
+      return;
+    }
+  }
+  fail(
+    'Avatar image stream did not emit the expected frame '
+    '(network=${find.byKey(profileAvatarNetworkImageKey).evaluate().length}, '
+    'raw=${find.byType(RawImage).evaluate().length}, '
+    'avatarRaw=${find.descendant(of: find.byKey(profileAvatarNetworkImageKey), matching: find.byType(RawImage)).evaluate().length}, '
+    'fallback=${find.byKey(profileAvatarFallbackKey).evaluate().length}).',
+  );
+}
 
 void _expectEmailSemantics(
   WidgetTester tester, {
@@ -989,6 +1439,7 @@ UsersRecord _user(
   required String name,
   required int totalCalls,
   String? email,
+  String photoUrl = '',
   UserRole role = UserRole.student,
   SubscriptionStruct? subscription,
   GiftMinutesStruct? giftMinutes,
@@ -997,6 +1448,7 @@ UsersRecord _user(
     createUsersRecordData(
       uid: id,
       email: email ?? '$id@example.com',
+      photoUrl: photoUrl,
       displayName: name,
       role: role,
       totalCalls: totalCalls,

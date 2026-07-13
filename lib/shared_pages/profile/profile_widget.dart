@@ -27,6 +27,7 @@ import '/utils/subscription_utils.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter/services.dart';
 
 import 'profile_model.dart';
@@ -40,6 +41,16 @@ const ValueKey<String> profileContentKey = ValueKey<String>('profile_content');
 const ValueKey<String> profileDisplayNameKey =
     ValueKey<String>('profile_display_name');
 const ValueKey<String> profileEmailKey = ValueKey<String>('profile_email');
+const ValueKey<String> profileAvatarSemanticsKey =
+    ValueKey<String>('profile_avatar_semantics');
+const ValueKey<String> profileAvatarSlotKey =
+    ValueKey<String>('profile_avatar_slot');
+const ValueKey<String> profileAvatarFallbackKey =
+    ValueKey<String>('profile_avatar_fallback');
+const ValueKey<String> profileAvatarNetworkImageKey =
+    ValueKey<String>('profile_avatar_network_image');
+const ValueKey<String> profileAvatarEditBadgeKey =
+    ValueKey<String>('profile_avatar_edit_badge');
 const ValueKey<String> profileHeaderCardKey =
     ValueKey<String>('profile_header_card');
 const ValueKey<String> profileEmailStatusSlotKey =
@@ -74,6 +85,9 @@ const ValueKey<String> profileTariffInfoSlotKey =
     ValueKey<String>('profile_tariff_info_slot');
 const ValueKey<String> profileSettingsSectionKey =
     ValueKey<String>('profile_settings_section');
+
+ValueKey<String> profileAvatarImageIdentityKey(String userPath) =>
+    ValueKey<String>('profile_avatar_image:$userPath');
 
 final class ProfileQueryResult<T extends Object> {
   ProfileQueryResult({
@@ -140,6 +154,7 @@ class ProfileWidget extends StatefulWidget {
     this.emailVerifiedProvider,
     this.emailVerificationSender,
     this.nowProvider,
+    this.avatarCacheManager,
     this.wordsStreamFactory,
     this.statsStreamFactory,
   });
@@ -156,6 +171,8 @@ class ProfileWidget extends StatefulWidget {
   final Future<void> Function()? emailVerificationSender;
   @visibleForTesting
   final DateTime Function()? nowProvider;
+  @visibleForTesting
+  final BaseCacheManager? avatarCacheManager;
   @visibleForTesting
   final ProfileQueryStreamFactory<UserWordsRecord>? wordsStreamFactory;
   @visibleForTesting
@@ -1383,10 +1400,39 @@ class _ProfileWidgetState extends State<ProfileWidget> {
   }) {
     final firstLetter = ExpatlioDesign.avatarInitial(user.displayName);
     final photoUrl = user.photoUrl.trim();
+    final cacheDimension = math.max(
+      1,
+      (size * MediaQuery.devicePixelRatioOf(context)).round(),
+    );
+    Widget fallbackBuilder(BuildContext fallbackContext) =>
+        _profileAvatarFallback(
+          fallbackContext,
+          initial: firstLetter,
+          size: size,
+        );
+    final image = photoUrl.isEmpty
+        ? null
+        : CachedNetworkImage(
+            key: profileAvatarNetworkImageKey,
+            cacheManager: widget.avatarCacheManager,
+            fadeInDuration: Duration.zero,
+            fadeOutDuration: Duration.zero,
+            imageUrl: photoUrl,
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            useOldImageOnUrlChange: true,
+            placeholder: (context, _) => fallbackBuilder(context),
+            errorWidget: (context, _, __) => fallbackBuilder(context),
+            memCacheWidth: cacheDimension,
+            memCacheHeight: cacheDimension,
+          );
 
     return Container(
+      key: profileAvatarSlotKey,
       width: size,
       height: size,
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: ExpatlioDesign.avatarFallbackBackground,
         shape: BoxShape.circle,
@@ -1398,28 +1444,39 @@ class _ProfileWidgetState extends State<ProfileWidget> {
       ),
       child: photoUrl.isNotEmpty
           ? ClipOval(
-              child: CachedNetworkImage(
-                fadeInDuration: Duration.zero,
-                fadeOutDuration: Duration.zero,
-                imageUrl: photoUrl,
-                width: size,
-                height: size,
-                fit: BoxFit.cover,
-                memCacheWidth: 220,
-                memCacheHeight: 220,
+              child: KeyedSubtree(
+                key: profileAvatarImageIdentityKey(user.reference.path),
+                child: image!,
               ),
             )
-          : Center(
-              child: Text(
-                firstLetter,
-                style: ExpatlioDesign.textStyle(
-                  context,
-                  color: ExpatlioDesign.avatarFallbackText,
-                  size: 28,
-                  weight: FontWeight.w700,
-                ),
-              ),
+          : fallbackBuilder(context),
+    );
+  }
+
+  Widget _profileAvatarFallback(
+    BuildContext context, {
+    required String initial,
+    required double size,
+  }) {
+    return Center(
+      key: profileAvatarFallbackKey,
+      child: Padding(
+        padding: EdgeInsets.all(size * 0.2),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            initial,
+            maxLines: 1,
+            softWrap: false,
+            style: ExpatlioDesign.textStyle(
+              context,
+              color: ExpatlioDesign.avatarFallbackText,
+              size: 28,
+              weight: FontWeight.w700,
             ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -1448,25 +1505,36 @@ class _ProfileWidgetState extends State<ProfileWidget> {
         children: [
           Row(
             children: [
-              Stack(
-                alignment: AlignmentDirectional.bottomEnd,
-                children: [
-                  _profileAvatar(context, user),
-                  Container(
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      color: ExpatlioDesign.card,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: ExpatlioDesign.border),
+              Semantics(
+                key: profileAvatarSemanticsKey,
+                container: true,
+                image: true,
+                excludeSemantics: true,
+                label: FFLocalizations.of(context).getVariableText(
+                  ruText: 'Фото профиля: $displayName',
+                  enText: 'Profile photo: $displayName',
+                ),
+                child: Stack(
+                  alignment: AlignmentDirectional.bottomEnd,
+                  children: [
+                    _profileAvatar(context, user),
+                    Container(
+                      key: profileAvatarEditBadgeKey,
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: ExpatlioDesign.card,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: ExpatlioDesign.border),
+                      ),
+                      child: Icon(
+                        Icons.photo_camera_outlined,
+                        color: ExpatlioDesign.primary,
+                        size: 15,
+                      ),
                     ),
-                    child: Icon(
-                      Icons.photo_camera_outlined,
-                      color: ExpatlioDesign.primary,
-                      size: 15,
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               const SizedBox(width: ExpatlioDesign.sectionSpacing),
               Expanded(
