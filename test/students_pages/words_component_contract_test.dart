@@ -16,26 +16,26 @@ void main() {
     expect(pageSource, isNot(contains('class _ReviewWordsBar')));
   });
 
-  test('words page renders cached stream data instead of a loading spinner',
-      () {
+  test('words page uses retained cache before a cold-only loading state', () {
     final pageSource =
         File('lib/students_pages/words/words_widget.dart').readAsStringSync();
     final modelSource =
         File('lib/students_pages/words/words_model.dart').readAsStringSync();
 
-    expect(pageSource,
-        isNot(contains("'/components/app_loading_indicator.dart'")));
-    expect(pageSource, isNot(contains('AppLoadingIndicator')));
-    expect(pageSource, contains('initialData: _model.cachedWords'));
-    expect(pageSource, contains('initialData: _model.cachedWordReviews'));
+    expect(pageSource, contains("'/components/app_loading_indicator.dart'"));
+    expect(pageSource, contains('wordsInitialLoadingKey'));
+    expect(pageSource, contains('_RetainedWordsQueryBuilder'));
+    expect(pageSource, contains('initialItems: _model.cachedWords'));
+    expect(pageSource, contains('initialItems: _model.cachedWordReviews'));
     expect(
       pageSource,
-      contains('WordsModel.shouldCacheStreamSnapshot(reviewSnapshot)'),
+      contains('onAcceptedItems: _model.cacheWordReviews'),
     );
     expect(
       pageSource,
-      contains('WordsModel.shouldCacheStreamSnapshot(snapshot)'),
+      contains('onAcceptedItems: _model.cacheWords'),
     );
+    expect(pageSource, contains('UxLoadingState<List<T>>.resolve'));
     expect(
       modelSource,
       contains('UxSessionLoadedResultCache<List<UserWordsRecord>>'),
@@ -71,8 +71,7 @@ void main() {
     );
     expect(
       pageSource,
-      contains('reviewWordsBarHeight +\n                          '
-          '_reviewBarFadeExtraHeight'),
+      contains('_reviewBarFadeExtraHeight'),
     );
     expect(pageSource, isNot(contains('+ 76.0')));
     expect(pageSource, isNot(contains('+ 96.0')));
@@ -82,7 +81,7 @@ void main() {
     final pageSource =
         File('lib/students_pages/words/words_widget.dart').readAsStringSync();
 
-    expect(pageSource, contains('return ListView.separated('));
+    expect(pageSource, contains('content = ListView.separated('));
     expect(pageSource, contains('itemCount: words.length'));
     expect(pageSource, contains('separatorBuilder:'));
     expect(pageSource, contains('Divider('));

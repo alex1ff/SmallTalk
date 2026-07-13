@@ -1,6 +1,7 @@
 import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/services/ux_session_loaded_result_cache.dart';
+import '/services/ux_session_cache_lifecycle.dart';
 import 'words_widget.dart' show WordsWidget;
 import 'package:flutter/material.dart';
 
@@ -10,10 +11,11 @@ class WordsModel extends FlutterFlowModel<WordsWidget> {
   static final UxSessionLoadedResultCache<List<WordReviewsRecord>>
       _wordReviewsCache = UxSessionLoadedResultCache<List<WordReviewsRecord>>();
 
-  // Cached stream so it is not recreated on every build().
-  Stream<List<UserWordsRecord>>? wordsStream;
-  Stream<List<WordReviewsRecord>>? wordReviewsStream;
   String? userCacheKey;
+
+  static void ensureSessionCacheLifecycleRegistered() {
+    UxSessionCacheLifecycle.register(debugClearSessionCache);
+  }
 
   List<UserWordsRecord>? get cachedWords {
     final cacheKey = userCacheKey;
