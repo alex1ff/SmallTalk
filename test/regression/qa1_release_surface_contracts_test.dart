@@ -163,7 +163,7 @@ void main() {
       expect(source, contains('_refreshEmailVerificationStatus'));
       expect(source, contains('Timer.periodic('));
       expect(source, contains('_emailVerificationPollTimer'));
-      expect(source, contains('_profileHeaderCard(context)'));
+      expect(source, contains('_profileHeaderCard(context, user)'));
       expect(source, isNot(contains('Refresh status')));
       expect(
           registration, contains('unawaited(_sendInitialEmailVerification())'));
@@ -189,7 +189,11 @@ void main() {
       );
       expect(
         profile,
-        contains('if (loggedIn && currentUserDocument == null)'),
+        contains('return _RetainedProfileDocumentBuilder('),
+      );
+      expect(
+        profile,
+        contains('candidate?.reference.id != widget.activeUserId'),
       );
       expect(profile, contains('if (canAccessTeacherSurfaces('));
       expect(profile, contains('context.pushNamed(PayCopyWidget.routeName)'));

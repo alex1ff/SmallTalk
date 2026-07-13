@@ -21,6 +21,7 @@ import '/custom_code/actions/index.dart' as actions;
 import '/index.dart';
 import '/services/email_verification_service.dart';
 import '/services/teacher_verification_request_service.dart';
+import '/services/ux_loading_state.dart';
 import '/services/user_match_profile.dart';
 import '/utils/subscription_utils.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -31,8 +32,103 @@ import 'package:flutter/services.dart';
 import 'profile_model.dart';
 export 'profile_model.dart';
 
+const ValueKey<String> profileInitialLoadingKey =
+    ValueKey<String>('profile_initial_loading');
+const ValueKey<String> profileSignedOutKey =
+    ValueKey<String>('profile_signed_out');
+const ValueKey<String> profileContentKey = ValueKey<String>('profile_content');
+const ValueKey<String> profileDisplayNameKey =
+    ValueKey<String>('profile_display_name');
+const ValueKey<String> profileEmailKey = ValueKey<String>('profile_email');
+const ValueKey<String> profileProgressSectionKey =
+    ValueKey<String>('profile_progress_section');
+const ValueKey<String> profileWordsValueKey =
+    ValueKey<String>('profile_words_value');
+const ValueKey<String> profileCallsValueKey =
+    ValueKey<String>('profile_calls_value');
+const ValueKey<String> profileMinutesValueKey =
+    ValueKey<String>('profile_minutes_value');
+const ValueKey<String> profileProgressLoadingKey =
+    ValueKey<String>('profile_progress_loading');
+const ValueKey<String> profileProgressRetryKey =
+    ValueKey<String>('profile_progress_retry');
+
+final class ProfileQueryResult<T extends Object> {
+  ProfileQueryResult({
+    required List<T> items,
+    required this.isServerConfirmed,
+  }) : items = List<T>.unmodifiable(items);
+
+  final List<T> items;
+  final bool isServerConfirmed;
+}
+
+typedef ProfileQueryStreamFactory<T extends Object>
+    = Stream<ProfileQueryResult<T>> Function(DocumentReference userReference);
+
+bool profileSnapshotIsServerConfirmed({
+  required bool isFromCache,
+  required bool hasPendingWrites,
+}) {
+  return !isFromCache && !hasPendingWrites;
+}
+
+Stream<ProfileQueryResult<UserWordsRecord>> _watchProfileWords(
+  DocumentReference userReference,
+) {
+  return UserWordsRecord.collection(userReference)
+      .snapshots(includeMetadataChanges: true)
+      .map(
+        (snapshot) => ProfileQueryResult<UserWordsRecord>(
+          items: snapshot.docs.map(UserWordsRecord.fromSnapshot).toList(),
+          isServerConfirmed: profileSnapshotIsServerConfirmed(
+            isFromCache: snapshot.metadata.isFromCache,
+            hasPendingWrites: snapshot.metadata.hasPendingWrites,
+          ),
+        ),
+      );
+}
+
+Stream<ProfileQueryResult<StatsRecord>> _watchProfileStats(
+  DocumentReference userReference,
+) {
+  return StatsRecord.collection(userReference)
+      .where('isAllTime', isEqualTo: true)
+      .limit(1)
+      .snapshots(includeMetadataChanges: true)
+      .map(
+        (snapshot) => ProfileQueryResult<StatsRecord>(
+          items: snapshot.docs.map(StatsRecord.fromSnapshot).toList(),
+          isServerConfirmed: profileSnapshotIsServerConfirmed(
+            isFromCache: snapshot.metadata.isFromCache,
+            hasPendingWrites: snapshot.metadata.hasPendingWrites,
+          ),
+        ),
+      );
+}
+
 class ProfileWidget extends StatefulWidget {
-  const ProfileWidget({super.key});
+  /// Optional providers and factories are test seams. Production uses the
+  /// authenticated user stream and direct Firestore watchers.
+  const ProfileWidget({
+    super.key,
+    this.userDocumentProvider,
+    this.userIdProvider,
+    this.loggedInProvider,
+    this.wordsStreamFactory,
+    this.statsStreamFactory,
+  });
+
+  @visibleForTesting
+  final UsersRecord? Function()? userDocumentProvider;
+  @visibleForTesting
+  final String Function()? userIdProvider;
+  @visibleForTesting
+  final bool Function()? loggedInProvider;
+  @visibleForTesting
+  final ProfileQueryStreamFactory<UserWordsRecord>? wordsStreamFactory;
+  @visibleForTesting
+  final ProfileQueryStreamFactory<StatsRecord>? statsStreamFactory;
 
   static String routeName = 'Profile';
   static String routePath = '/profile';
@@ -62,10 +158,16 @@ class _ProfileWidgetState extends State<ProfileWidget> {
   static const _supportEmail = 'support@expatlio.com';
   static const _supportTelegram = '@expatlio_support';
 
+  bool get _usesInjectedPrimarySource =>
+      widget.userDocumentProvider != null ||
+      widget.userIdProvider != null ||
+      widget.loggedInProvider != null;
+
   @override
   void initState() {
     super.initState();
     _model = createModel(context, () => ProfileModel());
+    ProfileModel.ensureSessionCacheLifecycleRegistered();
     unawaited(_refreshEmailVerificationStatus(showResult: false));
     _syncEmailVerificationPolling();
   }
@@ -689,8 +791,11 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     }
   }
 
-  Widget _buildEmailVerificationStatus(BuildContext context) {
-    if (!_hasCurrentEmail || _isCurrentEmailVerified) {
+  Widget _buildEmailVerificationStatus(
+    BuildContext context,
+    String profileEmail,
+  ) {
+    if (profileEmail.trim().isEmpty || _isCurrentEmailVerified) {
       return const SizedBox.shrink();
     }
 
@@ -748,7 +853,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                 ),
                 const SizedBox(height: ExpatlioDesign.compactSpacing / 4),
                 Text(
-                  currentUserEmail,
+                  profileEmail,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: ExpatlioDesign.textStyle(
@@ -1038,26 +1143,24 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     );
   }
 
-  Future<void> _handleTeacherTrackAction() async {
+  Future<void> _handleTeacherTrackAction(UsersRecord user) async {
     TeacherAccreditationStatus? existingRequestStatus;
-    if (currentUserReference != null) {
-      try {
-        final existingRequestSnapshot =
-            await teacherVerificationRequestRefForUser(
-          currentUserReference!.id,
-        ).get();
-        existingRequestStatus = resolveTeacherVerificationRequestStatus(
-          existingRequestSnapshot.data(),
-        );
-      } catch (error) {
-        debugPrint(
-          'Profile: failed to load existing teacher verification request: $error',
-        );
-      }
+    try {
+      final existingRequestSnapshot =
+          await teacherVerificationRequestRefForUser(
+        user.reference.id,
+      ).get();
+      existingRequestStatus = resolveTeacherVerificationRequestStatus(
+        existingRequestSnapshot.data(),
+      );
+    } catch (error) {
+      debugPrint(
+        'Profile: failed to load existing teacher verification request: $error',
+      );
     }
 
     if (canRestoreNativeSpeakerTrack(
-      currentUserDocument,
+      user,
       requestStatus: existingRequestStatus,
     )) {
       final restoreData = <String, dynamic>{
@@ -1070,7 +1173,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
         ),
       };
       if (shouldMirrorPendingTeacherStatusOnRestore(
-        currentUserDocument,
+        user,
         requestStatus: existingRequestStatus,
       )) {
         restoreData.addAll(
@@ -1081,10 +1184,10 @@ class _ProfileWidgetState extends State<ProfileWidget> {
         );
       }
 
-      await currentUserReference!.update(restoreData);
+      await user.reference.update(restoreData);
       await ensureCanonicalCurrentUserDocument(
-        preferredUid: currentUserUid,
-        canonicalUserRef: currentUserReference,
+        preferredUid: user.reference.id,
+        canonicalUserRef: user.reference,
       );
       if (!mounted) {
         return;
@@ -1121,8 +1224,13 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     );
   }
 
-  Widget _profileAvatar(BuildContext context, {double size = 88}) {
-    final firstLetter = ExpatlioDesign.avatarInitial(currentUserDisplayName);
+  Widget _profileAvatar(
+    BuildContext context,
+    UsersRecord user, {
+    double size = 88,
+  }) {
+    final firstLetter = ExpatlioDesign.avatarInitial(user.displayName);
+    final photoUrl = user.photoUrl.trim();
 
     return Container(
       width: size,
@@ -1136,12 +1244,12 @@ class _ProfileWidgetState extends State<ProfileWidget> {
         shape: BoxShape.circle,
         border: Border.all(color: ExpatlioDesign.border),
       ),
-      child: currentUserPhoto.isNotEmpty
+      child: photoUrl.isNotEmpty
           ? ClipOval(
               child: CachedNetworkImage(
                 fadeInDuration: Duration.zero,
                 fadeOutDuration: Duration.zero,
-                imageUrl: currentUserPhoto,
+                imageUrl: photoUrl,
                 width: size,
                 height: size,
                 fit: BoxFit.cover,
@@ -1163,9 +1271,9 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     );
   }
 
-  Widget _profileHeaderCard(BuildContext context) {
-    final displayName = currentUserDisplayName.trim().isNotEmpty
-        ? currentUserDisplayName.trim()
+  Widget _profileHeaderCard(BuildContext context, UsersRecord user) {
+    final displayName = user.displayName.trim().isNotEmpty
+        ? user.displayName.trim()
         : FFLocalizations.of(context).getVariableText(
             ruText: 'Профиль',
             enText: 'Profile',
@@ -1187,7 +1295,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
               Stack(
                 alignment: AlignmentDirectional.bottomEnd,
                 children: [
-                  _profileAvatar(context),
+                  _profileAvatar(context, user),
                   Container(
                     width: 28,
                     height: 28,
@@ -1218,6 +1326,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                           children: [
                             Text(
                               displayName,
+                              key: profileDisplayNameKey,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: ExpatlioDesign.textStyle(
@@ -1228,7 +1337,8 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                             ),
                             const SizedBox(height: ExpatlioDesign.space4),
                             Text(
-                              currentUserEmail,
+                              user.email,
+                              key: profileEmailKey,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: ExpatlioDesign.textStyle(
@@ -1247,9 +1357,11 @@ class _ProfileWidgetState extends State<ProfileWidget> {
               ),
             ],
           ),
-          if (_hasCurrentEmail && !_isCurrentEmailVerified) ...[
+          if (!_usesInjectedPrimarySource &&
+              user.email.trim().isNotEmpty &&
+              !_isCurrentEmailVerified) ...[
             const SizedBox(height: ExpatlioDesign.sectionSpacing),
-            _buildEmailVerificationStatus(context),
+            _buildEmailVerificationStatus(context, user.email),
           ],
           const SizedBox(height: ExpatlioDesign.sectionSpacing),
           _outlineAction(
@@ -1311,6 +1423,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     BuildContext context, {
     required IconData icon,
     required String value,
+    Key? valueKey,
     required List<String> labels,
     VoidCallback? onTap,
   }) {
@@ -1329,6 +1442,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
               _statValue(
                 context,
                 value,
+                key: valueKey,
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: ExpatlioDesign.compactSpacing / 2),
@@ -1356,6 +1470,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                     child: _statValue(
                       context,
                       value,
+                      key: valueKey,
                       textAlign: TextAlign.center,
                     ),
                   ),
@@ -1381,7 +1496,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _statValue(context, value),
+                  _statValue(context, value, key: valueKey),
                   const SizedBox(height: ExpatlioDesign.compactSpacing / 2),
                   _statLabels(context, labels),
                 ],
@@ -1403,10 +1518,12 @@ class _ProfileWidgetState extends State<ProfileWidget> {
   Widget _statValue(
     BuildContext context,
     String value, {
+    Key? key,
     TextAlign textAlign = TextAlign.start,
   }) {
     return Text(
       value,
+      key: key,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       textAlign: textAlign,
@@ -1448,130 +1565,174 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     );
   }
 
-  Widget _progressSection(BuildContext context) {
-    final isTeacher = canAccessTeacherSurfaces(currentUserDocument);
-    final wordsStream = isTeacher || currentUserReference == null
-        ? Stream.value(const <UserWordsRecord>[])
-        : queryUserWordsRecord(parent: currentUserReference);
-    final statsStream = currentUserReference == null
-        ? Stream.value(const <StatsRecord>[])
-        : queryStatsRecord(
-            parent: currentUserReference,
-            queryBuilder: (statsRecord) => statsRecord.where(
-              'isAllTime',
-              isEqualTo: true,
-            ),
-            singleRecord: true,
-          );
+  Widget _progressSection(BuildContext context, UsersRecord user) {
+    final isTeacher = canAccessTeacherSurfaces(user);
+    return _ProfileProgressSection(
+      key: ValueKey<String>(
+        'profile-progress:${user.reference.id}:${isTeacher ? 'teacher' : 'student'}',
+      ),
+      user: user,
+      wordsStreamFactory: widget.wordsStreamFactory ?? _watchProfileWords,
+      statsStreamFactory: widget.statsStreamFactory ?? _watchProfileStats,
+      builder: (context, state, retry) {
+        final wordsResult = state.wordsState.displayedResult;
+        final words = wordsResult?.data;
+        final statsResult = state.statsState.displayedResult;
+        final stats = statsResult?.data ?? const <StatsRecord>[];
+        final allTimeStats = stats.firstOrNull;
+        final calls = allTimeStats?.totalCalls ?? user.totalCalls.toString();
+        final minutes = statsResult == null
+            ? '—'
+            : _formatProfileMinutes(allTimeStats?.totalMinutes ?? '0');
+        final earned =
+            statsResult == null ? '—' : (allTimeStats?.totalEarned ?? '0');
+        final wordsCount =
+            wordsResult == null ? '—' : (words?.length ?? 0).toString();
+        final isLoading = state.wordsState.isInitialLoading ||
+            state.wordsState.isRefreshing ||
+            state.statsState.isInitialLoading ||
+            state.statsState.isRefreshing;
+        final hasError = state.wordsState.hasError || state.statsState.hasError;
+        final localizations = FFLocalizations.of(context);
 
-    return StreamBuilder<List<UserWordsRecord>>(
-      stream: wordsStream,
-      builder: (context, wordsSnapshot) {
-        final wordsCount = wordsSnapshot.data?.length ?? 0;
-        return StreamBuilder<List<StatsRecord>>(
-          stream: statsStream,
-          builder: (context, statsSnapshot) {
-            final stats = (statsSnapshot.data ?? const <StatsRecord>[]);
-            final allTimeStats = stats.isNotEmpty ? stats.first : null;
-            final calls = allTimeStats?.totalCalls ??
-                (currentUserDocument?.totalCalls ?? 0).toString();
-            final minutes =
-                _formatProfileMinutes(allTimeStats?.totalMinutes ?? '0');
-            final earned = allTimeStats?.totalEarned ?? '0';
-
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        return Column(
+          key: profileProgressSectionKey,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                _profileTitle(
-                  context,
-                  FFLocalizations.of(context).getVariableText(
-                    ruText: isTeacher ? 'Статистика' : 'Мой прогресс',
-                    enText: isTeacher ? 'Statistics' : 'My progress',
+                Expanded(
+                  child: _profileTitle(
+                    context,
+                    localizations.getVariableText(
+                      ruText: isTeacher ? 'Статистика' : 'Мой прогресс',
+                      enText: isTeacher ? 'Statistics' : 'My progress',
+                    ),
                   ),
                 ),
-                Container(
-                  decoration: ExpatlioDesign.cardDecoration(),
-                  padding: ExpatlioDesign.cardPadding,
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _statTile(
-                          context,
-                          icon: isTeacher
-                              ? FFIcons.kcoinsStacked01
-                              : FFIcons.kbookOpen01,
-                          value:
-                              isTeacher ? '$earned ₽' : wordsCount.toString(),
-                          labels: isTeacher
-                              ? [
-                                  FFLocalizations.of(context).getVariableText(
-                                    ruText: 'заработано',
-                                    enText: 'earned',
+                SizedBox(
+                  width: 48.0,
+                  height: 48.0,
+                  child: hasError
+                      ? IconButton(
+                          key: profileProgressRetryKey,
+                          tooltip: localizations.getVariableText(
+                            ruText: 'Повторить загрузку статистики',
+                            enText: 'Retry progress loading',
+                          ),
+                          onPressed: retry,
+                          icon: const Icon(
+                            Icons.refresh_rounded,
+                            color: ExpatlioDesign.danger,
+                            size: 20.0,
+                          ),
+                        )
+                      : isLoading
+                          ? Semantics(
+                              key: profileProgressLoadingKey,
+                              container: true,
+                              liveRegion: true,
+                              label: localizations.getVariableText(
+                                ruText: 'Загрузка прогресса',
+                                enText: 'Loading progress',
+                              ),
+                              child: const ExcludeSemantics(
+                                child: Center(
+                                  child: SizedBox.square(
+                                    dimension: 18.0,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.0,
+                                    ),
                                   ),
-                                  FFLocalizations.of(context).getVariableText(
-                                    ruText: 'за всё время',
-                                    enText: 'all time',
-                                  ),
-                                ]
-                              : [
-                                  FFLocalizations.of(context).getVariableText(
-                                    ruText: 'слов',
-                                    enText: 'words',
-                                  ),
-                                  FFLocalizations.of(context).getVariableText(
-                                    ruText: 'в словаре',
-                                    enText: 'in dictionary',
-                                  ),
-                                ],
-                          onTap: isTeacher
-                              ? null
-                              : () => context.pushNamed(WordsWidget.routeName),
-                        ),
-                      ),
-                      _verticalDivider(),
-                      Expanded(
-                        child: _statTile(
-                          context,
-                          icon: FFIcons.kphone,
-                          value: calls,
-                          labels: [
-                            FFLocalizations.of(context).getVariableText(
-                              ruText: 'звонков',
-                              enText: 'calls',
-                            ),
-                            FFLocalizations.of(context).getVariableText(
-                              ruText: 'всего',
-                              enText: 'total',
-                            ),
-                          ],
-                          onTap: () =>
-                              context.pushNamed(MyCallsWidget.routeName),
-                        ),
-                      ),
-                      _verticalDivider(),
-                      Expanded(
-                        child: _statTile(
-                          context,
-                          icon: FFIcons.kclock,
-                          value: minutes,
-                          labels: [
-                            FFLocalizations.of(context).getVariableText(
-                              ruText: 'минут',
-                              enText: 'minutes',
-                            ),
-                            FFLocalizations.of(context).getVariableText(
-                              ruText: 'в разговоре',
-                              enText: 'in calls',
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                                ),
+                              ),
+                            )
+                          : null,
                 ),
               ],
-            );
-          },
+            ),
+            Container(
+              decoration: ExpatlioDesign.cardDecoration(),
+              padding: ExpatlioDesign.cardPadding,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _statTile(
+                      context,
+                      icon: isTeacher
+                          ? FFIcons.kcoinsStacked01
+                          : FFIcons.kbookOpen01,
+                      value: isTeacher ? '$earned ₽' : wordsCount,
+                      valueKey: profileWordsValueKey,
+                      labels: isTeacher
+                          ? [
+                              localizations.getVariableText(
+                                ruText: 'заработано',
+                                enText: 'earned',
+                              ),
+                              localizations.getVariableText(
+                                ruText: 'за всё время',
+                                enText: 'all time',
+                              ),
+                            ]
+                          : [
+                              localizations.getVariableText(
+                                ruText: 'слов',
+                                enText: 'words',
+                              ),
+                              localizations.getVariableText(
+                                ruText: 'в словаре',
+                                enText: 'in dictionary',
+                              ),
+                            ],
+                      onTap: isTeacher
+                          ? null
+                          : () => context.pushNamed(WordsWidget.routeName),
+                    ),
+                  ),
+                  _verticalDivider(),
+                  Expanded(
+                    child: _statTile(
+                      context,
+                      icon: FFIcons.kphone,
+                      value: calls,
+                      valueKey: profileCallsValueKey,
+                      labels: [
+                        localizations.getVariableText(
+                          ruText: 'звонков',
+                          enText: 'calls',
+                        ),
+                        localizations.getVariableText(
+                          ruText: 'всего',
+                          enText: 'total',
+                        ),
+                      ],
+                      onTap: () => context.pushNamed(MyCallsWidget.routeName),
+                    ),
+                  ),
+                  _verticalDivider(),
+                  Expanded(
+                    child: _statTile(
+                      context,
+                      icon: FFIcons.kclock,
+                      value: minutes,
+                      valueKey: profileMinutesValueKey,
+                      labels: [
+                        localizations.getVariableText(
+                          ruText: 'минут',
+                          enText: 'minutes',
+                        ),
+                        localizations.getVariableText(
+                          ruText: 'в разговоре',
+                          enText: 'in calls',
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         );
       },
     );
@@ -1625,8 +1786,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     );
   }
 
-  Widget _tariffSection(BuildContext context) {
-    final user = currentUserDocument;
+  Widget _tariffSection(BuildContext context, UsersRecord? user) {
     final showTeacherBalance = shouldShowTeacherProfileBalance(user);
     final canWithdraw = canAccessTeacherSurfaces(user);
     final active = hasActiveSubscription(user);
@@ -1859,53 +2019,44 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     );
   }
 
-  Widget _roleSwitchMenuRow(BuildContext context) {
-    return AuthUserStreamWidget(
-      builder: (context) {
-        final teacherTrackAction = resolveTeacherTrackProfileAction(
-          currentUserDocument,
-        );
-        final label = switch (teacherTrackAction) {
-          TeacherTrackProfileAction.reapply =>
-            FFLocalizations.of(context).getVariableText(
-              ruText: 'Подать заявку снова',
-              enText: 'Submit again',
-            ),
-          TeacherTrackProfileAction.apply =>
-            FFLocalizations.of(context).getVariableText(
-              ruText: 'Стать учителем',
-              enText: 'Become a teacher',
-            ),
-          TeacherTrackProfileAction.none => FFLocalizations.of(context).getText(
-              'dmupsasg' /* Стать учеником */,
-            ),
-        };
+  Widget _roleSwitchMenuRow(BuildContext context, UsersRecord user) {
+    final teacherTrackAction = resolveTeacherTrackProfileAction(user);
+    final label = switch (teacherTrackAction) {
+      TeacherTrackProfileAction.reapply =>
+        FFLocalizations.of(context).getVariableText(
+          ruText: 'Подать заявку снова',
+          enText: 'Submit again',
+        ),
+      TeacherTrackProfileAction.apply =>
+        FFLocalizations.of(context).getVariableText(
+          ruText: 'Стать учителем',
+          enText: 'Become a teacher',
+        ),
+      TeacherTrackProfileAction.none => FFLocalizations.of(context).getText(
+          'dmupsasg' /* Стать учеником */,
+        ),
+    };
 
-        return _menuRow(
-          context,
-          icon: teacherTrackAction == TeacherTrackProfileAction.none
-              ? FFIcons.kuserCircle
-              : FFIcons.kgraduationHat02,
-          label: label,
-          color: teacherTrackAction == TeacherTrackProfileAction.none
-              ? null
-              : ExpatlioDesign.orange,
-          onTap: () async {
-            if (teacherTrackAction != TeacherTrackProfileAction.none) {
-              await _handleTeacherTrackAction();
-            } else {
-              if (currentUserReference == null) {
-                return;
-              }
-              final studentTrackUpdate = createUsersRecordData(
-                role: UserRole.student,
-              );
-              studentTrackUpdate['availabilityToday'] = FieldValue.delete();
-              await currentUserReference!.update(studentTrackUpdate);
-              safeSetState(() {});
-            }
-          },
-        );
+    return _menuRow(
+      context,
+      icon: teacherTrackAction == TeacherTrackProfileAction.none
+          ? FFIcons.kuserCircle
+          : FFIcons.kgraduationHat02,
+      label: label,
+      color: teacherTrackAction == TeacherTrackProfileAction.none
+          ? null
+          : ExpatlioDesign.orange,
+      onTap: () async {
+        if (teacherTrackAction != TeacherTrackProfileAction.none) {
+          await _handleTeacherTrackAction(user);
+        } else {
+          final studentTrackUpdate = createUsersRecordData(
+            role: UserRole.student,
+          );
+          studentTrackUpdate['availabilityToday'] = FieldValue.delete();
+          await user.reference.update(studentTrackUpdate);
+          safeSetState(() {});
+        }
       },
     );
   }
@@ -1978,7 +2129,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     );
   }
 
-  Widget _settingsSection(BuildContext context) {
+  Widget _settingsSection(BuildContext context, UsersRecord user) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1994,7 +2145,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
           clipBehavior: Clip.antiAlias,
           child: Column(
             children: [
-              _roleSwitchMenuRow(context),
+              _roleSwitchMenuRow(context, user),
               _menuDivider(),
               _menuRow(
                 context,
@@ -2035,7 +2186,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                   'uo96qs94' /* Черный список */,
                 ),
                 trailing: Text(
-                  (currentUserDocument?.blockedUsers.length ?? 0).toString(),
+                  user.blockedUsers.length.toString(),
                   style: ExpatlioDesign.textStyle(
                     context,
                     color: ExpatlioDesign.muted,
@@ -2095,12 +2246,12 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     );
   }
 
-  Widget _profileFooter(BuildContext context) {
+  Widget _profileFooter(BuildContext context, String userId) {
     final muted = ExpatlioDesign.muted;
     final accountIdLabel = '${FFLocalizations.of(context).getVariableText(
       ruText: 'ID аккаунта: ',
       enText: 'Account ID: ',
-    )}$currentUserUid';
+    )}$userId';
 
     return Align(
       alignment: Alignment.center,
@@ -2135,7 +2286,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
             InkWell(
               borderRadius: BorderRadius.circular(ExpatlioDesign.radiusSmall),
               onTap: () async {
-                await Clipboard.setData(ClipboardData(text: currentUserUid));
+                await Clipboard.setData(ClipboardData(text: userId));
                 HapticFeedback.mediumImpact();
                 await actions.showTopNotification(
                   context,
@@ -2195,7 +2346,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     );
   }
 
-  Widget _newProfileBody(BuildContext context) {
+  Widget _newProfileBody(BuildContext context, UsersRecord user) {
     return SafeArea(
       bottom: false,
       child: SingleChildScrollView(
@@ -2221,14 +2372,14 @@ class _ProfileWidgetState extends State<ProfileWidget> {
               ),
             ),
             const SizedBox(height: ExpatlioDesign.itemSpacing),
-            _profileHeaderCard(context),
-            _progressSection(context),
+            _profileHeaderCard(context, user),
+            _progressSection(context, user),
             const SizedBox(height: ExpatlioDesign.sectionGap),
-            _tariffSection(context),
+            _tariffSection(context, user),
             const SizedBox(height: ExpatlioDesign.sectionGap),
-            _settingsSection(context),
+            _settingsSection(context, user),
             const SizedBox(height: ExpatlioDesign.sectionGap),
-            _profileFooter(context),
+            _profileFooter(context, user.reference.id),
           ],
         ),
       ),
@@ -2241,67 +2392,108 @@ class _ProfileWidgetState extends State<ProfileWidget> {
   }
 
   Widget _redesignedBuild(BuildContext context) {
-    return AuthUserStreamWidget(
-      builder: (context) {
-        if (loggedIn && currentUserDocument == null) {
-          return Scaffold(
-            backgroundColor: ExpatlioDesign.background,
-            body: const Center(
-              child: CircularProgressIndicator.adaptive(),
-            ),
-          );
-        }
+    Widget buildFromCurrentSources(BuildContext context) {
+      final activeUserId =
+          (widget.userIdProvider?.call() ?? currentUserUid).trim();
+      final latestDocument =
+          widget.userDocumentProvider?.call() ?? currentUserDocument;
+      final isLoggedIn = widget.loggedInProvider?.call() ?? loggedIn;
 
-        return GestureDetector(
-          onTap: () {
-            FocusScope.of(context).unfocus();
-            FocusManager.instance.primaryFocus?.unfocus();
-          },
-          child: Scaffold(
-            key: scaffoldKey,
-            backgroundColor: ExpatlioDesign.background,
-            body: SafeArea(
-              bottom: false,
-              child: SingleChildScrollView(
-                padding: const EdgeInsetsDirectional.fromSTEB(
-                  ExpatlioDesign.pagePadding,
-                  ExpatlioDesign.space0,
-                  ExpatlioDesign.pagePadding,
-                  ExpatlioDesign.pageBottomSpacing,
+      return _RetainedProfileDocumentBuilder(
+        activeUserId: activeUserId,
+        latestDocument: latestDocument,
+        cachedDocument: activeUserId.isEmpty
+            ? null
+            : ProfileModel.cachedUserDocument(activeUserId),
+        isLoggedIn: isLoggedIn,
+        onAcceptedDocument: ProfileModel.cacheUserDocument,
+        builder: (context, user, isInitialLoading) {
+          if (isInitialLoading) {
+            final loadingLabel = FFLocalizations.of(context).getVariableText(
+              ruText: 'Загрузка профиля',
+              enText: 'Loading profile',
+            );
+            return Scaffold(
+              backgroundColor: ExpatlioDesign.background,
+              body: Semantics(
+                key: profileInitialLoadingKey,
+                container: true,
+                liveRegion: true,
+                label: loadingLabel,
+                child: const ExcludeSemantics(
+                  child: Center(
+                    child: CircularProgressIndicator.adaptive(),
+                  ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      height: ExpatlioDesign.pageHeaderHeight,
-                      child: Center(
-                        child: Text(
-                          FFLocalizations.of(context).getVariableText(
-                            ruText: 'Профиль',
-                            enText: 'Profile',
+              ),
+            );
+          }
+
+          if (user == null) {
+            return const Scaffold(
+              key: profileSignedOutKey,
+              backgroundColor: ExpatlioDesign.background,
+              body: SizedBox.shrink(),
+            );
+          }
+
+          return GestureDetector(
+            onTap: () {
+              FocusScope.of(context).unfocus();
+              FocusManager.instance.primaryFocus?.unfocus();
+            },
+            child: Scaffold(
+              key: scaffoldKey,
+              backgroundColor: ExpatlioDesign.background,
+              body: SafeArea(
+                bottom: false,
+                child: SingleChildScrollView(
+                  key: profileContentKey,
+                  padding: const EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.pagePadding,
+                    ExpatlioDesign.space0,
+                    ExpatlioDesign.pagePadding,
+                    ExpatlioDesign.pageBottomSpacing,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        height: ExpatlioDesign.pageHeaderHeight,
+                        child: Center(
+                          child: Text(
+                            FFLocalizations.of(context).getVariableText(
+                              ruText: 'Профиль',
+                              enText: 'Profile',
+                            ),
+                            style: ExpatlioDesign.pageHeaderTitleStyle(context),
                           ),
-                          style: ExpatlioDesign.pageHeaderTitleStyle(context),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: ExpatlioDesign.itemSpacing),
-                    _profileHeaderCard(context),
-                    const SizedBox(height: ExpatlioDesign.sectionGap),
-                    _progressSection(context),
-                    const SizedBox(height: ExpatlioDesign.sectionGap),
-                    _tariffSection(context),
-                    const SizedBox(height: ExpatlioDesign.sectionGap),
-                    _settingsSection(context),
-                    const SizedBox(height: ExpatlioDesign.sectionGap),
-                    _profileFooter(context),
-                  ],
+                      const SizedBox(height: ExpatlioDesign.itemSpacing),
+                      _profileHeaderCard(context, user),
+                      const SizedBox(height: ExpatlioDesign.sectionGap),
+                      _progressSection(context, user),
+                      const SizedBox(height: ExpatlioDesign.sectionGap),
+                      _tariffSection(context, user),
+                      const SizedBox(height: ExpatlioDesign.sectionGap),
+                      _settingsSection(context, user),
+                      const SizedBox(height: ExpatlioDesign.sectionGap),
+                      _profileFooter(context, user.reference.id),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        );
-      },
-    );
+          );
+        },
+      );
+    }
+
+    if (_usesInjectedPrimarySource) {
+      return buildFromCurrentSources(context);
+    }
+    return AuthUserStreamWidget(builder: buildFromCurrentSources);
   }
 
   // ignore: unused_element
@@ -2327,7 +2519,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
             backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
             body: Stack(
               children: [
-                _newProfileBody(context),
+                _newProfileBody(context, currentUserDocument!),
                 Offstage(
                   offstage: true,
                   child: Padding(
@@ -3601,6 +3793,351 @@ class _ProfileWidgetState extends State<ProfileWidget> {
           ),
         );
       },
+    );
+  }
+}
+
+typedef _RetainedProfileDocumentWidgetBuilder = Widget Function(
+  BuildContext context,
+  UsersRecord? user,
+  bool isInitialLoading,
+);
+
+class _RetainedProfileDocumentBuilder extends StatefulWidget {
+  const _RetainedProfileDocumentBuilder({
+    required this.activeUserId,
+    required this.latestDocument,
+    required this.cachedDocument,
+    required this.isLoggedIn,
+    required this.onAcceptedDocument,
+    required this.builder,
+  });
+
+  final String activeUserId;
+  final UsersRecord? latestDocument;
+  final UsersRecord? cachedDocument;
+  final bool isLoggedIn;
+  final ValueChanged<UsersRecord> onAcceptedDocument;
+  final _RetainedProfileDocumentWidgetBuilder builder;
+
+  @override
+  State<_RetainedProfileDocumentBuilder> createState() =>
+      _RetainedProfileDocumentBuilderState();
+}
+
+class _RetainedProfileDocumentBuilderState
+    extends State<_RetainedProfileDocumentBuilder> {
+  UsersRecord? _displayedDocument;
+
+  UsersRecord? _matchingDocument(UsersRecord? candidate) {
+    if (!widget.isLoggedIn ||
+        widget.activeUserId.isEmpty ||
+        candidate?.reference.id != widget.activeUserId) {
+      return null;
+    }
+    return candidate;
+  }
+
+  void _accept(UsersRecord? document) {
+    _displayedDocument = document;
+    if (document != null) {
+      widget.onAcceptedDocument(document);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _accept(
+      _matchingDocument(widget.latestDocument) ??
+          _matchingDocument(widget.cachedDocument),
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _RetainedProfileDocumentBuilder oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.isLoggedIn) {
+      _accept(null);
+      return;
+    }
+
+    final userChanged = oldWidget.activeUserId != widget.activeUserId;
+    final latestDocument = _matchingDocument(widget.latestDocument);
+    if (userChanged) {
+      _accept(latestDocument ?? _matchingDocument(widget.cachedDocument));
+      return;
+    }
+
+    if (latestDocument != null) {
+      _accept(latestDocument);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isInitialLoading = widget.isLoggedIn && _displayedDocument == null;
+    return widget.builder(context, _displayedDocument, isInitialLoading);
+  }
+}
+
+final class _ProfileProgressViewState {
+  const _ProfileProgressViewState({
+    required this.wordsState,
+    required this.statsState,
+  });
+
+  final UxLoadingState<List<UserWordsRecord>> wordsState;
+  final UxLoadingState<List<StatsRecord>> statsState;
+}
+
+typedef _ProfileProgressWidgetBuilder = Widget Function(
+  BuildContext context,
+  _ProfileProgressViewState state,
+  VoidCallback retry,
+);
+
+class _ProfileProgressSection extends StatefulWidget {
+  const _ProfileProgressSection({
+    super.key,
+    required this.user,
+    required this.wordsStreamFactory,
+    required this.statsStreamFactory,
+    required this.builder,
+  });
+
+  final UsersRecord user;
+  final ProfileQueryStreamFactory<UserWordsRecord> wordsStreamFactory;
+  final ProfileQueryStreamFactory<StatsRecord> statsStreamFactory;
+  final _ProfileProgressWidgetBuilder builder;
+
+  @override
+  State<_ProfileProgressSection> createState() =>
+      _ProfileProgressSectionState();
+}
+
+class _ProfileProgressSectionState extends State<_ProfileProgressSection> {
+  StreamSubscription<ProfileQueryResult<UserWordsRecord>>? _wordsSubscription;
+  StreamSubscription<ProfileQueryResult<StatsRecord>>? _statsSubscription;
+  UxLoadedResult<List<UserWordsRecord>>? _wordsResult;
+  UxLoadedResult<List<StatsRecord>>? _statsResult;
+  Object? _wordsError;
+  Object? _statsError;
+  bool _wordsLoading = true;
+  bool _statsLoading = true;
+  int _generation = 0;
+
+  String get _userId => widget.user.reference.id;
+  bool get _isTeacher => canAccessTeacherSurfaces(widget.user);
+  String get _wordsDataKey => 'profile:$_userId:words';
+  String get _statsDataKey => 'profile:$_userId:stats';
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreCachedResults();
+    _subscribe();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ProfileProgressSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final sourceChanged =
+        oldWidget.user.reference.id != widget.user.reference.id ||
+            canAccessTeacherSurfaces(oldWidget.user) != _isTeacher ||
+            oldWidget.wordsStreamFactory != widget.wordsStreamFactory ||
+            oldWidget.statsStreamFactory != widget.statsStreamFactory;
+    if (!sourceChanged) {
+      return;
+    }
+    _restoreCachedResults();
+    _subscribe();
+  }
+
+  @override
+  void dispose() {
+    _generation++;
+    unawaited(_wordsSubscription?.cancel());
+    unawaited(_statsSubscription?.cancel());
+    super.dispose();
+  }
+
+  void _restoreCachedResults() {
+    final cachedWords = ProfileModel.cachedWords(_userId);
+    final cachedStats = ProfileModel.cachedStats(_userId);
+    _wordsResult = _isTeacher
+        ? uxLoadedListResult<UserWordsRecord>(
+            dataKey: _wordsDataKey,
+            items: const <UserWordsRecord>[],
+          )
+        : cachedWords == null
+            ? null
+            : uxLoadedListResult<UserWordsRecord>(
+                dataKey: _wordsDataKey,
+                items: cachedWords,
+              );
+    _statsResult = cachedStats == null
+        ? null
+        : uxLoadedListResult<StatsRecord>(
+            dataKey: _statsDataKey,
+            items: cachedStats,
+          );
+    _wordsError = null;
+    _statsError = null;
+  }
+
+  void _subscribe({bool notify = false}) {
+    final requestGeneration = ++_generation;
+    unawaited(_wordsSubscription?.cancel());
+    unawaited(_statsSubscription?.cancel());
+    _wordsSubscription = null;
+    _statsSubscription = null;
+    _wordsLoading = !_isTeacher;
+    _statsLoading = true;
+    _wordsError = null;
+    _statsError = null;
+
+    if (!_isTeacher) {
+      try {
+        _wordsSubscription =
+            widget.wordsStreamFactory(widget.user.reference).listen(
+                  (result) => _acceptWords(result, requestGeneration),
+                  onError: (Object error, StackTrace stackTrace) {
+                    _acceptWordsError(error, requestGeneration);
+                  },
+                  onDone: () => _finishWords(requestGeneration),
+                );
+      } catch (error) {
+        _wordsLoading = false;
+        _wordsError = error;
+      }
+    }
+
+    try {
+      _statsSubscription =
+          widget.statsStreamFactory(widget.user.reference).listen(
+                (result) => _acceptStats(result, requestGeneration),
+                onError: (Object error, StackTrace stackTrace) {
+                  _acceptStatsError(error, requestGeneration);
+                },
+                onDone: () => _finishStats(requestGeneration),
+              );
+    } catch (error) {
+      _statsLoading = false;
+      _statsError = error;
+    }
+
+    if (notify && mounted) {
+      setState(() {});
+    }
+  }
+
+  bool _isActive(int requestGeneration) =>
+      mounted && requestGeneration == _generation;
+
+  void _acceptWords(
+    ProfileQueryResult<UserWordsRecord> result,
+    int requestGeneration,
+  ) {
+    if (!_isActive(requestGeneration)) {
+      return;
+    }
+    final canAccept = result.isServerConfirmed || result.items.isNotEmpty;
+    setState(() {
+      if (canAccept) {
+        _wordsResult = uxLoadedListResult<UserWordsRecord>(
+          dataKey: _wordsDataKey,
+          items: result.items,
+        );
+        ProfileModel.cacheWords(_userId, result.items);
+      }
+      _wordsLoading = !result.isServerConfirmed;
+      _wordsError = null;
+    });
+  }
+
+  void _acceptStats(
+    ProfileQueryResult<StatsRecord> result,
+    int requestGeneration,
+  ) {
+    if (!_isActive(requestGeneration)) {
+      return;
+    }
+    final canAccept = result.isServerConfirmed || result.items.isNotEmpty;
+    setState(() {
+      if (canAccept) {
+        _statsResult = uxLoadedListResult<StatsRecord>(
+          dataKey: _statsDataKey,
+          items: result.items,
+        );
+        ProfileModel.cacheStats(_userId, result.items);
+      }
+      _statsLoading = !result.isServerConfirmed;
+      _statsError = null;
+    });
+  }
+
+  void _acceptWordsError(Object error, int requestGeneration) {
+    if (!_isActive(requestGeneration)) {
+      return;
+    }
+    setState(() {
+      _wordsLoading = false;
+      _wordsError = error;
+    });
+  }
+
+  void _acceptStatsError(Object error, int requestGeneration) {
+    if (!_isActive(requestGeneration)) {
+      return;
+    }
+    setState(() {
+      _statsLoading = false;
+      _statsError = error;
+    });
+  }
+
+  void _finishWords(int requestGeneration) {
+    if (!_isActive(requestGeneration)) {
+      return;
+    }
+    setState(() => _wordsLoading = false);
+  }
+
+  void _finishStats(int requestGeneration) {
+    if (!_isActive(requestGeneration)) {
+      return;
+    }
+    setState(() => _statsLoading = false);
+  }
+
+  UxLoadingState<List<UserWordsRecord>> get _wordsState =>
+      UxLoadingState<List<UserWordsRecord>>.resolve(
+        activeDataKey: _wordsDataKey,
+        isLoading: _wordsLoading,
+        lastSuccessfulResult: _wordsResult,
+        error: _wordsError,
+        errorDataKey: _wordsError == null ? null : _wordsDataKey,
+      );
+
+  UxLoadingState<List<StatsRecord>> get _statsState =>
+      UxLoadingState<List<StatsRecord>>.resolve(
+        activeDataKey: _statsDataKey,
+        isLoading: _statsLoading,
+        lastSuccessfulResult: _statsResult,
+        error: _statsError,
+        errorDataKey: _statsError == null ? null : _statsDataKey,
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return widget.builder(
+      context,
+      _ProfileProgressViewState(
+        wordsState: _wordsState,
+        statsState: _statsState,
+      ),
+      () => _subscribe(notify: true),
     );
   }
 }
