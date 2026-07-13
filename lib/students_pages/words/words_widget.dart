@@ -24,6 +24,8 @@ class WordsWidget extends StatefulWidget {
 }
 
 class _WordsWidgetState extends State<WordsWidget> {
+  static const double _reviewBarFadeExtraHeight = 36.0;
+
   late WordsModel _model;
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
@@ -102,7 +104,9 @@ class _WordsWidgetState extends State<WordsWidget> {
   }
 
   double _contentBottomPadding(BuildContext context) {
-    return _reviewBarBottomOffset(context) + 76.0;
+    return _reviewBarBottomOffset(context) +
+        reviewWordsBarHeight +
+        ExpatlioDesign.space16;
   }
 
   Future<void> _openWordPage(UserWordsRecord wordDoc) async {
@@ -234,7 +238,9 @@ class _WordsWidgetState extends State<WordsWidget> {
                   bottom: 0.0,
                   child: IgnorePointer(
                     child: Container(
-                      height: _reviewBarBottomOffset(context) + 96.0,
+                      height: _reviewBarBottomOffset(context) +
+                          reviewWordsBarHeight +
+                          _reviewBarFadeExtraHeight,
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,

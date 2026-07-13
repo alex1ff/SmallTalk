@@ -61,6 +61,23 @@ void main() {
     expect(pageSource, isNot(contains('к повторению')));
   });
 
+  test('words page reserves the named review bar height', () {
+    final pageSource =
+        File('lib/students_pages/words/words_widget.dart').readAsStringSync();
+
+    expect(
+      pageSource,
+      contains('reviewWordsBarHeight +\n        ExpatlioDesign.space16'),
+    );
+    expect(
+      pageSource,
+      contains('reviewWordsBarHeight +\n                          '
+          '_reviewBarFadeExtraHeight'),
+    );
+    expect(pageSource, isNot(contains('+ 76.0')));
+    expect(pageSource, isNot(contains('+ 96.0')));
+  });
+
   test('words page separates rows with a simple divider', () {
     final pageSource =
         File('lib/students_pages/words/words_widget.dart').readAsStringSync();
