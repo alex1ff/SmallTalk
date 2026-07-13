@@ -40,8 +40,22 @@ const ValueKey<String> profileContentKey = ValueKey<String>('profile_content');
 const ValueKey<String> profileDisplayNameKey =
     ValueKey<String>('profile_display_name');
 const ValueKey<String> profileEmailKey = ValueKey<String>('profile_email');
+const ValueKey<String> profileHeaderCardKey =
+    ValueKey<String>('profile_header_card');
+const ValueKey<String> profileEmailStatusSlotKey =
+    ValueKey<String>('profile_email_status_slot');
+const ValueKey<String> profileEmailStatusSemanticsKey =
+    ValueKey<String>('profile_email_status_semantics');
+const ValueKey<String> profileEmailActionSlotKey =
+    ValueKey<String>('profile_email_action_slot');
+const ValueKey<String> profileEmailActionButtonKey =
+    ValueKey<String>('profile_email_action_button');
+const ValueKey<String> profileEmailSendingIndicatorKey =
+    ValueKey<String>('profile_email_sending_indicator');
 const ValueKey<String> profileProgressSectionKey =
     ValueKey<String>('profile_progress_section');
+const ValueKey<String> profileProgressCardKey =
+    ValueKey<String>('profile_progress_card');
 const ValueKey<String> profileWordsValueKey =
     ValueKey<String>('profile_words_value');
 const ValueKey<String> profileCallsValueKey =
@@ -52,6 +66,14 @@ const ValueKey<String> profileProgressLoadingKey =
     ValueKey<String>('profile_progress_loading');
 const ValueKey<String> profileProgressRetryKey =
     ValueKey<String>('profile_progress_retry');
+const ValueKey<String> profileTariffSectionKey =
+    ValueKey<String>('profile_tariff_section');
+const ValueKey<String> profileTariffCardKey =
+    ValueKey<String>('profile_tariff_card');
+const ValueKey<String> profileTariffInfoSlotKey =
+    ValueKey<String>('profile_tariff_info_slot');
+const ValueKey<String> profileSettingsSectionKey =
+    ValueKey<String>('profile_settings_section');
 
 final class ProfileQueryResult<T extends Object> {
   ProfileQueryResult({
@@ -115,6 +137,9 @@ class ProfileWidget extends StatefulWidget {
     this.userDocumentProvider,
     this.userIdProvider,
     this.loggedInProvider,
+    this.emailVerifiedProvider,
+    this.emailVerificationSender,
+    this.nowProvider,
     this.wordsStreamFactory,
     this.statsStreamFactory,
   });
@@ -125,6 +150,12 @@ class ProfileWidget extends StatefulWidget {
   final String Function()? userIdProvider;
   @visibleForTesting
   final bool Function()? loggedInProvider;
+  @visibleForTesting
+  final bool Function()? emailVerifiedProvider;
+  @visibleForTesting
+  final Future<void> Function()? emailVerificationSender;
+  @visibleForTesting
+  final DateTime Function()? nowProvider;
   @visibleForTesting
   final ProfileQueryStreamFactory<UserWordsRecord>? wordsStreamFactory;
   @visibleForTesting
@@ -158,6 +189,8 @@ class _ProfileWidgetState extends State<ProfileWidget> {
   static const _supportEmail = 'support@expatlio.com';
   static const _supportTelegram = '@expatlio_support';
 
+  DateTime get _profileNow => widget.nowProvider?.call() ?? DateTime.now();
+
   bool get _usesInjectedPrimarySource =>
       widget.userDocumentProvider != null ||
       widget.userIdProvider != null ||
@@ -183,7 +216,8 @@ class _ProfileWidgetState extends State<ProfileWidget> {
   }
 
   void _scheduleGiftExpiryRefresh(DateTime? expiresAt) {
-    if (expiresAt == null || !expiresAt.isAfter(DateTime.now())) {
+    final now = _profileNow;
+    if (expiresAt == null || !expiresAt.isAfter(now)) {
       _giftExpiryTimer?.cancel();
       _giftExpiryTimer = null;
       _scheduledGiftExpiryAt = null;
@@ -197,8 +231,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
 
     _giftExpiryTimer?.cancel();
     _scheduledGiftExpiryAt = expiresAt;
-    final delay = expiresAt.difference(DateTime.now()) +
-        const Duration(milliseconds: 500);
+    final delay = expiresAt.difference(now) + const Duration(milliseconds: 500);
     _giftExpiryTimer = Timer(delay, () {
       if (!mounted) {
         return;
@@ -214,12 +247,13 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     BuildContext context, {
     required double minutes,
     required DateTime? expiresAt,
+    DateTime? now,
   }) {
     final availableText = FFLocalizations.of(context).getVariableText(
       ruText: 'мин доступно',
       enText: 'min available',
     );
-    final deadline = formatGiftExpiry(expiresAt);
+    final deadline = formatGiftExpiry(expiresAt, now: now ?? _profileNow);
     if (deadline.isEmpty) {
       return '${formatGiftMinutes(minutes)} $availableText';
     }
@@ -231,10 +265,15 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     return '${formatGiftMinutes(minutes)} $availableText $untilText $deadline';
   }
 
-  String _inactiveTariffSubtitle(BuildContext context, UsersRecord? user) {
+  String _inactiveTariffSubtitle(
+    BuildContext context,
+    UsersRecord? user, {
+    DateTime? now,
+  }) {
     final gift = user?.giftMinutes;
     final expiresAt = gift?.expiresAt;
-    final giftExpired = expiresAt != null && !expiresAt.isAfter(DateTime.now());
+    final giftExpired =
+        expiresAt != null && !expiresAt.isAfter(now ?? _profileNow);
     final giftDrained = gift != null &&
         !giftExpired &&
         gift.totalGranted > 0 &&
@@ -298,13 +337,24 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     ).then((value) => safeSetState(() {}));
   }
 
-  bool get _hasCurrentEmail => currentUserEmail.trim().isNotEmpty;
+  bool get _effectiveLoggedIn => widget.loggedInProvider?.call() ?? loggedIn;
+
+  String get _effectiveProfileEmail =>
+      widget.userDocumentProvider?.call()?.email ?? currentUserEmail;
+
+  bool get _hasCurrentEmail => _effectiveProfileEmail.trim().isNotEmpty;
 
   bool get _isCurrentEmailVerified =>
-      FirebaseAuth.instance.currentUser?.emailVerified ?? false;
+      widget.emailVerifiedProvider?.call() ??
+      (FirebaseAuth.instance.currentUser?.emailVerified ?? false);
 
   void _syncEmailVerificationPolling() {
-    if (loggedIn && _hasCurrentEmail && !_isCurrentEmailVerified) {
+    if (_usesInjectedPrimarySource) {
+      _stopEmailVerificationPolling();
+      return;
+    }
+
+    if (_effectiveLoggedIn && _hasCurrentEmail && !_isCurrentEmailVerified) {
       _startEmailVerificationPolling();
     } else {
       _stopEmailVerificationPolling();
@@ -323,7 +373,9 @@ class _ProfileWidgetState extends State<ProfileWidget> {
           _stopEmailVerificationPolling();
           return;
         }
-        if (!loggedIn || !_hasCurrentEmail || _isCurrentEmailVerified) {
+        if (!_effectiveLoggedIn ||
+            !_hasCurrentEmail ||
+            _isCurrentEmailVerified) {
           _stopEmailVerificationPolling();
           safeSetState(() {});
           return;
@@ -355,7 +407,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     );
   }
 
-  String _planNameFor(UsersRecord? user) {
+  String _planNameFor(UsersRecord? user, {DateTime? now}) {
     final productId = user?.subscription?.productId;
     if (productId == SubscriptionProductIds.monthly) {
       return 'Basic';
@@ -363,10 +415,12 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     if (productId == SubscriptionProductIds.quarterly) {
       return 'Pro';
     }
-    return hasActiveSubscription(user) ? 'Pro' : 'Нет тарифа';
+    return hasActiveSubscription(user, now: now ?? _profileNow)
+        ? 'Pro'
+        : 'Нет тарифа';
   }
 
-  String _planPriceFor(UsersRecord? user) {
+  String _planPriceFor(UsersRecord? user, {DateTime? now}) {
     final productId = user?.subscription?.productId;
     if (productId == SubscriptionProductIds.monthly) {
       return r'$10';
@@ -374,10 +428,10 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     if (productId == SubscriptionProductIds.quarterly) {
       return r'$20';
     }
-    return hasActiveSubscription(user) ? r'$20' : '';
+    return hasActiveSubscription(user, now: now ?? _profileNow) ? r'$20' : '';
   }
 
-  String _planPeriodFor(UsersRecord? user) {
+  String _planPeriodFor(UsersRecord? user, {DateTime? now}) {
     final productId = user?.subscription?.productId;
     if (productId == SubscriptionProductIds.monthly) {
       return 'мес';
@@ -385,22 +439,23 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     if (productId == SubscriptionProductIds.quarterly) {
       return '3 мес';
     }
-    return hasActiveSubscription(user) ? '3 мес' : '';
+    return hasActiveSubscription(user, now: now ?? _profileNow) ? '3 мес' : '';
   }
 
   Widget _buildCurrentTariffSection(BuildContext context) {
     final theme = FlutterFlowTheme.of(context);
     final user = currentUserDocument;
+    final now = _profileNow;
     final showTeacherBalance = shouldShowTeacherProfileBalance(user);
     final canWithdraw = canAccessTeacherSurfaces(user);
-    final active = hasActiveSubscription(user);
-    final hasGift = hasUsableGiftMinutes(user);
-    final giftMinutes = remainingGiftMinutes(user);
-    final giftExpiresAt = giftMinutesExpiresAt(user);
+    final active = hasActiveSubscription(user, now: now);
+    final hasGift = hasUsableGiftMinutes(user, now: now);
+    final giftMinutes = remainingGiftMinutes(user, now: now);
+    final giftExpiresAt = giftMinutesExpiresAt(user, now: now);
     _scheduleGiftExpiryRefresh(active ? null : giftExpiresAt);
-    final planName = _planNameFor(user);
-    final planPrice = _planPriceFor(user);
-    final planPeriod = _planPeriodFor(user);
+    final planName = _planNameFor(user, now: now);
+    final planPrice = _planPriceFor(user, now: now);
+    final planPeriod = _planPeriodFor(user, now: now);
     final teacherBalance = formatNumber(
       valueOrDefault(user?.balanceNS, 0.0),
       formatType: FormatType.decimal,
@@ -559,6 +614,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                               context,
                                               minutes: giftMinutes,
                                               expiresAt: giftExpiresAt,
+                                              now: now,
                                             ),
                                             maxLines: 2,
                                             overflow: TextOverflow.ellipsis,
@@ -677,7 +733,9 @@ class _ProfileWidgetState extends State<ProfileWidget> {
   Future<void> _refreshEmailVerificationStatus({
     bool showResult = true,
   }) async {
-    if (_emailVerificationRefreshing || !loggedIn) {
+    if (_usesInjectedPrimarySource ||
+        _emailVerificationRefreshing ||
+        !_effectiveLoggedIn) {
       return;
     }
 
@@ -736,7 +794,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
   }
 
   Future<void> _sendEmailVerification() async {
-    if (_emailVerificationBusy || !_hasCurrentEmail || !loggedIn) {
+    if (_emailVerificationBusy || !_hasCurrentEmail || !_effectiveLoggedIn) {
       return;
     }
 
@@ -746,6 +804,12 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     }
 
     try {
+      final injectedSender = widget.emailVerificationSender;
+      if (injectedSender != null) {
+        await injectedSender();
+        return;
+      }
+
       final result = await sendCustomEmailVerification(
         locale: FFLocalizations.of(context).languageCode,
         fallbackToFirebaseDefault: false,
@@ -793,89 +857,174 @@ class _ProfileWidgetState extends State<ProfileWidget> {
 
   Widget _buildEmailVerificationStatus(
     BuildContext context,
-    String profileEmail,
-  ) {
-    if (profileEmail.trim().isEmpty || _isCurrentEmailVerified) {
-      return const SizedBox.shrink();
-    }
+    String profileEmail, {
+    required bool verified,
+  }) {
+    final email = profileEmail.trim();
+    final hasEmail = email.isNotEmpty;
+    final localizations = FFLocalizations.of(context);
+    final textScaler = MediaQuery.textScalerOf(context);
+    final detailsHeight = math.max(
+      34.0,
+      ((textScaler.scale(14.0) * 1.2) +
+              (ExpatlioDesign.compactSpacing / 4) +
+              (textScaler.scale(12.0) * 1.2))
+          .ceilToDouble(),
+    );
+    final title = !hasEmail
+        ? localizations.getVariableText(
+            ruText: 'Email не указан',
+            enText: 'Email not added',
+          )
+        : verified
+            ? localizations.getVariableText(
+                ruText: 'Email подтверждён',
+                enText: 'Email verified',
+              )
+            : localizations.getVariableText(
+                ruText: 'Подтвердите email',
+                enText: 'Verify your email',
+              );
 
     final actionLabel = _emailVerificationBusy
-        ? FFLocalizations.of(context).getVariableText(
+        ? localizations.getVariableText(
             ruText: 'Отправляем...',
             enText: 'Sending...',
           )
-        : FFLocalizations.of(context).getVariableText(
+        : localizations.getVariableText(
             ruText: 'Отправить письмо',
             enText: 'Send email',
           );
+    final semanticsLabel = hasEmail
+        ? '$title, $email${_emailVerificationBusy ? ', $actionLabel' : ''}'
+        : title;
 
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: const Color(0xFFF2F2F2),
-        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
-      ),
-      padding: const EdgeInsets.all(ExpatlioDesign.itemSpacing),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: ExpatlioDesign.primary.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.mark_email_unread_rounded,
-              color: ExpatlioDesign.text,
-              size: 17,
-            ),
-          ),
-          const SizedBox(width: ExpatlioDesign.itemSpacing),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compactLayout =
+            constraints.maxWidth < 340.0 || textScaler.scale(13.0) > 19.0;
+        final contentHeight = compactLayout
+            ? detailsHeight + ExpatlioDesign.compactSpacing + 44.0
+            : math.max(detailsHeight, 44.0);
+
+        final statusDetails = ExcludeSemantics(
+          child: SizedBox(
+            height: detailsHeight,
+            child: Row(
               children: [
-                Text(
-                  FFLocalizations.of(context).getVariableText(
-                    ruText: 'Подтвердите email',
-                    enText: 'Verify your email',
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: (verified
+                            ? ExpatlioDesign.success
+                            : ExpatlioDesign.primary)
+                        .withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: ExpatlioDesign.textStyle(
-                    context,
-                    size: 14,
-                    weight: FontWeight.w600,
+                  child: Icon(
+                    verified
+                        ? Icons.mark_email_read_rounded
+                        : Icons.mark_email_unread_rounded,
+                    color:
+                        verified ? ExpatlioDesign.success : ExpatlioDesign.text,
+                    size: 17,
                   ),
                 ),
-                const SizedBox(height: ExpatlioDesign.compactSpacing / 4),
-                Text(
-                  profileEmail,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: ExpatlioDesign.textStyle(
-                    context,
-                    color: ExpatlioDesign.muted,
-                    size: 12,
-                    weight: FontWeight.w500,
+                const SizedBox(width: ExpatlioDesign.itemSpacing),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: ExpatlioDesign.textStyle(
+                          context,
+                          size: 14,
+                          weight: FontWeight.w600,
+                          height: 1.2,
+                        ),
+                      ),
+                      const SizedBox(
+                        height: ExpatlioDesign.compactSpacing / 4,
+                      ),
+                      Text(
+                        hasEmail ? email : '—',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: ExpatlioDesign.textStyle(
+                          context,
+                          color: ExpatlioDesign.muted,
+                          size: 12,
+                          weight: FontWeight.w500,
+                          height: 1.2,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: ExpatlioDesign.compactSpacing),
-          _emailVerificationTextAction(
-            context,
-            label: actionLabel,
-            enabled: !_emailVerificationBusy,
-            busy: _emailVerificationBusy,
-            onTap: _sendEmailVerification,
+        );
+        final actionSlot = SizedBox(
+          key: profileEmailActionSlotKey,
+          width: compactLayout ? double.infinity : 116.0,
+          height: 44.0,
+          child: hasEmail && !verified
+              ? _emailVerificationTextAction(
+                  context,
+                  label: actionLabel,
+                  enabled: !_emailVerificationBusy,
+                  busy: _emailVerificationBusy,
+                  onTap: _sendEmailVerification,
+                )
+              : const SizedBox.expand(),
+        );
+
+        return SizedBox(
+          key: profileEmailStatusSlotKey,
+          width: double.infinity,
+          height: contentHeight + (ExpatlioDesign.itemSpacing * 2),
+          child: Semantics(
+            key: profileEmailStatusSemanticsKey,
+            container: true,
+            explicitChildNodes: true,
+            liveRegion: true,
+            label: semanticsLabel,
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFFF2F2F2),
+                borderRadius:
+                    BorderRadius.circular(ExpatlioDesign.radiusMedium),
+              ),
+              padding: const EdgeInsets.all(ExpatlioDesign.itemSpacing),
+              child: compactLayout
+                  ? Column(
+                      children: [
+                        statusDetails,
+                        const SizedBox(
+                          height: ExpatlioDesign.compactSpacing,
+                        ),
+                        actionSlot,
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        Expanded(child: statusDetails),
+                        const SizedBox(
+                          width: ExpatlioDesign.compactSpacing,
+                        ),
+                        actionSlot,
+                      ],
+                    ),
+            ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -887,6 +1036,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     required Future<void> Function() onTap,
   }) {
     return TextButton(
+      key: profileEmailActionButtonKey,
       style: TextButton.styleFrom(
         foregroundColor: ExpatlioDesign.primary,
         disabledForegroundColor: ExpatlioDesign.inactive,
@@ -905,32 +1055,34 @@ class _ProfileWidgetState extends State<ProfileWidget> {
         ),
       ),
       onPressed: enabled ? () => unawaited(onTap()) : null,
-      child: busy
-          ? Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const SizedBox(
-                  width: 12,
-                  height: 12,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor:
-                        AlwaysStoppedAnimation<Color>(ExpatlioDesign.primary),
-                  ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (busy) ...[
+            const ExcludeSemantics(
+              child: SizedBox(
+                key: profileEmailSendingIndicatorKey,
+                width: 12,
+                height: 12,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor:
+                      AlwaysStoppedAnimation<Color>(ExpatlioDesign.primary),
                 ),
-                const SizedBox(width: ExpatlioDesign.space8),
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            )
-          : Text(
+              ),
+            ),
+            const SizedBox(width: ExpatlioDesign.space8),
+          ],
+          Flexible(
+            child: Text(
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1285,7 +1437,11 @@ class _ProfileWidgetState extends State<ProfileWidget> {
       }
     });
 
+    final showEmailStatusSlot =
+        !_usesInjectedPrimarySource || widget.emailVerifiedProvider != null;
+
     return Container(
+      key: profileHeaderCardKey,
       decoration: ExpatlioDesign.cardDecoration(),
       padding: ExpatlioDesign.cardPadding,
       child: Column(
@@ -1357,11 +1513,13 @@ class _ProfileWidgetState extends State<ProfileWidget> {
               ),
             ],
           ),
-          if (!_usesInjectedPrimarySource &&
-              user.email.trim().isNotEmpty &&
-              !_isCurrentEmailVerified) ...[
+          if (showEmailStatusSlot) ...[
             const SizedBox(height: ExpatlioDesign.sectionSpacing),
-            _buildEmailVerificationStatus(context, user.email),
+            _buildEmailVerificationStatus(
+              context,
+              user.email,
+              verified: _isCurrentEmailVerified,
+            ),
           ],
           const SizedBox(height: ExpatlioDesign.sectionSpacing),
           _outlineAction(
@@ -1652,6 +1810,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
               ],
             ),
             Container(
+              key: profileProgressCardKey,
               decoration: ExpatlioDesign.cardDecoration(),
               padding: ExpatlioDesign.cardPadding,
               child: Row(
@@ -1787,12 +1946,13 @@ class _ProfileWidgetState extends State<ProfileWidget> {
   }
 
   Widget _tariffSection(BuildContext context, UsersRecord? user) {
+    final now = _profileNow;
     final showTeacherBalance = shouldShowTeacherProfileBalance(user);
     final canWithdraw = canAccessTeacherSurfaces(user);
-    final active = hasActiveSubscription(user);
-    final hasGift = hasUsableGiftMinutes(user);
-    final giftMinutes = remainingGiftMinutes(user);
-    final giftExpiresAt = giftMinutesExpiresAt(user);
+    final active = hasActiveSubscription(user, now: now);
+    final hasGift = hasUsableGiftMinutes(user, now: now);
+    final giftMinutes = remainingGiftMinutes(user, now: now);
+    final giftExpiresAt = giftMinutesExpiresAt(user, now: now);
     _scheduleGiftExpiryRefresh(active ? null : giftExpiresAt);
     final planTitle = showTeacherBalance
         ? FFLocalizations.of(context).getVariableText(
@@ -1800,7 +1960,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
             enText: 'Balance',
           )
         : active
-            ? _planNameFor(user)
+            ? _planNameFor(user, now: now)
             : hasGift
                 ? FFLocalizations.of(context).getVariableText(
                     ruText: 'Подарочные минуты',
@@ -1810,8 +1970,8 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                     ruText: 'Нет подписки',
                     enText: 'No subscription',
                   );
-    final planPrice = _planPriceFor(user);
-    final planPeriod = _planPeriodFor(user);
+    final planPrice = _planPriceFor(user, now: now);
+    final planPeriod = _planPeriodFor(user, now: now);
     final planSubtitle = showTeacherBalance
         ? '${formatNumber(
             valueOrDefault(user?.balanceNS, 0.0),
@@ -1823,10 +1983,23 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                 context,
                 minutes: giftMinutes,
                 expiresAt: giftExpiresAt,
+                now: now,
               )
-            : _inactiveTariffSubtitle(context, user);
+            : _inactiveTariffSubtitle(context, user, now: now);
+    final textScaler = MediaQuery.textScalerOf(context);
+    final tariffTitleHeight = math.max(
+      28.0,
+      textScaler.scale(22.0) * 1.2,
+    );
+    final tariffSubtitleHeight = math.max(
+      36.0,
+      textScaler.scale(13.0) * 2.4,
+    );
+    final tariffInfoHeight =
+        tariffTitleHeight + ExpatlioDesign.space4 + tariffSubtitleHeight;
 
     return Column(
+      key: profileTariffSectionKey,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _profileTitle(
@@ -1842,6 +2015,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                 ),
         ),
         Container(
+          key: profileTariffCardKey,
           decoration: ExpatlioDesign.cardDecoration(),
           padding: ExpatlioDesign.cardPadding,
           child: Column(
@@ -1865,108 +2039,129 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                   ),
                   const SizedBox(width: ExpatlioDesign.itemSpacing),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (showTeacherBalance) ...[
-                          Text(
-                            FFLocalizations.of(context).getVariableText(
-                              ruText: 'Текущий баланс',
-                              enText: 'Current balance',
-                            ),
-                            style: ExpatlioDesign.textStyle(
-                              context,
-                              color: ExpatlioDesign.muted,
-                              size: 13,
-                              weight: FontWeight.w400,
+                    child: SizedBox(
+                      key: profileTariffInfoSlotKey,
+                      height: tariffInfoHeight,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            height: tariffTitleHeight,
+                            child: Align(
+                              alignment: AlignmentDirectional.centerStart,
+                              child: showTeacherBalance
+                                  ? Text(
+                                      FFLocalizations.of(context)
+                                          .getVariableText(
+                                        ruText: 'Текущий баланс',
+                                        enText: 'Current balance',
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: ExpatlioDesign.textStyle(
+                                        context,
+                                        color: ExpatlioDesign.muted,
+                                        size: 13,
+                                        weight: FontWeight.w400,
+                                        height: 1.2,
+                                      ),
+                                    )
+                                  : active
+                                      ? RichText(
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          textScaler: textScaler,
+                                          text: TextSpan(
+                                            children: [
+                                              TextSpan(
+                                                text: planTitle,
+                                                style: ExpatlioDesign.textStyle(
+                                                  context,
+                                                  size: 20,
+                                                  weight: FontWeight.w700,
+                                                  height: 1.2,
+                                                ),
+                                              ),
+                                              TextSpan(
+                                                text: ' · ',
+                                                style: ExpatlioDesign.textStyle(
+                                                  context,
+                                                  size: 20,
+                                                  weight: FontWeight.w700,
+                                                  height: 1.2,
+                                                ),
+                                              ),
+                                              TextSpan(
+                                                text: planPrice,
+                                                style: ExpatlioDesign.textStyle(
+                                                  context,
+                                                  color: ExpatlioDesign.primary,
+                                                  size: 20,
+                                                  weight: FontWeight.w700,
+                                                  height: 1.2,
+                                                ),
+                                              ),
+                                              TextSpan(
+                                                text: ' / $planPeriod',
+                                                style: ExpatlioDesign.textStyle(
+                                                  context,
+                                                  color: ExpatlioDesign.muted,
+                                                  size: 14,
+                                                  weight: FontWeight.w500,
+                                                  height: 1.2,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        )
+                                      : Text(
+                                          planTitle,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: ExpatlioDesign.textStyle(
+                                            context,
+                                            size: 20,
+                                            weight: FontWeight.w700,
+                                            height: 1.2,
+                                          ),
+                                        ),
                             ),
                           ),
-                          const SizedBox(height: ExpatlioDesign.compactSpacing),
+                          const SizedBox(height: ExpatlioDesign.space4),
+                          SizedBox(
+                            height: tariffSubtitleHeight,
+                            child: Align(
+                              alignment: AlignmentDirectional.topStart,
+                              child: showTeacherBalance
+                                  ? Text(
+                                      planSubtitle,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: ExpatlioDesign.textStyle(
+                                        context,
+                                        size: 22,
+                                        weight: FontWeight.w700,
+                                        height: 1.2,
+                                      ),
+                                    )
+                                  : active
+                                      ? const SizedBox.shrink()
+                                      : Text(
+                                          planSubtitle,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: ExpatlioDesign.textStyle(
+                                            context,
+                                            color: ExpatlioDesign.muted,
+                                            size: 13,
+                                            weight: FontWeight.w400,
+                                            height: 1.2,
+                                          ),
+                                        ),
+                            ),
+                          ),
                         ],
-                        if (showTeacherBalance)
-                          Text(
-                            planSubtitle,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: ExpatlioDesign.textStyle(
-                              context,
-                              size: 22,
-                              weight: FontWeight.w700,
-                            ),
-                          )
-                        else if (active)
-                          RichText(
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textScaler: MediaQuery.of(context).textScaler,
-                            text: TextSpan(
-                              children: [
-                                TextSpan(
-                                  text: planTitle,
-                                  style: ExpatlioDesign.textStyle(
-                                    context,
-                                    size: 20,
-                                    weight: FontWeight.w700,
-                                  ),
-                                ),
-                                TextSpan(
-                                  text: ' · ',
-                                  style: ExpatlioDesign.textStyle(
-                                    context,
-                                    size: 20,
-                                    weight: FontWeight.w700,
-                                  ),
-                                ),
-                                TextSpan(
-                                  text: planPrice,
-                                  style: ExpatlioDesign.textStyle(
-                                    context,
-                                    color: ExpatlioDesign.primary,
-                                    size: 20,
-                                    weight: FontWeight.w700,
-                                  ),
-                                ),
-                                TextSpan(
-                                  text: ' / $planPeriod',
-                                  style: ExpatlioDesign.textStyle(
-                                    context,
-                                    color: ExpatlioDesign.muted,
-                                    size: 14,
-                                    weight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          )
-                        else
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                planTitle,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: ExpatlioDesign.textStyle(
-                                  context,
-                                  size: 20,
-                                  weight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: ExpatlioDesign.space4),
-                              Text(
-                                planSubtitle,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: ExpatlioDesign.textStyle(
-                                  context,
-                                  color: ExpatlioDesign.muted,
-                                  size: 13,
-                                  weight: FontWeight.w400,
-                                ),
-                              ),
-                            ],
-                          ),
-                      ],
+                      ),
                     ),
                   ),
                 ],
@@ -2091,6 +2286,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
             Icon(icon, color: resolvedColor, size: 20),
             const SizedBox(width: ExpatlioDesign.itemSpacing),
             Expanded(
+              flex: 2,
               child: Text(
                 label,
                 maxLines: 1,
@@ -2105,7 +2301,12 @@ class _ProfileWidgetState extends State<ProfileWidget> {
             ),
             if (trailing != null) ...[
               const SizedBox(width: ExpatlioDesign.itemSpacing),
-              trailing,
+              Flexible(
+                child: Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: trailing,
+                ),
+              ),
             ],
             const SizedBox(width: ExpatlioDesign.compactSpacing),
             Icon(
@@ -2131,6 +2332,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
 
   Widget _settingsSection(BuildContext context, UsersRecord user) {
     return Column(
+      key: profileSettingsSectionKey,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _profileTitle(
@@ -2156,6 +2358,8 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                 ),
                 trailing: Text(
                   _appLanguageLabel(FFLocalizations.of(context).languageCode),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: ExpatlioDesign.textStyle(
                     context,
                     color: ExpatlioDesign.muted,
@@ -2187,6 +2391,8 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                 ),
                 trailing: Text(
                   user.blockedUsers.length.toString(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: ExpatlioDesign.textStyle(
                     context,
                     color: ExpatlioDesign.muted,
