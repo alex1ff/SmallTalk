@@ -1,6 +1,14 @@
 import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
 
+const double dictionaryWordRowHeight = ExpatlioDesign.space56;
+const double _dictionaryWordFontSize = 16.0;
+const double _dictionaryWordTextHeight = 1.2;
+const double _dictionaryWordMaxTextScaleFactor = 2.0;
+const int _dictionaryWordMaxLines = 2;
+const double _dictionaryWordTextSlotHeight =
+    dictionaryWordRowHeight - (ExpatlioDesign.space8 * 2);
+
 class DictionaryWordRow extends StatelessWidget {
   const DictionaryWordRow({
     super.key,
@@ -15,19 +23,28 @@ class DictionaryWordRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final textScaler = MediaQuery.textScalerOf(context).clamp(
+      minScaleFactor: 1.0,
+      maxScaleFactor: _dictionaryWordMaxTextScaleFactor,
+    );
+    final scaledLineHeight =
+        textScaler.scale(_dictionaryWordFontSize) * _dictionaryWordTextHeight;
+    final visibleLines = (_dictionaryWordTextSlotHeight / scaledLineHeight)
+        .floor()
+        .clamp(1, _dictionaryWordMaxLines);
     final textStyle = ExpatlioDesign.textStyle(
       context,
-      size: 16.0,
+      size: _dictionaryWordFontSize,
       weight: FontWeight.w500,
-      height: 1.2,
+      height: _dictionaryWordTextHeight,
     );
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 49.0),
+        child: SizedBox(
+          height: dictionaryWordRowHeight,
           child: Padding(
             padding: const EdgeInsetsDirectional.fromSTEB(
               ExpatlioDesign.space16,
@@ -42,8 +59,9 @@ class DictionaryWordRow extends StatelessWidget {
                   flex: 5,
                   child: Text(
                     sourceText,
-                    maxLines: 2,
+                    maxLines: visibleLines,
                     overflow: TextOverflow.ellipsis,
+                    textScaler: textScaler,
                     style: textStyle,
                   ),
                 ),
@@ -52,8 +70,9 @@ class DictionaryWordRow extends StatelessWidget {
                   flex: 7,
                   child: Text(
                     translationText,
-                    maxLines: 2,
+                    maxLines: visibleLines,
                     overflow: TextOverflow.ellipsis,
+                    textScaler: textScaler,
                     style: textStyle,
                   ),
                 ),
