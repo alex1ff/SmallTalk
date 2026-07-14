@@ -257,6 +257,98 @@ void main() {
     }
   });
 
+  testWidgets('bottom action consumes safe area once around keyboard insets',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    Widget buildEventDetail({required bool keyboardOpen}) {
+      return _buildTestApp(
+        home: MediaQuery(
+          data: MediaQueryData(
+            size: const Size(390, 844),
+            viewPadding: const EdgeInsets.only(bottom: 34),
+            padding: EdgeInsets.only(bottom: keyboardOpen ? 0 : 34),
+            viewInsets: EdgeInsets.only(bottom: keyboardOpen ? 320 : 0),
+          ),
+          child: EventDetailWidget(
+            eventId: 'event-123',
+            joinCtaState: EventDetailJoinCtaState.joined,
+            onPrimaryCtaPressed: () {},
+            onChatPressed: () {},
+          ),
+        ),
+      );
+    }
+
+    final barFinder = find.byKey(eventDetailBottomActionBarKey);
+    final primaryFinder = find.byKey(eventDetailPrimaryCtaKey);
+    final chatSlotFinder = find.byKey(eventDetailChatCtaSlotKey);
+    final scaffoldFinder = find.byType(Scaffold);
+
+    await tester.pumpWidget(buildEventDetail(keyboardOpen: false));
+    await tester.pumpAndSettle();
+    final closedScaffoldRect = tester.getRect(scaffoldFinder);
+    final closedBarRect = tester.getRect(barFinder);
+    final closedPrimaryRect = tester.getRect(primaryFinder);
+    final closedChatSlotRect = tester.getRect(chatSlotFinder);
+
+    expect(
+      closedBarRect.height,
+      ExpatlioDesign.space12 + 48 + ExpatlioDesign.space12 + 34,
+    );
+    expect(closedPrimaryRect.height, 48);
+    expect(closedChatSlotRect.height, 48);
+    expect(
+      closedBarRect.bottom - closedPrimaryRect.bottom,
+      ExpatlioDesign.space12 + 34,
+    );
+    expect(closedBarRect.bottom, closedScaffoldRect.bottom);
+
+    await tester.pumpWidget(buildEventDetail(keyboardOpen: true));
+    await tester.pumpAndSettle();
+    final openScaffoldRect = tester.getRect(scaffoldFinder);
+    final openBarRect = tester.getRect(barFinder);
+    final openPrimaryRect = tester.getRect(primaryFinder);
+    final openChatSlotRect = tester.getRect(chatSlotFinder);
+
+    expect(
+      openBarRect.height,
+      ExpatlioDesign.space12 + 48 + ExpatlioDesign.space12,
+    );
+    expect(closedBarRect.height - openBarRect.height, 34);
+    expect(openPrimaryRect.size, closedPrimaryRect.size);
+    expect(openChatSlotRect.size, closedChatSlotRect.size);
+    expect(
+      openBarRect.bottom - openPrimaryRect.bottom,
+      ExpatlioDesign.space12,
+    );
+    expect(closedBarRect.bottom - openBarRect.bottom, 320);
+    expect(openBarRect.bottom, openScaffoldRect.bottom - 320);
+    expect(
+      openPrimaryRect.shift(-openBarRect.topLeft),
+      closedPrimaryRect.shift(-closedBarRect.topLeft),
+    );
+    expect(
+      openChatSlotRect.shift(-openBarRect.topLeft),
+      closedChatSlotRect.shift(-closedBarRect.topLeft),
+    );
+
+    ScaffoldMessenger.of(tester.element(barFinder)).showSnackBar(
+      const SnackBar(
+        behavior: SnackBarBehavior.fixed,
+        content: Text('Не удалось выполнить действие'),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+    final snackBarRect = tester.getRect(find.byType(SnackBar));
+    expect(snackBarRect.bottom, lessThanOrEqualTo(openBarRect.top));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('bottom action bar callbacks fire once', (tester) async {
     var joinTapCount = 0;
     var chatTapCount = 0;

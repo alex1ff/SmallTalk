@@ -402,7 +402,7 @@ Retry behavior:
 - [x] Добавить widget/golden проверку dictionary row: длинный original/translation не слипается и не выходит за min/max height.
 - [x] Добавить widget/golden проверку repeat panel: большие counts не обрезают CTA и не меняют высоту панели.
 - [x] Добавить widget/golden проверку profile blocks: avatar/email/progress/tariff cards сохраняют размеры при loading/error.
-- [ ] Добавить widget/golden проверку bottom bars: chat composer/event action/repeat panel не получают double safe-area padding и не меняют внутреннюю высоту при keyboard inset.
+- [x] Добавить widget/golden проверку bottom bars: chat composer/event action/repeat panel не получают double safe-area padding и не меняют внутреннюю высоту при keyboard inset.
 - [ ] Добавить widget/golden проверку payments: price/package/tariff/purchase bar/cards/transactions rows сохраняют slots при loading/error.
 - [ ] Добавить widget-тесты на отсутствие empty state во время первой загрузки.
 - [ ] Добавить widget-тест: пустой Firestore cache snapshot без server confirmation/marker не показывает empty.

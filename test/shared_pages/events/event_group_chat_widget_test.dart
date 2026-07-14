@@ -2619,13 +2619,19 @@ void main() {
 
   testWidgets('does not keep bottom safe area while keyboard is open',
       (tester) async {
-    Widget buildChatWithMediaQuery({required EdgeInsets viewInsets}) {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    Widget buildChatWithMediaQuery({required bool keyboardOpen}) {
       return _buildTestApp(
         home: MediaQuery(
           data: MediaQueryData(
+            size: const Size(390, 844),
             viewPadding: const EdgeInsets.only(bottom: 34),
-            padding: const EdgeInsets.only(bottom: 34),
-            viewInsets: viewInsets,
+            padding: EdgeInsets.only(bottom: keyboardOpen ? 0 : 34),
+            viewInsets: EdgeInsets.only(bottom: keyboardOpen ? 320 : 0),
           ),
           child: EventGroupChatWidget(
             eventId: 'event-123',
@@ -2644,29 +2650,71 @@ void main() {
     }
 
     await tester.pumpWidget(
-      buildChatWithMediaQuery(viewInsets: EdgeInsets.zero),
+      buildChatWithMediaQuery(keyboardOpen: false),
     );
     await tester.pumpAndSettle();
+    final composerFinder = find.byKey(eventGroupChatComposerKey);
+    final inputFinder = find.byKey(eventGroupChatMessageInputKey);
+    final sendButtonFinder = find.byKey(eventGroupChatSendButtonKey);
+    final scaffoldFinder = find.byType(Scaffold);
+    final closedScaffoldRect = tester.getRect(scaffoldFinder);
+    final closedComposerRect = tester.getRect(composerFinder);
+    final closedInputRect = tester.getRect(inputFinder);
+    final closedSendButtonRect = tester.getRect(sendButtonFinder);
+
     expect(
-      tester.getSize(find.byKey(eventGroupChatComposerKey)).height,
+      closedComposerRect.height,
       ExpatlioDesign.space12 +
           ExpatlioDesign.formFieldHeight +
           ExpatlioDesign.space12 +
           34,
     );
+    expect(closedInputRect.height, ExpatlioDesign.formFieldHeight);
+    expect(
+      closedSendButtonRect.size,
+      const Size.square(ExpatlioDesign.formFieldHeight),
+    );
+    expect(
+      closedComposerRect.bottom - closedInputRect.bottom,
+      ExpatlioDesign.space12 + 34,
+    );
+    expect(closedComposerRect.bottom, closedScaffoldRect.bottom);
 
     await tester.pumpWidget(
-      buildChatWithMediaQuery(
-        viewInsets: const EdgeInsets.only(bottom: 320),
-      ),
+      buildChatWithMediaQuery(keyboardOpen: true),
     );
     await tester.pumpAndSettle();
+    final openScaffoldRect = tester.getRect(scaffoldFinder);
+    final openComposerRect = tester.getRect(composerFinder);
+    final openInputRect = tester.getRect(inputFinder);
+    final openSendButtonRect = tester.getRect(sendButtonFinder);
+
     expect(
-      tester.getSize(find.byKey(eventGroupChatComposerKey)).height,
+      openComposerRect.height,
       ExpatlioDesign.space12 +
           ExpatlioDesign.formFieldHeight +
           ExpatlioDesign.space12,
     );
+    expect(openInputRect.size, closedInputRect.size);
+    expect(openSendButtonRect.size, closedSendButtonRect.size);
+    expect(
+      openComposerRect.bottom - openInputRect.bottom,
+      ExpatlioDesign.space12,
+    );
+    expect(
+      closedComposerRect.bottom - openComposerRect.bottom,
+      320,
+    );
+    expect(openComposerRect.bottom, openScaffoldRect.bottom - 320);
+    expect(
+      openInputRect.shift(-openComposerRect.topLeft),
+      closedInputRect.shift(-closedComposerRect.topLeft),
+    );
+    expect(
+      openSendButtonRect.shift(-openComposerRect.topLeft),
+      closedSendButtonRect.shift(-closedComposerRect.topLeft),
+    );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('keeps composer active while send is pending', (tester) async {

@@ -454,6 +454,94 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('repeat panel consumes safe area once around keyboard insets',
+      (tester) async {
+    const outerScaffoldKey = ValueKey<String>('words_test_outer_scaffold');
+    const bottomBarKey = ValueKey<String>('words_test_bottom_bar');
+    const bottomBarHeight = 96.0;
+    tester.view.physicalSize = const Size(390.0, 844.0);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final sources = _WordsTestSources();
+    addTearDown(sources.close);
+
+    Widget buildWords({required bool keyboardOpen}) {
+      return _buildWordsTestApp(
+        sources,
+        cacheKey: 'repeat-panel-insets',
+        bottomInset: keyboardOpen ? 0 : 34,
+        viewPaddingBottom: 34,
+        viewInsetBottom: keyboardOpen ? 320 : 0,
+        homeBuilder: (words) => Scaffold(
+          key: outerScaffoldKey,
+          extendBody: true,
+          body: words,
+          bottomNavigationBar: const SizedBox(
+            key: bottomBarKey,
+            height: bottomBarHeight,
+          ),
+        ),
+      );
+    }
+
+    await tester.pumpWidget(buildWords(keyboardOpen: false));
+    await tester.pump();
+    sources.words.single.add(_queryResult(const [], confirmed: true));
+    sources.reviews.single.add(
+      _queryResult([_dueReview('insets')], confirmed: true),
+    );
+    await tester.pump();
+
+    final scaffoldFinder = find.byKey(outerScaffoldKey);
+    final bottomBarFinder = find.byKey(bottomBarKey);
+    final surfaceFinder = find.byKey(reviewWordsBarSurfaceKey);
+    final actionFinder = find.byKey(reviewWordsBarActionKey);
+    final closedScaffoldRect = tester.getRect(scaffoldFinder);
+    final closedBottomBarRect = tester.getRect(bottomBarFinder);
+    final closedSurfaceRect = tester.getRect(surfaceFinder);
+    final closedActionRect = tester.getRect(actionFinder);
+    final platform = Theme.of(tester.element(surfaceFinder)).platform;
+    final navClearance = platform == TargetPlatform.android ? 12.0 : 10.0;
+
+    expect(
+      closedSurfaceRect.size,
+      const Size(358.0, reviewWordsBarHeight),
+    );
+    expect(
+      closedActionRect.size,
+      const Size(reviewWordsBarActionWidth, reviewWordsBarActionHeight),
+    );
+    expect(
+      closedBottomBarRect.top - closedSurfaceRect.bottom,
+      navClearance,
+    );
+    expect(closedBottomBarRect.bottom, closedScaffoldRect.bottom);
+
+    await tester.pumpWidget(buildWords(keyboardOpen: true));
+    await tester.pump();
+    final openScaffoldRect = tester.getRect(scaffoldFinder);
+    final openSurfaceRect = tester.getRect(surfaceFinder);
+    final openActionRect = tester.getRect(actionFinder);
+
+    expect(openSurfaceRect.size, closedSurfaceRect.size);
+    expect(openActionRect.size, closedActionRect.size);
+    expect(
+      openScaffoldRect.bottom - 320 - openSurfaceRect.bottom,
+      navClearance,
+    );
+    expect(
+      closedSurfaceRect.bottom - openSurfaceRect.bottom,
+      320 - bottomBarHeight,
+    );
+    expect(
+      openActionRect.shift(-openSurfaceRect.topLeft),
+      closedActionRect.shift(-closedSurfaceRect.topLeft),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('session cache is shown while replacement streams reconnect',
       (tester) async {
     final firstSources = _WordsTestSources();
@@ -565,7 +653,16 @@ Widget _buildWordsTestApp(
   required String cacheKey,
   TextScaler textScaler = TextScaler.noScaling,
   double bottomInset = 0.0,
+  double viewPaddingBottom = 0.0,
+  double viewInsetBottom = 0.0,
+  Widget Function(Widget words)? homeBuilder,
 }) {
+  final words = WordsWidget(
+    sessionCacheKeyOverride: cacheKey,
+    userReferenceProvider: _noUserReference,
+    wordsStreamFactory: sources.wordsFactory,
+    wordReviewsStreamFactory: sources.reviewsFactory,
+  );
   return MaterialApp(
     locale: const Locale('ru'),
     supportedLocales: const [Locale('ru'), Locale('en')],
@@ -581,17 +678,14 @@ Widget _buildWordsTestApp(
       return MediaQuery(
         data: MediaQuery.of(context).copyWith(
           padding: EdgeInsets.only(bottom: bottomInset),
+          viewPadding: EdgeInsets.only(bottom: viewPaddingBottom),
+          viewInsets: EdgeInsets.only(bottom: viewInsetBottom),
           textScaler: textScaler,
         ),
         child: child!,
       );
     },
-    home: WordsWidget(
-      sessionCacheKeyOverride: cacheKey,
-      userReferenceProvider: _noUserReference,
-      wordsStreamFactory: sources.wordsFactory,
-      wordReviewsStreamFactory: sources.reviewsFactory,
-    ),
+    home: homeBuilder?.call(words) ?? words,
   );
 }
 

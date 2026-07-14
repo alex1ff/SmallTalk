@@ -335,11 +335,16 @@ class EventDetailWidget extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: _eventDetailPageBackground,
-      bottomNavigationBar: _EventDetailBottomActionBar(
-        eventId: eventId,
-        joinCtaState: joinCtaState,
-        onPrimaryPressed: onPrimaryCtaPressed,
-        onChatPressed: onChatPressed,
+      bottomNavigationBar: Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: _EventDetailBottomActionBar(
+          eventId: eventId,
+          joinCtaState: joinCtaState,
+          onPrimaryPressed: onPrimaryCtaPressed,
+          onChatPressed: onChatPressed,
+        ),
       ),
       body: SafeArea(
         bottom: false,
