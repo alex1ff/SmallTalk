@@ -14,10 +14,12 @@ class CallHistoryCard extends StatelessWidget {
     super.key,
     required this.session,
     required this.isTeacher,
+    this.canOpen,
   });
 
   final VideoSessionsRecord session;
   final bool isTeacher;
+  final bool Function()? canOpen;
 
   String _formatStartedAtForCard(BuildContext context) {
     return formatSessionStartedAtForCard(context, session);
@@ -178,6 +180,9 @@ class CallHistoryCard extends StatelessWidget {
       hoverColor: Colors.transparent,
       highlightColor: Colors.transparent,
       onTap: () async {
+        if (!(canOpen?.call() ?? true)) {
+          return;
+        }
         context.pushNamed(
           CallDetailsWidget.routeName,
           queryParameters: {

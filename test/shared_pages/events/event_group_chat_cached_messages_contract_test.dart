@@ -14,14 +14,27 @@ void main() {
     );
     expect(source, contains('_messagesCacheByEventId.readItems'));
     expect(source, contains('_messagesCacheByEventId.writeItems'));
-    expect(source, contains('currentUserUid'));
-    expect(source, contains('initialData: _cachedMessages(widget.eventId)'));
-    expect(source, contains('messages == null || messages.isEmpty'));
+    expect(source, contains('UxSessionCacheLifecycle.register'));
+    expect(source, contains('UxSessionCacheLifecycle.updateAuthenticatedUser'));
+    expect(source, contains('_messagesCacheKey(ownerUid, eventId)'));
+    expect(source, contains('_authenticatedOwnerUid() == ownerUid'));
+    expect(
+      source,
+      contains('initialData: _cachedMessagesState(ownerUid, eventId)'),
+    );
+    expect(source, contains('if (messages == null)'));
     expect(source, contains('debugResetMessageCacheForTesting'));
     expect(
-        source, contains('snapshot.data ?? _cachedMessages(widget.eventId)'));
+      source,
+      contains('final messageState = _displayedMessagesState('),
+    );
+    expect(source, contains('incomingState: snapshot.data'));
+    expect(source, contains('cachedState: cachedState'));
+    expect(source, contains('_lastDisplayedMessagesScope == scope'));
     expect(
-        source, contains('_rememberMessages(widget.eventId, messageRecords)'));
+      source,
+      contains('_rememberMessages('),
+    );
     expect(source, contains('_schedulePruneConfirmedPendingMessages'));
     expect(source, contains('ChatLocalMessageStatus.sending'));
     expect(source, contains('ChatLocalMessageStatus.sent'));
@@ -38,12 +51,8 @@ void main() {
     expect(source, contains('ruText: \'Повторить\''));
     expect(source, contains('enText: \'Retry\''));
     expect(
-      source,
-      matches(
-        RegExp(
-          r'snapshot\.connectionState\s*!=\s*ConnectionState\.waiting',
-        ),
-      ),
-    );
+        source, contains('snapshot.hasData && messageState!.isAuthoritative'));
+    expect(source, contains('eventGroupChatMessagesInlineErrorKey'));
+    expect(source, contains('_retryMessages'));
   });
 }

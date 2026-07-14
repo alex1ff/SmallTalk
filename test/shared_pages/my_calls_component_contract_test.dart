@@ -42,6 +42,18 @@ void main() {
     );
   });
 
+  test('my calls initial owner follows the direct Firebase auth boundary', () {
+    final pageSource = File('lib/shared_pages/my_calls/my_calls_widget.dart')
+        .readAsStringSync();
+
+    expect(pageSource, contains('FirebaseAuth.instance.currentUser?.uid'));
+    expect(pageSource, isNot(contains('initialData: currentUserUid')));
+    expect(
+      pageSource,
+      isNot(contains('snapshot.data ?? currentUserUid')),
+    );
+  });
+
   test('call history card resolves counterpart independent of current role',
       () {
     final cardSource =

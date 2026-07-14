@@ -1,5 +1,8 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const {
+  buildBoundedEventChatInboxEventIds,
+} = require("./event_chat_inbox");
 
 const REQUEST_TIMEOUT_SECONDS = 30;
 const EVENT_STATUS_ACTIVE = "active";
@@ -537,7 +540,8 @@ async function executeJoinEventTransaction({
       updatedAt: joinTimestamp,
     });
     tx.update(userRef, {
-      eventChatInboxEventIds: admin.firestore.FieldValue.arrayUnion(
+      eventChatInboxEventIds: buildBoundedEventChatInboxEventIds(
+          userDoc.data()?.eventChatInboxEventIds,
           payload.eventId,
       ),
       hiddenChatKeys: admin.firestore.FieldValue.arrayRemove(

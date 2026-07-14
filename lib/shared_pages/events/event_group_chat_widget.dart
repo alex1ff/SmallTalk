@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 
 import '/auth/firebase_auth/auth_util.dart';
@@ -15,12 +18,17 @@ import '/shared_pages/design/expatlio_design.dart';
 import '/services/event_action_error_mapper.dart';
 import '/services/event_actions_repository.dart';
 import '/services/event_group_chat_repository.dart';
+import '/services/ux_session_cache_lifecycle.dart';
 import '/services/ux_session_loaded_result_cache.dart';
 
 const ValueKey<String> eventGroupChatMessagesLoadingKey =
     ValueKey<String>('event_group_chat_messages_loading');
 const ValueKey<String> eventGroupChatMessagesErrorKey =
     ValueKey<String>('event_group_chat_messages_error');
+const ValueKey<String> eventGroupChatMessagesInlineErrorKey =
+    ValueKey<String>('event_group_chat_messages_inline_error');
+const ValueKey<String> eventGroupChatMessagesRetryButtonKey =
+    ValueKey<String>('event_group_chat_messages_retry_button');
 const ValueKey<String> eventGroupChatMessagesEmptyKey =
     ValueKey<String>('event_group_chat_messages_empty');
 const ValueKey<String> eventGroupChatMessagesListKey =
@@ -29,6 +37,12 @@ const ValueKey<String> eventGroupChatAccessLoadingKey =
     ValueKey<String>('event_group_chat_access_loading');
 const ValueKey<String> eventGroupChatAccessDeniedKey =
     ValueKey<String>('event_group_chat_access_denied');
+const ValueKey<String> eventGroupChatAccessErrorKey =
+    ValueKey<String>('event_group_chat_access_error');
+const ValueKey<String> eventGroupChatAccessInlineErrorKey =
+    ValueKey<String>('event_group_chat_access_inline_error');
+const ValueKey<String> eventGroupChatAccessRetryButtonKey =
+    ValueKey<String>('event_group_chat_access_retry_button');
 const ValueKey<String> eventGroupChatMessageInputKey =
     ValueKey<String>('event_group_chat_message_input');
 const ValueKey<String> eventGroupChatSendButtonKey =
@@ -77,6 +91,13 @@ ValueKey<String> eventGroupChatMessageRetryButtonKey(String messageId) =>
 ValueKey<String> eventGroupChatReportReasonKey(String reasonCode) =>
     ValueKey<String>('event_group_chat_report_reason_$reasonCode');
 
+typedef EventGroupChatAuthenticatedUserIdProvider = String? Function();
+typedef EventGroupChatInboxPersistenceInvoker = Future<void> Function({
+  required String ownerUid,
+  required DocumentReference userReference,
+  required String eventId,
+});
+
 /// Event chat intentionally uses an event-specific surface.
 ///
 /// The existing one-to-one chat UI is backed by conversation documents and
@@ -87,17 +108,45 @@ class EventGroupChatWidget extends StatefulWidget {
     super.key,
     required this.eventId,
     this.chatStream,
+    this.debugChatAccessStateStream,
     this.messagesStream,
+    this.debugMessagesStateStream,
     this.sendMessageInvoker,
     this.reportMessageInvoker,
+    this.debugAuthenticatedUserIdProvider,
+    this.debugAuthenticatedUserIdStream,
+    this.debugInitialAuthenticatedUserId,
+    this.debugInboxPersistenceInvoker,
+    this.debugClientMessageIdRandom,
     this.messageLimit = EventGroupChatRepository.defaultMessageLimit,
   });
 
   final String eventId;
   final EventChatMetadataStream? chatStream;
+  @visibleForTesting
+  final EventChatAccessStateStream? debugChatAccessStateStream;
   final EventChatMessagesStream? messagesStream;
+  @visibleForTesting
+  final EventChatMessagesStateStream? debugMessagesStateStream;
   final EventCallableInvoker? sendMessageInvoker;
   final EventCallableInvoker? reportMessageInvoker;
+
+  @visibleForTesting
+  final EventGroupChatAuthenticatedUserIdProvider?
+      debugAuthenticatedUserIdProvider;
+
+  @visibleForTesting
+  final Stream<String?>? debugAuthenticatedUserIdStream;
+
+  @visibleForTesting
+  final String? debugInitialAuthenticatedUserId;
+
+  @visibleForTesting
+  final EventGroupChatInboxPersistenceInvoker? debugInboxPersistenceInvoker;
+
+  @visibleForTesting
+  final math.Random? debugClientMessageIdRandom;
+
   final int messageLimit;
 
   static String routeName = 'eventGroupChat';
@@ -108,7 +157,7 @@ class EventGroupChatWidget extends StatefulWidget {
 
   @visibleForTesting
   static void debugResetMessageCacheForTesting() {
-    _EventGroupChatWidgetState._messagesCacheByEventId.clear();
+    _EventGroupChatWidgetState._clearMessagesCache();
   }
 }
 
@@ -118,117 +167,485 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
       UxSessionLoadedResultCache<List<EventChatMessagesRecord>>();
   final TextEditingController _messageTextController = TextEditingController();
   final FocusNode _messageFocusNode = FocusNode();
-  late Stream<EventChatsRecord?> _chatAccessStream;
-  Stream<List<EventChatMessagesRecord>>? _messagesStream;
+  late Stream<EventChatAccessLoadState> _chatAccessStream;
+  Stream<EventChatMessagesLoadState>? _messagesStream;
+  StreamSubscription<String?>? _authenticatedOwnerSubscription;
   final List<_PendingEventChatMessage> _pendingMessages =
       <_PendingEventChatMessage>[];
-  int _chatAccessRevision = 0;
-  int _pendingMessageSerial = 0;
-  bool _isReportingMessage = false;
+  final Set<(String, String, int)> _serverConfirmedAccessScopes = {};
+  final Set<(String, String, int)> _rememberedAccessScopes = {};
+  String _activeOwnerUid = '';
+  int _messagesBoundaryRevision = 0;
+  int _actionBoundaryRevision = 0;
+  late math.Random _clientMessageIdRandom;
+  EventChatMessagesLoadState? _lastDisplayedMessagesState;
+  (String, String, int)? _lastDisplayedMessagesScope;
+  Object? _reportOperationToken;
+
+  bool get _isReportingMessage => _reportOperationToken != null;
 
   @override
   void initState() {
     super.initState();
-    _chatAccessStream = _watchChatAccess();
-    _rememberInboxEvent(persist: true);
+    UxSessionCacheLifecycle.register(_clearMessagesCache);
+    _activeOwnerUid = _initialAuthenticatedOwnerUid();
+    UxSessionCacheLifecycle.updateAuthenticatedUser(
+      _activeOwnerUid.isEmpty ? null : _activeOwnerUid,
+    );
+    _clientMessageIdRandom =
+        widget.debugClientMessageIdRandom ?? math.Random.secure();
+    _chatAccessStream = _watchChatAccess(
+      ownerUid: _activeOwnerUid,
+      eventId: widget.eventId,
+    );
+    _subscribeToAuthenticatedOwner();
   }
 
   @override
   void didUpdateWidget(covariant EventGroupChatWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
     final accessChanged = oldWidget.eventId != widget.eventId ||
-        oldWidget.chatStream != widget.chatStream;
+        oldWidget.chatStream != widget.chatStream ||
+        oldWidget.debugChatAccessStateStream !=
+            widget.debugChatAccessStateStream;
     final messagesChanged = oldWidget.messagesStream != widget.messagesStream ||
+        oldWidget.debugMessagesStateStream != widget.debugMessagesStateStream ||
         oldWidget.messageLimit != widget.messageLimit;
+    final authenticatedOwnerSourceChanged =
+        oldWidget.debugAuthenticatedUserIdProvider !=
+                widget.debugAuthenticatedUserIdProvider ||
+            oldWidget.debugAuthenticatedUserIdStream !=
+                widget.debugAuthenticatedUserIdStream ||
+            oldWidget.debugInitialAuthenticatedUserId !=
+                widget.debugInitialAuthenticatedUserId;
+
+    if (oldWidget.debugClientMessageIdRandom !=
+        widget.debugClientMessageIdRandom) {
+      _clientMessageIdRandom =
+          widget.debugClientMessageIdRandom ?? math.Random.secure();
+    }
+
+    if (authenticatedOwnerSourceChanged) {
+      _activateAuthenticatedOwner(
+        _initialAuthenticatedOwnerUid(),
+        rebuild: false,
+      );
+      _subscribeToAuthenticatedOwner();
+    }
 
     if (accessChanged) {
-      _chatAccessRevision += 1;
-      _chatAccessStream = _watchChatAccess();
-      _messagesStream = null;
+      if (oldWidget.eventId != widget.eventId) {
+        _actionBoundaryRevision += 1;
+      }
+      _serverConfirmedAccessScopes.clear();
+      _rememberedAccessScopes.clear();
+      _chatAccessStream = _watchChatAccess(
+        ownerUid: _activeOwnerUid,
+        eventId: widget.eventId,
+      );
+      _clearLastDisplayedMessages();
+      _resetMessagesBoundary();
       _pendingMessages.clear();
-      _rememberInboxEvent(persist: true);
+      _reportOperationToken = null;
     } else if (messagesChanged) {
-      _messagesStream = null;
+      _resetMessagesBoundary();
     }
   }
 
   @override
   void dispose() {
+    unawaited(_authenticatedOwnerSubscription?.cancel());
     _messageFocusNode.dispose();
     _messageTextController.dispose();
     super.dispose();
   }
 
-  Stream<List<EventChatMessagesRecord>> _watchMessages() =>
-      EventGroupChatRepository.watchMessages(
-        eventId: widget.eventId,
-        messagesStream: widget.messagesStream,
-        limit: widget.messageLimit,
-      );
+  static void _clearMessagesCache() {
+    _messagesCacheByEventId.clear();
+  }
 
-  Object _messagesCacheKey(String eventId) => [
+  Stream<EventChatMessagesLoadState> _watchMessages({
+    required String ownerUid,
+    required String eventId,
+    required int actionBoundaryRevision,
+  }) {
+    final messagesBoundaryRevision = _messagesBoundaryRevision;
+    return EventGroupChatRepository.watchMessagesState(
+      eventId: eventId,
+      ownerUid: ownerUid,
+      messagesStream: widget.messagesStream,
+      messagesStateStream: widget.debugMessagesStateStream,
+      limit: widget.messageLimit,
+    ).where(
+      (state) =>
+          mounted &&
+          state.ownerUid == ownerUid &&
+          _activeOwnerUid == ownerUid &&
+          _authenticatedOwnerUid() == ownerUid &&
+          _actionBoundaryRevision == actionBoundaryRevision &&
+          _messagesBoundaryRevision == messagesBoundaryRevision &&
+          widget.eventId == eventId,
+    );
+  }
+
+  Object _messagesCacheKey(String ownerUid, String eventId) => [
         'eventGroupChatMessages',
-        currentUserUid,
+        ownerUid,
         eventId.trim(),
       ];
 
-  List<EventChatMessagesRecord>? _cachedMessages(String eventId) {
-    final messages =
-        _messagesCacheByEventId.readItems(_messagesCacheKey(eventId));
-    if (messages == null || messages.isEmpty) {
+  List<EventChatMessagesRecord>? _cachedMessages(
+    String ownerUid,
+    String eventId,
+  ) {
+    if (ownerUid.isEmpty || _authenticatedOwnerUid() != ownerUid) {
+      return null;
+    }
+    final messages = _messagesCacheByEventId.readItems(
+      _messagesCacheKey(ownerUid, eventId),
+    );
+    if (messages == null) {
       return null;
     }
     return messages;
   }
 
   void _rememberMessages(
+    String ownerUid,
     String eventId,
     List<EventChatMessagesRecord> messages,
+    int actionBoundaryRevision,
   ) {
+    if (ownerUid.isEmpty ||
+        _activeOwnerUid != ownerUid ||
+        _authenticatedOwnerUid() != ownerUid ||
+        _actionBoundaryRevision != actionBoundaryRevision) {
+      return;
+    }
     _messagesCacheByEventId.writeItems(
-      dataKey: _messagesCacheKey(eventId),
+      dataKey: _messagesCacheKey(ownerUid, eventId),
       items: List<EventChatMessagesRecord>.unmodifiable(messages),
     );
   }
 
-  Stream<EventChatsRecord?> _watchChatAccess() =>
-      EventGroupChatRepository.watchChatAccess(
-        eventId: widget.eventId,
-        chatStream: widget.chatStream,
-      );
+  Stream<EventChatAccessLoadState> _watchChatAccess({
+    required String ownerUid,
+    required String eventId,
+  }) {
+    final actionBoundaryRevision = _actionBoundaryRevision;
+    return EventGroupChatRepository.watchChatAccessState(
+      eventId: eventId,
+      ownerUid: ownerUid,
+      chatStream: widget.chatStream,
+      accessStateStream: widget.debugChatAccessStateStream,
+    ).where(
+      (state) =>
+          mounted &&
+          state.ownerUid == ownerUid &&
+          _activeOwnerUid == ownerUid &&
+          _authenticatedOwnerUid() == ownerUid &&
+          _actionBoundaryRevision == actionBoundaryRevision &&
+          widget.eventId == eventId,
+    );
+  }
 
-  void _rememberInboxEvent({bool persist = false}) {
-    late final String eventId;
+  String _normalizeEventId(String eventId) {
     try {
-      eventId = EventGroupChatRepository.chatReferenceForEventId(
-        widget.eventId,
-      ).id;
+      return EventGroupChatRepository.chatReferenceForEventId(eventId).id;
     } on ArgumentError {
-      return;
-    }
-
-    EventGroupChatRepository.rememberInboxEventId(eventId);
-    if (persist) {
-      unawaited(_persistInboxEventId(eventId));
+      return '';
     }
   }
 
-  Future<void> _persistInboxEventId(String eventId) async {
-    final userRef = currentUserReference;
-    if (currentUserUid.trim().isEmpty || userRef == null) {
+  String _normalizeOwnerUid(String? uid) => uid?.trim() ?? '';
+
+  String _initialAuthenticatedOwnerUid() {
+    final injectedInitialUid = widget.debugInitialAuthenticatedUserId;
+    if (injectedInitialUid != null) {
+      return _normalizeOwnerUid(injectedInitialUid);
+    }
+    final injectedProvider = widget.debugAuthenticatedUserIdProvider;
+    if (injectedProvider != null) {
+      return _normalizeOwnerUid(injectedProvider());
+    }
+    if (widget.chatStream != null) {
+      return _trustedInjectedOwnerUid();
+    }
+    return _normalizeOwnerUid(FirebaseAuth.instance.currentUser?.uid);
+  }
+
+  String _trustedInjectedOwnerUid() {
+    final injectedUid = currentUserUid.trim();
+    return injectedUid.isEmpty ? 'test-user' : injectedUid;
+  }
+
+  Stream<String?> _watchAuthenticatedOwners() {
+    final injectedStream = widget.debugAuthenticatedUserIdStream;
+    if (injectedStream != null) {
+      return injectedStream;
+    }
+    final injectedProvider = widget.debugAuthenticatedUserIdProvider;
+    if (injectedProvider != null) {
+      return const Stream<String?>.empty();
+    }
+    if (widget.chatStream != null) {
+      return const Stream<String?>.empty();
+    }
+    return FirebaseAuth.instance.authStateChanges().map((user) => user?.uid);
+  }
+
+  void _subscribeToAuthenticatedOwner() {
+    unawaited(_authenticatedOwnerSubscription?.cancel());
+    _authenticatedOwnerSubscription =
+        _watchAuthenticatedOwners().map(_normalizeOwnerUid).listen(
+      _activateAuthenticatedOwner,
+      onError: (Object error, StackTrace _) {
+        if (kDebugMode) {
+          debugPrint(
+            'EventGroupChatWidget: auth stream failed: '
+            '${error.runtimeType}',
+          );
+        }
+      },
+    );
+  }
+
+  void _activateAuthenticatedOwner(
+    String ownerUid, {
+    bool rebuild = true,
+  }) {
+    final normalizedOwnerUid = _normalizeOwnerUid(ownerUid);
+    UxSessionCacheLifecycle.updateAuthenticatedUser(
+      normalizedOwnerUid.isEmpty ? null : normalizedOwnerUid,
+    );
+
+    void resetOwnerBoundary() {
+      _activeOwnerUid = normalizedOwnerUid;
+      _actionBoundaryRevision += 1;
+      _serverConfirmedAccessScopes.clear();
+      _rememberedAccessScopes.clear();
+      _chatAccessStream = _watchChatAccess(
+        ownerUid: normalizedOwnerUid,
+        eventId: widget.eventId,
+      );
+      _clearLastDisplayedMessages();
+      _resetMessagesBoundary();
+      _pendingMessages.clear();
+      _messageTextController.clear();
+      _reportOperationToken = null;
+    }
+
+    if (rebuild && mounted) {
+      setState(resetOwnerBoundary);
+    } else {
+      resetOwnerBoundary();
+    }
+  }
+
+  void _resetMessagesBoundary() {
+    _messagesBoundaryRevision += 1;
+    _messagesStream = null;
+  }
+
+  void _clearLastDisplayedMessages() {
+    _lastDisplayedMessagesState = null;
+    _lastDisplayedMessagesScope = null;
+  }
+
+  EventChatMessagesLoadState? _displayedMessagesState({
+    required String ownerUid,
+    required String eventId,
+    required int actionBoundaryRevision,
+    required EventChatMessagesLoadState? incomingState,
+    required EventChatMessagesLoadState? cachedState,
+  }) {
+    if (_actionBoundaryRevision != actionBoundaryRevision) {
+      return null;
+    }
+    final scope = (
+      ownerUid,
+      _normalizeEventId(eventId),
+      actionBoundaryRevision,
+    );
+    if (incomingState != null &&
+        incomingState.ownerUid == ownerUid &&
+        (incomingState.messages.isNotEmpty || incomingState.isAuthoritative)) {
+      final previousState = _lastDisplayedMessagesScope == scope
+          ? _lastDisplayedMessagesState
+          : cachedState;
+      final nextState = !incomingState.isAuthoritative && previousState != null
+          ? EventChatMessagesLoadState(
+              ownerUid: incomingState.ownerUid,
+              messages: _mergeMessagesOverlay(
+                previousState.messages,
+                incomingState.messages,
+              ),
+              isFromCache: incomingState.isFromCache,
+              hasPendingWrites: incomingState.hasPendingWrites,
+            )
+          : incomingState;
+      _lastDisplayedMessagesScope = scope;
+      _lastDisplayedMessagesState = nextState;
+    } else if (_lastDisplayedMessagesScope != scope && cachedState != null) {
+      _lastDisplayedMessagesScope = scope;
+      _lastDisplayedMessagesState = cachedState;
+    }
+    if (_lastDisplayedMessagesScope == scope) {
+      return _lastDisplayedMessagesState;
+    }
+    return cachedState;
+  }
+
+  List<EventChatMessagesRecord> _mergeMessagesOverlay(
+    List<EventChatMessagesRecord> previousMessages,
+    List<EventChatMessagesRecord> incomingMessages,
+  ) {
+    final incomingByPath = <String, EventChatMessagesRecord>{};
+    final incomingPaths = <String>[];
+    for (final message in incomingMessages) {
+      final path = message.reference.path;
+      if (!incomingByPath.containsKey(path)) {
+        incomingPaths.add(path);
+      }
+      incomingByPath[path] = message;
+    }
+
+    final mergedMessages = <EventChatMessagesRecord>[];
+    final seenPaths = <String>{};
+    for (final message in previousMessages) {
+      final path = message.reference.path;
+      if (!seenPaths.add(path)) {
+        continue;
+      }
+      mergedMessages.add(incomingByPath[path] ?? message);
+    }
+    for (final path in incomingPaths) {
+      if (!seenPaths.add(path)) {
+        continue;
+      }
+      mergedMessages.add(incomingByPath[path]!);
+    }
+    return mergedMessages;
+  }
+
+  String _authenticatedOwnerUid() {
+    final injectedProvider = widget.debugAuthenticatedUserIdProvider;
+    // FlutterFlow's cached user can lag behind Firebase during account changes.
+    if (injectedProvider != null) {
+      return _normalizeOwnerUid(injectedProvider());
+    }
+    if (widget.debugAuthenticatedUserIdStream != null) {
+      return _activeOwnerUid;
+    }
+    if (widget.chatStream != null) {
+      return _trustedInjectedOwnerUid();
+    }
+    return _normalizeOwnerUid(FirebaseAuth.instance.currentUser?.uid);
+  }
+
+  _EventGroupChatActionScope? _captureActionScope() {
+    late final String normalizedEventId;
+    try {
+      normalizedEventId = EventGroupChatRepository.chatReferenceForEventId(
+        widget.eventId,
+      ).id;
+    } on ArgumentError {
+      return null;
+    }
+
+    final ownerUid = _authenticatedOwnerUid();
+    if (ownerUid.isEmpty ||
+        ownerUid != _activeOwnerUid ||
+        !_serverConfirmedAccessScopes.contains(
+          (ownerUid, normalizedEventId, _actionBoundaryRevision),
+        )) {
+      return null;
+    }
+    return _EventGroupChatActionScope(
+      ownerUid: ownerUid,
+      userReference:
+          ownerUid.isEmpty ? null : UsersRecord.collection.doc(ownerUid),
+      eventId: normalizedEventId,
+      actionBoundaryRevision: _actionBoundaryRevision,
+    );
+  }
+
+  bool _isActionScopeCurrent(_EventGroupChatActionScope scope) {
+    if (!mounted ||
+        _activeOwnerUid != scope.ownerUid ||
+        _authenticatedOwnerUid() != scope.ownerUid ||
+        _actionBoundaryRevision != scope.actionBoundaryRevision ||
+        !_serverConfirmedAccessScopes.contains(
+          (
+            scope.ownerUid,
+            scope.eventId,
+            scope.actionBoundaryRevision,
+          ),
+        )) {
+      return false;
+    }
+    try {
+      return EventGroupChatRepository.chatReferenceForEventId(widget.eventId)
+              .id ==
+          scope.eventId;
+    } on ArgumentError {
+      return false;
+    }
+  }
+
+  void _rememberInboxEvent(_EventGroupChatActionScope scope) {
+    if (!_isActionScopeCurrent(scope) ||
+        scope.ownerUid.isEmpty ||
+        !_rememberedAccessScopes.add((
+          scope.ownerUid,
+          scope.eventId,
+          scope.actionBoundaryRevision,
+        ))) {
+      return;
+    }
+
+    EventGroupChatRepository.rememberInboxEventId(
+      scope.eventId,
+      ownerUid: scope.ownerUid,
+    );
+    if (scope.userReference != null) {
+      unawaited(_persistInboxEventId(scope));
+    }
+  }
+
+  Future<void> _persistInboxEventId(
+    _EventGroupChatActionScope scope,
+  ) async {
+    final userReference = scope.userReference;
+    if (scope.ownerUid.isEmpty ||
+        userReference == null ||
+        !_isActionScopeCurrent(scope)) {
       return;
     }
 
     try {
-      await userRef.update({
-        'eventChatInboxEventIds': FieldValue.arrayUnion([eventId]),
-        'hiddenChatKeys': FieldValue.arrayRemove(['event:$eventId']),
-      });
+      final injectedInvoker = widget.debugInboxPersistenceInvoker;
+      if (injectedInvoker != null) {
+        await injectedInvoker(
+          ownerUid: scope.ownerUid,
+          userReference: userReference,
+          eventId: scope.eventId,
+        );
+      } else {
+        await EventGroupChatRepository.persistInboxEventId(
+          ownerUid: scope.ownerUid,
+          userReference: userReference,
+          eventId: scope.eventId,
+          isStillCurrent: () => _isActionScopeCurrent(scope),
+        );
+      }
     } catch (error) {
-      debugPrint(
-        'EventGroupChatWidget: failed to persist inbox event '
-        '$eventId: $error',
-      );
+      if (kDebugMode) {
+        debugPrint(
+          'EventGroupChatWidget: failed to persist inbox event: '
+          '${error.runtimeType}',
+        );
+      }
     }
   }
 
@@ -238,8 +655,15 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
       return;
     }
 
-    final eventId = widget.eventId.trim();
-    final pendingMessage = _createPendingMessage(text);
+    final scope = _captureActionScope();
+    if (scope == null || scope.ownerUid.isEmpty) {
+      return;
+    }
+    final eventId = scope.eventId;
+    final pendingMessage = _createPendingMessage(
+      text,
+      senderId: scope.ownerUid,
+    );
     setState(() {
       _pendingMessages.add(pendingMessage);
     });
@@ -252,9 +676,7 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
         clientMessageId: pendingMessage.localId,
         invoker: widget.sendMessageInvoker,
       );
-      EventGroupChatRepository.rememberInboxEventId(eventId);
-      unawaited(_persistInboxEventId(eventId));
-      if (!mounted || widget.eventId.trim() != eventId) {
+      if (!_isActionScopeCurrent(scope)) {
         return;
       }
       setState(() {
@@ -270,7 +692,7 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
         );
       });
     } catch (error) {
-      if (!mounted || widget.eventId.trim() != eventId) {
+      if (!_isActionScopeCurrent(scope)) {
         return;
       }
       setState(() {
@@ -290,10 +712,12 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
           content: Text(eventActionFailureMessage(context, error)),
         ),
       );
-      debugPrint(
-        'EventGroupChatWidget: failed to send message for '
-        '$eventId: $error',
-      );
+      if (kDebugMode) {
+        debugPrint(
+          'EventGroupChatWidget: failed to send message: '
+          '${error.runtimeType}',
+        );
+      }
     }
   }
 
@@ -309,7 +733,13 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
       return;
     }
 
-    final eventId = widget.eventId.trim();
+    final scope = _captureActionScope();
+    if (scope == null ||
+        scope.ownerUid.isEmpty ||
+        pendingMessage.senderId != scope.ownerUid) {
+      return;
+    }
+    final eventId = scope.eventId;
     setState(() {
       _updatePendingMessageStatus(localId, ChatLocalMessageStatus.sending);
     });
@@ -321,9 +751,7 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
         clientMessageId: pendingMessage.localId,
         invoker: widget.sendMessageInvoker,
       );
-      EventGroupChatRepository.rememberInboxEventId(eventId);
-      unawaited(_persistInboxEventId(eventId));
-      if (!mounted || widget.eventId.trim() != eventId) {
+      if (!_isActionScopeCurrent(scope)) {
         return;
       }
       setState(() {
@@ -334,7 +762,7 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
         );
       });
     } catch (error) {
-      if (!mounted || widget.eventId.trim() != eventId) {
+      if (!_isActionScopeCurrent(scope)) {
         return;
       }
       setState(() {
@@ -346,10 +774,12 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
           content: Text(eventActionFailureMessage(context, error)),
         ),
       );
-      debugPrint(
-        'EventGroupChatWidget: failed to retry message for '
-        '$eventId: $error',
-      );
+      if (kDebugMode) {
+        debugPrint(
+          'EventGroupChatWidget: failed to retry message: '
+          '${error.runtimeType}',
+        );
+      }
     }
   }
 
@@ -370,18 +800,81 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
     );
   }
 
-  _PendingEventChatMessage _createPendingMessage(String text) {
+  String _pendingSenderDisplayName(String ownerUid) {
+    if (hasCurrentUserDocumentForUid(ownerUid)) {
+      final displayName = currentUserDocument?.displayName.trim() ?? '';
+      if (displayName.isNotEmpty) {
+        return displayName;
+      }
+    }
+
+    final firebaseUser = FirebaseAuth.instance.currentUser;
+    if (firebaseUser?.uid == ownerUid) {
+      final displayName = firebaseUser?.displayName?.trim() ?? '';
+      if (displayName.isNotEmpty) {
+        return displayName;
+      }
+    }
+
+    if (currentUser?.uid == ownerUid) {
+      return currentUser?.displayName?.trim() ?? '';
+    }
+    return '';
+  }
+
+  String _pendingSenderPhotoUrl(String ownerUid) {
+    if (hasCurrentUserDocumentForUid(ownerUid)) {
+      final photoUrl = currentUserDocument?.photoUrl.trim() ?? '';
+      if (photoUrl.isNotEmpty) {
+        return photoUrl;
+      }
+    }
+
+    final firebaseUser = FirebaseAuth.instance.currentUser;
+    if (firebaseUser?.uid == ownerUid) {
+      final photoUrl = firebaseUser?.photoURL?.trim() ?? '';
+      if (photoUrl.isNotEmpty) {
+        return photoUrl;
+      }
+    }
+
+    if (currentUser?.uid == ownerUid) {
+      return currentUser?.photoUrl?.trim() ?? '';
+    }
+    return '';
+  }
+
+  _PendingEventChatMessage _createPendingMessage(
+    String text, {
+    required String senderId,
+  }) {
     final createdAt = DateTime.now();
-    final serial = _pendingMessageSerial++;
     return _PendingEventChatMessage(
-      localId: 'pending-${createdAt.microsecondsSinceEpoch}-$serial',
-      senderId: currentUserUid.trim(),
-      senderDisplayName: currentUserDisplayName.trim(),
-      senderPhotoUrl: currentUserPhoto.trim(),
+      localId: _createClientMessageId(),
+      senderId: senderId,
+      senderDisplayName: _pendingSenderDisplayName(senderId),
+      senderPhotoUrl: _pendingSenderPhotoUrl(senderId),
       text: text,
       createdAt: createdAt,
       status: ChatLocalMessageStatus.sending,
     );
+  }
+
+  String _createClientMessageId() {
+    final bytes = List<int>.generate(
+      16,
+      (_) => _clientMessageIdRandom.nextInt(256),
+      growable: false,
+    );
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    final hex =
+        bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+    return '${hex.substring(0, 8)}-'
+        '${hex.substring(8, 12)}-'
+        '${hex.substring(12, 16)}-'
+        '${hex.substring(16, 20)}-'
+        '${hex.substring(20)}';
   }
 
   Future<void> _showReportMessageDialog(
@@ -391,46 +884,52 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
       return;
     }
 
-    final eventId = widget.eventId.trim();
+    final scope = _captureActionScope();
+    if (scope == null) {
+      return;
+    }
     final messageId = message.reference.id;
     final reportRequest = await showDialog<_EventChatMessageReportDialogResult>(
       context: context,
       builder: (context) => const _EventChatMessageReportDialog(),
     );
     if (reportRequest == null ||
-        !mounted ||
-        widget.eventId.trim() != eventId ||
+        !_isActionScopeCurrent(scope) ||
         message.reference.id != messageId) {
       return;
     }
     await _handleReportMessage(
-      eventId: eventId,
+      scope: scope,
       messageId: messageId,
       reportRequest: reportRequest,
     );
   }
 
   Future<void> _handleReportMessage({
-    required String eventId,
+    required _EventGroupChatActionScope scope,
     required String messageId,
     required _EventChatMessageReportDialogResult reportRequest,
   }) async {
-    if (_isReportingMessage) {
+    if (_isReportingMessage || !_isActionScopeCurrent(scope)) {
       return;
     }
 
+    final operationToken = Object();
     setState(() {
-      _isReportingMessage = true;
+      _reportOperationToken = operationToken;
     });
     try {
+      if (!_isActionScopeCurrent(scope)) {
+        return;
+      }
       final result = await EventActionsRepository.reportEventChatMessage(
-        eventId: eventId,
+        eventId: scope.eventId,
         messageId: messageId,
         reasonCode: reportRequest.reasonCode,
         details: reportRequest.details,
         invoker: widget.reportMessageInvoker,
       );
-      if (!mounted || widget.eventId.trim() != eventId) {
+      if (!_isActionScopeCurrent(scope)) {
         return;
       }
       final message = result.alreadySubmitted
@@ -449,7 +948,7 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
         ),
       );
     } catch (error) {
-      if (!mounted || widget.eventId.trim() != eventId) {
+      if (!_isActionScopeCurrent(scope)) {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
@@ -459,9 +958,12 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
         ),
       );
     } finally {
-      if (mounted) {
+      if (mounted &&
+          identical(_reportOperationToken, operationToken) &&
+          _activeOwnerUid == scope.ownerUid &&
+          _authenticatedOwnerUid() == scope.ownerUid) {
         setState(() {
-          _isReportingMessage = false;
+          _reportOperationToken = null;
         });
       }
     }
@@ -485,20 +987,94 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
   }
 
   Widget _buildChatContent() {
-    return StreamBuilder<EventChatsRecord?>(
-      key: ValueKey<int>(_chatAccessRevision),
+    final ownerUid = _activeOwnerUid;
+    final eventId = _normalizeEventId(widget.eventId);
+    final actionBoundaryRevision = _actionBoundaryRevision;
+    if (ownerUid.isEmpty ||
+        ownerUid != _authenticatedOwnerUid() ||
+        eventId.isEmpty) {
+      return _accessDeniedState();
+    }
+    final accessScope = (ownerUid, eventId, actionBoundaryRevision);
+
+    return StreamBuilder<EventChatAccessLoadState>(
+      key: ValueKey<(String, String, int)>(accessScope),
       stream: _chatAccessStream,
       builder: (context, snapshot) {
+        final hasConfirmedAccess =
+            _serverConfirmedAccessScopes.contains(accessScope);
         if (snapshot.hasError) {
-          debugPrint(
-            'EventGroupChatWidget: access stream error for '
-            '${widget.eventId}: ${snapshot.error}',
-          );
-          return _accessDeniedState();
+          if (kDebugMode) {
+            debugPrint(
+              'EventGroupChatWidget: access stream failed: '
+              '${snapshot.error.runtimeType}',
+            );
+          }
+          if (_isAccessPermissionDenied(snapshot.error)) {
+            _serverConfirmedAccessScopes.remove(accessScope);
+            return _accessDeniedState();
+          }
+          if (hasConfirmedAccess) {
+            return _buildAccessibleChatContent(
+              actionBoundaryRevision: actionBoundaryRevision,
+              showAccessRefreshError: true,
+            );
+          }
+          return _buildAccessErrorState(context);
         }
 
-        if (snapshot.connectionState == ConnectionState.waiting &&
-            snapshot.data == null) {
+        final accessState = snapshot.data;
+        if (accessState == null) {
+          if (hasConfirmedAccess) {
+            return _buildAccessibleChatContent(
+              actionBoundaryRevision: actionBoundaryRevision,
+            );
+          }
+          return const Center(
+            child: SizedBox.square(
+              key: eventGroupChatAccessLoadingKey,
+              dimension: 28,
+              child: CircularProgressIndicator(strokeWidth: 2.8),
+            ),
+          );
+        }
+        if (accessState.ownerUid != ownerUid) {
+          return const Center(
+            child: SizedBox.square(
+              key: eventGroupChatAccessLoadingKey,
+              dimension: 28,
+              child: CircularProgressIndicator(strokeWidth: 2.8),
+            ),
+          );
+        }
+        final accessChat = accessState.chat;
+        if (accessState.accessGranted &&
+            (accessChat == null ||
+                accessChat.reference.id != eventId ||
+                accessChat.eventId.trim() != eventId)) {
+          return const Center(
+            child: SizedBox.square(
+              key: eventGroupChatAccessLoadingKey,
+              dimension: 28,
+              child: CircularProgressIndicator(strokeWidth: 2.8),
+            ),
+          );
+        }
+        if (accessState.isAuthoritative) {
+          if (!accessState.accessGranted) {
+            _serverConfirmedAccessScopes.remove(accessScope);
+            return _accessDeniedState();
+          }
+          _serverConfirmedAccessScopes.add(accessScope);
+          final inboxScope = _captureActionScope();
+          if (inboxScope != null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (_isActionScopeCurrent(inboxScope)) {
+                _rememberInboxEvent(inboxScope);
+              }
+            });
+          }
+        } else if (!hasConfirmedAccess) {
           return const Center(
             child: SizedBox.square(
               key: eventGroupChatAccessLoadingKey,
@@ -508,44 +1084,101 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
           );
         }
 
-        final chat = snapshot.data;
-        if (chat == null) {
-          return _accessDeniedState();
-        }
-
-        return _buildMessagesContent();
+        return _buildAccessibleChatContent(
+          actionBoundaryRevision: actionBoundaryRevision,
+        );
       },
     );
   }
 
-  Widget _buildMessagesContent() {
-    final messagesStream = _messagesStream ??= _watchMessages();
+  Widget _buildAccessibleChatContent({
+    required int actionBoundaryRevision,
+    bool showAccessRefreshError = false,
+  }) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        _buildMessagesContent(
+          actionBoundaryRevision: actionBoundaryRevision,
+        ),
+        if (showAccessRefreshError)
+          PositionedDirectional(
+            start: ExpatlioDesign.pagePadding,
+            end: ExpatlioDesign.pagePadding,
+            bottom: ExpatlioDesign.space112,
+            child: _buildAccessInlineError(context),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildMessagesContent({
+    required int actionBoundaryRevision,
+  }) {
+    final ownerUid = _activeOwnerUid;
+    final eventId = widget.eventId;
+    final messagesStream = _messagesStream ??= _watchMessages(
+      ownerUid: ownerUid,
+      eventId: eventId,
+      actionBoundaryRevision: actionBoundaryRevision,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(
-          child: StreamBuilder<List<EventChatMessagesRecord>>(
+          child: StreamBuilder<EventChatMessagesLoadState>(
+            key: ValueKey<(String, String, int)>((
+              ownerUid,
+              _normalizeEventId(eventId),
+              actionBoundaryRevision,
+            )),
             stream: messagesStream,
-            initialData: _cachedMessages(widget.eventId),
+            initialData: _cachedMessagesState(ownerUid, eventId),
             builder: (context, snapshot) {
+              final cachedState = _cachedMessagesState(ownerUid, eventId);
+              final messageState = _displayedMessagesState(
+                ownerUid: ownerUid,
+                eventId: eventId,
+                actionBoundaryRevision: actionBoundaryRevision,
+                incomingState: snapshot.data,
+                cachedState: cachedState,
+              );
+              final messageRecords =
+                  messageState?.messages ?? const <EventChatMessagesRecord>[];
+              final displayMessages = _displayMessages(
+                messageRecords,
+                ownerUid: ownerUid,
+              );
+
               if (snapshot.hasError) {
-                debugPrint(
-                  'EventGroupChatWidget: messages stream error for '
-                  '${widget.eventId}: ${snapshot.error}',
-                );
-                return _EventGroupChatStateMessage(
-                  key: eventGroupChatMessagesErrorKey,
-                  titleRu: 'Не удалось загрузить чат',
-                  titleEn: 'Could not load chat',
-                  messageRu: 'Проверьте подключение и попробуйте снова.',
-                  messageEn: 'Check your connection and try again.',
+                if (kDebugMode) {
+                  debugPrint(
+                    'EventGroupChatWidget: messages stream failed: '
+                    '${snapshot.error.runtimeType}',
+                  );
+                }
+                if (messageState == null && displayMessages.isEmpty) {
+                  return _buildMessagesErrorState(context);
+                }
+                return Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    _buildMessagesState(
+                      messageState: messageState,
+                      messages: displayMessages,
+                    ),
+                    PositionedDirectional(
+                      start: ExpatlioDesign.pagePadding,
+                      end: ExpatlioDesign.pagePadding,
+                      bottom: ExpatlioDesign.space16,
+                      child: _buildMessagesInlineError(context),
+                    ),
+                  ],
                 );
               }
 
-              final messageRecords =
-                  snapshot.data ?? _cachedMessages(widget.eventId);
-              if (messageRecords == null) {
+              if (messageState == null && displayMessages.isEmpty) {
                 return const Center(
                   child: SizedBox.square(
                     key: eventGroupChatMessagesLoadingKey,
@@ -555,48 +1188,22 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
                 );
               }
 
-              if (snapshot.connectionState != ConnectionState.waiting &&
-                  snapshot.hasData) {
-                _rememberMessages(widget.eventId, messageRecords);
-                _schedulePruneConfirmedPendingMessages(messageRecords);
-              }
-              final messages = _displayMessages(messageRecords);
-              if (messages.isEmpty) {
-                return _EventGroupChatStateMessage(
-                  key: eventGroupChatMessagesEmptyKey,
-                  titleRu: 'Сообщений пока нет',
-                  titleEn: 'No messages yet',
-                  messageRu:
-                      'Когда участники напишут, сообщения появятся здесь.',
-                  messageEn:
-                      'Messages will appear here when participants write.',
+              if (snapshot.hasData && messageState!.isAuthoritative) {
+                _rememberMessages(
+                  ownerUid,
+                  eventId,
+                  messageState.messages,
+                  actionBoundaryRevision,
+                );
+                _schedulePruneConfirmedPendingMessages(
+                  messageRecords,
+                  ownerUid: ownerUid,
+                  actionBoundaryRevision: actionBoundaryRevision,
                 );
               }
-
-              return ListView.builder(
-                key: eventGroupChatMessagesListKey,
-                reverse: true,
-                padding: const EdgeInsetsDirectional.fromSTEB(
-                  ExpatlioDesign.space24,
-                  ExpatlioDesign.space12,
-                  ExpatlioDesign.space24,
-                  ExpatlioDesign.space24,
-                ),
-                itemCount: messages.length,
-                itemBuilder: (context, index) {
-                  final message = messages[messages.length - 1 - index];
-                  return _EventGroupChatMessageBubble(
-                    key: eventGroupChatMessageItemKey(message.itemKey),
-                    message: message,
-                    onReportPressed: message.record == null
-                        ? null
-                        : () => _showReportMessageDialog(message.record!),
-                    onRetryPressed:
-                        message.localStatus == ChatLocalMessageStatus.failed
-                            ? () => _retryPendingMessage(message.id)
-                            : null,
-                  );
-                },
+              return _buildMessagesState(
+                messageState: messageState,
+                messages: displayMessages,
               );
             },
           ),
@@ -610,14 +1217,265 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
     );
   }
 
-  List<_EventGroupChatDisplayMessage> _displayMessages(
-    List<EventChatMessagesRecord> records,
+  EventChatMessagesLoadState? _cachedMessagesState(
+    String ownerUid,
+    String eventId,
   ) {
+    final messages = _cachedMessages(ownerUid, eventId);
+    if (messages == null) {
+      return null;
+    }
+    return EventChatMessagesLoadState(
+      ownerUid: ownerUid,
+      messages: messages,
+      isFromCache: false,
+      hasPendingWrites: false,
+    );
+  }
+
+  Widget _buildMessagesState({
+    required EventChatMessagesLoadState? messageState,
+    required List<_EventGroupChatDisplayMessage> messages,
+  }) {
+    if (messages.isEmpty) {
+      if (messageState == null || !messageState.isAuthoritative) {
+        return const Center(
+          child: SizedBox.square(
+            key: eventGroupChatMessagesLoadingKey,
+            dimension: 28,
+            child: CircularProgressIndicator(strokeWidth: 2.8),
+          ),
+        );
+      }
+      return _EventGroupChatStateMessage(
+        key: eventGroupChatMessagesEmptyKey,
+        titleRu: 'Сообщений пока нет',
+        titleEn: 'No messages yet',
+        messageRu: 'Когда участники напишут, сообщения появятся здесь.',
+        messageEn: 'Messages will appear here when participants write.',
+      );
+    }
+
+    return ListView.builder(
+      key: eventGroupChatMessagesListKey,
+      reverse: true,
+      padding: const EdgeInsetsDirectional.fromSTEB(
+        ExpatlioDesign.space24,
+        ExpatlioDesign.space12,
+        ExpatlioDesign.space24,
+        ExpatlioDesign.space112,
+      ),
+      itemCount: messages.length,
+      itemBuilder: (context, index) {
+        final message = messages[messages.length - 1 - index];
+        return _EventGroupChatMessageBubble(
+          key: eventGroupChatMessageItemKey(message.itemKey),
+          message: message,
+          onReportPressed: message.record == null
+              ? null
+              : () => _showReportMessageDialog(message.record!),
+          onRetryPressed: message.localStatus == ChatLocalMessageStatus.failed
+              ? () => _retryPendingMessage(message.id)
+              : null,
+        );
+      },
+    );
+  }
+
+  Widget _buildMessagesErrorState(BuildContext context) {
+    return Semantics(
+      key: eventGroupChatMessagesErrorKey,
+      container: true,
+      liveRegion: true,
+      label: FFLocalizations.of(context).getVariableText(
+        ruText: 'Не удалось загрузить чат. Повторить загрузку.',
+        enText: 'Could not load chat. Retry loading.',
+      ),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const _EventGroupChatStateMessage(
+              titleRu: 'Не удалось загрузить чат',
+              titleEn: 'Could not load chat',
+              messageRu: 'Проверьте подключение и попробуйте снова.',
+              messageEn: 'Check your connection and try again.',
+            ),
+            TextButton(
+              key: eventGroupChatMessagesRetryButtonKey,
+              onPressed: _retryMessages,
+              child: Text(
+                FFLocalizations.of(context).getVariableText(
+                  ruText: 'Повторить',
+                  enText: 'Retry',
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMessagesInlineError(BuildContext context) {
+    final message = FFLocalizations.of(context).getVariableText(
+      ruText: 'Не удалось обновить чат.',
+      enText: 'Could not refresh chat.',
+    );
+    return Material(
+      elevation: 4,
+      borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
+      child: Semantics(
+        key: eventGroupChatMessagesInlineErrorKey,
+        container: true,
+        liveRegion: true,
+        label: message,
+        child: Container(
+          padding: const EdgeInsetsDirectional.fromSTEB(
+            ExpatlioDesign.space12,
+            ExpatlioDesign.space8,
+            ExpatlioDesign.space8,
+            ExpatlioDesign.space8,
+          ),
+          decoration: BoxDecoration(
+            color: ExpatlioDesign.card,
+            borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
+            border: Border.all(color: ExpatlioDesign.danger),
+          ),
+          child: Row(
+            children: [
+              Expanded(child: Text(message)),
+              TextButton(
+                key: eventGroupChatMessagesRetryButtonKey,
+                onPressed: _retryMessages,
+                child: Text(
+                  FFLocalizations.of(context).getVariableText(
+                    ruText: 'Повторить',
+                    enText: 'Retry',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _retryMessages() {
+    setState(_resetMessagesBoundary);
+  }
+
+  bool _isAccessPermissionDenied(Object? error) =>
+      error is FirebaseException && error.code == 'permission-denied';
+
+  void _retryChatAccess() {
+    final ownerUid = _activeOwnerUid;
+    if (ownerUid.isEmpty || ownerUid != _authenticatedOwnerUid()) {
+      return;
+    }
+    setState(() {
+      _chatAccessStream = _watchChatAccess(
+        ownerUid: ownerUid,
+        eventId: widget.eventId,
+      );
+    });
+  }
+
+  Widget _buildAccessErrorState(BuildContext context) {
+    return Semantics(
+      key: eventGroupChatAccessErrorKey,
+      container: true,
+      liveRegion: true,
+      label: FFLocalizations.of(context).getVariableText(
+        ruText: 'Не удалось проверить доступ к чату. Повторить.',
+        enText: 'Could not verify chat access. Retry.',
+      ),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const _EventGroupChatStateMessage(
+              titleRu: 'Не удалось открыть чат',
+              titleEn: 'Could not open chat',
+              messageRu: 'Проверьте подключение и попробуйте снова.',
+              messageEn: 'Check your connection and try again.',
+            ),
+            TextButton(
+              key: eventGroupChatAccessRetryButtonKey,
+              onPressed: _retryChatAccess,
+              child: Text(
+                FFLocalizations.of(context).getVariableText(
+                  ruText: 'Повторить',
+                  enText: 'Retry',
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAccessInlineError(BuildContext context) {
+    final message = FFLocalizations.of(context).getVariableText(
+      ruText: 'Не удалось обновить доступ к чату.',
+      enText: 'Could not refresh chat access.',
+    );
+    return Material(
+      elevation: 4,
+      borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
+      child: Semantics(
+        key: eventGroupChatAccessInlineErrorKey,
+        container: true,
+        liveRegion: true,
+        label: message,
+        child: Container(
+          padding: const EdgeInsetsDirectional.fromSTEB(
+            ExpatlioDesign.space12,
+            ExpatlioDesign.space8,
+            ExpatlioDesign.space8,
+            ExpatlioDesign.space8,
+          ),
+          decoration: BoxDecoration(
+            color: ExpatlioDesign.card,
+            borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
+            border: Border.all(color: ExpatlioDesign.danger),
+          ),
+          child: Row(
+            children: [
+              Expanded(child: Text(message)),
+              TextButton(
+                key: eventGroupChatAccessRetryButtonKey,
+                onPressed: _retryChatAccess,
+                child: Text(
+                  FFLocalizations.of(context).getVariableText(
+                    ruText: 'Повторить',
+                    enText: 'Retry',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<_EventGroupChatDisplayMessage> _displayMessages(
+    List<EventChatMessagesRecord> records, {
+    required String ownerUid,
+  }) {
     final recordIds = records
         .map((record) => record.reference.id)
         .where((id) => id.trim().isNotEmpty)
         .toSet();
     final visiblePendingMessages = _pendingMessages.where((message) {
+      if (message.senderId != ownerUid ||
+          _activeOwnerUid != ownerUid ||
+          _authenticatedOwnerUid() != ownerUid) {
+        return false;
+      }
       final confirmedMessageId = message.serverMessageId ?? message.localId;
       return !recordIds.contains(confirmedMessageId);
     });
@@ -631,8 +1489,10 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
   }
 
   void _schedulePruneConfirmedPendingMessages(
-    List<EventChatMessagesRecord> records,
-  ) {
+    List<EventChatMessagesRecord> records, {
+    required String ownerUid,
+    required int actionBoundaryRevision,
+  }) {
     if (_pendingMessages.isEmpty || records.isEmpty) {
       return;
     }
@@ -654,7 +1514,10 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) {
+      if (!mounted ||
+          _activeOwnerUid != ownerUid ||
+          _authenticatedOwnerUid() != ownerUid ||
+          _actionBoundaryRevision != actionBoundaryRevision) {
         return;
       }
       setState(() {
@@ -685,6 +1548,20 @@ class _EventChatMessageReportDialogResult {
 
   final String reasonCode;
   final String? details;
+}
+
+class _EventGroupChatActionScope {
+  const _EventGroupChatActionScope({
+    required this.ownerUid,
+    required this.userReference,
+    required this.eventId,
+    required this.actionBoundaryRevision,
+  });
+
+  final String ownerUid;
+  final DocumentReference? userReference;
+  final String eventId;
+  final int actionBoundaryRevision;
 }
 
 class _PendingEventChatMessage {

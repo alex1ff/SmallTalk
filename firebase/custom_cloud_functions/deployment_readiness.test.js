@@ -190,7 +190,7 @@ test("deployment readiness exposes event history callable and index", () => {
   ));
   const hasParticipantsHistoryIndex = firestoreIndexes.indexes.some((index) =>
     index.collectionGroup === "participants" &&
-      index.queryScope === "COLLECTION" &&
+      index.queryScope === "COLLECTION_GROUP" &&
       JSON.stringify(index.fields) === JSON.stringify([
         {fieldPath: "userId", order: "ASCENDING"},
         {fieldPath: "joinedAt", order: "DESCENDING"},

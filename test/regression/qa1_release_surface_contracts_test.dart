@@ -29,7 +29,10 @@ void main() {
         contains('FutureBuilder<UserPublicProfilesRecord?>'),
       );
       expect(source, contains('_userProfileCacheByUid'));
-      expect(source, contains('initialData: _cachedUserProfile(partnerRef)'));
+      expect(
+        source,
+        contains('initialData: _cachedUserProfile(currentUid, partnerRef)'),
+      );
       expect(source, contains('_friendsCacheByUid'));
       expect(source, isNot(contains('final partnerIdentityLoading')));
       expect(source, isNot(contains('_buildChatPartnerNamePlaceholder')));

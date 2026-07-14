@@ -432,7 +432,15 @@ void main() {
     expect(chat, contains('EventActionsRepository.sendEventChatMessage'));
     expect(chat, contains('EventChatMessagesRecord'));
     expect(repository, contains('EventChatsRecord.collection.doc'));
-    expect(repository, contains('queryEventChatMessagesRecord'));
+    expect(repository, contains('EventChatMessagesRecord.collection(chatRef)'));
+    expect(
+      repository,
+      contains('snapshots(includeMetadataChanges: true)'),
+    );
+    expect(
+      repository,
+      contains('snapshot.docs.map(EventChatMessagesRecord.fromSnapshot)'),
+    );
     expect(repository, contains("orderBy('createdAt', descending: false)"));
     expect(repository, contains('orderBy(FieldPath.documentId'));
     expect(

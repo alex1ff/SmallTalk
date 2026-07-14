@@ -388,6 +388,7 @@ async function executeLeaveEventTransaction({
   const eventRef = db.collection("events").doc(payload.eventId);
   const participantRef = eventRef.collection("participants").doc(uid);
   const chatRef = db.collection(EVENT_CHAT_COLLECTION).doc(payload.eventId);
+  const userRef = db.collection("users").doc(uid);
   const activeParticipantsQuery = eventRef
       .collection("participants")
       .where("status", "==", "active");
@@ -412,12 +413,14 @@ async function executeLeaveEventTransaction({
       participantDoc,
       organizerParticipantDoc,
       chatDoc,
+      userDoc,
       activeParticipantsSnapshot,
     ] =
       await Promise.all([
         participantRead,
         organizerParticipantRead,
         tx.get(chatRef),
+        tx.get(userRef),
         tx.get(activeParticipantsQuery),
       ]);
     const participantData = participantDoc.exists ?
@@ -486,6 +489,13 @@ async function executeLeaveEventTransaction({
       readAccessUserIds,
       updatedAt: leaveTimestamp,
     });
+    if (userDoc.exists) {
+      tx.update(userRef, {
+        eventChatInboxEventIds: admin.firestore.FieldValue.arrayRemove(
+            payload.eventId,
+        ),
+      });
+    }
 
     return {
       eventId: payload.eventId,

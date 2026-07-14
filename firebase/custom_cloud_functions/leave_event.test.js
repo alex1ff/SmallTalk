@@ -77,6 +77,20 @@ function createFakeFirestore(seed = {}, {
   const writes = [];
   let attempts = 0;
 
+  const applyWriteData = (existing = {}, data = {}) => {
+    const next = {...existing};
+    for (const [field, value] of Object.entries(data)) {
+      if (value?.constructor?.name === "ArrayRemoveTransform") {
+        const removed = new Set(value.elements);
+        next[field] = (Array.isArray(next[field]) ? next[field] : [])
+            .filter((item) => !removed.has(item));
+      } else {
+        next[field] = value;
+      }
+    }
+    return next;
+  };
+
   const makeRef = (path) => ({
     path,
     id: path.split("/").pop(),
@@ -187,7 +201,10 @@ function createFakeFirestore(seed = {}, {
         }
         for (const write of pendingWrites) {
           writes.push(write);
-          store.set(write.path, {...store.get(write.path), ...write.data});
+          store.set(
+              write.path,
+              applyWriteData(store.get(write.path), write.data),
+          );
           versions.set(write.path, (versions.get(write.path) || 0) + 1);
         }
         return result;
@@ -278,6 +295,9 @@ function validLeaveSeed(overrides = {}) {
         overrides.organizer,
     ),
     "events/event-1/participants/uid": participant(overrides.participant),
+    "users/uid": {
+      eventChatInboxEventIds: ["event-old", "event-1"],
+    },
   };
 }
 
@@ -396,6 +416,9 @@ test("executeLeaveEventTransaction marks participant left", async () => {
   assert.deepEqual(store.get("eventChats/event-1").readAccessUserIds, [
     "organizer",
   ]);
+  assert.deepEqual(store.get("users/uid").eventChatInboxEventIds, [
+    "event-old",
+  ]);
   assert.strictEqual(
       store.get("eventCreationCounters/organizer/days/20260616"),
       counterBefore,
@@ -405,6 +428,7 @@ test("executeLeaveEventTransaction marks participant left", async () => {
     "events/event-1/participants/uid",
     "events/event-1/participants/organizer",
     "eventChats/event-1",
+    "users/uid",
     "events/event-1/participants?status==active",
   ]);
   assert.deepEqual(
@@ -413,6 +437,7 @@ test("executeLeaveEventTransaction marks participant left", async () => {
         "update:events/event-1",
         "update:events/event-1/participants/uid",
         "update:eventChats/event-1",
+        "update:users/uid",
       ],
   );
   assert.deepEqual(writes[2].data, {
@@ -438,6 +463,99 @@ test("executeLeaveEventTransaction marks participant left", async () => {
     );
   }
 });
+
+test("executeLeaveEventTransaction succeeds without a user document",
+    async () => {
+      const seed = validLeaveSeed({
+        chat: {readAccessUserIds: ["organizer", "uid"]},
+      });
+      delete seed["users/uid"];
+      const {db, store, writes} = createFakeFirestore(seed);
+
+      const response = await executeLeave({
+        db,
+        uid: "uid",
+        payload: {eventId: "event-1"},
+      });
+
+      assert.equal(response.participantStatus, "left");
+      assert.equal(store.get("events/event-1").participantsCount, 1);
+      assert.equal(
+          store.get("events/event-1/participants/uid").status,
+          "left",
+      );
+      assert.deepEqual(store.get("eventChats/event-1").readAccessUserIds, [
+        "organizer",
+      ]);
+      assert.equal(
+          writes.some((write) => write.path === "users/uid"),
+          false,
+      );
+    });
+
+test("executeLeaveEventTransaction retries same-user concurrent inbox leaves",
+    async () => {
+      const firstAttemptBarrier = createFirstAttemptBarrier();
+      const fake = createFakeFirestore(
+          {
+            "events/event-1": activeEvent(),
+            "eventChats/event-1": eventChat(),
+            "events/event-1/participants/organizer": organizerParticipant(),
+            "events/event-1/participants/uid": participant(),
+            "events/event-2": activeEvent({chatId: "event-2"}),
+            "eventChats/event-2": eventChat({eventId: "event-2"}),
+            "events/event-2/participants/organizer": organizerParticipant(),
+            "events/event-2/participants/uid": participant(),
+            "users/uid": {
+              eventChatInboxEventIds: ["event-old", "event-1", "event-2"],
+            },
+          },
+          {
+            retryOnConcurrentModification: true,
+            onBeforeCommit: firstAttemptBarrier.onBeforeCommit,
+          },
+      );
+      const leave = (eventId) => executeLeave({
+        db: fake.db,
+        uid: "uid",
+        payload: {eventId},
+      });
+
+      let results;
+      try {
+        results = await Promise.all([
+          leave("event-1"),
+          leave("event-2"),
+        ]);
+      } finally {
+        firstAttemptBarrier.clear();
+      }
+
+      assert.deepEqual(
+          results.map((result) => result.eventId).sort(),
+          ["event-1", "event-2"],
+      );
+      assert.equal(firstAttemptBarrier.count, 2);
+      assert.equal(fake.attempts, 3);
+      assert.equal(
+          fake.reads.filter((path) => path === "users/uid").length,
+          3,
+      );
+      assert.deepEqual(
+          fake.store.get("users/uid").eventChatInboxEventIds,
+          ["event-old"],
+      );
+      assert.equal(
+          fake.writes.filter((write) => write.path === "users/uid").length,
+          2,
+      );
+      for (const eventId of ["event-1", "event-2"]) {
+        assert.equal(
+            fake.store.get(`events/${eventId}/participants/uid`).status,
+            "left",
+        );
+      }
+    });
 
 test("executeLeaveEventTransaction concurrent duplicate leaves decrement once",
     async () => {
@@ -492,6 +610,7 @@ test("executeLeaveEventTransaction concurrent duplicate leaves decrement once",
             "update:events/event-1",
             "update:events/event-1/participants/uid",
             "update:eventChats/event-1",
+            "update:users/uid",
           ],
       );
     });
@@ -515,6 +634,12 @@ test("executeLeaveEventTransaction concurrent leaves recompute occupancy and cha
             "events/event-1/participants/uid-b": participant({
               userId: "uid-b",
             }),
+            "users/uid-a": {
+              eventChatInboxEventIds: ["event-1"],
+            },
+            "users/uid-b": {
+              eventChatInboxEventIds: ["event-1"],
+            },
           },
           {
             retryOnConcurrentModification: true,
@@ -570,6 +695,12 @@ test("executeLeaveEventTransaction concurrent leaves recompute occupancy and cha
       );
       assert.equal(writePaths.filter((path) =>
         path === "update:eventChats/event-1").length, 2);
+      assert.deepEqual(
+          writePaths
+              .filter((path) => path.startsWith("update:users/"))
+              .sort(),
+          ["update:users/uid-a", "update:users/uid-b"],
+      );
     });
 
 test("executeLeaveEventTransaction blocks leave at or after startsAt", async () => {

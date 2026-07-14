@@ -48,7 +48,10 @@ VideoSessionsRecord _session(
   );
 }
 
-Widget _buildRouterApp(VideoSessionsRecord session) {
+Widget _buildRouterApp(
+  VideoSessionsRecord session, {
+  bool Function()? canOpen,
+}) {
   final router = GoRouter(
     routes: [
       GoRoute(
@@ -57,6 +60,7 @@ Widget _buildRouterApp(VideoSessionsRecord session) {
           body: CallHistoryCard(
             session: session,
             isTeacher: false,
+            canOpen: canOpen,
           ),
         ),
       ),
@@ -261,5 +265,33 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('details-opened'), findsOneWidget);
+  });
+
+  testWidgets('call history card honors an owner-boundary navigation guard',
+      (tester) async {
+    currentUser = _TestAuthUser('user-b');
+    final session = _session(
+      'stale-owner-card',
+      {
+        'status': 'ended',
+        'studentId': 'user-a',
+        'tutorId': 'tutor-a',
+        'participantIds': ['user-a', 'tutor-a'],
+        'studentInfo': {'name': 'User A', 'photo': ''},
+        'tutorInfo': {'name': 'Tutor A', 'photo': ''},
+        'startedAt': DateTime(2026, 5, 12, 10),
+        'endedAt': DateTime(2026, 5, 12, 10, 5),
+      },
+    );
+
+    await tester.pumpWidget(
+      _buildRouterApp(session, canOpen: () => false),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(CallHistoryCard));
+    await tester.pumpAndSettle();
+
+    expect(find.text('details-opened'), findsNothing);
   });
 }

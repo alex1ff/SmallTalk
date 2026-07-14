@@ -3221,9 +3221,16 @@ test("executeCreateEventTransaction retry increments counter once per request",
         releaseFirstAttempts = resolve;
       });
       const counterBefore = buildValidCounterData({dayInfo, count: 1});
+      const existingInboxEventIds = Array.from(
+          {length: 49},
+          (_, index) => `event-inbox-${index}`,
+      );
       const {db, makeRef, store} = createFakeFirestore(
           {
-            "users/uid": {display_name: "Анастасия Иванова"},
+            "users/uid": {
+              display_name: "Анастасия Иванова",
+              eventChatInboxEventIds: existingInboxEventIds,
+            },
             "eventCreationCounters/uid/days/20260616": counterBefore,
           },
           {
@@ -3290,6 +3297,13 @@ test("executeCreateEventTransaction retry increments counter once per request",
       assert.equal(Object.keys(counter.requestPayloadHashes).length, 3);
       assert.strictEqual(counter.createdAt, counterBefore.createdAt);
       assert.strictEqual(counter.updatedAt, fixedTimestamp);
+      const inboxEventIds = store.get("users/uid").eventChatInboxEventIds;
+      assert.equal(inboxEventIds.length, 50);
+      assert.equal(new Set(inboxEventIds).size, 50);
+      assert.equal(inboxEventIds.includes("event-inbox-0"), false);
+      assert.equal(inboxEventIds.includes("event-inbox-48"), true);
+      assert.equal(inboxEventIds.includes("event-retry-1"), true);
+      assert.equal(inboxEventIds.includes("event-retry-2"), true);
     });
 
 test("create_event callable uses a Firestore transaction and no serverTimestamp", () => {

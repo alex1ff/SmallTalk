@@ -8,6 +8,9 @@ const {
   normalizeEventCityIdentityInput,
   resolveEventCityIdentity,
 } = require("./event_city_catalog");
+const {
+  buildBoundedEventChatInboxEventIds,
+} = require("./event_chat_inbox");
 
 const REQUEST_TIMEOUT_SECONDS = 30;
 const DAILY_CREATE_LIMIT = 5;
@@ -1100,7 +1103,8 @@ async function executeCreateEventTransaction({
       creationTimestamp,
     }));
     tx.update(refs.userRef, {
-      eventChatInboxEventIds: admin.firestore.FieldValue.arrayUnion(
+      eventChatInboxEventIds: buildBoundedEventChatInboxEventIds(
+          userDoc.data()?.eventChatInboxEventIds,
           refs.eventRef.id,
       ),
       hiddenChatKeys: admin.firestore.FieldValue.arrayRemove(

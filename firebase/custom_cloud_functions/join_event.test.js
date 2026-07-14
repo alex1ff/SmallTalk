@@ -211,7 +211,7 @@ function createFakeFirestore(seed = {}, {
         };
         const result = await callback(tx);
         if (onBeforeCommit) {
-          await onBeforeCommit({attempt, pendingWrites, store});
+          await onBeforeCommit({attempt, pendingWrites, store, versions});
         }
         if (retryOnConcurrentModification) {
           const staleRead = Array.from(readVersions).some(
@@ -485,11 +485,8 @@ test("executeJoinEventTransaction creates active participant", async () => {
     readAccessUserIds: ["organizer", "uid"],
     updatedAt: fixedTimestamp,
   });
-  assert.equal(
-      writes[3].data.eventChatInboxEventIds.constructor.name,
-      "ArrayUnionTransform",
-  );
-  assert.deepEqual(writes[3].data.eventChatInboxEventIds.elements, [
+  assert.deepEqual(writes[3].data.eventChatInboxEventIds, [
+    "event-old",
     "event-1",
   ]);
   assert.equal(
@@ -500,6 +497,66 @@ test("executeJoinEventTransaction creates active participant", async () => {
     "event:event-1",
   ]);
 });
+
+test("executeJoinEventTransaction retries and bounds the latest inbox snapshot",
+    async () => {
+      let injectedConcurrentUpdate = false;
+      const userPath = "users/uid";
+      const staleInboxEventIds = Array.from(
+          {length: 50},
+          (_, index) => `event-stale-${index}`,
+      );
+      const latestInboxEventIds = Array.from(
+          {length: 50},
+          (_, index) => `event-latest-${index}`,
+      );
+      const {db, store} = createFakeFirestore(
+          {
+            "events/event-1": activeEvent(),
+            "eventChats/event-1": eventChat(),
+            "events/event-1/participants/organizer": organizerParticipant(),
+            [userPath]: userProfile({
+              eventChatInboxEventIds: staleInboxEventIds,
+            }),
+          },
+          {
+            retryOnConcurrentModification: true,
+            onBeforeCommit: ({store: currentStore, versions}) => {
+              if (injectedConcurrentUpdate) {
+                return;
+              }
+              injectedConcurrentUpdate = true;
+              currentStore.set(userPath, {
+                ...currentStore.get(userPath),
+                eventChatInboxEventIds: latestInboxEventIds,
+              });
+              versions.set(userPath, (versions.get(userPath) || 0) + 1);
+            },
+          },
+      );
+
+      await executeJoinEventTransaction({
+        db,
+        uid: "uid",
+        joinDate: fixedNow,
+        joinTimestamp: fixedTimestamp,
+        payload: {eventId: "event-1"},
+      });
+
+      assert.equal(injectedConcurrentUpdate, true);
+      const finalInboxEventIds = store.get(userPath).eventChatInboxEventIds;
+      assert.equal(finalInboxEventIds.length, 50);
+      assert.equal(new Set(finalInboxEventIds).size, 50);
+      assert.equal(finalInboxEventIds[0], "event-latest-1");
+      assert.equal(finalInboxEventIds.at(-2), "event-latest-49");
+      assert.equal(finalInboxEventIds.at(-1), "event-1");
+      assert.equal(
+          finalInboxEventIds.some(
+              (eventId) => eventId.startsWith("event-stale"),
+          ),
+          false,
+      );
+    });
 
 test("executeJoinEventTransaction allows join into last available seat",
     async () => {
@@ -1224,6 +1281,9 @@ test("event chat read access follows join leave rejoin and cancel order",
           }),
           "events/event-1/participants/organizer": organizerParticipant(),
           "events/event-1/participants/uid": participant(),
+          "users/uid": userProfile({
+            eventChatInboxEventIds: ["event-1"],
+          }),
         });
 
         await leaveParticipant(db);

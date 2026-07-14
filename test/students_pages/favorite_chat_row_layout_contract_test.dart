@@ -47,4 +47,14 @@ void main() {
     expect(source, contains('height: _favoriteChatRowContentHeight'));
     expect(source, contains('textScaler: TextScaler.noScaling'));
   });
+
+  test('dynamically sorted chat lists remap keyed children', () {
+    final source = File('lib/students_pages/favorite/favorite_widget.dart')
+        .readAsStringSync();
+
+    expect(RegExp(r'findChildIndexCallback:').allMatches(source), hasLength(2));
+    expect(source, contains('inboxItemIndexByRowKey[key]'));
+    expect(source, contains('friendConversationIndexByRowKey[key]'));
+    expect(source, contains('_inboxItemAsyncRowKey'));
+  });
 }
