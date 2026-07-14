@@ -99,11 +99,12 @@ void main() {
                 final actionRect = tester.getRect(actionFinder);
                 final expectedActionText =
                     locale.languageCode == 'ru' ? 'Повторить' : 'Review';
+                final actionTextFinder = find.descendant(
+                  of: actionFinder,
+                  matching: find.text(expectedActionText),
+                );
                 final actionText = tester.widget<Text>(
-                  find.descendant(
-                    of: actionFinder,
-                    matching: find.text(expectedActionText),
-                  ),
+                  actionTextFinder,
                 );
 
                 expect(
@@ -117,12 +118,39 @@ void main() {
                   actionRect.top - surfaceRect.top,
                   (reviewWordsBarHeight - reviewWordsBarActionHeight) / 2,
                 );
+                expect(
+                  actionRect.left,
+                  greaterThanOrEqualTo(countSlotRect.right - 0.01),
+                );
+                expect(
+                  actionRect.left,
+                  greaterThanOrEqualTo(surfaceRect.left - 0.01),
+                );
+                expect(
+                  actionRect.right,
+                  lessThanOrEqualTo(surfaceRect.right + 0.01),
+                );
+                expect(
+                  actionRect.top,
+                  greaterThanOrEqualTo(surfaceRect.top - 0.01),
+                );
+                expect(
+                  actionRect.bottom,
+                  lessThanOrEqualTo(surfaceRect.bottom + 0.01),
+                );
                 expect(actionText.maxLines, 1);
                 expect(actionText.overflow, TextOverflow.ellipsis);
                 expect(
                   actionText.textScaler?.scale(16.0),
                   16.0 * textScale.clamp(1.0, 2.0),
                 );
+                final actionParagraph = tester.renderObject<RenderParagraph>(
+                  find.descendant(
+                    of: actionTextFinder,
+                    matching: find.byType(RichText),
+                  ),
+                );
+                expect(actionParagraph.didExceedMaxLines, isFalse);
               } else {
                 expect(find.byKey(reviewWordsBarActionKey), findsNothing);
               }
@@ -168,6 +196,56 @@ void main() {
     }
   });
 
+  testWidgets('large review counts do not move or clip the action',
+      (tester) async {
+    Rect? baselineSurfaceRect;
+    Rect? baselineActionRect;
+
+    for (final dueCount in const <int>[1, 99, 100, 1000000000]) {
+      await tester.pumpWidget(
+        _buildReviewBarApp(
+          locale: const Locale('ru'),
+          width: 208.0,
+          textScale: 2.0,
+          dueCount: dueCount,
+          onTap: () {},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final surfaceRect = tester.getRect(
+        find.byKey(reviewWordsBarSurfaceKey),
+      );
+      final actionRect = tester.getRect(find.byKey(reviewWordsBarActionKey));
+      final countSlotRect = tester.getRect(
+        find.byKey(reviewWordsBarCountSlotKey),
+      );
+
+      expect(
+        tester.widget<Text>(find.byKey(reviewWordsBarCountTextKey)).data,
+        reviewWordsVisibleCount(dueCount),
+      );
+      expect(surfaceRect.size, const Size(208.0, reviewWordsBarHeight));
+      expect(
+        actionRect.size,
+        const Size(
+          reviewWordsBarActionWidth,
+          reviewWordsBarActionHeight,
+        ),
+      );
+      expect(actionRect.left, greaterThanOrEqualTo(countSlotRect.right));
+      expect(actionRect.right, lessThanOrEqualTo(surfaceRect.right));
+      expect(actionRect.top, greaterThanOrEqualTo(surfaceRect.top));
+      expect(actionRect.bottom, lessThanOrEqualTo(surfaceRect.bottom));
+      expect(surfaceRect, baselineSurfaceRect ?? surfaceRect);
+      expect(actionRect, baselineActionRect ?? actionRect);
+      expect(tester.takeException(), isNull);
+
+      baselineSurfaceRect ??= surfaceRect;
+      baselineActionRect ??= actionRect;
+    }
+  });
+
   testWidgets('review bar keeps its rect when it becomes enabled',
       (tester) async {
     var taps = 0;
@@ -210,6 +288,7 @@ Widget _buildReviewBarApp({
   required Locale locale,
   required double width,
   required double textScale,
+  int dueCount = _dueCount,
   VoidCallback? onTap,
 }) {
   return MaterialApp(
@@ -234,9 +313,9 @@ Widget _buildReviewBarApp({
           child: SizedBox(
             width: width,
             child: ReviewWordsBar(
-              text: reviewWordsVisibleCount(_dueCount),
+              text: reviewWordsVisibleCount(dueCount),
               semanticsLabel: reviewWordsCountSemanticsLabel(
-                count: _dueCount,
+                count: dueCount,
                 languageCode: locale.languageCode,
               ),
               onTap: onTap,

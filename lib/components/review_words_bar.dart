@@ -164,20 +164,23 @@ class ReviewWordsBar extends StatelessWidget {
                             ExpatlioDesign.space0,
                           ),
                           alignment: Alignment.center,
-                          child: Text(
-                            FFLocalizations.of(context).getVariableText(
-                              ruText: 'Повторить',
-                              enText: 'Review',
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textScaler: textScaler,
-                            style: ExpatlioDesign.textStyle(
-                              context,
-                              color: Colors.white,
-                              size: 16.0,
-                              weight: FontWeight.w700,
-                              height: 1.2,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              FFLocalizations.of(context).getVariableText(
+                                ruText: 'Повторить',
+                                enText: 'Review',
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textScaler: textScaler,
+                              style: ExpatlioDesign.textStyle(
+                                context,
+                                color: Colors.white,
+                                size: 16.0,
+                                weight: FontWeight.w700,
+                                height: 1.2,
+                              ),
                             ),
                           ),
                         ),

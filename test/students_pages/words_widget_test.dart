@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -382,6 +383,75 @@ void main() {
       '1',
     );
     expect(find.byKey(reviewWordsBarActionKey), findsOneWidget);
+  });
+
+  testWidgets('large review count keeps the repeat panel and CTA fixed',
+      (tester) async {
+    tester.view.physicalSize = const Size(240.0, 640.0);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final sources = _WordsTestSources();
+    addTearDown(sources.close);
+    final reviews = List<WordReviewsRecord>.generate(
+      100,
+      (index) => _dueReview('large-$index'),
+    );
+
+    await tester.pumpWidget(
+      _buildWordsTestApp(
+        sources,
+        cacheKey: 'large-review-count',
+        textScaler: const TextScaler.linear(2.0),
+      ),
+    );
+    await tester.pump();
+    sources.words.single.add(_queryResult(const [], confirmed: true));
+    sources.reviews.single.add(
+      _queryResult(reviews.take(99).toList(), confirmed: true),
+    );
+    await tester.pump();
+
+    final surfaceFinder = find.byKey(reviewWordsBarSurfaceKey);
+    final actionFinder = find.byKey(reviewWordsBarActionKey);
+    final countSlotFinder = find.byKey(reviewWordsBarCountSlotKey);
+    final countFinder = find.byKey(reviewWordsBarCountTextKey);
+    final surfaceRect = tester.getRect(surfaceFinder);
+    final actionRect = tester.getRect(actionFinder);
+    final countSlotRect = tester.getRect(countSlotFinder);
+
+    expect(tester.widget<Text>(countFinder).data, '99');
+    expect(surfaceRect.size, const Size(208.0, reviewWordsBarHeight));
+    expect(
+      actionRect.size,
+      const Size(reviewWordsBarActionWidth, reviewWordsBarActionHeight),
+    );
+    expect(actionRect.left, greaterThanOrEqualTo(countSlotRect.right));
+    expect(actionRect.right, lessThanOrEqualTo(surfaceRect.right));
+    expect(actionRect.top, greaterThanOrEqualTo(surfaceRect.top));
+    expect(actionRect.bottom, lessThanOrEqualTo(surfaceRect.bottom));
+
+    final actionTextFinder = find.descendant(
+      of: actionFinder,
+      matching: find.text('Повторить'),
+    );
+    final actionParagraph = tester.renderObject<RenderParagraph>(
+      find.descendant(
+        of: actionTextFinder,
+        matching: find.byType(RichText),
+      ),
+    );
+    expect(actionParagraph.didExceedMaxLines, isFalse);
+
+    sources.reviews.single.add(_queryResult(reviews, confirmed: true));
+    await tester.pump();
+
+    expect(tester.widget<Text>(countFinder).data, '99+');
+    expect(tester.getRect(surfaceFinder), surfaceRect);
+    expect(tester.getRect(actionFinder), actionRect);
+    expect(tester.getRect(countSlotFinder), countSlotRect);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('session cache is shown while replacement streams reconnect',
