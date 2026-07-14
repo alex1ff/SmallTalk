@@ -21,6 +21,250 @@ import 'chat_thread_formatters.dart';
 import 'chat_thread_model.dart';
 export 'chat_thread_model.dart';
 
+ValueKey<String> chatThreadMessageItemKey(String messageKey) =>
+    ValueKey<String>('chat_thread_message_item_$messageKey');
+
+ValueKey<String> chatThreadMessageBubbleKey(String messageKey) =>
+    ValueKey<String>('chat_thread_message_bubble_$messageKey');
+
+ValueKey<String> chatThreadMessageTimestampSlotKey(String messageKey) =>
+    ValueKey<String>('chat_thread_message_timestamp_slot_$messageKey');
+
+ValueKey<String> chatThreadMessageTimestampTextKey(String messageKey) =>
+    ValueKey<String>('chat_thread_message_timestamp_text_$messageKey');
+
+ValueKey<String> chatThreadMessageStatusSlotKey(String messageKey) =>
+    ValueKey<String>('chat_thread_message_status_slot_$messageKey');
+
+ValueKey<String> chatThreadMessageRetrySlotKey(String messageKey) =>
+    ValueKey<String>('chat_thread_message_retry_slot_$messageKey');
+
+ValueKey<String> chatThreadMessageRetryButtonKey(String messageKey) =>
+    ValueKey<String>('chat_thread_message_retry_button_$messageKey');
+
+class ChatThreadMessageBubble extends StatelessWidget {
+  const ChatThreadMessageBubble({
+    super.key,
+    required this.messageKey,
+    required this.text,
+    required this.timestampText,
+    required this.isCurrentUser,
+    required this.isReadByPartner,
+    this.localStatus,
+    this.onRetry,
+  });
+
+  static const double _shortTimestampSlotWidth = 60.0;
+  static const double _twelveHourTimestampSlotWidth = 92.0;
+  static const double _metadataHeight = 24.0;
+  static const double _statusSlotSize = 14.0;
+
+  final String messageKey;
+  final String text;
+  final String? timestampText;
+  final bool isCurrentUser;
+  final bool isReadByPartner;
+  final ChatLocalMessageStatus? localStatus;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final bubbleColor = chatMessageBubbleColor(isCurrentUser: isCurrentUser);
+    final textColor = chatMessageTextColor();
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxBubbleWidth = math.min(
+          320.0,
+          constraints.maxWidth * 0.76,
+        );
+
+        return Align(
+          alignment: isCurrentUser
+              ? AlignmentDirectional.centerEnd
+              : AlignmentDirectional.centerStart,
+          child: Container(
+            key: chatThreadMessageBubbleKey(messageKey),
+            constraints: BoxConstraints(maxWidth: maxBubbleWidth),
+            margin:
+                const EdgeInsetsDirectional.only(bottom: ExpatlioDesign.space8),
+            decoration: BoxDecoration(
+              color: bubbleColor,
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(ExpatlioDesign.radiusLarge),
+                topRight: const Radius.circular(ExpatlioDesign.radiusLarge),
+                bottomLeft: Radius.circular(
+                  isCurrentUser
+                      ? ExpatlioDesign.radiusLarge
+                      : ExpatlioDesign.radiusSmall,
+                ),
+                bottomRight: Radius.circular(
+                  isCurrentUser
+                      ? ExpatlioDesign.radiusSmall
+                      : ExpatlioDesign.radiusLarge,
+                ),
+              ),
+            ),
+            padding: const EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.space16,
+              ExpatlioDesign.space12,
+              ExpatlioDesign.space16,
+              ExpatlioDesign.space8,
+            ),
+            child: Column(
+              crossAxisAlignment: isCurrentUser
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  text,
+                  style: FlutterFlowTheme.of(context).bodyMedium.override(
+                        fontFamily: 'sf pro display',
+                        color: textColor,
+                        fontSize: 15.0,
+                        letterSpacing: 0.0,
+                      ),
+                ),
+                if (isCurrentUser || timestampText != null)
+                  Padding(
+                    padding: const EdgeInsetsDirectional.only(
+                      top: ExpatlioDesign.space4,
+                    ),
+                    child: isCurrentUser
+                        ? _buildOutgoingMetadata(context, textColor)
+                        : _buildIncomingTimestamp(context, textColor),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildOutgoingMetadata(BuildContext context, Color textColor) {
+    final canRetry =
+        localStatus == ChatLocalMessageStatus.failed && onRetry != null;
+    final timestampSlotWidth = FFLocalizations.of(context).languageCode == 'en'
+        ? _twelveHourTimestampSlotWidth
+        : _shortTimestampSlotWidth;
+
+    return SizedBox(
+      height: _metadataHeight,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            key: chatThreadMessageTimestampSlotKey(messageKey),
+            width: timestampSlotWidth,
+            child: Align(
+              alignment: AlignmentDirectional.centerEnd,
+              child: Text(
+                timestampText ?? '',
+                key: chatThreadMessageTimestampTextKey(messageKey),
+                maxLines: 1,
+                overflow: TextOverflow.clip,
+                textScaler: TextScaler.noScaling,
+                style: _timestampStyle(context, textColor),
+              ),
+            ),
+          ),
+          const SizedBox(width: ExpatlioDesign.space4),
+          SizedBox.square(
+            key: chatThreadMessageStatusSlotKey(messageKey),
+            dimension: _statusSlotSize,
+            child: localStatus == null
+                ? Icon(
+                    isReadByPartner
+                        ? Icons.done_all_rounded
+                        : Icons.done_rounded,
+                    color: chatMessageReadReceiptColor(
+                      isReadByPartner: isReadByPartner,
+                    ),
+                    size: _statusSlotSize,
+                  )
+                : ChatLocalMessageStatusIcon(
+                    status: localStatus!,
+                    size: _statusSlotSize,
+                  ),
+          ),
+          const SizedBox(width: ExpatlioDesign.space4),
+          SizedBox(
+            key: chatThreadMessageRetrySlotKey(messageKey),
+            child: Visibility(
+              visible: canRetry,
+              maintainState: true,
+              maintainAnimation: true,
+              maintainSize: true,
+              child: _buildRetryMessageButton(
+                context,
+                canRetry ? onRetry : null,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildIncomingTimestamp(BuildContext context, Color textColor) {
+    return KeyedSubtree(
+      key: chatThreadMessageTimestampSlotKey(messageKey),
+      child: Text(
+        timestampText!,
+        key: chatThreadMessageTimestampTextKey(messageKey),
+        maxLines: 1,
+        textScaler: TextScaler.noScaling,
+        style: _timestampStyle(context, textColor),
+      ),
+    );
+  }
+
+  TextStyle _timestampStyle(BuildContext context, Color textColor) {
+    return FlutterFlowTheme.of(context).bodyMedium.override(
+          fontFamily: 'sf pro display',
+          color: textColor.withValues(alpha: 0.58),
+          fontSize: 11.0,
+          letterSpacing: 0.0,
+        );
+  }
+
+  Widget _buildRetryMessageButton(
+    BuildContext context,
+    VoidCallback? onRetry,
+  ) {
+    return TextButton(
+      key: chatThreadMessageRetryButtonKey(messageKey),
+      onPressed: onRetry,
+      style: TextButton.styleFrom(
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.compact,
+        padding: const EdgeInsetsDirectional.symmetric(
+          horizontal: ExpatlioDesign.space4,
+          vertical: 2.0,
+        ),
+      ),
+      child: Text(
+        FFLocalizations.of(context).getVariableText(
+          ruText: 'Повторить',
+          enText: 'Retry',
+        ),
+        maxLines: 1,
+        textScaler: TextScaler.noScaling,
+        style: FlutterFlowTheme.of(context).bodyMedium.override(
+              fontFamily: 'sf pro display',
+              color: ExpatlioDesign.danger,
+              fontSize: 11.0,
+              letterSpacing: 0.0,
+              fontWeight: FontWeight.w600,
+            ),
+      ),
+    );
+  }
+}
+
 class ChatThreadWidget extends StatefulWidget {
   const ChatThreadWidget({
     super.key,
@@ -915,10 +1159,10 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     required bool isCurrentUser,
     required bool isReadByPartner,
   }) {
-    return _buildTextMessageBubble(
-      context,
+    return ChatThreadMessageBubble(
+      messageKey: message.reference.path,
       text: message.text,
-      timestamp: message.createdAt,
+      timestampText: _formatMessageTimestamp(message.createdAt),
       isCurrentUser: isCurrentUser,
       isReadByPartner: isReadByPartner,
     );
@@ -929,160 +1173,16 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     required ConversationsRecord conversation,
     required _PendingChatMessage message,
   }) {
-    return _buildTextMessageBubble(
-      context,
+    return ChatThreadMessageBubble(
+      messageKey: message.messageRef.path,
       text: message.text,
-      timestamp: message.createdAt,
+      timestampText: _formatMessageTimestamp(message.createdAt),
       isCurrentUser: true,
       isReadByPartner: false,
       localStatus: message.status,
       onRetry: message.status == ChatLocalMessageStatus.failed
           ? () => _retryPendingMessage(conversation, message)
           : null,
-    );
-  }
-
-  Widget _buildTextMessageBubble(
-    BuildContext context, {
-    required String text,
-    required DateTime? timestamp,
-    required bool isCurrentUser,
-    required bool isReadByPartner,
-    ChatLocalMessageStatus? localStatus,
-    VoidCallback? onRetry,
-  }) {
-    final bubbleColor = chatMessageBubbleColor(isCurrentUser: isCurrentUser);
-    final textColor = chatMessageTextColor();
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final maxBubbleWidth = math.min(
-          320.0,
-          constraints.maxWidth * 0.76,
-        );
-
-        return Align(
-          alignment: isCurrentUser
-              ? AlignmentDirectional.centerEnd
-              : AlignmentDirectional.centerStart,
-          child: Container(
-            constraints: BoxConstraints(maxWidth: maxBubbleWidth),
-            margin:
-                const EdgeInsetsDirectional.only(bottom: ExpatlioDesign.space8),
-            decoration: BoxDecoration(
-              color: bubbleColor,
-              borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(ExpatlioDesign.radiusLarge),
-                topRight: const Radius.circular(ExpatlioDesign.radiusLarge),
-                bottomLeft: Radius.circular(
-                  isCurrentUser
-                      ? ExpatlioDesign.radiusLarge
-                      : ExpatlioDesign.radiusSmall,
-                ),
-                bottomRight: Radius.circular(
-                  isCurrentUser
-                      ? ExpatlioDesign.radiusSmall
-                      : ExpatlioDesign.radiusLarge,
-                ),
-              ),
-            ),
-            padding: const EdgeInsetsDirectional.fromSTEB(
-                ExpatlioDesign.space16,
-                ExpatlioDesign.space12,
-                ExpatlioDesign.space16,
-                ExpatlioDesign.space8),
-            child: Column(
-              crossAxisAlignment: isCurrentUser
-                  ? CrossAxisAlignment.end
-                  : CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  text,
-                  style: FlutterFlowTheme.of(context).bodyMedium.override(
-                        fontFamily: 'sf pro display',
-                        color: textColor,
-                        fontSize: 15.0,
-                        letterSpacing: 0.0,
-                      ),
-                ),
-                if (timestamp != null)
-                  Padding(
-                    padding: const EdgeInsetsDirectional.only(
-                        top: ExpatlioDesign.space4),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _formatMessageTimestamp(timestamp),
-                          style:
-                              FlutterFlowTheme.of(context).bodyMedium.override(
-                                    fontFamily: 'sf pro display',
-                                    color: textColor.withValues(alpha: 0.58),
-                                    fontSize: 11.0,
-                                    letterSpacing: 0.0,
-                                  ),
-                        ),
-                        if (isCurrentUser) ...[
-                          const SizedBox(width: ExpatlioDesign.space4),
-                          localStatus == null
-                              ? Icon(
-                                  isReadByPartner
-                                      ? Icons.done_all_rounded
-                                      : Icons.done_rounded,
-                                  color: chatMessageReadReceiptColor(
-                                    isReadByPartner: isReadByPartner,
-                                  ),
-                                  size: 14.0,
-                                )
-                              : ChatLocalMessageStatusIcon(
-                                  status: localStatus,
-                                ),
-                          if (localStatus == ChatLocalMessageStatus.failed &&
-                              onRetry != null) ...[
-                            const SizedBox(width: ExpatlioDesign.space4),
-                            _buildRetryMessageButton(context, onRetry),
-                          ],
-                        ],
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildRetryMessageButton(
-    BuildContext context,
-    VoidCallback onRetry,
-  ) {
-    return TextButton(
-      onPressed: onRetry,
-      style: TextButton.styleFrom(
-        minimumSize: Size.zero,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        visualDensity: VisualDensity.compact,
-        padding: const EdgeInsetsDirectional.symmetric(
-          horizontal: ExpatlioDesign.space4,
-          vertical: 2.0,
-        ),
-      ),
-      child: Text(
-        FFLocalizations.of(context).getVariableText(
-          ruText: 'Повторить',
-          enText: 'Retry',
-        ),
-        style: FlutterFlowTheme.of(context).bodyMedium.override(
-              fontFamily: 'sf pro display',
-              color: ExpatlioDesign.danger,
-              fontSize: 11.0,
-              letterSpacing: 0.0,
-              fontWeight: FontWeight.w600,
-            ),
-      ),
     );
   }
 
@@ -1581,8 +1681,8 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                                 ),
                               );
                               return Column(
-                                key: ValueKey<String>(
-                                  'chat_thread_message_item_${displayMessage.itemKey}',
+                                key: chatThreadMessageItemKey(
+                                  displayMessage.itemKey,
                                 ),
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: itemChildren,
@@ -1617,8 +1717,8 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                             }
 
                             return Column(
-                              key: ValueKey<String>(
-                                'chat_thread_message_item_${displayMessage.itemKey}',
+                              key: chatThreadMessageItemKey(
+                                displayMessage.itemKey,
                               ),
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: itemChildren,
