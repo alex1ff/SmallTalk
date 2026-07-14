@@ -52,6 +52,18 @@ ValueKey<String> favoriteChatDeleteButtonKey(String hiddenChatKey) =>
     ValueKey<String>('favorite_chat_delete_$hiddenChatKey');
 ValueKey<String> favoriteChatActionSlotKey(String hiddenChatKey) =>
     ValueKey<String>('favorite_chat_action_slot_$hiddenChatKey');
+ValueKey<String> favoriteChatAvatarKey(String hiddenChatKey) =>
+    ValueKey<String>('favorite_chat_avatar_$hiddenChatKey');
+ValueKey<String> favoriteChatTimestampKey(String hiddenChatKey) =>
+    ValueKey<String>('favorite_chat_timestamp_$hiddenChatKey');
+ValueKey<String> favoriteChatTimestampTextKey(String hiddenChatKey) =>
+    ValueKey<String>('favorite_chat_timestamp_text_$hiddenChatKey');
+ValueKey<String> favoriteChatUnreadSlotKey(String hiddenChatKey) =>
+    ValueKey<String>('favorite_chat_unread_slot_$hiddenChatKey');
+ValueKey<String> favoriteChatUnreadBadgeKey(String hiddenChatKey) =>
+    ValueKey<String>('favorite_chat_unread_badge_$hiddenChatKey');
+ValueKey<String> favoriteChatDividerKey(String hiddenChatKey) =>
+    ValueKey<String>('favorite_chat_divider_$hiddenChatKey');
 Key favoriteConversationAsyncRowKey({
   required String ownerUid,
   required String conversationPath,
@@ -216,6 +228,10 @@ typedef FavoriteFriendsSource = Stream<FavoriteFriendsLoadState> Function(
 );
 typedef FavoriteConversationsSource = Stream<FavoriteConversationsLoadState>
     Function(String currentUid);
+typedef FavoriteConversationUnreadCountSource = Stream<int> Function(
+  ConversationsRecord conversation,
+  String currentUid,
+);
 typedef FavoriteEventChatsSource = Stream<FavoriteEventChatsLoadState> Function(
     String currentUid);
 typedef FavoriteInboxChatsWatcher = Stream<EventChatInboxLoadState> Function({
@@ -510,6 +526,7 @@ class FavoriteWidget extends StatefulWidget {
     @visibleForTesting this.debugInitialAuthUid,
     @visibleForTesting this.debugFriendsSource,
     @visibleForTesting this.debugConversationsSource,
+    @visibleForTesting this.debugConversationUnreadCountSource,
     @visibleForTesting this.debugEventChatsSource,
     @visibleForTesting this.debugInboxChatsWatcher,
     @visibleForTesting this.debugLatestEventChatMessageSource,
@@ -526,6 +543,8 @@ class FavoriteWidget extends StatefulWidget {
   final String? debugInitialAuthUid;
   final FavoriteFriendsSource? debugFriendsSource;
   final FavoriteConversationsSource? debugConversationsSource;
+  final FavoriteConversationUnreadCountSource?
+      debugConversationUnreadCountSource;
   final FavoriteEventChatsSource? debugEventChatsSource;
   final FavoriteInboxChatsWatcher? debugInboxChatsWatcher;
   final FavoriteLatestEventChatMessageSource? debugLatestEventChatMessageSource;
@@ -1463,17 +1482,44 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
       cacheKey,
       () {
         final sourceGeneration = _sessionCacheGeneration;
-        return queryMessagesRecord(
-          parent: conversation.reference,
-          queryBuilder: (messagesQuery) {
-            var query = messagesQuery;
-            if (readAt != null) {
-              query = query.where('createdAt', isGreaterThan: readAt);
-            }
-            return query.orderBy('createdAt', descending: true);
-          },
-          limit: 100,
-        ).map((messages) {
+        final debugSource = widget.debugConversationUnreadCountSource?.call(
+          conversation,
+          currentUid,
+        );
+        final countSource = debugSource ??
+            queryMessagesRecord(
+              parent: conversation.reference,
+              queryBuilder: (messagesQuery) {
+                var query = messagesQuery;
+                if (readAt != null) {
+                  query = query.where('createdAt', isGreaterThan: readAt);
+                }
+                return query.orderBy('createdAt', descending: true);
+              },
+              limit: 100,
+            ).map((messages) {
+              var unreadCount = 0;
+              for (final message in messages) {
+                final createdAt = message.createdAt;
+                if (createdAt == null) {
+                  continue;
+                }
+                if (readAt != null && !createdAt.isAfter(readAt)) {
+                  continue;
+                }
+                if (message.senderId == currentUid ||
+                    messageIsCallEvent(message)) {
+                  continue;
+                }
+                unreadCount += 1;
+              }
+              if (unreadCount <= 0 &&
+                  conversationIsUnreadForUser(conversation, currentUid)) {
+                return 1;
+              }
+              return unreadCount;
+            });
+        return countSource.map((unreadCount) {
           if (!_sourceOwnerIsCurrent(currentUid, sourceGeneration)) {
             if (!_ownerIsCurrent(currentUid)) {
               _scheduleOwnerBoundaryInvalidation(currentUid);
@@ -1481,24 +1527,6 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
             throw StateError(
               'FavoriteWidget: rejected unread count for a stale owner',
             );
-          }
-          var unreadCount = 0;
-          for (final message in messages) {
-            final createdAt = message.createdAt;
-            if (createdAt == null) {
-              continue;
-            }
-            if (readAt != null && !createdAt.isAfter(readAt)) {
-              continue;
-            }
-            if (message.senderId == currentUid || messageIsCallEvent(message)) {
-              continue;
-            }
-            unreadCount += 1;
-          }
-          if (unreadCount <= 0 &&
-              conversationIsUnreadForUser(conversation, currentUid)) {
-            return 1;
           }
           return unreadCount;
         }).handleError((Object error, StackTrace stackTrace) {
@@ -1842,9 +1870,15 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
               margin: EdgeInsets.zero,
               color: Colors.transparent,
               child: _chatRowFrame(
+                dividerKey: favoriteChatDividerKey(
+                  _conversationHiddenKey(conversation),
+                ),
                 child: Row(
                   children: [
                     Container(
+                      key: favoriteChatAvatarKey(
+                        _conversationHiddenKey(conversation),
+                      ),
                       width: _favoriteChatAvatarSize,
                       height: _favoriteChatAvatarSize,
                       decoration: BoxDecoration(
@@ -1942,11 +1976,23 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                       ),
                     ),
                     _chatTimestampColumn(
+                      key: favoriteChatTimestampKey(
+                        _conversationHiddenKey(conversation),
+                      ),
+                      timestampTextKey: favoriteChatTimestampTextKey(
+                        _conversationHiddenKey(conversation),
+                      ),
+                      unreadSlotKey: favoriteChatUnreadSlotKey(
+                        _conversationHiddenKey(conversation),
+                      ),
                       timestampText: _formatInboxTimestamp(
                         conversation.lastMessageAt ?? conversation.unlockedAt,
                       ),
                       badge: unread
                           ? _ConversationUnreadBadge(
+                              badgeKey: favoriteChatUnreadBadgeKey(
+                                _conversationHiddenKey(conversation),
+                              ),
                               unreadCountStream: _watchConversationUnreadCount(
                                 conversation,
                                 currentUid,
@@ -2056,6 +2102,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
 
   Widget _chatRowFrame({
     required Widget child,
+    Key? dividerKey,
   }) {
     return SizedBox(
       height: _favoriteChatRowHeight,
@@ -2070,17 +2117,21 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
               child: child,
             ),
           ),
-          _chatDivider(),
+          _chatDivider(key: dividerKey),
         ],
       ),
     );
   }
 
   Widget _chatTimestampColumn({
+    Key? key,
     required String timestampText,
+    Key? timestampTextKey,
+    Key? unreadSlotKey,
     Widget? badge,
   }) {
     return SizedBox(
+      key: key,
       width: _favoriteChatTimestampWidth,
       height: _favoriteChatRowContentHeight,
       child: Padding(
@@ -2093,6 +2144,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
           children: [
             Text(
               timestampText,
+              key: timestampTextKey,
               maxLines: 1,
               overflow: TextOverflow.clip,
               softWrap: false,
@@ -2107,6 +2159,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
             ),
             const Spacer(),
             SizedBox(
+              key: unreadSlotKey,
               height: _favoriteChatUnreadSlotHeight,
               child: Align(
                 alignment: AlignmentDirectional.centerEnd,
@@ -2119,15 +2172,16 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     );
   }
 
-  Widget _chatDivider() {
-    return const Padding(
-      padding: EdgeInsetsDirectional.only(
+  Widget _chatDivider({Key? key}) {
+    return Padding(
+      padding: const EdgeInsetsDirectional.only(
         start: ExpatlioDesign.pagePadding +
             _favoriteChatAvatarSize +
             ExpatlioDesign.itemSpacing,
         end: ExpatlioDesign.pagePadding,
       ),
       child: Divider(
+        key: key,
         height: _favoriteChatDividerThickness,
         thickness: _favoriteChatDividerThickness,
         color: _favoriteChatDividerColor,
@@ -3351,9 +3405,11 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
 
 class _ConversationUnreadBadge extends StatelessWidget {
   const _ConversationUnreadBadge({
+    required this.badgeKey,
     required this.unreadCountStream,
   });
 
+  final Key badgeKey;
   final Stream<int> unreadCountStream;
 
   @override
@@ -3367,7 +3423,7 @@ class _ConversationUnreadBadge extends StatelessWidget {
           return const SizedBox.shrink();
         }
 
-        return _UnreadCountBadge(count: count);
+        return _UnreadCountBadge(key: badgeKey, count: count);
       },
     );
   }
@@ -3375,6 +3431,7 @@ class _ConversationUnreadBadge extends StatelessWidget {
 
 class _UnreadCountBadge extends StatelessWidget {
   const _UnreadCountBadge({
+    super.key,
     required this.count,
   });
 

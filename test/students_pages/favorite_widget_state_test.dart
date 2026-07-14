@@ -121,6 +121,7 @@ class _FavoriteSources {
 
   FavoriteWidget widget({
     FavoriteUserProfileLoader? profileLoader,
+    FavoriteConversationUnreadCountSource? conversationUnreadCountSource,
     FavoriteEventLoader? eventLoader,
     FavoriteLatestEventChatMessageSource? latestMessageSource,
     FavoriteInboxChatsWatcher? inboxChatsWatcher,
@@ -135,6 +136,7 @@ class _FavoriteSources {
         debugInitialAuthUid: initialUid,
         debugFriendsSource: (uid) => friendsFor(uid).stream,
         debugConversationsSource: (uid) => conversationsFor(uid).stream,
+        debugConversationUnreadCountSource: conversationUnreadCountSource,
         debugEventChatsSource: useDebugEventChatsSource
             ? (uid) => eventChatsFor(uid).stream
             : null,
@@ -196,6 +198,7 @@ ConversationsRecord _conversation({
   required String ownerUid,
   required String partnerUid,
   DateTime? lastMessageAt,
+  String? lastMessageSenderId,
 }) =>
     ConversationsRecord.getDocumentFromData(
       <String, dynamic>{
@@ -211,7 +214,7 @@ ConversationsRecord _conversation({
             lastMessageAt ?? DateTime.parse('2026-07-13T10:01:00Z'),
         'lastMessageType': kConversationMessageTypeText,
         'lastMessageText': 'Hello',
-        'lastMessageSenderId': ownerUid,
+        'lastMessageSenderId': lastMessageSenderId ?? ownerUid,
       },
       ConversationsRecord.collection.doc(id),
     );
@@ -271,6 +274,7 @@ Future<void> _mount(
   _FavoriteSources sources, {
   Locale locale = const Locale('ru'),
   FavoriteUserProfileLoader? profileLoader,
+  FavoriteConversationUnreadCountSource? conversationUnreadCountSource,
   FavoriteEventLoader? eventLoader,
   FavoriteLatestEventChatMessageSource? latestMessageSource,
   FavoriteInboxChatsWatcher? inboxChatsWatcher,
@@ -287,6 +291,7 @@ Future<void> _mount(
     _testApp(
       sources.widget(
         profileLoader: profileLoader,
+        conversationUnreadCountSource: conversationUnreadCountSource,
         eventLoader: eventLoader,
         latestMessageSource: latestMessageSource,
         inboxChatsWatcher: inboxChatsWatcher,
@@ -3308,6 +3313,142 @@ void main() {
     await tester.pump();
     expect(find.text('Fresh after A1 error'), findsOneWidget);
   });
+
+  for (final configuration
+      in const <({Locale locale, double devicePixelRatio, String name})>[
+    (locale: Locale('ru'), devicePixelRatio: 1.0, name: 'RU/DPR1'),
+    (locale: Locale('en'), devicePixelRatio: 3.0, name: 'EN/DPR3'),
+  ]) {
+    testWidgets(
+      'chat row keeps avatar, time, unread slot, and divider fixed for '
+      '0/1/99/99+ (${configuration.name})',
+      (tester) async {
+        tester.view.devicePixelRatio = configuration.devicePixelRatio;
+        tester.view.physicalSize = Size(
+          320 * configuration.devicePixelRatio,
+          900 * configuration.devicePixelRatio,
+        );
+        addTearDown(tester.view.resetDevicePixelRatio);
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final sources = _FavoriteSources();
+        final unreadCounts = StreamController<int>.broadcast(sync: true);
+        addTearDown(unreadCounts.close);
+        var unreadSourceCalls = 0;
+        final id = 'unread-geometry-${configuration.locale.languageCode}';
+        final hiddenChatKey = 'conversation:$id';
+        final conversation = _conversation(
+          id: id,
+          ownerUid: 'user-a',
+          partnerUid: 'friend-unread',
+          lastMessageSenderId: 'friend-unread',
+        );
+
+        await _mount(
+          tester,
+          sources,
+          locale: configuration.locale,
+          profileLoader: (_) async => _profile(
+            'friend-unread',
+            displayName: 'A deliberately long conversation partner name',
+          ),
+          conversationUnreadCountSource: (conversation, currentUid) {
+            expect(conversation.reference.id, id);
+            expect(currentUid, 'user-a');
+            unreadSourceCalls += 1;
+            return unreadCounts.stream;
+          },
+        );
+        await _emitFriends(
+          tester,
+          sources,
+          'user-a',
+          _friendsState(ownerUid: 'user-a', authoritative: true),
+        );
+        await _emitConversations(
+          tester,
+          sources,
+          'user-a',
+          <ConversationsRecord>[conversation],
+        );
+        await _emitEventChats(tester, sources, 'user-a');
+        await tester.pump();
+
+        expect(unreadSourceCalls, 1);
+        unreadCounts.add(0);
+        await tester.pump();
+
+        final row = _conversationRow(id);
+        final avatar = find.byKey(favoriteChatAvatarKey(hiddenChatKey));
+        final timestamp = find.byKey(favoriteChatTimestampKey(hiddenChatKey));
+        final timestampText =
+            find.byKey(favoriteChatTimestampTextKey(hiddenChatKey));
+        final unreadSlot = find.byKey(favoriteChatUnreadSlotKey(hiddenChatKey));
+        final badge = find.byKey(favoriteChatUnreadBadgeKey(hiddenChatKey));
+        final divider = find.byKey(favoriteChatDividerKey(hiddenChatKey));
+
+        expect(row, findsOneWidget);
+        expect(avatar, findsOneWidget);
+        expect(timestamp, findsOneWidget);
+        expect(timestampText, findsOneWidget);
+        expect(unreadSlot, findsOneWidget);
+        expect(divider, findsOneWidget);
+        expect(badge, findsNothing);
+        expect(tester.takeException(), isNull);
+
+        final rowRect = tester.getRect(row);
+        final avatarRect = tester.getRect(avatar);
+        final timestampRect = tester.getRect(timestamp);
+        final timestampTextRect = tester.getRect(timestampText);
+        final unreadSlotRect = tester.getRect(unreadSlot);
+        final dividerRect = tester.getRect(divider);
+        expect(rowRect.height, favoriteChatRowHeight());
+        expect(
+          avatarRect.size,
+          Size.square(favoriteChatAvatarSize()),
+        );
+        expect(timestampRect.width, favoriteChatTimestampWidth());
+        expect(unreadSlotRect.height, favoriteChatUnreadBadgeSize());
+        expect(dividerRect.height, favoriteChatDividerThickness());
+
+        void expectStableGeometry() {
+          expect(tester.getRect(row), rowRect);
+          expect(tester.getRect(avatar), avatarRect);
+          expect(tester.getRect(timestamp), timestampRect);
+          expect(tester.getRect(timestampText), timestampTextRect);
+          expect(tester.getRect(unreadSlot), unreadSlotRect);
+          expect(tester.getRect(divider), dividerRect);
+          expect(tester.takeException(), isNull);
+        }
+
+        Future<void> emitUnreadCount(int count, String? expectedLabel) async {
+          unreadCounts.add(count);
+          await tester.pump();
+          if (expectedLabel == null) {
+            expect(badge, findsNothing);
+          } else {
+            expect(badge, findsOneWidget);
+            expect(
+              find.descendant(of: badge, matching: find.text(expectedLabel)),
+              findsOneWidget,
+            );
+            expect(
+              tester.getSize(badge),
+              Size.square(favoriteChatUnreadBadgeSize()),
+            );
+          }
+          expectStableGeometry();
+        }
+
+        await emitUnreadCount(1, '1');
+        await emitUnreadCount(99, '99');
+        await emitUnreadCount(100, '99+');
+        await emitUnreadCount(0, null);
+        await emitUnreadCount(-1, null);
+        expect(unreadSourceCalls, 1);
+      },
+    );
+  }
 
   testWidgets('actual conversation row keeps height across profile states',
       (tester) async {
