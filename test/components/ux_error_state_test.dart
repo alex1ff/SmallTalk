@@ -82,6 +82,51 @@ void main() {
     expect(retrySemantics.properties.enabled, isFalse);
   });
 
+  testWidgets('UxErrorState keeps geometry when retry becomes disabled',
+      (tester) async {
+    await tester.pumpWidget(
+      _TestShell(
+        child: UxErrorState(
+          stateKey: _stateKey,
+          title: 'Load failed',
+          message: 'Try again.',
+          retryLabel: 'Retry',
+          retryButtonKey: _retryKey,
+          onRetry: () {},
+        ),
+      ),
+    );
+
+    final stateRect = tester.getRect(find.byKey(_stateKey));
+    final retryRect = tester.getRect(find.byKey(_retryKey));
+    final titleRect = tester.getRect(find.text('Load failed'));
+    final messageRect = tester.getRect(find.text('Try again.'));
+    expect(retryRect.width, greaterThanOrEqualTo(160.0));
+    expect(retryRect.height, greaterThanOrEqualTo(48.0));
+
+    await tester.pumpWidget(
+      const _TestShell(
+        child: UxErrorState(
+          stateKey: _stateKey,
+          title: 'Load failed',
+          message: 'Try again.',
+          retryLabel: 'Retry',
+          retryButtonKey: _retryKey,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(tester.getRect(find.byKey(_stateKey)), stateRect);
+    expect(tester.getRect(find.byKey(_retryKey)), retryRect);
+    expect(tester.getRect(find.text('Load failed')), titleRect);
+    expect(tester.getRect(find.text('Try again.')), messageRect);
+    expect(
+      tester.getCenter(find.byKey(_retryKey)).dx,
+      closeTo(retryRect.center.dx, 0.01),
+    );
+  });
+
   testWidgets('UxErrorState supports compact contained presentation',
       (tester) async {
     await tester.pumpWidget(

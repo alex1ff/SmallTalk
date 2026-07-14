@@ -8,6 +8,7 @@ import 'package:small_talk/shared_pages/design/expatlio_design.dart';
 
 const _footerIgnoreKey = ValueKey<String>('call_summary_footer_ignore');
 const _footerOpacityKey = ValueKey<String>('call_summary_footer_opacity');
+const _geometryButtonKey = ValueKey<String>('button_widget_geometry');
 
 class _CallSummaryFooterHarness extends StatefulWidget {
   const _CallSummaryFooterHarness({
@@ -122,17 +123,31 @@ void main() {
 
     await tester.pumpWidget(
       buildHarness(
-        ButtonWidget(
-          text: 'Submit',
-          loadingText: 'Sending...',
-          busyStyle: ButtonBusyStyle.spinner,
-          action: () async {
-            tapCount++;
-            await completer.future;
-          },
+        Center(
+          child: SizedBox(
+            width: 280.0,
+            child: ButtonWidget(
+              key: _geometryButtonKey,
+              text: 'Submit',
+              loadingText: 'Sending...',
+              busyStyle: ButtonBusyStyle.spinner,
+              action: () async {
+                tapCount++;
+                await completer.future;
+              },
+            ),
+          ),
         ),
       ),
     );
+
+    final initialButtonRect = tester.getRect(find.byKey(_geometryButtonKey));
+    final initialLabelCenter = tester.getCenter(find.text('Submit'));
+    expect(
+      initialButtonRect.size,
+      const Size(280.0, ExpatlioDesign.buttonHeight),
+    );
+    expect(initialLabelCenter.dy, closeTo(initialButtonRect.center.dy, 0.01));
 
     await tester.tap(find.byType(ButtonWidget));
     await tester.pump();
@@ -142,6 +157,25 @@ void main() {
     expect(find.byKey(const ValueKey<String>('button_widget_spinner')),
         findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(tester.getRect(find.byKey(_geometryButtonKey)), initialButtonRect);
+    expect(
+      tester.getSize(
+        find.byKey(const ValueKey<String>('button_widget_spinner')),
+      ),
+      const Size.square(20.0),
+    );
+    expect(
+      tester
+          .getCenter(find.byKey(
+            const ValueKey<String>('button_widget_spinner'),
+          ))
+          .dy,
+      closeTo(initialButtonRect.center.dy, 0.01),
+    );
+    expect(
+      tester.getCenter(find.text('Sending...')).dy,
+      closeTo(initialButtonRect.center.dy, 0.01),
+    );
 
     await tester.tap(find.byType(ButtonWidget));
     await tester.pump();
@@ -152,6 +186,33 @@ void main() {
 
     expect(find.text('Submit'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(tester.getRect(find.byKey(_geometryButtonKey)), initialButtonRect);
+    expect(
+      tester.getCenter(find.text('Submit')).dy,
+      closeTo(initialLabelCenter.dy, 0.01),
+    );
+
+    await tester.pumpWidget(
+      buildHarness(
+        const Center(
+          child: SizedBox(
+            width: 280.0,
+            child: ButtonWidget(
+              key: _geometryButtonKey,
+              text: 'Submit',
+              enabled: false,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.getRect(find.byKey(_geometryButtonKey)), initialButtonRect);
+    expect(
+      tester.getCenter(find.text('Submit')).dy,
+      closeTo(initialLabelCenter.dy, 0.01),
+    );
   });
 
   testWidgets('debounceOnly mode blocks repeat taps without showing spinner',
