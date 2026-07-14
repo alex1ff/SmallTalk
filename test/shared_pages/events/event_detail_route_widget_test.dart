@@ -51,6 +51,8 @@ Widget _buildTestApp({
 Widget _buildDetailRouteTestApp({
   required String eventId,
   required EventDetailSnapshotStream snapshotStream,
+  EventDetailSnapshotFlagReader? snapshotIsFromCache,
+  EventDetailSnapshotFlagReader? snapshotHasPendingWrites,
   EventsAnalyticsTracker? analyticsTracker,
   Locale locale = const Locale('ru'),
   EdgeInsets mediaQueryPadding = EdgeInsets.zero,
@@ -58,6 +60,8 @@ Widget _buildDetailRouteTestApp({
   Widget route = EventDetailRouteWidget(
     eventId: eventId,
     snapshotStream: snapshotStream,
+    snapshotIsFromCache: snapshotIsFromCache,
+    snapshotHasPendingWrites: snapshotHasPendingWrites,
     participantSnapshotStream: (participantRef) =>
         Stream<DocumentSnapshot>.value(
       _FakeEventDocumentSnapshot(
@@ -271,6 +275,28 @@ void main() {
 
     await tester.pumpWidget(const SizedBox.shrink());
     await controller.close();
+  });
+
+  testWidgets('cached missing detail waits for server confirmation',
+      (tester) async {
+    final cachedMissing = _FakeEventDocumentSnapshot(
+      reference: EventsRecord.collection.doc('event-1'),
+      exists: false,
+    );
+
+    await tester.pumpWidget(
+      _buildDetailRouteTestApp(
+        eventId: 'event-1',
+        snapshotStream: (_) => Stream<DocumentSnapshot>.value(cachedMissing),
+        snapshotIsFromCache: (snapshot) => identical(snapshot, cachedMissing),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(eventDetailRouteLoadingKey), findsOneWidget);
+    expect(find.byKey(eventDetailRouteMissingKey), findsNothing);
+    expect(find.byKey(eventDetailRouteErrorKey), findsNothing);
   });
 
   testWidgets('cold detail error keeps the full error state', (tester) async {

@@ -219,6 +219,8 @@ class EventDetailRouteWidget extends StatefulWidget {
     super.key,
     required this.eventId,
     this.snapshotStream,
+    this.snapshotIsFromCache,
+    this.snapshotHasPendingWrites,
     this.cancelEventInvoker,
     this.joinEventInvoker,
     this.leaveEventInvoker,
@@ -233,6 +235,8 @@ class EventDetailRouteWidget extends StatefulWidget {
 
   final String eventId;
   final EventDetailSnapshotStream? snapshotStream;
+  final EventDetailSnapshotFlagReader? snapshotIsFromCache;
+  final EventDetailSnapshotFlagReader? snapshotHasPendingWrites;
   final EventCallableInvoker? cancelEventInvoker;
   final EventCallableInvoker? joinEventInvoker;
   final EventCallableInvoker? leaveEventInvoker;
@@ -301,6 +305,8 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
     final dataKeyChanged = _eventStreamDataKey != nextDataKey;
     if (oldWidget.eventId != widget.eventId ||
         oldWidget.snapshotStream != widget.snapshotStream ||
+        oldWidget.snapshotIsFromCache != widget.snapshotIsFromCache ||
+        oldWidget.snapshotHasPendingWrites != widget.snapshotHasPendingWrites ||
         dataKeyChanged) {
       _configureEventStream(sessionCacheUserId: sessionCacheUserId);
       if (dataKeyChanged) {
@@ -358,6 +364,8 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         eventId: widget.eventId,
         snapshotStream: widget.snapshotStream,
         sessionCacheUserId: sessionCacheUserId,
+        snapshotIsFromCache: widget.snapshotIsFromCache,
+        snapshotHasPendingWrites: widget.snapshotHasPendingWrites,
       );
 
   Stream<EventParticipantsRecord?>? _currentParticipantStreamFor({
@@ -844,9 +852,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
           );
         }
 
-        if (!summary.hasResolvedResult &&
-            (summary.connectionState == ConnectionState.none ||
-                summary.connectionState == ConnectionState.waiting)) {
+        if (!summary.hasResolvedResult) {
           _currentDetailEventId = null;
           return const _EventDetailRouteStateScaffold(
             stateKey: eventDetailRouteLoadingKey,
