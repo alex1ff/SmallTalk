@@ -1,24 +1,86 @@
+import 'dart:async';
+
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
+import '/components/app_loading_indicator.dart';
 import '/components/empty/empty_widget.dart';
 import '/components/review_card/review_card_widget.dart';
+import '/components/ux_error_state.dart';
+import '/components/ux_refreshing_indicator_overlay.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/components/basic_page_header.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/services/user_match_profile.dart';
+import '/services/reviews_load_result.dart';
 import '/index.dart';
 import '/flutter_flow/custom_functions.dart' as functions;
 import 'package:auto_size_text/auto_size_text.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:percent_indicator/percent_indicator.dart';
 import 'my_rew_n_s_model.dart';
 export 'my_rew_n_s_model.dart';
 
+const ValueKey<String> myRewNSLoadingKey =
+    ValueKey<String>('my_rew_ns_loading');
+const ValueKey<String> myRewNSEmptyKey = ValueKey<String>('my_rew_ns_empty');
+const ValueKey<String> myRewNSListKey = ValueKey<String>('my_rew_ns_list');
+const ValueKey<String> myRewNSErrorKey = ValueKey<String>('my_rew_ns_error');
+const ValueKey<String> myRewNSRefreshErrorKey =
+    ValueKey<String>('my_rew_ns_refresh_error');
+const ValueKey<String> myRewNSRetryButtonKey =
+    ValueKey<String>('my_rew_ns_retry_button');
+const ValueKey<String> myRewNSRefreshingKey =
+    ValueKey<String>('my_rew_ns_refreshing');
+const ValueKey<String> myRewNSRefreshingIndicatorKey =
+    ValueKey<String>('my_rew_ns_refreshing_indicator');
+
+ValueKey<String> myRewNSReviewKey(ReviewsRecord review) =>
+    ValueKey<String>('my_rew_ns_review_${review.reference.path}');
+
+typedef MyRewNSReviewsLoader = Future<List<ReviewsRecord>> Function(
+  String ownerUid,
+);
+typedef MyRewNSReviewsResultLoader = Future<ReviewsLoadResult> Function(
+  String ownerUid,
+);
+typedef MyRewNSReviewsResultStreamLoader = Stream<ReviewsLoadResult> Function(
+  String ownerUid,
+);
+typedef MyRewNSAccessDeniedHandler = void Function(BuildContext context);
+
+final class _MyRewNSAuthEmission {
+  const _MyRewNSAuthEmission({required this.ownerUid, required this.epoch});
+
+  final String ownerUid;
+  final int epoch;
+}
+
 class MyRewNSWidget extends StatefulWidget {
-  const MyRewNSWidget({super.key});
+  const MyRewNSWidget({
+    super.key,
+    this.reviewsLoader,
+    this.reviewsResultLoader,
+    this.reviewsResultStreamLoader,
+    this.authUidStream,
+    this.ownerUidProvider,
+    this.accessDeniedHandler,
+  });
+
+  @visibleForTesting
+  final MyRewNSReviewsLoader? reviewsLoader;
+  @visibleForTesting
+  final MyRewNSReviewsResultLoader? reviewsResultLoader;
+  @visibleForTesting
+  final MyRewNSReviewsResultStreamLoader? reviewsResultStreamLoader;
+  @visibleForTesting
+  final Stream<String>? authUidStream;
+  @visibleForTesting
+  final String Function()? ownerUidProvider;
+  @visibleForTesting
+  final MyRewNSAccessDeniedHandler? accessDeniedHandler;
 
   static String routeName = 'myRewNS';
   static String routePath = '/myRewNS';
@@ -30,16 +92,428 @@ class MyRewNSWidget extends StatefulWidget {
 class _MyRewNSWidgetState extends State<MyRewNSWidget> {
   late MyRewNSModel _model;
 
+  String _activeOwnerUid = '';
+  int _activeOwnerEpoch = 0;
+  bool _ownerAccessConfirmed = false;
+  bool _ownerAccessDenied = false;
+  UsersRecord? _lastAuthorizedOwnerDocument;
+  bool _loadStartedForOwner = false;
+  int _accessEpoch = 0;
+  int? _scheduledDeniedRedirectEpoch;
+  int _requestGeneration = 0;
+  List<ReviewsRecord>? _lastSuccessfulReviews;
+  Object? _reviewsError;
+  bool _reviewsLoading = false;
+  StreamSubscription<ReviewsLoadResult>? _reviewsSubscription;
+  late Stream<_MyRewNSAuthEmission> _authSessionStream;
+  String _latestAuthStreamOwnerUid = '';
+  String? _lastObservedSessionCacheOwnerUid;
+  int _latestAuthSessionEpoch = 0;
+
   final scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
   void initState() {
     super.initState();
     _model = createModel(context, () => MyRewNSModel());
+    MyRewNSModel.ensureSessionCacheLifecycleRegistered();
+    final initialOwnerUid = _initialOwnerUid();
+    _latestAuthStreamOwnerUid = initialOwnerUid;
+    _lastObservedSessionCacheOwnerUid =
+        initialOwnerUid.isEmpty ? null : initialOwnerUid;
+    _authSessionStream = _trackAuthSessions(
+      widget.authUidStream ?? _watchMyRewNSOwnerUids(),
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant MyRewNSWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.authUidStream != widget.authUidStream) {
+      final initialOwnerUid = _initialOwnerUid();
+      _observeSessionCacheOwner(initialOwnerUid);
+      _latestAuthStreamOwnerUid = initialOwnerUid;
+      _authSessionStream = _trackAuthSessions(
+        widget.authUidStream ?? _watchMyRewNSOwnerUids(),
+      );
+      _resetOwner('', ++_latestAuthSessionEpoch);
+    }
+  }
+
+  bool get _hasIndependentDirectAuthUid =>
+      widget.ownerUidProvider != null || widget.authUidStream == null;
+
+  String _directAuthUid() => (widget.ownerUidProvider?.call() ??
+          FirebaseAuth.instance.currentUser?.uid ??
+          '')
+      .trim();
+
+  String _initialOwnerUid() =>
+      widget.authUidStream == null && _hasIndependentDirectAuthUid
+          ? _directAuthUid()
+          : '';
+
+  Stream<_MyRewNSAuthEmission> _trackAuthSessions(Stream<String> authUidStream) {
+    return authUidStream.map((rawOwnerUid) {
+      final ownerUid = rawOwnerUid.trim();
+      _observeSessionCacheOwner(ownerUid);
+      _latestAuthStreamOwnerUid = ownerUid;
+      final epoch = ++_latestAuthSessionEpoch;
+      return _MyRewNSAuthEmission(ownerUid: ownerUid, epoch: epoch);
+    });
+  }
+
+  void _observeSessionCacheOwner(String ownerUid) {
+    final previousOwnerUid = _lastObservedSessionCacheOwnerUid;
+    if (previousOwnerUid != null && previousOwnerUid != ownerUid) {
+      MyRewNSModel.debugClearSessionCache();
+    }
+    _lastObservedSessionCacheOwnerUid = ownerUid;
+  }
+
+  _MyRewNSAuthEmission _initialAuthEmission() => _MyRewNSAuthEmission(
+        ownerUid: _initialOwnerUid(),
+        epoch: _latestAuthSessionEpoch,
+      );
+
+  _MyRewNSAuthEmission _effectiveAuthEmission(
+    _MyRewNSAuthEmission emission,
+  ) {
+    if (widget.authUidStream != null || widget.ownerUidProvider == null) {
+      return emission;
+    }
+    final directOwnerUid = _directAuthUid();
+    if (directOwnerUid != _latestAuthStreamOwnerUid) {
+      _observeSessionCacheOwner(directOwnerUid);
+      _latestAuthStreamOwnerUid = directOwnerUid;
+      _latestAuthSessionEpoch += 1;
+    }
+    return _MyRewNSAuthEmission(
+      ownerUid: directOwnerUid,
+      epoch: _latestAuthSessionEpoch,
+    );
+  }
+
+  String _ownerUidForEmission(_MyRewNSAuthEmission emission) {
+    if (!_hasIndependentDirectAuthUid) {
+      return emission.ownerUid;
+    }
+    final directOwnerUid = _directAuthUid();
+    _observeSessionCacheOwner(directOwnerUid);
+    return emission.ownerUid == directOwnerUid ? directOwnerUid : '';
+  }
+
+  bool _authBoundaryMatches(String ownerUid, int ownerEpoch) {
+    if (ownerUid.isEmpty ||
+        _latestAuthStreamOwnerUid != ownerUid ||
+        _latestAuthSessionEpoch != ownerEpoch) {
+      return false;
+    }
+    if (!_hasIndependentDirectAuthUid) {
+      return true;
+    }
+    final directOwnerUid = _directAuthUid();
+    _observeSessionCacheOwner(directOwnerUid);
+    return directOwnerUid == ownerUid;
+  }
+
+  Stream<ReviewsLoadResult> _defaultReviewsLoader(String ownerUid) {
+    final query = ReviewsRecord.collection
+        .where(
+          'toUserId',
+          isEqualTo: UsersRecord.collection.doc(ownerUid),
+        )
+        .orderBy('createdAt', descending: true);
+    return query.snapshots(includeMetadataChanges: true).map(
+      (snapshot) => ReviewsLoadResult(
+        reviews: snapshot.docs.map(ReviewsRecord.fromSnapshot).toList(),
+        isFromCache: snapshot.metadata.isFromCache,
+        hasPendingWrites: snapshot.metadata.hasPendingWrites,
+      ),
+    );
+  }
+
+  Stream<ReviewsLoadResult> _loadReviews(String ownerUid) {
+    final streamLoader = widget.reviewsResultStreamLoader;
+    if (streamLoader != null) {
+      return streamLoader(ownerUid);
+    }
+    final resultLoader = widget.reviewsResultLoader;
+    if (resultLoader != null) {
+      return Stream<ReviewsLoadResult>.fromFuture(resultLoader(ownerUid));
+    }
+    final legacyLoader = widget.reviewsLoader;
+    if (legacyLoader != null) {
+      return Stream<ReviewsLoadResult>.fromFuture(
+        legacyLoader(ownerUid).then(ReviewsLoadResult.authoritative),
+      );
+    }
+    return _defaultReviewsLoader(ownerUid);
+  }
+
+  void _synchronizeOwner(String ownerUid, int ownerEpoch) {
+    if (ownerUid == _activeOwnerUid && ownerEpoch == _activeOwnerEpoch) {
+      return;
+    }
+    _resetOwner(ownerUid, ownerEpoch);
+  }
+
+  void _resetOwner(String ownerUid, int ownerEpoch) {
+    final ownerBoundaryChanged =
+        ownerUid != _activeOwnerUid || ownerEpoch != _activeOwnerEpoch;
+    unawaited(_reviewsSubscription?.cancel());
+    _reviewsSubscription = null;
+    _requestGeneration += 1;
+    _accessEpoch += 1;
+    _activeOwnerUid = ownerUid;
+    _activeOwnerEpoch = ownerEpoch;
+    _ownerAccessConfirmed = false;
+    _ownerAccessDenied = false;
+    _lastAuthorizedOwnerDocument = null;
+    _loadStartedForOwner = false;
+    _scheduledDeniedRedirectEpoch = null;
+    if (ownerBoundaryChanged) {
+      _model.rate = 0;
+      _model.ratingBarValue = null;
+    }
+    _lastSuccessfulReviews =
+        ownerUid.isEmpty ? null : MyRewNSModel.cachedReviews(ownerUid);
+    _reviewsError = null;
+    _reviewsLoading = false;
+  }
+
+  void _confirmOwnerAccess(UsersRecord ownerDocument) {
+    if (!_ownerAccessConfirmed || _ownerAccessDenied) {
+      _accessEpoch += 1;
+    }
+    _ownerAccessConfirmed = true;
+    _ownerAccessDenied = false;
+    _lastAuthorizedOwnerDocument = ownerDocument;
+    _scheduledDeniedRedirectEpoch = null;
+    _ensureReviewsLoadStarted();
+  }
+
+  void _revokeOwnerAccess() {
+    if (_ownerAccessDenied &&
+        !_ownerAccessConfirmed &&
+        _lastAuthorizedOwnerDocument == null &&
+        _lastSuccessfulReviews == null &&
+        !_reviewsLoading) {
+      return;
+    }
+    unawaited(_reviewsSubscription?.cancel());
+    _reviewsSubscription = null;
+    _requestGeneration += 1;
+    _accessEpoch += 1;
+    _ownerAccessConfirmed = false;
+    _ownerAccessDenied = true;
+    _lastAuthorizedOwnerDocument = null;
+    _loadStartedForOwner = false;
+    _lastSuccessfulReviews = null;
+    _reviewsError = null;
+    _reviewsLoading = false;
+    _model.rate = 0;
+    _model.ratingBarValue = null;
+    _scheduledDeniedRedirectEpoch = null;
+    MyRewNSModel.debugClearSessionCache();
+  }
+
+  void _scheduleAccessDeniedRedirect(String ownerUid, int ownerEpoch) {
+    final accessEpoch = _accessEpoch;
+    if (_scheduledDeniedRedirectEpoch == accessEpoch) {
+      return;
+    }
+    _scheduledDeniedRedirectEpoch = accessEpoch;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ownerDocument = currentUserDocument;
+      final redirectIsCurrent = mounted &&
+          ownerUid == _activeOwnerUid &&
+          ownerEpoch == _activeOwnerEpoch &&
+          accessEpoch == _accessEpoch &&
+          _ownerAccessDenied &&
+          !_ownerAccessConfirmed &&
+          _authBoundaryMatches(ownerUid, ownerEpoch) &&
+          hasCurrentUserDocumentForUid(ownerUid) &&
+          !canAccessTeacherSurfaces(ownerDocument);
+      if (!redirectIsCurrent) {
+        if (mounted && accessEpoch == _accessEpoch) {
+          _scheduledDeniedRedirectEpoch = null;
+        }
+        return;
+      }
+      final handler = widget.accessDeniedHandler;
+      if (handler != null) {
+        handler(context);
+        return;
+      }
+      context.goNamed(
+        StudentsDashboardWidget.routeName,
+        queryParameters: {
+          'zn': serializeParam(false, ParamType.bool),
+        }.withoutNulls,
+      );
+    });
+  }
+
+  void _ensureReviewsLoadStarted() {
+    if (_loadStartedForOwner || _activeOwnerUid.isEmpty) {
+      return;
+    }
+    _loadStartedForOwner = true;
+    _startReviewsLoad(notify: false);
+  }
+
+  void _startReviewsLoad({required bool notify}) {
+    final ownerUid = _activeOwnerUid;
+    if (ownerUid.isEmpty || !_ownerAccessConfirmed) {
+      return;
+    }
+
+    final ownerEpoch = _activeOwnerEpoch;
+    final accessEpoch = _accessEpoch;
+    unawaited(_reviewsSubscription?.cancel());
+    _reviewsSubscription = null;
+    final requestGeneration = ++_requestGeneration;
+    final cacheGeneration = MyRewNSModel.sessionCacheGeneration;
+    _reviewsError = null;
+    _reviewsLoading = true;
+    if (notify && mounted) {
+      setState(() {});
+    }
+
+    try {
+      _reviewsSubscription = _loadReviews(ownerUid).listen(
+        (result) {
+          if (!_requestIsCurrent(
+            ownerUid,
+            ownerEpoch,
+            accessEpoch,
+            requestGeneration,
+          )) {
+            return;
+          }
+          if (!_authBoundaryMatches(ownerUid, ownerEpoch)) {
+            _invalidateForAuthBoundaryMismatch();
+            return;
+          }
+          if (!result.isAuthoritative) {
+            final previous =
+                _lastSuccessfulReviews ?? const <ReviewsRecord>[];
+            final mergedReviews = mergeUnconfirmedReviews(
+              previous: previous,
+              incoming: result.reviews,
+            );
+            setState(() {
+              if (_lastSuccessfulReviews != null || mergedReviews.isNotEmpty) {
+                _lastSuccessfulReviews = mergedReviews;
+              }
+              _reviewsError = null;
+              _reviewsLoading = true;
+            });
+            return;
+          }
+          final stableReviews =
+              List<ReviewsRecord>.unmodifiable(result.reviews);
+          MyRewNSModel.cacheReviews(
+            ownerUid,
+            stableReviews,
+            expectedGeneration: cacheGeneration,
+          );
+          setState(() {
+            _lastSuccessfulReviews = stableReviews;
+            _reviewsError = null;
+            _reviewsLoading = false;
+          });
+          unawaited(_reviewsSubscription?.cancel());
+          _reviewsSubscription = null;
+        },
+        onError: (Object error, StackTrace stackTrace) {
+          if (!_requestIsCurrent(
+            ownerUid,
+            ownerEpoch,
+            accessEpoch,
+            requestGeneration,
+          )) {
+            return;
+          }
+          if (!_authBoundaryMatches(ownerUid, ownerEpoch)) {
+            _invalidateForAuthBoundaryMismatch();
+            return;
+          }
+          setState(() {
+            _reviewsError = error;
+            _reviewsLoading = false;
+          });
+          unawaited(_reviewsSubscription?.cancel());
+          _reviewsSubscription = null;
+        },
+        onDone: () {
+          if (!_requestIsCurrent(
+                ownerUid,
+                ownerEpoch,
+                accessEpoch,
+                requestGeneration,
+              ) ||
+              !_reviewsLoading) {
+            return;
+          }
+          setState(() {
+            _reviewsError =
+                StateError('Could not confirm reviews with the server.');
+            _reviewsLoading = false;
+          });
+          _reviewsSubscription = null;
+        },
+      );
+    } catch (error) {
+      if (_requestIsCurrent(
+            ownerUid,
+            ownerEpoch,
+            accessEpoch,
+            requestGeneration,
+          ) &&
+          _authBoundaryMatches(ownerUid, ownerEpoch)) {
+        setState(() {
+          _reviewsError = error;
+          _reviewsLoading = false;
+        });
+      }
+    }
+  }
+
+  bool _requestIsCurrent(
+    String ownerUid,
+    int ownerEpoch,
+    int accessEpoch,
+    int requestGeneration,
+  ) {
+    return mounted &&
+        ownerUid == _activeOwnerUid &&
+        ownerEpoch == _activeOwnerEpoch &&
+        ownerEpoch == _latestAuthSessionEpoch &&
+        accessEpoch == _accessEpoch &&
+        _ownerAccessConfirmed &&
+        !_ownerAccessDenied &&
+        requestGeneration == _requestGeneration &&
+        _authBoundaryMatches(ownerUid, ownerEpoch);
+  }
+
+  void _invalidateForAuthBoundaryMismatch() {
+    if (!mounted) {
+      return;
+    }
+    setState(() => _resetOwner('', _latestAuthSessionEpoch));
+  }
+
+  void _retryReviews() {
+    _loadStartedForOwner = true;
+    _startReviewsLoad(notify: true);
   }
 
   @override
   void dispose() {
+    unawaited(_reviewsSubscription?.cancel());
+    _requestGeneration += 1;
     _model.dispose();
 
     super.dispose();
@@ -47,75 +521,203 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return AuthUserStreamWidget(
-      builder: (context) {
-        if (loggedIn && currentUserDocument == null) {
-          return Scaffold(
-            backgroundColor: ExpatlioDesign.background,
-            body: const Center(
-              child: CircularProgressIndicator.adaptive(),
-            ),
-          );
-        }
+    return StreamBuilder<_MyRewNSAuthEmission>(
+      key: ObjectKey(_authSessionStream),
+      stream: _authSessionStream,
+      initialData: _initialAuthEmission(),
+      builder: (context, authSnapshot) {
+        final authEmission = _effectiveAuthEmission(authSnapshot.data!);
+        final ownerUid = _ownerUidForEmission(authEmission);
+        final ownerEpoch = authEmission.epoch;
+        _synchronizeOwner(ownerUid, ownerEpoch);
+        return AuthUserStreamWidget(
+          builder: (context) {
+            final ownerDocumentMatches = hasCurrentUserDocumentForUid(ownerUid);
+            if (ownerDocumentMatches &&
+                !canAccessTeacherSurfaces(currentUserDocument)) {
+              _revokeOwnerAccess();
+              _scheduleAccessDeniedRedirect(ownerUid, ownerEpoch);
 
-        if (currentUserDocument != null &&
-            !canAccessTeacherSurfaces(currentUserDocument)) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted) {
-              return;
-            }
-            context.goNamed(
-              StudentsDashboardWidget.routeName,
-              queryParameters: {
-                'zn': serializeParam(false, ParamType.bool),
-              }.withoutNulls,
-            );
-          });
-
-          return Scaffold(
-            backgroundColor: ExpatlioDesign.background,
-            body: Center(
-              child: Text(
-                FFLocalizations.of(context).getVariableText(
-                  ruText: 'Отзывы преподавателя доступны после проверки заявки',
-                  enText: 'Teacher reviews are available after approval',
-                ),
-                textAlign: TextAlign.center,
-                style: FlutterFlowTheme.of(context).bodyMedium,
-              ),
-            ),
-          );
-        }
-
-        _model.reviewsFuture ??= queryReviewsRecordOnce(
-          queryBuilder: (reviewsRecord) => reviewsRecord
-              .where(
-                'toUserId',
-                isEqualTo: currentUserReference,
-              )
-              .orderBy('createdAt', descending: true),
-        );
-
-        return FutureBuilder<List<ReviewsRecord>>(
-          future: _model.reviewsFuture,
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) {
               return Scaffold(
-                backgroundColor:
-                    FlutterFlowTheme.of(context).secondaryBackground,
+                backgroundColor: ExpatlioDesign.background,
                 body: Center(
-                  child: SizedBox(
-                    width: 50.0,
-                    height: 50.0,
-                    child: SpinKitCircle(
-                      color: FlutterFlowTheme.of(context).secondary,
-                      size: 50.0,
+                  child: Text(
+                    FFLocalizations.of(context).getVariableText(
+                      ruText:
+                          'Отзывы преподавателя доступны после проверки заявки',
+                      enText:
+                          'Teacher reviews are available after approval',
                     ),
+                    textAlign: TextAlign.center,
+                    style: FlutterFlowTheme.of(context).bodyMedium,
                   ),
                 ),
               );
             }
-            List<ReviewsRecord> myRewNSReviewsRecordList = snapshot.data ?? [];
+
+            if (ownerDocumentMatches &&
+                canAccessTeacherSurfaces(currentUserDocument)) {
+              _confirmOwnerAccess(currentUserDocument!);
+            }
+
+            if (ownerUid.isEmpty ||
+                _ownerAccessDenied ||
+                !_ownerAccessConfirmed) {
+              return _buildColdState(context, isError: false);
+            }
+
+            final reviews = _lastSuccessfulReviews;
+            if (reviews == null) {
+              return _buildColdState(
+                context,
+                isError: _reviewsError != null,
+              );
+            }
+
+            Widget content = _buildReviewsContent(context, reviews);
+            content = UxRefreshingIndicatorOverlay(
+              key: myRewNSRefreshingKey,
+              isRefreshing: _reviewsLoading,
+              padding: EdgeInsetsDirectional.fromSTEB(
+                ExpatlioDesign.space8,
+                MediaQuery.paddingOf(context).top +
+                    BasicPageHeader.height +
+                    ExpatlioDesign.space8,
+                ExpatlioDesign.space8,
+                ExpatlioDesign.space8,
+              ),
+              indicator: UxRefreshingIndicatorPill(
+                key: myRewNSRefreshingIndicatorKey,
+                semanticsLabel: null,
+              ),
+              semanticsLabel:
+                  FFLocalizations.of(context).getVariableText(
+                ruText: 'Обновление отзывов преподавателя',
+                enText: 'Refreshing teacher reviews',
+              ),
+              child: content,
+            );
+            content = _buildWarmError(
+              context,
+              content,
+              showError: _reviewsError != null,
+            );
+            return content;
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildColdState(
+    BuildContext context, {
+    required bool isError,
+  }) {
+    final state = isError
+        ? _buildErrorState(context, stateKey: myRewNSErrorKey)
+        : Semantics(
+            key: myRewNSLoadingKey,
+            container: true,
+            liveRegion: true,
+            label: FFLocalizations.of(context).getVariableText(
+              ruText: 'Загрузка отзывов преподавателя',
+              enText: 'Loading teacher reviews',
+            ),
+            child: const ExcludeSemantics(child: AppLoadingIndicator()),
+        );
+              return Scaffold(
+                backgroundColor:
+                    FlutterFlowTheme.of(context).secondaryBackground,
+                body: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsetsDirectional.only(
+              top: ExpatlioDesign.space112,
+                    ),
+            child: Center(
+                  child: state),
+                  ),
+          BasicPageHeader(
+            title: FFLocalizations.of(context).getText(
+              '6on93f38' /* Мои отзывы */,
+            ),
+          ),
+        ],
+                ),
+              );
+            }
+
+  Widget _buildErrorState(BuildContext context, {required Key stateKey}) {
+    final title = FFLocalizations.of(context).getVariableText(
+      ruText: 'Не удалось загрузить отзывы',
+      enText: 'Could not load reviews',
+    );
+    final message = FFLocalizations.of(context).getVariableText(
+      ruText: 'Проверьте подключение и попробуйте еще раз.',
+      enText: 'Check your connection and try again.',
+    );
+    return UxErrorState(
+      stateKey: stateKey,
+      title: title,
+      message: message,
+      retryLabel: FFLocalizations.of(context).getVariableText(
+        ruText: 'Повторить',
+        enText: 'Retry',
+      ),
+      retrySemanticsLabel: FFLocalizations.of(context).getVariableText(
+        ruText: 'Повторить загрузку отзывов преподавателя',
+        enText: 'Retry loading teacher reviews',
+      ),
+      retryButtonKey: myRewNSRetryButtonKey,
+      onRetry: _retryReviews,
+      showIcon: false,
+      maxWidth: 360.0,
+    );
+  }
+
+  Widget _buildWarmError(
+    BuildContext context,
+    Widget content, {
+    required bool showError,
+  }) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        content,
+        if (showError)
+          PositionedDirectional(
+            start: ExpatlioDesign.space16,
+            end: ExpatlioDesign.space16,
+            bottom: ExpatlioDesign.space16,
+            child: Material(
+              color: Colors.transparent,
+              elevation: 4.0,
+              child: _buildErrorState(
+                context,
+                stateKey: myRewNSRefreshErrorKey,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildReviewsContent(
+    BuildContext context,
+            List<ReviewsRecord> myRewNSReviewsRecordList,
+  ) {
+    final teacherDocument = _lastAuthorizedOwnerDocument;
+    final totalReviews =
+        teacherDocument?.rating.totalReviews ?? myRewNSReviewsRecordList.length;
+
+    double percentForRating(int rating) {
+      if (totalReviews <= 0) {
+        return 0.0;
+      }
+      final count =
+          myRewNSReviewsRecordList.where((review) => review.rating == rating);
+      return (count.length / totalReviews).clamp(0.0, 1.0).toDouble();
+    }
 
             return GestureDetector(
               onTap: () {
@@ -150,7 +752,7 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                       AuthUserStreamWidget(
                                         builder: (context) => Text(
                                           valueOrDefault<String>(
-                                            currentUserDocument?.rating.average
+                                    teacherDocument?.rating.average
                                                 .toString(),
                                             '0',
                                           ),
@@ -187,7 +789,7 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                             initialRating:
                                                 _model.ratingBarValue ??=
                                                     valueOrDefault<double>(
-                                              currentUserDocument
+                                      teacherDocument
                                                   ?.rating.average,
                                               0.0,
                                             ),
@@ -212,7 +814,7 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                           builder: (context) => Text(
                                             functions.getReviewString(
                                                 valueOrDefault<String>(
-                                              currentUserDocument
+                                      teacherDocument
                                                   ?.rating.totalReviews
                                                   .toString(),
                                               '0',
@@ -283,16 +885,8 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                 child: AuthUserStreamWidget(
                                                   builder: (context) =>
                                                       LinearPercentIndicator(
-                                                    percent:
-                                                        myRewNSReviewsRecordList
-                                                                .where((e) =>
-                                                                    e.rating ==
-                                                                    5)
-                                                                .toList()
-                                                                .length /
-                                                            currentUserDocument!
-                                                                .rating
-                                                                .totalReviews,
+                                                    percent: percentForRating(
+                                                                    5),
                                                     width: 106.0,
                                                     lineHeight: 4.0,
                                                     animation: true,
@@ -384,16 +978,8 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                 child: AuthUserStreamWidget(
                                                   builder: (context) =>
                                                       LinearPercentIndicator(
-                                                    percent:
-                                                        myRewNSReviewsRecordList
-                                                                .where((e) =>
-                                                                    e.rating ==
-                                                                    4)
-                                                                .toList()
-                                                                .length /
-                                                            currentUserDocument!
-                                                                .rating
-                                                                .totalReviews,
+                                                    percent: percentForRating(
+                                                                    4),
                                                     width: 106.0,
                                                     lineHeight: 4.0,
                                                     animation: true,
@@ -487,16 +1073,8 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                 child: AuthUserStreamWidget(
                                                   builder: (context) =>
                                                       LinearPercentIndicator(
-                                                    percent:
-                                                        myRewNSReviewsRecordList
-                                                                .where((e) =>
-                                                                    e.rating ==
-                                                                    3)
-                                                                .toList()
-                                                                .length /
-                                                            currentUserDocument!
-                                                                .rating
-                                                                .totalReviews,
+                                                    percent: percentForRating(
+                                                                    3),
                                                     width: 106.0,
                                                     lineHeight: 4.0,
                                                     animation: true,
@@ -585,16 +1163,8 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                 child: AuthUserStreamWidget(
                                                   builder: (context) =>
                                                       LinearPercentIndicator(
-                                                    percent:
-                                                        myRewNSReviewsRecordList
-                                                                .where((e) =>
-                                                                    e.rating ==
-                                                                    2)
-                                                                .toList()
-                                                                .length /
-                                                            currentUserDocument!
-                                                                .rating
-                                                                .totalReviews,
+                                                    percent: percentForRating(
+                                                                    2),
                                                     width: 106.0,
                                                     lineHeight: 4.0,
                                                     animation: true,
@@ -683,16 +1253,8 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                 child: AuthUserStreamWidget(
                                                   builder: (context) =>
                                                       LinearPercentIndicator(
-                                                    percent:
-                                                        myRewNSReviewsRecordList
-                                                                .where((e) =>
-                                                                    e.rating ==
-                                                                    1)
-                                                                .toList()
-                                                                .length /
-                                                            currentUserDocument!
-                                                                .rating
-                                                                .totalReviews,
+                                                    percent: percentForRating(
+                                                                    1),
                                                     width: 106.0,
                                                     lineHeight: 4.0,
                                                     animation: true,
@@ -1202,6 +1764,7 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                   }
 
                                   return ListView.separated(
+                            key: myRewNSListKey,
                                     padding: EdgeInsets.zero,
                                     primary: false,
                                     shrinkWrap: true,
@@ -1218,8 +1781,7 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                             ExpatlioDesign.space8,
                                             ExpatlioDesign.space0),
                                         child: ReviewCardWidget(
-                                          key: Key(
-                                              'Keyagz_${rewIndex}_of_${rew.length}'),
+                                          key: myRewNSReviewKey(rewItem),
                                           rewDoc: rewItem,
                                         ),
                                       );
@@ -1237,6 +1799,7 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                       ),
                     if (myRewNSReviewsRecordList.isEmpty)
                       Padding(
+                key: myRewNSEmptyKey,
                         padding: EdgeInsetsDirectional.fromSTEB(
                             ExpatlioDesign.space0,
                             ExpatlioDesign.space136,
@@ -1256,9 +1819,9 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                 ),
               ),
             );
-          },
-        );
-      },
-    );
-  }
-}
+          }
+      }
+
+Stream<String> _watchMyRewNSOwnerUids() => FirebaseAuth.instance
+    .authStateChanges()
+    .map((user) => user?.uid.trim() ?? '');

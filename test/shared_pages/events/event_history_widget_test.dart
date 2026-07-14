@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:small_talk/components/basic_page_header.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/services/event_history_repository.dart';
 import 'package:small_talk/services/event_list_date_bounds.dart';
@@ -104,6 +105,8 @@ void main() {
     initializeEventListTimeZones();
     await FFLocalizations.initialize();
   });
+
+  tearDown(EventHistoryWidget.debugClearSessionCache);
 
   testWidgets('shows loading while event history is pending', (tester) async {
     final semanticsHandle = tester.ensureSemantics();
@@ -414,6 +417,95 @@ void main() {
     expect(openedItem?.eventId, 'event-1');
   });
 
+  testWidgets(
+      'warm refresh preserves long-list scroll state through error and retry',
+      (tester) async {
+    final refreshCompleter = Completer<EventHistoryResult>();
+    final retryCompleter = Completer<EventHistoryResult>();
+    final items = List<EventHistoryItem>.generate(
+      16,
+      (index) => historyItem(
+        eventId: 'stable-event-$index',
+        title: 'Стабильное событие $index',
+      ),
+    );
+    var calls = 0;
+    addTearDown(() {
+      if (!refreshCompleter.isCompleted) {
+        refreshCompleter.complete(historyResult(items: items));
+      }
+      if (!retryCompleter.isCompleted) {
+        retryCompleter.complete(historyResult(items: items));
+      }
+    });
+
+    Future<EventHistoryResult> loader(String userId) {
+      expect(userId, 'user-a');
+      calls += 1;
+      return switch (calls) {
+        1 => Future<EventHistoryResult>.value(historyResult(items: items)),
+        2 => refreshCompleter.future,
+        _ => retryCompleter.future,
+      };
+    }
+
+    await tester.pumpWidget(
+      _buildTestApp(home: _historyWidget(historyLoader: loader)),
+    );
+    await tester.pumpAndSettle();
+
+    final scrollableFinder = find.descendant(
+      of: find.byKey(eventHistoryListKey),
+      matching: find.byType(Scrollable),
+    );
+    expect(scrollableFinder, findsOneWidget);
+    await tester.drag(
+      find.byKey(eventHistoryListKey),
+      const Offset(0.0, -700.0),
+    );
+    await tester.pumpAndSettle();
+
+    final stableScrollableState =
+        tester.state<ScrollableState>(scrollableFinder);
+    final stableOffset = stableScrollableState.position.pixels;
+    expect(stableOffset, greaterThan(0.0));
+
+    void expectStableScroll() {
+      final currentState = tester.state<ScrollableState>(scrollableFinder);
+      expect(currentState, same(stableScrollableState));
+      expect(currentState.position.pixels, closeTo(stableOffset, 0.01));
+    }
+
+    await tester.tap(find.byKey(eventHistoryRefreshButtonKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
+
+    expect(calls, 2);
+    expect(find.byKey(eventHistoryRefreshingKey), findsOneWidget);
+    expectStableScroll();
+
+    refreshCompleter.completeError(StateError('refresh failed'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventHistoryErrorKey), findsOneWidget);
+    expectStableScroll();
+
+    await tester.tap(find.byKey(eventHistoryErrorRetryButtonKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
+
+    expect(calls, 3);
+    expect(find.byKey(eventHistoryRefreshingKey), findsOneWidget);
+    expectStableScroll();
+
+    retryCompleter.complete(historyResult(items: items));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventHistoryRefreshingKey), findsNothing);
+    expect(find.byKey(eventHistoryErrorKey), findsNothing);
+    expectStableScroll();
+  });
+
   testWidgets('keeps previous empty history visible when refresh fails',
       (tester) async {
     final refreshCompleter = Completer<EventHistoryResult>();
@@ -481,6 +573,87 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(eventHistoryEmptyKey), findsOneWidget);
     expect(find.byKey(eventHistoryRefreshingKey), findsNothing);
+  });
+
+  testWidgets(
+      'same-owner remount restores data and empty through pending and error',
+      (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+    try {
+      for (final cachedEmpty in <bool>[false, true]) {
+        EventHistoryWidget.debugClearSessionCache();
+        final ownerUid = 'remount-${cachedEmpty ? 'empty' : 'data'}';
+        final cachedItems = cachedEmpty
+            ? const <EventHistoryItem>[]
+            : <EventHistoryItem>[
+                historyItem(
+                  eventId: 'cached-remount-event',
+                  title: 'Кэшированное событие',
+                ),
+              ];
+
+        await tester.pumpWidget(
+          _buildTestApp(
+            home: _historyWidget(
+              historyLoader: (_) async => historyResult(items: cachedItems),
+              initialUserId: ownerUid,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final contentFinder = cachedEmpty
+            ? find.byKey(eventHistoryEmptyKey)
+            : find.byKey(eventHistoryItemKey('cached-remount-event'));
+        final initialContentRect = tester.getRect(contentFinder);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+
+        final reconnectCompleter = Completer<EventHistoryResult>();
+        await tester.pumpWidget(
+          _buildTestApp(
+            home: _historyWidget(
+              historyLoader: (_) => reconnectCompleter.future,
+              initialUserId: ownerUid,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        expect(contentFinder, findsOneWidget);
+        expect(tester.getRect(contentFinder), initialContentRect);
+        expect(find.byKey(eventHistoryRefreshingKey), findsOneWidget);
+        expect(find.byKey(eventHistoryLoadingKey), findsNothing);
+        expect(find.byKey(eventHistoryErrorKey), findsNothing);
+        final refreshingSemantics = tester.getSemantics(
+          find.byKey(eventHistoryRefreshingKey),
+        );
+        expect(refreshingSemantics.label, 'Обновление истории событий');
+        expect(
+          refreshingSemantics.getSemanticsData().flagsCollection.isLiveRegion,
+          isTrue,
+        );
+        expect(
+          tester.getRect(find.byKey(eventHistoryRefreshingKey)).top,
+          greaterThanOrEqualTo(BasicPageHeader.height),
+        );
+
+        reconnectCompleter.completeError(StateError('remount failed'));
+        await tester.pumpAndSettle();
+
+        expect(contentFinder, findsOneWidget);
+        expect(tester.getRect(contentFinder), initialContentRect);
+        expect(find.byKey(eventHistoryErrorKey), findsOneWidget);
+        expect(find.byKey(eventHistoryErrorRetryButtonKey), findsOneWidget);
+        expect(find.byKey(eventHistoryLoadingKey), findsNothing);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+      }
+    } finally {
+      semanticsHandle.dispose();
+    }
   });
 
   testWidgets('auth UID clears loaded A while B is pending and on logout',
@@ -689,6 +862,81 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
       unawaited(authUidController.close());
     }
+  });
+
+  testWidgets('raw B to A clears cached A and rejects its stale action',
+      (tester) async {
+    final authUidController = StreamController<String>(sync: true);
+    final a2Completer = Completer<EventHistoryResult>();
+    final openedEventIds = <String>[];
+    var aRequestCount = 0;
+    addTearDown(authUidController.close);
+    addTearDown(() {
+      if (!a2Completer.isCompleted) {
+        a2Completer.complete(historyResult(items: const []));
+      }
+    });
+
+    Future<EventHistoryResult> loader(String ownerUid) {
+      if (ownerUid == 'user-b') {
+        return Completer<EventHistoryResult>().future;
+      }
+      aRequestCount += 1;
+      if (aRequestCount == 1) {
+        return Future<EventHistoryResult>.value(
+          historyResult(
+            items: <EventHistoryItem>[
+              historyItem(
+                eventId: 'cached-event-a1',
+                title: 'Кэшированное событие A1',
+              ),
+            ],
+          ),
+        );
+      }
+      return a2Completer.future;
+    }
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: _historyWidget(
+          historyLoader: loader,
+          authUidStream: authUidController.stream,
+          eventOpener: (_, item) => openedEventIds.add(item.eventId),
+        ),
+      ),
+    );
+    authUidController.add('user-a');
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.text('Кэшированное событие A1'), findsOneWidget);
+
+    authUidController.add('user-b');
+    authUidController.add('user-a');
+    await tester.tap(find.byKey(eventHistoryItemKey('cached-event-a1')));
+    await tester.pump();
+
+    expect(openedEventIds, isEmpty);
+    expect(aRequestCount, 2);
+    expect(find.text('Кэшированное событие A1'), findsNothing);
+    expect(find.byKey(eventHistoryLoadingKey), findsOneWidget);
+    expect(find.byKey(eventHistoryRefreshingKey), findsNothing);
+
+    a2Completer.complete(
+      historyResult(
+        items: <EventHistoryItem>[
+          historyItem(
+            eventId: 'current-event-a2',
+            title: 'Актуальное событие A2',
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Актуальное событие A2'), findsOneWidget);
+
+    await tester.tap(find.byKey(eventHistoryItemKey('current-event-a2')));
+    expect(openedEventIds, <String>['current-event-a2']);
   });
 
   testWidgets(

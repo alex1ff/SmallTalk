@@ -9,6 +9,9 @@ import '/flutter_flow/flutter_flow_util.dart';
 import '/services/event_history_repository.dart';
 import '/services/event_level_helper.dart';
 import '/services/event_list_date_bounds.dart';
+import '/services/ux_loading_state.dart';
+import '/services/ux_session_cache_lifecycle.dart';
+import '/services/ux_session_loaded_result_cache.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/shared_pages/events/event_detail_widget.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -62,6 +65,40 @@ class EventHistoryWidget extends StatefulWidget {
 
   static String routeName = 'eventHistory';
   static String routePath = '/profile/events';
+  static final UxSessionLoadedResultCache<EventHistoryResult> _historyCache =
+      UxSessionLoadedResultCache<EventHistoryResult>();
+  static int _sessionCacheGeneration = 0;
+
+  static Object _cacheKey(String ownerUid) => ['eventHistory', ownerUid];
+
+  static void _ensureSessionCacheLifecycleRegistered() {
+    UxSessionCacheLifecycle.register(debugClearSessionCache);
+  }
+
+  static EventHistoryResult? _cachedHistory(String ownerUid) =>
+      _historyCache.read(_cacheKey(ownerUid))?.data;
+
+  static void _cacheHistory(
+    String ownerUid,
+    EventHistoryResult result, {
+    required int expectedGeneration,
+  }) {
+    if (expectedGeneration != _sessionCacheGeneration) {
+      return;
+    }
+    _historyCache.write(
+      UxLoadedResult<EventHistoryResult>.data(
+        dataKey: _cacheKey(ownerUid),
+        data: result,
+      ),
+    );
+  }
+
+  @visibleForTesting
+  static void debugClearSessionCache() {
+    _sessionCacheGeneration += 1;
+    _historyCache.clear();
+  }
 
   final EventHistoryLoader? historyLoader;
   final EventHistoryEventOpener? eventOpener;
@@ -81,6 +118,7 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
   Object? _historyError;
   late Stream<_EventHistoryAuthEmission> _authSessionStream;
   String _latestAuthStreamUserId = '';
+  String? _lastObservedSessionCacheOwnerUid;
   int _latestAuthSessionEpoch = 0;
   String _historyOwnerUserId = '';
   int _historyOwnerEpoch = 0;
@@ -89,7 +127,11 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
   @override
   void initState() {
     super.initState();
-    _latestAuthStreamUserId = _initialHistoryOwnerUserId();
+    EventHistoryWidget._ensureSessionCacheLifecycleRegistered();
+    final initialOwnerUserId = _initialHistoryOwnerUserId();
+    _latestAuthStreamUserId = initialOwnerUserId;
+    _lastObservedSessionCacheOwnerUid =
+        initialOwnerUserId.isEmpty ? null : initialOwnerUserId;
     _authSessionStream = _trackAuthSessions(
       widget.authUidStream ?? _watchEventHistoryOwnerIds(),
     );
@@ -136,10 +178,19 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
   ) {
     return authUidStream.map((rawUserId) {
       final userId = rawUserId.trim();
+      _observeSessionCacheOwner(userId);
       _latestAuthStreamUserId = userId;
       final epoch = ++_latestAuthSessionEpoch;
       return _EventHistoryAuthEmission(userId: userId, epoch: epoch);
     });
+  }
+
+  void _observeSessionCacheOwner(String ownerUserId) {
+    final previousOwnerUserId = _lastObservedSessionCacheOwnerUid;
+    if (previousOwnerUserId != null && previousOwnerUserId != ownerUserId) {
+      EventHistoryWidget.debugClearSessionCache();
+    }
+    _lastObservedSessionCacheOwnerUid = ownerUserId;
   }
 
   _EventHistoryAuthEmission _initialAuthEmission() => _EventHistoryAuthEmission(
@@ -155,6 +206,7 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
       return streamOwnerUserId;
     }
     final directOwnerUserId = _directAuthUid();
+    _observeSessionCacheOwner(directOwnerUserId);
     return streamOwnerUserId == directOwnerUserId ? directOwnerUserId : '';
   }
 
@@ -164,19 +216,26 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
         _latestAuthSessionEpoch != ownerEpoch) {
       return false;
     }
-    return !_hasIndependentDirectAuthUid || _directAuthUid() == ownerUserId;
+    if (!_hasIndependentDirectAuthUid) {
+      return true;
+    }
+    final directOwnerUserId = _directAuthUid();
+    _observeSessionCacheOwner(directOwnerUserId);
+    return directOwnerUserId == ownerUserId;
   }
 
   bool _requestIsCurrent(
     int requestId,
     String ownerUserId,
     int ownerEpoch,
+    int cacheGeneration,
   ) =>
       mounted &&
       requestId == _historyRequestSerial &&
       ownerUserId == _historyOwnerUserId &&
       ownerEpoch == _historyOwnerEpoch &&
-      ownerEpoch == _latestAuthSessionEpoch;
+      ownerEpoch == _latestAuthSessionEpoch &&
+      cacheGeneration == EventHistoryWidget._sessionCacheGeneration;
 
   void _invalidateForAuthBoundaryMismatch() {
     if (!mounted) {
@@ -202,10 +261,13 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
   }
 
   void _resetHistoryStateForOwner(String ownerUserId, int ownerEpoch) {
+    final cachedResult = ownerUserId.isEmpty
+        ? null
+        : EventHistoryWidget._cachedHistory(ownerUserId);
     _historyOwnerUserId = ownerUserId;
     _historyOwnerEpoch = ownerEpoch;
-    _lastLoadedResult = null;
-    _hasAuthoritativeResult = false;
+    _lastLoadedResult = cachedResult;
+    _hasAuthoritativeResult = cachedResult != null;
     _historyError = null;
     _historyRequestSerial += 1;
     _historyFuture = ownerUserId.isEmpty
@@ -223,6 +285,7 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
   }) {
     final effectiveOwnerUserId = ownerUserId ?? _historyOwnerUserId;
     final effectiveOwnerEpoch = ownerEpoch ?? _historyOwnerEpoch;
+    final cacheGeneration = EventHistoryWidget._sessionCacheGeneration;
     final requestId = ++_historyRequestSerial;
     if (deferred) {
       return Future<EventHistoryResult>.delayed(
@@ -231,6 +294,7 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
           requestId,
           effectiveOwnerUserId,
           effectiveOwnerEpoch,
+          cacheGeneration,
         ),
       );
     }
@@ -238,6 +302,7 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
       requestId,
       effectiveOwnerUserId,
       effectiveOwnerEpoch,
+      cacheGeneration,
     );
   }
 
@@ -245,6 +310,7 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
     int requestId,
     String ownerUserId,
     int ownerEpoch,
+    int cacheGeneration,
   ) async {
     final loader = widget.historyLoader;
     try {
@@ -253,22 +319,42 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
           : await EventHistoryRepository.loadEventHistory(
               limit: eventHistoryMaxLimit,
             );
-      if (!_requestIsCurrent(requestId, ownerUserId, ownerEpoch)) {
+      if (!_requestIsCurrent(
+        requestId,
+        ownerUserId,
+        ownerEpoch,
+        cacheGeneration,
+      )) {
         throw const _StaleEventHistoryRequest();
       }
       if (!_authBoundaryMatches(ownerUserId, ownerEpoch)) {
         _invalidateForAuthBoundaryMismatch();
         throw const _StaleEventHistoryRequest();
       }
+      final normalizedResult = EventHistoryResult(
+        items: List<EventHistoryItem>.unmodifiable(result.items),
+        limit: result.limit,
+        generatedAt: result.generatedAt,
+      );
       _historyError = null;
-      _lastLoadedResult = result;
+      _lastLoadedResult = normalizedResult;
       _hasAuthoritativeResult = true;
-      return result;
+      EventHistoryWidget._cacheHistory(
+        ownerUserId,
+        normalizedResult,
+        expectedGeneration: cacheGeneration,
+      );
+      return normalizedResult;
     } catch (error) {
       if (error is _StaleEventHistoryRequest) {
         rethrow;
       }
-      if (!_requestIsCurrent(requestId, ownerUserId, ownerEpoch)) {
+      if (!_requestIsCurrent(
+        requestId,
+        ownerUserId,
+        ownerEpoch,
+        cacheGeneration,
+      )) {
         throw const _StaleEventHistoryRequest();
       }
       if (!_authBoundaryMatches(ownerUserId, ownerEpoch)) {
@@ -368,7 +454,9 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
     }
 
     return FutureBuilder<EventHistoryResult>(
-      key: ObjectKey(historyFuture),
+      key: ValueKey<(String, int)>(
+        (historyOwnerUserId, historyOwnerEpoch),
+      ),
       future: historyFuture,
       builder: (context, snapshot) {
         if (snapshot.error is _StaleEventHistoryRequest) {
@@ -384,8 +472,11 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
                     items,
                     ownerUserId: historyOwnerUserId,
                     ownerEpoch: historyOwnerEpoch,
+                    refreshing: true,
                   );
-            return _buildRefreshingHistory(context, content);
+            return items.isEmpty
+                ? _buildRefreshingHistory(context, content)
+                : content;
           }
           return _buildLoadingState(context);
         }
@@ -455,33 +546,37 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
   }
 
   Widget _buildRefreshingHistory(BuildContext context, Widget content) {
-    final label = FFLocalizations.of(context).getVariableText(
-      ruText: 'Обновление истории событий',
-      enText: 'Refreshing event history',
-    );
     return Stack(
       fit: StackFit.expand,
       children: [
         content,
-        PositionedDirectional(
-          start: ExpatlioDesign.pagePadding,
-          end: ExpatlioDesign.pagePadding,
-          top: MediaQuery.paddingOf(context).top + BasicPageHeader.height,
-          child: Semantics(
-            key: eventHistoryRefreshingKey,
-            container: true,
-            liveRegion: true,
-            label: label,
-            child: const ExcludeSemantics(
-              child: LinearProgressIndicator(
-                minHeight: 2.0,
-                color: ExpatlioDesign.primary,
-                backgroundColor: Colors.transparent,
-              ),
-            ),
+        _buildHistoryRefreshingOverlay(context),
+      ],
+    );
+  }
+
+  Widget _buildHistoryRefreshingOverlay(BuildContext context) {
+    final label = FFLocalizations.of(context).getVariableText(
+      ruText: 'Обновление истории событий',
+      enText: 'Refreshing event history',
+    );
+    return PositionedDirectional(
+      start: ExpatlioDesign.pagePadding,
+      end: ExpatlioDesign.pagePadding,
+      top: MediaQuery.paddingOf(context).top + BasicPageHeader.height,
+      child: Semantics(
+        key: eventHistoryRefreshingKey,
+        container: true,
+        liveRegion: true,
+        label: label,
+        child: const ExcludeSemantics(
+          child: LinearProgressIndicator(
+            minHeight: 2.0,
+            color: ExpatlioDesign.primary,
+            backgroundColor: Colors.transparent,
           ),
         ),
-      ],
+      ),
     );
   }
 
@@ -522,6 +617,7 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
     required String ownerUserId,
     required int ownerEpoch,
     Widget? leading,
+    bool refreshing = false,
   }) {
     final contentTopPadding = MediaQuery.paddingOf(context).top +
         BasicPageHeader.height +
@@ -550,15 +646,12 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
       },
     );
 
-    if (leading == null) {
-      return list;
-    }
-
     return Stack(
       fit: StackFit.expand,
       children: [
         list,
-        _buildHistoryErrorOverlay(context, leading),
+        if (leading != null) _buildHistoryErrorOverlay(context, leading),
+        if (refreshing) _buildHistoryRefreshingOverlay(context),
       ],
     );
   }

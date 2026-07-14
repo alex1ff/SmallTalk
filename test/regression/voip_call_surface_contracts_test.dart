@@ -2119,18 +2119,30 @@ void main() {
       );
       expect(
         nativeSpeakerSource,
-        contains('Future<bool> _ensureDirectCallStatus(String targetTutorId)'),
+        contains('Future<bool> _ensureDirectCallStatus({'),
       );
       expect(
-          nativeSpeakerSource, contains('canStartCall(currentUserDocument)'));
-      final directStatusIndex = nativeSpeakerSource
-          .indexOf('await _ensureDirectCallStatus(targetTutorId)');
+        nativeSpeakerSource,
+        contains('required DocumentReference targetReference'),
+      );
+      expect(
+        nativeSpeakerSource,
+        contains('canStartCall(_currentOwnerDocument(ownerUid))'),
+      );
+      final directStatusIndex =
+          nativeSpeakerSource.indexOf('if (!await _ensureDirectCallStatus(');
+      final directGuardIndex = nativeSpeakerSource.indexOf(
+        'if (!_actionContextIsCurrent(',
+        directStatusIndex,
+      );
       final directMediaPermissionIndex = nativeSpeakerSource.indexOf(
-        'await ensureCameraAndMicrophonePermissions()',
+        'widget.mediaPermissionRequester ??',
         directStatusIndex,
       );
       expect(directStatusIndex, greaterThanOrEqualTo(0));
+      expect(directGuardIndex, greaterThan(directStatusIndex));
       expect(directMediaPermissionIndex, greaterThan(directStatusIndex));
+      expect(directMediaPermissionIndex, greaterThan(directGuardIndex));
       expect(
         nativeSpeakerSource,
         isNot(contains('UsersRecord.getDocument(widget.nsUserDocRef!)')),

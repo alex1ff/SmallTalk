@@ -98,6 +98,14 @@ const ValueKey<String> favoriteFriendsInlineErrorKey =
 const ValueKey<String> favoriteFriendsRetryButtonKey =
     ValueKey<String>('favorite_friends_retry_button');
 
+bool favoriteRequiredSourceIsRefreshing({
+  required ConnectionState connectionState,
+  required bool hasError,
+  required bool isAuthoritative,
+}) =>
+    !hasError &&
+    (connectionState == ConnectionState.waiting || !isAuthoritative);
+
 bool favoriteUserDocumentMatchesUid({
   required String currentUid,
   required String? documentOwnerUid,
@@ -268,23 +276,32 @@ class _FavoriteChatSourceBuilderState<T extends Object>
       stream: _effectiveStream,
       initialData: widget.cachedState,
       builder: (context, snapshot) {
-        var displaySnapshot = snapshot;
-        if (snapshot.hasData && snapshot.data != null) {
-          final incomingState = snapshot.data!;
+        final sourceSnapshot =
+            snapshot.connectionState == ConnectionState.waiting &&
+                    snapshot.hasError &&
+                    _lastSuccessfulState != null
+                ? AsyncSnapshot<T>.withData(
+                    ConnectionState.waiting,
+                    _lastSuccessfulState!,
+                  )
+                : snapshot;
+        var displaySnapshot = sourceSnapshot;
+        if (sourceSnapshot.hasData && sourceSnapshot.data != null) {
+          final incomingState = sourceSnapshot.data!;
           _lastSuccessfulState = widget.stateReducer?.call(
                 _lastSuccessfulState,
                 incomingState,
               ) ??
               incomingState;
           displaySnapshot = AsyncSnapshot<T>.withData(
-            snapshot.connectionState,
+            sourceSnapshot.connectionState,
             _lastSuccessfulState!,
           );
         }
 
         return widget.builder(
           context,
-          snapshot,
+          sourceSnapshot,
           resolveFavoriteChatSourceSnapshot(
             snapshot: displaySnapshot,
             cachedState: _lastSuccessfulState ?? widget.cachedState,

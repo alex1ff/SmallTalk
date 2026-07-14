@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:small_talk/backend/backend.dart';
 import 'package:small_talk/components/empty/empty_widget.dart';
 import 'package:small_talk/components/ux_error_state.dart';
+import 'package:small_talk/components/ux_refreshing_indicator_overlay.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/services/event_group_chat_repository.dart';
 import 'package:small_talk/services/ux_session_cache_lifecycle.dart';
@@ -350,6 +351,289 @@ Future<void> _selectFriendsTab(WidgetTester tester) async {
   await tester.pump();
 }
 
+enum _FavoriteRequiredSource {
+  friends,
+  conversations,
+  eventChats,
+}
+
+Future<void> _emitAuthoritativeRequiredSources(
+  WidgetTester tester,
+  _FavoriteSources sources, {
+  required List<DocumentReference> friends,
+  required List<ConversationsRecord> conversations,
+  List<EventChatsRecord> eventChats = const <EventChatsRecord>[],
+}) async {
+  await _emitFriends(
+    tester,
+    sources,
+    'user-a',
+    _friendsState(
+      ownerUid: 'user-a',
+      friends: friends,
+      authoritative: true,
+    ),
+  );
+  await _emitConversations(
+    tester,
+    sources,
+    'user-a',
+    conversations,
+  );
+  await _emitEventChats(
+    tester,
+    sources,
+    'user-a',
+    eventChats: eventChats,
+  );
+}
+
+Future<void> _emitRequiredSourceRefresh(
+  WidgetTester tester,
+  _FavoriteSources sources,
+  _FavoriteRequiredSource source, {
+  required List<DocumentReference> friends,
+  required List<ConversationsRecord> conversations,
+  List<EventChatsRecord> eventChats = const <EventChatsRecord>[],
+}) async {
+  switch (source) {
+    case _FavoriteRequiredSource.friends:
+      await _emitFriends(
+        tester,
+        sources,
+        'user-a',
+        _friendsState(
+          ownerUid: 'user-a',
+          friends: friends,
+          authoritative: false,
+        ),
+      );
+      return;
+    case _FavoriteRequiredSource.conversations:
+      await _emitConversations(
+        tester,
+        sources,
+        'user-a',
+        conversations,
+        authoritative: false,
+      );
+      return;
+    case _FavoriteRequiredSource.eventChats:
+      await _emitEventChats(
+        tester,
+        sources,
+        'user-a',
+        eventChats: eventChats,
+        authoritative: false,
+      );
+      return;
+  }
+}
+
+Future<void> _emitRequiredSourceError(
+  WidgetTester tester,
+  _FavoriteSources sources,
+  _FavoriteRequiredSource source,
+) async {
+  switch (source) {
+    case _FavoriteRequiredSource.friends:
+      sources.friendsFor('user-a').addError(StateError('friends failed'));
+      break;
+    case _FavoriteRequiredSource.conversations:
+      sources
+          .conversationsFor('user-a')
+          .addError(StateError('conversations failed'));
+      break;
+    case _FavoriteRequiredSource.eventChats:
+      sources
+          .eventChatsFor('user-a')
+          .addError(StateError('event chats failed'));
+      break;
+  }
+  await tester.pump();
+}
+
+UxRefreshingIndicatorOverlay _refreshOverlay(
+  WidgetTester tester,
+  Key key,
+) =>
+    tester.widget<UxRefreshingIndicatorOverlay>(find.byKey(key));
+
+Future<void> _runRequiredSourceRefreshCase(
+  WidgetTester tester, {
+  required _FavoriteRequiredSource source,
+  required bool friendsTab,
+  required bool hasRows,
+}) async {
+  final semantics = tester.ensureSemantics();
+  try {
+    final sources = _FavoriteSources();
+    final friends = friendsTab && hasRows
+        ? List<DocumentReference>.generate(
+            28,
+            (index) => UsersRecord.collection.doc(
+              'refresh-friend-${source.name}-$index',
+            ),
+          )
+        : const <DocumentReference>[];
+    final conversations = hasRows
+        ? List<ConversationsRecord>.generate(
+            28,
+            (index) => _conversation(
+              id: 'refresh-${friendsTab ? 'friends' : 'all'}-'
+                  '${source.name}-$index',
+              ownerUid: 'user-a',
+              partnerUid: friendsTab
+                  ? friends[index].id
+                  : 'refresh-partner-${source.name}-$index',
+            ),
+          )
+        : const <ConversationsRecord>[];
+    final locale = friendsTab ? const Locale('en') : const Locale('ru');
+    await _mount(tester, sources, locale: locale);
+    await _emitAuthoritativeRequiredSources(
+      tester,
+      sources,
+      friends: friends,
+      conversations: conversations,
+    );
+    if (friendsTab) {
+      await tester.tap(find.text('Friends'));
+      await tester.pump();
+    }
+
+    final overlayKey = friendsTab
+        ? favoriteFriendsRefreshingIndicatorKey
+        : favoriteMessagesRefreshingIndicatorKey;
+    final otherOverlayKey = friendsTab
+        ? favoriteMessagesRefreshingIndicatorKey
+        : favoriteFriendsRefreshingIndicatorKey;
+    final inlineErrorKey = friendsTab
+        ? favoriteFriendsInlineErrorKey
+        : favoriteMessagesInlineErrorKey;
+    final retryButtonKey = friendsTab
+        ? favoriteFriendsRetryButtonKey
+        : favoriteMessagesRetryButtonKey;
+    final refreshLabel =
+        friendsTab ? 'Refreshing chats with friends' : 'Обновление сообщений';
+    final refreshIndicator = find.descendant(
+      of: find.byKey(overlayKey),
+      matching: find.byType(UxRefreshingIndicatorPill),
+    );
+
+    expect(find.byKey(overlayKey), findsOneWidget);
+    expect(find.byKey(otherOverlayKey), findsNothing);
+    expect(_refreshOverlay(tester, overlayKey).isRefreshing, isFalse);
+    expect(refreshIndicator, findsNothing);
+
+    late final Finder geometryTarget;
+    Finder? scrollable;
+    double? scrollOffset;
+    if (hasRows) {
+      final list = friendsTab
+          ? find.descendant(
+              of: find.byKey(favoriteFriendsDataKey),
+              matching: find.byType(ListView),
+            )
+          : find.byKey(favoriteMessagesListKey);
+      scrollable = find.descendant(
+        of: list,
+        matching: find.byType(Scrollable),
+      );
+      await tester.drag(list, const Offset(0, -420));
+      await tester.pumpAndSettle();
+      scrollOffset = tester.state<ScrollableState>(scrollable).position.pixels;
+      expect(scrollOffset, greaterThan(0));
+      geometryTarget = conversations
+          .map((conversation) => _conversationRow(conversation.reference.id))
+          .firstWhere((row) => row.evaluate().isNotEmpty);
+      expect(geometryTarget, findsOneWidget);
+    } else {
+      geometryTarget = find.byType(EmptyWidget);
+      expect(geometryTarget, findsOneWidget);
+    }
+    final initialRect = tester.getRect(geometryTarget);
+
+    void expectDisplayUnchanged() {
+      expect(tester.getRect(geometryTarget), initialRect);
+      if (scrollable != null) {
+        expect(
+          tester.state<ScrollableState>(scrollable).position.pixels,
+          scrollOffset,
+        );
+      }
+    }
+
+    await _emitRequiredSourceRefresh(
+      tester,
+      sources,
+      source,
+      friends: friends,
+      conversations: conversations,
+    );
+
+    expect(_refreshOverlay(tester, overlayKey).isRefreshing, isTrue);
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(refreshIndicator, findsOneWidget);
+    final refreshSemantics = tester.getSemantics(refreshIndicator);
+    expect(refreshSemantics.label, contains(refreshLabel));
+    expect(refreshSemantics.flagsCollection.isLiveRegion, isTrue);
+    expect(find.byKey(inlineErrorKey), findsNothing);
+    expectDisplayUnchanged();
+
+    await _emitRequiredSourceError(tester, sources, source);
+
+    expect(_refreshOverlay(tester, overlayKey).isRefreshing, isFalse);
+    expect(refreshIndicator, findsNothing);
+    expect(find.byKey(inlineErrorKey), findsOneWidget);
+    expectDisplayUnchanged();
+
+    await tester.tap(find.byKey(retryButtonKey));
+    await tester.pump();
+
+    expect(find.byKey(inlineErrorKey), findsNothing);
+    expect(_refreshOverlay(tester, overlayKey).isRefreshing, isTrue);
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(refreshIndicator, findsOneWidget);
+    expect(
+      tester.getSemantics(refreshIndicator).label,
+      contains(refreshLabel),
+    );
+    expect(
+      tester.getSemantics(refreshIndicator).flagsCollection.isLiveRegion,
+      isTrue,
+    );
+    expectDisplayUnchanged();
+
+    await _emitFriends(
+      tester,
+      sources,
+      'user-a',
+      _friendsState(
+        ownerUid: 'user-a',
+        friends: friends,
+        authoritative: true,
+      ),
+    );
+    await _emitConversations(
+      tester,
+      sources,
+      'user-a',
+      conversations,
+    );
+    if (!friendsTab) {
+      await _emitEventChats(tester, sources, 'user-a');
+    }
+
+    expect(_refreshOverlay(tester, overlayKey).isRefreshing, isFalse);
+    expect(refreshIndicator, findsNothing);
+    expect(find.byKey(inlineErrorKey), findsNothing);
+    expectDisplayUnchanged();
+  } finally {
+    semantics.dispose();
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -359,6 +643,126 @@ void main() {
     await Firebase.initializeApp();
     FirebaseAuthPlatform.instance = _TestFirebaseAuthPlatform();
     await FFLocalizations.initialize();
+  });
+
+  for (final source in _FavoriteRequiredSource.values) {
+    for (final hasRows in <bool>[true, false]) {
+      testWidgets(
+        'All ${source.name} ${hasRows ? 'data' : 'empty'} '
+        'refresh error retry success keeps display',
+        (tester) => _runRequiredSourceRefreshCase(
+          tester,
+          source: source,
+          friendsTab: false,
+          hasRows: hasRows,
+        ),
+      );
+    }
+  }
+
+  for (final source in <_FavoriteRequiredSource>[
+    _FavoriteRequiredSource.friends,
+    _FavoriteRequiredSource.conversations,
+  ]) {
+    for (final hasRows in <bool>[true, false]) {
+      testWidgets(
+        'Friends ${source.name} ${hasRows ? 'data' : 'empty'} '
+        'refresh error retry success keeps display',
+        (tester) => _runRequiredSourceRefreshCase(
+          tester,
+          source: source,
+          friendsTab: true,
+          hasRows: hasRows,
+        ),
+      );
+    }
+  }
+
+  testWidgets('cold sources stay initial loading without refresh semantics',
+      (tester) async {
+    final semantics = tester.ensureSemantics();
+    try {
+      final sources = _FavoriteSources();
+      await _mount(tester, sources);
+
+      expect(find.byKey(favoriteMessagesRefreshingIndicatorKey), findsNothing);
+      expect(find.bySemanticsLabel('Обновление сообщений'), findsNothing);
+
+      await _selectFriendsTab(tester);
+
+      expect(find.byKey(favoriteFriendsInitialLoadingKey), findsOneWidget);
+      expect(
+        _refreshOverlay(tester, favoriteFriendsRefreshingIndicatorKey)
+            .isRefreshing,
+        isFalse,
+      );
+      expect(
+        find.bySemanticsLabel('Обновление чатов с друзьями'),
+        findsNothing,
+      );
+    } finally {
+      semantics.dispose();
+    }
+  });
+
+  testWidgets(
+      'optional row enrichment and Friends event source do not refresh tabs',
+      (tester) async {
+    final sources = _FavoriteSources();
+    final profile = Completer<UserPublicProfilesRecord?>();
+    final preview = StreamController<EventChatMessagesLoadState>.broadcast();
+    addTearDown(preview.close);
+    final friend = UsersRecord.collection.doc('optional-refresh-friend');
+    final conversation = _conversation(
+      id: 'optional-refresh-conversation',
+      ownerUid: 'user-a',
+      partnerUid: friend.id,
+    );
+    final chat = _eventChat('optional-refresh-event');
+    await _mount(
+      tester,
+      sources,
+      profileLoader: (_) => profile.future,
+      eventLoader: (eventId) async =>
+          _event(eventId, title: 'Optional refresh event'),
+      latestMessageSource: (_, __) => preview.stream,
+    );
+    await _emitAuthoritativeRequiredSources(
+      tester,
+      sources,
+      friends: <DocumentReference>[friend],
+      conversations: <ConversationsRecord>[conversation],
+      eventChats: <EventChatsRecord>[chat],
+    );
+    await tester.pump();
+
+    expect(_conversationRow(conversation.reference.id), findsOneWidget);
+    expect(
+      _refreshOverlay(tester, favoriteMessagesRefreshingIndicatorKey)
+          .isRefreshing,
+      isFalse,
+    );
+
+    await _selectFriendsTab(tester);
+    expect(
+      _refreshOverlay(tester, favoriteFriendsRefreshingIndicatorKey)
+          .isRefreshing,
+      isFalse,
+    );
+
+    await _emitEventChats(
+      tester,
+      sources,
+      'user-a',
+      eventChats: <EventChatsRecord>[chat],
+      authoritative: false,
+    );
+
+    expect(
+      _refreshOverlay(tester, favoriteFriendsRefreshingIndicatorKey)
+          .isRefreshing,
+      isFalse,
+    );
   });
 
   test('chat mutation owner must match active and direct auth owners', () {
@@ -2240,8 +2644,13 @@ void main() {
 
       await tester.tap(find.byKey(favoriteFriendsRetryButtonKey));
       await tester.pump();
-      expect(find.byKey(favoriteFriendsInlineErrorKey), findsOneWidget);
+      expect(find.byKey(favoriteFriendsInlineErrorKey), findsNothing);
       expect(find.byKey(favoriteFriendsEmptyKey), findsOneWidget);
+      expect(
+        _refreshOverlay(tester, favoriteFriendsRefreshingIndicatorKey)
+            .isRefreshing,
+        isTrue,
+      );
 
       final friend = UsersRecord.collection.doc('friend-retry');
       final conversation = _conversation(
@@ -2284,6 +2693,12 @@ void main() {
 
       await tester.tap(find.byKey(favoriteFriendsRetryButtonKey));
       await tester.pump();
+      expect(find.byKey(favoriteFriendsInlineErrorKey), findsNothing);
+      expect(
+        _refreshOverlay(tester, favoriteFriendsRefreshingIndicatorKey)
+            .isRefreshing,
+        isTrue,
+      );
       expect(tester.getTopLeft(_conversationRow('retry-row')), rowTopLeft);
       expect(tester.getSize(_conversationRow('retry-row')), rowSize);
 

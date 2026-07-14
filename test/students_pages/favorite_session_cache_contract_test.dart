@@ -145,7 +145,7 @@ void main() {
       source,
       matches(
         RegExp(
-          r'if \(!ownerMetadataHasLoaded\) \{\s*'
+          r'if \(!ownerMetadataCanDisplay\) \{\s*'
           r'if \(!ownerMetadataLoadFailed\) \{\s*'
           r'return const SizedBox\.shrink\(\);',
         ),
@@ -161,7 +161,7 @@ void main() {
       ),
     );
 
-    final ownerGuardIndex = source.indexOf('if (!ownerMetadataHasLoaded)');
+    final ownerGuardIndex = source.indexOf('if (!ownerMetadataCanDisplay)');
     final loadingGuardIndex =
         source.indexOf('if (messagesInitialLoading && inboxItems.isEmpty)');
     final emptyGuardIndex =

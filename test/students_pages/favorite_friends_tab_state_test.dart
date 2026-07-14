@@ -22,6 +22,42 @@ void main() {
     expect(favoriteAuthOwnerUid(null), isEmpty);
   });
 
+  test('required source refresh includes waiting and non-authoritative states',
+      () {
+    expect(
+      favoriteRequiredSourceIsRefreshing(
+        connectionState: ConnectionState.waiting,
+        hasError: false,
+        isAuthoritative: true,
+      ),
+      isTrue,
+    );
+    expect(
+      favoriteRequiredSourceIsRefreshing(
+        connectionState: ConnectionState.active,
+        hasError: false,
+        isAuthoritative: false,
+      ),
+      isTrue,
+    );
+    expect(
+      favoriteRequiredSourceIsRefreshing(
+        connectionState: ConnectionState.active,
+        hasError: true,
+        isAuthoritative: false,
+      ),
+      isFalse,
+    );
+    expect(
+      favoriteRequiredSourceIsRefreshing(
+        connectionState: ConnectionState.active,
+        hasError: false,
+        isAuthoritative: true,
+      ),
+      isFalse,
+    );
+  });
+
   group('friends document metadata adapter', () {
     FavoriteFriendsLoadState resolve({
       bool exists = true,

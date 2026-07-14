@@ -3,8 +3,11 @@ import '/components/language_card_widget.dart';
 import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
 import '/components/button/button_widget.dart';
+import '/components/app_loading_indicator.dart';
 import '/components/empty/empty_widget.dart';
 import '/components/review_card/review_card_widget.dart';
+import '/components/ux_error_state.dart';
+import '/components/ux_refreshing_indicator_overlay.dart';
 import '/components/wrapper.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
@@ -15,7 +18,9 @@ import '/components/no_balance_widget.dart';
 import '/components/basic_page_header.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/shared_pages/chat_thread/open_chat_thread.dart';
+import '/services/reviews_load_result.dart';
 import '/services/user_match_profile.dart';
+import '/services/ux_session_cache_lifecycle.dart';
 // ─── SUBSCRIPTION REWORK ─ gating helper. Replaces balanceST < 0 check.
 import '/utils/subscription_utils.dart';
 import '/index.dart';
@@ -23,6 +28,7 @@ import 'package:auto_size_text/auto_size_text.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:ui' as ui;
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
@@ -31,15 +37,102 @@ import 'package:percent_indicator/percent_indicator.dart';
 import 'native_speaker_page_model.dart';
 export 'native_speaker_page_model.dart';
 
+const ValueKey<String> nativeSpeakerReviewsLoadingKey =
+    ValueKey<String>('native_speaker_reviews_loading');
+const ValueKey<String> nativeSpeakerReviewsEmptyKey =
+    ValueKey<String>('native_speaker_reviews_empty');
+const ValueKey<String> nativeSpeakerReviewsSectionKey =
+    ValueKey<String>('native_speaker_reviews_section');
+const ValueKey<String> nativeSpeakerReviewsListKey =
+    ValueKey<String>('native_speaker_reviews_list');
+const ValueKey<String> nativeSpeakerReviewsErrorKey =
+    ValueKey<String>('native_speaker_reviews_error');
+const ValueKey<String> nativeSpeakerReviewsRefreshErrorKey =
+    ValueKey<String>('native_speaker_reviews_refresh_error');
+const ValueKey<String> nativeSpeakerReviewsRetryButtonKey =
+    ValueKey<String>('native_speaker_reviews_retry_button');
+const ValueKey<String> nativeSpeakerReviewsRefreshingKey =
+    ValueKey<String>('native_speaker_reviews_refreshing');
+const ValueKey<String> nativeSpeakerPageScrollKey =
+    ValueKey<String>('native_speaker_page_scroll');
+const ValueKey<String> nativeSpeakerFavoriteActionKey =
+    ValueKey<String>('native_speaker_favorite_action');
+const ValueKey<String> nativeSpeakerDirectCallActionKey =
+    ValueKey<String>('native_speaker_direct_call_action');
+const ValueKey<String> nativeSpeakerStatsValueKey =
+    ValueKey<String>('native_speaker_stats_value');
+
+ValueKey<String> nativeSpeakerReviewKey(ReviewsRecord review) =>
+    ValueKey<String>('native_speaker_review_${review.reference.path}');
+ValueKey<String> nativeSpeakerRatingFilterKey(int rating) =>
+    ValueKey<String>('native_speaker_rating_filter_$rating');
+
+typedef NativeSpeakerReviewsLoader = Future<List<ReviewsRecord>> Function(
+  DocumentReference targetReference,
+);
+typedef NativeSpeakerReviewsResultLoader = Future<ReviewsLoadResult> Function(
+  DocumentReference targetReference,
+);
+typedef NativeSpeakerReviewsResultStreamFactory
+    = Stream<ReviewsLoadResult> Function(
+  DocumentReference targetReference,
+);
+typedef NativeSpeakerPublicProfileStreamFactory
+    = Stream<UserPublicProfilesRecord?> Function(
+  DocumentReference? targetReference,
+);
+typedef NativeSpeakerStatsLoader = Future<List<StatsRecord>> Function(
+  DocumentReference? targetReference,
+);
+typedef NativeSpeakerAuthUidProvider = String Function();
+typedef NativeSpeakerDirectCallStatusChecker = Future<bool> Function(
+  String targetTutorId,
+);
+typedef NativeSpeakerMediaPermissionRequester = Future<bool> Function();
+typedef NativeSpeakerDirectCallNavigator = Future<void> Function(
+  BuildContext context,
+  String targetTutorId,
+);
+
 class NativeSpeakerPageWidget extends StatefulWidget {
   const NativeSpeakerPageWidget({
     super.key,
     required this.nsUserDocRef,
     this.hideDirectCallAction = false,
+    this.reviewsLoader,
+    this.reviewsResultLoader,
+    this.reviewsResultStreamFactory,
+    this.publicProfileStreamFactory,
+    this.statsLoader,
+    this.authUidStream,
+    this.authUidProvider,
+    this.directCallStatusChecker,
+    this.mediaPermissionRequester,
+    this.directCallNavigator,
   });
 
   final DocumentReference? nsUserDocRef;
   final bool hideDirectCallAction;
+  @visibleForTesting
+  final NativeSpeakerReviewsLoader? reviewsLoader;
+  @visibleForTesting
+  final NativeSpeakerReviewsResultLoader? reviewsResultLoader;
+  @visibleForTesting
+  final NativeSpeakerReviewsResultStreamFactory? reviewsResultStreamFactory;
+  @visibleForTesting
+  final NativeSpeakerPublicProfileStreamFactory? publicProfileStreamFactory;
+  @visibleForTesting
+  final NativeSpeakerStatsLoader? statsLoader;
+  @visibleForTesting
+  final Stream<String>? authUidStream;
+  @visibleForTesting
+  final NativeSpeakerAuthUidProvider? authUidProvider;
+  @visibleForTesting
+  final NativeSpeakerDirectCallStatusChecker? directCallStatusChecker;
+  @visibleForTesting
+  final NativeSpeakerMediaPermissionRequester? mediaPermissionRequester;
+  @visibleForTesting
+  final NativeSpeakerDirectCallNavigator? directCallNavigator;
 
   static String routeName = 'NativeSpeakerPage';
   static String routePath = '/nativeSpeakerPage';
@@ -53,7 +146,19 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
   late NativeSpeakerPageModel _model;
   late Stream<UserPublicProfilesRecord?> _publicProfileStream;
   late Future<List<StatsRecord>> _statsFuture;
-  late Future<List<ReviewsRecord>> _reviewsFuture;
+
+  String _activeReviewsTargetPath = '';
+  String _boundTargetPath = '';
+  int _targetEpoch = 0;
+  int _authEpoch = 0;
+  int _authSubscriptionGeneration = 0;
+  int _reviewsRequestGeneration = 0;
+  StreamSubscription<String>? _authLifecycleSubscription;
+  StreamSubscription<ReviewsLoadResult>? _reviewsResultSubscription;
+  String? _latestAuthStreamUid;
+  List<ReviewsRecord>? _lastSuccessfulReviews;
+  Object? _reviewsError;
+  bool _reviewsLoading = false;
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
   final ScrollController _scrollController = ScrollController();
@@ -137,24 +242,416 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
   }
 
   void _bindNativeSpeakerRef(DocumentReference? targetRef) {
-    _publicProfileStream = _nativeSpeakerPublicProfileStream(targetRef);
-    _statsFuture = queryStatsRecordOnce(
-      parent: targetRef,
-      queryBuilder: (statsRecord) => statsRecord.where(
-        'isAllTime',
-        isEqualTo: true,
-      ),
-      singleRecord: true,
-    );
-    _reviewsFuture = queryReviewsRecordOnce(
-      queryBuilder: (reviewsRecord) => reviewsRecord
-          .where(
-            'toUserId',
-            isEqualTo: targetRef,
-          )
-          .orderBy('createdAt', descending: true),
-    );
+    _targetEpoch += 1;
+    _boundTargetPath = targetRef?.path ?? '';
+    _publicProfileStream =
+        widget.publicProfileStreamFactory?.call(targetRef) ??
+            _nativeSpeakerPublicProfileStream(targetRef);
+    _statsFuture = widget.statsLoader?.call(targetRef) ??
+        queryStatsRecordOnce(
+          parent: targetRef,
+          queryBuilder: (statsRecord) => statsRecord.where(
+            'isAllTime',
+            isEqualTo: true,
+          ),
+          singleRecord: true,
+        );
+    _activateReviewsTarget(targetRef);
+    _model.numMaxLineAbout = 4;
+    _model.rate = 0;
     _model.ratingBarValue = null;
+  }
+
+  Query _reviewsQuery(
+    DocumentReference targetReference,
+  ) {
+    return ReviewsRecord.collection
+        .where(
+          'toUserId',
+          isEqualTo: targetReference,
+        )
+        .orderBy('createdAt', descending: true);
+  }
+
+  ReviewsLoadResult _reviewsResultFromSnapshot(
+    QuerySnapshot snapshot,
+  ) {
+    return ReviewsLoadResult(
+      reviews: List<ReviewsRecord>.unmodifiable(
+        snapshot.docs.map(ReviewsRecord.fromSnapshot),
+      ),
+      isFromCache: snapshot.metadata.isFromCache,
+      hasPendingWrites: snapshot.metadata.hasPendingWrites,
+    );
+  }
+
+  Stream<ReviewsLoadResult> _defaultReviewsResultStream(
+    DocumentReference targetReference,
+  ) {
+    return _reviewsQuery(targetReference)
+        .snapshots(includeMetadataChanges: true)
+        .map(_reviewsResultFromSnapshot);
+  }
+
+  Stream<ReviewsLoadResult> _reviewsResultStream(
+    DocumentReference targetReference,
+  ) {
+    return widget.reviewsResultStreamFactory?.call(targetReference) ??
+        _defaultReviewsResultStream(targetReference);
+  }
+
+  bool get _usesReviewsResultStream =>
+      widget.reviewsResultStreamFactory != null ||
+      (widget.reviewsResultLoader == null && widget.reviewsLoader == null);
+
+  Future<ReviewsLoadResult> _loadReviews(
+    DocumentReference targetReference,
+  ) async {
+    final resultLoader = widget.reviewsResultLoader;
+    if (resultLoader != null) {
+      return resultLoader(targetReference);
+    }
+
+    final legacyLoader = widget.reviewsLoader;
+    if (legacyLoader != null) {
+      return ReviewsLoadResult.authoritative(
+        await legacyLoader(targetReference),
+      );
+    }
+
+    throw StateError('A reviews loader is not configured.');
+  }
+
+  Future<ReviewsLoadResult> _loadReviewsFromServer(
+    DocumentReference targetReference,
+  ) async {
+    final resultLoader = widget.reviewsResultLoader;
+    if (resultLoader != null) {
+      return resultLoader(targetReference);
+    }
+
+    final snapshot = await _reviewsQuery(targetReference).get(
+      const GetOptions(source: Source.server),
+    );
+    return _reviewsResultFromSnapshot(snapshot);
+  }
+
+  void _activateReviewsTarget(DocumentReference? targetReference) {
+    _reviewsResultSubscription?.cancel();
+    _reviewsResultSubscription = null;
+    _reviewsRequestGeneration += 1;
+    final targetPath = targetReference?.path ?? '';
+    _activeReviewsTargetPath = targetPath;
+    _lastSuccessfulReviews = targetPath.isEmpty
+        ? null
+        : NativeSpeakerPageModel.cachedReviews(targetPath);
+    _reviewsError = null;
+    _reviewsLoading = targetReference != null && targetPath.isNotEmpty;
+    if (targetReference != null && targetPath.isNotEmpty) {
+      _startReviewsLoad(targetReference, notify: false);
+    }
+  }
+
+  void _startReviewsLoad(
+    DocumentReference targetReference, {
+    required bool notify,
+    bool authoritativeFollowUp = false,
+  }) {
+    final targetPath = targetReference.path;
+    if (targetPath.isEmpty || targetPath != _activeReviewsTargetPath) {
+      return;
+    }
+
+    _reviewsResultSubscription?.cancel();
+    _reviewsResultSubscription = null;
+    final requestGeneration = ++_reviewsRequestGeneration;
+    final cacheGeneration = NativeSpeakerPageModel.sessionCacheGeneration;
+    final targetEpoch = _targetEpoch;
+    final authEpoch = _authEpoch;
+    _reviewsError = null;
+    _reviewsLoading = true;
+    if (notify && mounted) {
+      setState(() {});
+    }
+
+    if (_usesReviewsResultStream) {
+      _startReviewsResultStream(
+        targetReference: targetReference,
+        targetPath: targetPath,
+        requestGeneration: requestGeneration,
+        cacheGeneration: cacheGeneration,
+        targetEpoch: targetEpoch,
+        authEpoch: authEpoch,
+      );
+      return;
+    }
+
+    Future<ReviewsLoadResult>.sync(
+      () => authoritativeFollowUp
+          ? _loadReviewsFromServer(targetReference)
+          : _loadReviews(targetReference),
+    ).then<void>(
+      (result) {
+        if (!_reviewsRequestIsCurrent(
+          targetPath,
+          requestGeneration,
+          targetEpoch,
+          authEpoch,
+        )) {
+          return;
+        }
+
+        if (!result.isAuthoritative) {
+          final previous = _lastSuccessfulReviews;
+          final mergedReviews = mergeUnconfirmedReviews(
+            previous: previous ?? const <ReviewsRecord>[],
+            incoming: result.reviews,
+          );
+          final confirmationError = authoritativeFollowUp
+              ? StateError('Could not confirm reviews with the server.')
+              : null;
+          setState(() {
+            if (previous != null || mergedReviews.isNotEmpty) {
+              _lastSuccessfulReviews = mergedReviews;
+            }
+            _reviewsError = confirmationError;
+            _reviewsLoading = !authoritativeFollowUp;
+          });
+          if (!authoritativeFollowUp) {
+            _startReviewsLoad(
+              targetReference,
+              notify: false,
+              authoritativeFollowUp: true,
+            );
+          }
+          return;
+        }
+
+        final stableReviews =
+            List<ReviewsRecord>.unmodifiable(result.reviews);
+        NativeSpeakerPageModel.cacheReviews(
+          targetPath,
+          stableReviews,
+          expectedGeneration: cacheGeneration,
+        );
+        setState(() {
+          _lastSuccessfulReviews = stableReviews;
+          _reviewsError = null;
+          _reviewsLoading = false;
+        });
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        if (!_reviewsRequestIsCurrent(
+          targetPath,
+          requestGeneration,
+          targetEpoch,
+          authEpoch,
+        )) {
+          return;
+        }
+        setState(() {
+          _reviewsError = error;
+          _reviewsLoading = false;
+        });
+      },
+    );
+  }
+
+  void _startReviewsResultStream({
+    required DocumentReference targetReference,
+    required String targetPath,
+    required int requestGeneration,
+    required int cacheGeneration,
+    required int targetEpoch,
+    required int authEpoch,
+  }) {
+    var receivedAuthoritativeResult = false;
+    _reviewsResultSubscription = _reviewsResultStream(targetReference).listen(
+      (result) {
+        if (!_reviewsRequestIsCurrent(
+          targetPath,
+          requestGeneration,
+          targetEpoch,
+          authEpoch,
+        )) {
+          return;
+        }
+
+        if (!result.isAuthoritative) {
+          final previous = _lastSuccessfulReviews;
+          final mergedReviews = mergeUnconfirmedReviews(
+            previous: previous ?? const <ReviewsRecord>[],
+            incoming: result.reviews,
+          );
+          setState(() {
+            if (previous != null || mergedReviews.isNotEmpty) {
+              _lastSuccessfulReviews = mergedReviews;
+            }
+            _reviewsError = null;
+            _reviewsLoading = true;
+          });
+          return;
+        }
+
+        receivedAuthoritativeResult = true;
+        final stableReviews =
+            List<ReviewsRecord>.unmodifiable(result.reviews);
+        NativeSpeakerPageModel.cacheReviews(
+          targetPath,
+          stableReviews,
+          expectedGeneration: cacheGeneration,
+        );
+        setState(() {
+          _lastSuccessfulReviews = stableReviews;
+          _reviewsError = null;
+          _reviewsLoading = false;
+        });
+        _reviewsResultSubscription?.cancel();
+        _reviewsResultSubscription = null;
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        if (!_reviewsRequestIsCurrent(
+          targetPath,
+          requestGeneration,
+          targetEpoch,
+          authEpoch,
+        )) {
+          return;
+        }
+        setState(() {
+          _reviewsError = error;
+          _reviewsLoading = false;
+        });
+        _reviewsResultSubscription?.cancel();
+        _reviewsResultSubscription = null;
+      },
+      onDone: () {
+        if (receivedAuthoritativeResult ||
+            !_reviewsRequestIsCurrent(
+              targetPath,
+              requestGeneration,
+              targetEpoch,
+              authEpoch,
+            )) {
+          return;
+        }
+        setState(() {
+          _reviewsError =
+              StateError('Could not confirm reviews with the server.');
+          _reviewsLoading = false;
+        });
+        _reviewsResultSubscription = null;
+      },
+    );
+  }
+
+  bool _reviewsRequestIsCurrent(
+    String targetPath,
+    int requestGeneration,
+    int targetEpoch,
+    int authEpoch,
+  ) {
+    return mounted &&
+        targetPath == _activeReviewsTargetPath &&
+        requestGeneration == _reviewsRequestGeneration &&
+        targetEpoch == _targetEpoch &&
+        authEpoch == _authEpoch;
+  }
+
+  void _retryReviews() {
+    final targetReference = widget.nsUserDocRef;
+    if (targetReference != null) {
+      _startReviewsLoad(targetReference, notify: true);
+    }
+  }
+
+  String _directAuthUid() {
+    final providedUid = widget.authUidProvider?.call().trim();
+    if (providedUid != null) {
+      return providedUid;
+    }
+    return FirebaseAuth.instance.currentUser?.uid.trim() ?? '';
+  }
+
+  Stream<String> _defaultAuthLifecycleStream() => FirebaseAuth.instance
+      .authStateChanges()
+      .skip(1)
+      .map((user) => user?.uid.trim() ?? '');
+
+  void _subscribeToAuthLifecycle({bool invalidatePending = false}) {
+    if (invalidatePending) {
+      _authEpoch += 1;
+      _reviewsRequestGeneration += 1;
+      _latestAuthStreamUid = null;
+    }
+    final subscriptionGeneration = ++_authSubscriptionGeneration;
+    _authLifecycleSubscription?.cancel();
+    final stream = widget.authUidStream ?? _defaultAuthLifecycleStream();
+    _authLifecycleSubscription = stream.listen((uid) {
+      if (!mounted ||
+          subscriptionGeneration != _authSubscriptionGeneration) {
+        return;
+      }
+
+      final normalizedUid = uid.trim();
+      _latestAuthStreamUid = normalizedUid;
+      _authEpoch += 1;
+      UxSessionCacheLifecycle.updateAuthenticatedUser(
+        normalizedUid.isEmpty ? null : normalizedUid,
+      );
+      _reviewsRequestGeneration += 1;
+
+      final targetReference = widget.nsUserDocRef;
+      if (targetReference == null || targetReference.path.isEmpty) {
+        setState(() {
+          _reviewsError = null;
+          _reviewsLoading = false;
+        });
+        return;
+      }
+
+      _startReviewsLoad(targetReference, notify: true);
+    });
+    if (invalidatePending) {
+      final targetReference = widget.nsUserDocRef;
+      if (targetReference != null && targetReference.path.isNotEmpty) {
+        _startReviewsLoad(targetReference, notify: false);
+      }
+    }
+  }
+
+  bool _profileMatchesTarget(
+    UserPublicProfilesRecord profile,
+    DocumentReference targetReference,
+  ) {
+    final profileUserId = profile.userId.trim();
+    return profile.reference.id == targetReference.id &&
+        (profileUserId.isEmpty || profileUserId == targetReference.id);
+  }
+
+  bool _actionContextIsCurrent({
+    required DocumentReference targetReference,
+    required int targetEpoch,
+    required int authEpoch,
+    required String ownerUid,
+  }) {
+    return mounted &&
+        ownerUid.isNotEmpty &&
+        ownerUid == _directAuthUid() &&
+        ownerUid == _latestAuthStreamUid &&
+        targetReference.path == widget.nsUserDocRef?.path &&
+        targetReference.path == _boundTargetPath &&
+        targetEpoch == _targetEpoch &&
+        authEpoch == _authEpoch;
+  }
+
+  UsersRecord? _currentOwnerDocument(String ownerUid) {
+    final user = currentUserDocument;
+    if (user == null || user.reference.id != ownerUid) {
+      return null;
+    }
+    final storedUid = user.uid.trim();
+    return storedUid.isEmpty || storedUid == ownerUid ? user : null;
   }
 
   Widget _buildProfileUnavailableState() {
@@ -171,13 +668,16 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
     );
   }
 
-  DocumentReference? _conversationRefForPeer(DocumentReference? peerRef) {
-    if (currentUserUid.isEmpty || peerRef == null || peerRef.id.isEmpty) {
+  DocumentReference? _conversationRefForPeer(
+    DocumentReference? peerRef,
+    String ownerUid,
+  ) {
+    if (ownerUid.isEmpty || peerRef == null || peerRef.id.isEmpty) {
       return null;
     }
 
     return conversationReferenceForPairId(
-      canonicalConversationPairId(currentUserUid, peerRef.id),
+      canonicalConversationPairId(ownerUid, peerRef.id),
     );
   }
 
@@ -204,21 +704,32 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
     );
   }
 
-  Future<bool> _ensureDirectCallStatus(String targetTutorId) async {
+  Future<bool> _ensureDirectCallStatus({
+    required DocumentReference targetReference,
+    required int targetEpoch,
+    required int authEpoch,
+    required String ownerUid,
+  }) async {
+    final targetTutorId = targetReference.id;
+    var canStartDirectCall = false;
     try {
-      final activeLanguage =
-          resolveUserActiveConversationLanguage(currentUserDocument);
-      final payload = <String, dynamic>{
-        'targetUserId': targetTutorId,
-        if (activeLanguage != null && activeLanguage.isNotEmpty)
-          'language': activeLanguage,
-      };
-      final result = await FirebaseFunctions.instance
-          .httpsCallable('getDirectCallStatus')
-          .call(payload);
-      final statusData = _stringKeyedMap(result.data);
-      if (statusData['canStartDirectCall'] == true) {
-        return true;
+      final checker = widget.directCallStatusChecker;
+      if (checker != null) {
+        canStartDirectCall = await checker(targetTutorId);
+      } else {
+        final activeLanguage = resolveUserActiveConversationLanguage(
+          _currentOwnerDocument(ownerUid),
+        );
+        final payload = <String, dynamic>{
+          'targetUserId': targetTutorId,
+          if (activeLanguage != null && activeLanguage.isNotEmpty)
+            'language': activeLanguage,
+        };
+        final result = await FirebaseFunctions.instance
+            .httpsCallable('getDirectCallStatus')
+            .call(payload);
+        final statusData = _stringKeyedMap(result.data);
+        canStartDirectCall = statusData['canStartDirectCall'] == true;
       }
     } on FirebaseFunctionsException catch (error) {
       debugPrint(
@@ -229,6 +740,17 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
       debugPrint('NativeSpeakerPage: direct call status failed: $error');
     }
 
+    if (!_actionContextIsCurrent(
+      targetReference: targetReference,
+      targetEpoch: targetEpoch,
+      authEpoch: authEpoch,
+      ownerUid: ownerUid,
+    )) {
+      return false;
+    }
+    if (canStartDirectCall) {
+      return true;
+    }
     if (mounted) {
       _showDirectCallUnavailableSnackBar();
     }
@@ -239,15 +761,32 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
   void initState() {
     super.initState();
     _model = createModel(context, () => NativeSpeakerPageModel());
+    NativeSpeakerPageModel.ensureSessionCacheLifecycleRegistered();
+    _latestAuthStreamUid = _directAuthUid();
     _scrollController.addListener(_onScroll);
     _bindNativeSpeakerRef(widget.nsUserDocRef);
+    _subscribeToAuthLifecycle();
   }
 
   @override
   void didUpdateWidget(NativeSpeakerPageWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.nsUserDocRef?.path != widget.nsUserDocRef?.path) {
+    final bindingChanged =
+        oldWidget.nsUserDocRef?.path != widget.nsUserDocRef?.path ||
+        oldWidget.publicProfileStreamFactory !=
+            widget.publicProfileStreamFactory ||
+        oldWidget.statsLoader != widget.statsLoader;
+    if (bindingChanged) {
       _bindNativeSpeakerRef(widget.nsUserDocRef);
+    } else if ((oldWidget.reviewsLoader != widget.reviewsLoader ||
+            oldWidget.reviewsResultLoader != widget.reviewsResultLoader ||
+            oldWidget.reviewsResultStreamFactory !=
+                widget.reviewsResultStreamFactory) &&
+        widget.nsUserDocRef != null) {
+      _startReviewsLoad(widget.nsUserDocRef!, notify: false);
+    }
+    if (oldWidget.authUidStream != widget.authUidStream) {
+      _subscribeToAuthLifecycle(invalidatePending: true);
     }
   }
 
@@ -269,13 +808,24 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
       HapticFeedback.mediumImpact();
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        if (!_scrollController.hasClients) {
+          _isSnapping = false;
+          return;
+        }
         _scrollController
             .animateTo(
               snap,
               duration: Duration(milliseconds: 160),
               curve: Curves.easeOut,
             )
-            .then((_) => _isSnapping = false);
+            .then((_) {
+          if (mounted) {
+            _isSnapping = false;
+          }
+        });
       });
     } else if (_hapticFired && !_isSnapping && offset < snap - 3) {
       _hapticFired = false;
@@ -283,19 +833,34 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
       HapticFeedback.mediumImpact();
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        if (!_scrollController.hasClients) {
+          _isSnapping = false;
+          return;
+        }
         _scrollController
             .animateTo(
               0.0,
               duration: Duration(milliseconds: 160),
               curve: Curves.easeOut,
             )
-            .then((_) => _isSnapping = false);
+            .then((_) {
+          if (mounted) {
+            _isSnapping = false;
+          }
+        });
       });
     }
   }
 
   @override
   void dispose() {
+    _authSubscriptionGeneration += 1;
+    _authLifecycleSubscription?.cancel();
+    _reviewsResultSubscription?.cancel();
+    _reviewsRequestGeneration += 1;
     _scrollController.dispose();
     _model.dispose();
 
@@ -304,7 +869,10 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final targetReference = widget.nsUserDocRef;
+    final targetPath = targetReference?.path ?? '';
     return StreamBuilder<UserPublicProfilesRecord?>(
+      key: ValueKey<String>('native_speaker_profile_$targetPath'),
       stream: _publicProfileStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
@@ -325,10 +893,23 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
         }
 
         final nativeSpeakerPublicProfile = snapshot.data;
-        if (snapshot.hasError || nativeSpeakerPublicProfile == null) {
+        if (snapshot.hasError ||
+            targetReference == null ||
+            nativeSpeakerPublicProfile == null ||
+            !_profileMatchesTarget(
+              nativeSpeakerPublicProfile,
+              targetReference,
+            )) {
           return _buildProfileUnavailableState();
         }
 
+        final actionTargetEpoch = _targetEpoch;
+        final actionAuthEpoch = _authEpoch;
+        final directOwnerUid = _directAuthUid();
+        final ownerUid = directOwnerUid == _latestAuthStreamUid
+            ? directOwnerUid
+            : '';
+        final ownerDocument = _currentOwnerDocument(ownerUid);
         final hasInstructionLanguage = _hasLanguageData(
           nativeSpeakerPublicProfile.languageInstructionNS,
         );
@@ -338,14 +919,20 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
         final isVerifiedNativeSpeaker =
             _isVerifiedNativeSpeaker(nativeSpeakerPublicProfile);
         final isBlockedByStudent =
-            (currentUserDocument?.blockedUsers.toList() ?? [])
+            (ownerDocument?.blockedUsers.toList() ?? [])
                 .contains(widget.nsUserDocRef);
-        final canStartDirectCall = !widget.hideDirectCallAction &&
+        final canStartDirectCall = ownerUid.isNotEmpty &&
+            ownerDocument != null &&
+            !widget.hideDirectCallAction &&
             isVerifiedNativeSpeaker &&
             !isBlockedByStudent;
-        final conversationRef = _conversationRefForPeer(widget.nsUserDocRef);
-        final canOpenChat = widget.hideDirectCallAction &&
-            userHasFriend(currentUserDocument, widget.nsUserDocRef) &&
+        final conversationRef = _conversationRefForPeer(
+          targetReference,
+          ownerUid,
+        );
+        final canOpenChat = ownerUid.isNotEmpty &&
+            widget.hideDirectCallAction &&
+            userHasFriend(ownerDocument, targetReference) &&
             (conversationRef?.path.isNotEmpty ?? false);
 
         return GestureDetector(
@@ -359,6 +946,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
             body: Stack(
               children: [
                 CustomScrollView(
+                  key: nativeSpeakerPageScrollKey,
                   controller: _scrollController,
                   slivers: [
                     SliverPersistentHeader(
@@ -412,6 +1000,9 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                               children: [
                                 Flexible(
                                   child: FutureBuilder<List<StatsRecord>>(
+                                    key: ValueKey<String>(
+                                      'native_speaker_stats_$targetPath',
+                                    ),
                                     future: _statsFuture,
                                     builder: (context, snapshot) {
                                       if (!snapshot.hasData) {
@@ -428,10 +1019,16 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                           ),
                                         );
                                       }
-                                      List<StatsRecord>
-                                          containerStatsRecordList =
-                                          snapshot.data!;
-                                      if (snapshot.data!.isEmpty) {
+                                      final containerStatsRecordList = snapshot
+                                          .data!
+                                          .where(
+                                            (stats) =>
+                                                stats.reference.parent.parent
+                                                    ?.path ==
+                                                targetPath,
+                                          )
+                                          .toList(growable: false);
+                                      if (containerStatsRecordList.isEmpty) {
                                         return Container();
                                       }
                                       final containerStatsRecord =
@@ -439,6 +1036,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                               ? containerStatsRecordList.first
                                               : null;
                                       return Container(
+                                        key: nativeSpeakerStatsValueKey,
                                         decoration: BoxDecoration(),
                                         child: Text(
                                           functions.getcallNumbString(
@@ -683,9 +1281,12 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                       children: [
                         if (canOpenChat)
                           StreamBuilder<List<ConversationsRecord>>(
+                            key: ValueKey<String>(
+                              'native_speaker_conversation_${targetReference.path}_$ownerUid',
+                            ),
                             stream: queryConversationsRecord(
                               queryBuilder: (query) => query.where(
-                                FieldPath(['participantMap', currentUserUid]),
+                                FieldPath(['participantMap', ownerUid]),
                                 isEqualTo: true,
                               ),
                             ),
@@ -742,6 +1343,14 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                     ),
                                     busyStyle: ButtonBusyStyle.spinner,
                                     action: () async {
+                                      if (!_actionContextIsCurrent(
+                                        targetReference: targetReference,
+                                        targetEpoch: actionTargetEpoch,
+                                        authEpoch: actionAuthEpoch,
+                                        ownerUid: ownerUid,
+                                      )) {
+                                        return;
+                                      }
                                       await openChatThread(
                                         context,
                                         conversationRef: conversationRef,
@@ -752,7 +1361,13 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                               );
                             },
                           ),
-                        if (canStartDirectCall) _buildBottomCallToAction(),
+                        if (canStartDirectCall)
+                          _buildBottomCallToAction(
+                            targetReference: targetReference,
+                            targetEpoch: actionTargetEpoch,
+                            authEpoch: actionAuthEpoch,
+                            ownerUid: ownerUid,
+                          ),
                       ],
                     ),
                   ),
@@ -761,9 +1376,28 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                   builder: (context, _) {
                     return _buildTopActionButtons(
                       _profileDisplayName(nativeSpeakerPublicProfile),
+                      targetReference: targetReference,
+                      targetEpoch: actionTargetEpoch,
+                      authEpoch: actionAuthEpoch,
+                      ownerUid: ownerUid,
                     );
                   },
                 ),
+                if (_lastSuccessfulReviews != null && _reviewsError != null)
+                  PositionedDirectional(
+                    start: ExpatlioDesign.space16,
+                    end: ExpatlioDesign.space16,
+                    top: MediaQuery.viewPaddingOf(context).top +
+                        BasicPageHeader.height +
+                        ExpatlioDesign.space8,
+                    child: Material(
+                      color: Colors.transparent,
+                      elevation: 4.0,
+                      child: _buildReviewsErrorState(
+                        nativeSpeakerReviewsRefreshErrorKey,
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -778,27 +1412,60 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
         language.nameRu.isNotEmpty;
   }
 
-  Widget _buildTopActionButtons(String title) {
+  Widget _buildTopActionButtons(
+    String title, {
+    required DocumentReference targetReference,
+    required int targetEpoch,
+    required int authEpoch,
+    required String ownerUid,
+  }) {
     return BasicPageHeader(
       title: title,
       trailing: AuthUserStreamWidget(
         builder: (context) {
-          final isFriend =
-              userHasFriend(currentUserDocument, widget.nsUserDocRef);
+          final ownerDocument = _currentOwnerDocument(ownerUid);
+          if (ownerDocument == null) {
+            return const SizedBox.shrink();
+          }
+          final isFriend = userHasFriend(
+            ownerDocument,
+            targetReference,
+          );
           return IconButton(
+            key: nativeSpeakerFavoriteActionKey,
             onPressed: () async {
-              final targetRef = widget.nsUserDocRef;
-              final userRef = currentUserReference;
-              if (targetRef == null || userRef == null) {
+              if (!_actionContextIsCurrent(
+                targetReference: targetReference,
+                targetEpoch: targetEpoch,
+                authEpoch: authEpoch,
+                ownerUid: ownerUid,
+              )) {
                 return;
               }
 
+              final latestOwnerDocument = _currentOwnerDocument(ownerUid);
+              if (latestOwnerDocument == null) {
+                return;
+              }
+              final latestIsFriend = userHasFriend(
+                latestOwnerDocument,
+                targetReference,
+              );
+              final userRef = UsersRecord.collection.doc(ownerUid);
               await userRef.update({
-                if (isFriend)
-                  ...buildRemoveFriendUpdateData(targetRef)
+                if (latestIsFriend)
+                  ...buildRemoveFriendUpdateData(targetReference)
                 else
-                  ...buildAddFriendUpdateData(targetRef),
+                  ...buildAddFriendUpdateData(targetReference),
               });
+              if (!_actionContextIsCurrent(
+                targetReference: targetReference,
+                targetEpoch: targetEpoch,
+                authEpoch: authEpoch,
+                ownerUid: ownerUid,
+              )) {
+                return;
+              }
               safeSetState(() {});
             },
             icon: Icon(
@@ -814,7 +1481,12 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
     );
   }
 
-  Widget _buildBottomCallToAction() {
+  Widget _buildBottomCallToAction({
+    required DocumentReference targetReference,
+    required int targetEpoch,
+    required int authEpoch,
+    required String ownerUid,
+  }) {
     return AuthUserStreamWidget(
       builder: (context) => Container(
         decoration: BoxDecoration(
@@ -836,6 +1508,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
               ExpatlioDesign.pagePadding,
               ExpatlioDesign.space32),
           child: ButtonWidget(
+            key: nativeSpeakerDirectCallActionKey,
             text: FFLocalizations.of(context).getText(
               '2sabsnp2' /* Начать разговор */,
             ),
@@ -845,8 +1518,16 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
             ),
             busyStyle: ButtonBusyStyle.spinner,
             action: () async {
-              final targetTutorId = widget.nsUserDocRef?.id;
-              if (targetTutorId == null || targetTutorId.isEmpty) {
+              if (!_actionContextIsCurrent(
+                targetReference: targetReference,
+                targetEpoch: targetEpoch,
+                authEpoch: authEpoch,
+                ownerUid: ownerUid,
+              )) {
+                return;
+              }
+              final targetTutorId = targetReference.id;
+              if (targetTutorId.isEmpty) {
                 debugPrint(
                     'NativeSpeakerPage: missing target tutor id for direct call');
                 return;
@@ -854,7 +1535,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
 
               // ─── SUBSCRIPTION REWORK ─ gate by subscription or gift minutes
               // instead of legacy balanceST > 0.
-              if (!canStartCall(currentUserDocument)) {
+              if (!canStartCall(_currentOwnerDocument(ownerUid))) {
                 // ───────────────────────────────────────────────────────
                 await showModalBottomSheet(
                   useRootNavigator: true,
@@ -873,33 +1554,64 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                       ),
                     );
                   },
-                ).then((value) => safeSetState(() {}));
+                );
+                if (!_actionContextIsCurrent(
+                  targetReference: targetReference,
+                  targetEpoch: targetEpoch,
+                  authEpoch: authEpoch,
+                  ownerUid: ownerUid,
+                )) {
+                  return;
+                }
+                safeSetState(() {});
                 return;
               }
 
-              if (!await _ensureDirectCallStatus(targetTutorId)) {
+              if (!await _ensureDirectCallStatus(
+                targetReference: targetReference,
+                targetEpoch: targetEpoch,
+                authEpoch: authEpoch,
+                ownerUid: ownerUid,
+              )) {
                 return;
               }
-              if (!mounted) {
+              if (!_actionContextIsCurrent(
+                targetReference: targetReference,
+                targetEpoch: targetEpoch,
+                authEpoch: authEpoch,
+                ownerUid: ownerUid,
+              )) {
                 return;
               }
 
-              final hasMediaPermissions =
-                  await ensureCameraAndMicrophonePermissions();
-              if (!hasMediaPermissions || !mounted) {
+              final permissionRequester = widget.mediaPermissionRequester ??
+                  ensureCameraAndMicrophonePermissions;
+              final hasMediaPermissions = await permissionRequester();
+              if (!hasMediaPermissions ||
+                  !_actionContextIsCurrent(
+                    targetReference: targetReference,
+                    targetEpoch: targetEpoch,
+                    authEpoch: authEpoch,
+                    ownerUid: ownerUid,
+                  )) {
                 return;
               }
 
-              await Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => WaitingForTeacherPageWidget(
-                    targetTutorId: targetTutorId,
+              final navigator = widget.directCallNavigator;
+              if (navigator != null) {
+                await navigator(context, targetTutorId);
+              } else {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => WaitingForTeacherPageWidget(
+                      targetTutorId: targetTutorId,
+                    ),
+                    settings: RouteSettings(
+                      name: WaitingForTeacherPageWidget.routeName,
+                    ),
                   ),
-                  settings: RouteSettings(
-                    name: WaitingForTeacherPageWidget.routeName,
-                  ),
-                ),
-              );
+                );
+              }
             },
           ),
         ),
@@ -908,45 +1620,106 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
   }
 
   Widget _buildReviewsSection(UserPublicProfilesRecord nativeSpeakerProfile) {
-    return FutureBuilder<List<ReviewsRecord>>(
-      future: _reviewsFuture,
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return Center(
-            child: SizedBox(
-              width: 50.0,
-              height: 50.0,
-              child: SpinKitCircle(
-                color: FlutterFlowTheme.of(context).secondary,
-                size: 50.0,
-              ),
-            ),
-          );
-        }
+    final reviews = _lastSuccessfulReviews;
+    if (reviews == null) {
+      if (_reviewsError != null) {
+        return Padding(
+          padding: const EdgeInsets.all(ExpatlioDesign.space16),
+          child: _buildReviewsErrorState(
+            nativeSpeakerReviewsErrorKey,
+          ),
+        );
+      }
 
-        List<ReviewsRecord> containerReviewsRecordList = snapshot.data!;
-        final ratingBuckets = <int, int>{1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
-        for (final review in containerReviewsRecordList) {
-          if (ratingBuckets.containsKey(review.rating)) {
-            ratingBuckets[review.rating] = ratingBuckets[review.rating]! + 1;
-          }
-        }
-        final totalReviews = nativeSpeakerProfile.ratingCount;
+      return Center(
+        child: Semantics(
+          key: nativeSpeakerReviewsLoadingKey,
+          container: true,
+          liveRegion: true,
+          label: FFLocalizations.of(context).getVariableText(
+            ruText: 'Загрузка отзывов преподавателя',
+            enText: 'Loading tutor reviews',
+          ),
+          child: const ExcludeSemantics(
+            child: AppLoadingIndicator(),
+          ),
+        ),
+      );
+    }
 
-        int countForRating(int ratingValue) => ratingBuckets[ratingValue] ?? 0;
+    Widget content = _buildReviewsContent(nativeSpeakerProfile, reviews);
+    content = UxRefreshingIndicatorOverlay(
+      key: nativeSpeakerReviewsRefreshingKey,
+      isRefreshing: _reviewsLoading,
+      semanticsLabel: FFLocalizations.of(context).getVariableText(
+        ruText: 'Обновление отзывов преподавателя',
+        enText: 'Refreshing tutor reviews',
+      ),
+      child: content,
+    );
+    return content;
+  }
 
-        double percentForRating(int ratingValue) {
-          if (totalReviews <= 0) {
-            return 0.0;
-          }
-          final percent = countForRating(ratingValue) / totalReviews;
-          return percent.clamp(0.0, 1.0).toDouble();
-        }
+  Widget _buildReviewsErrorState(Key stateKey) {
+    final title = FFLocalizations.of(context).getVariableText(
+      ruText: 'Не удалось загрузить отзывы',
+      enText: 'Could not load reviews',
+    );
+    final message = FFLocalizations.of(context).getVariableText(
+      ruText: 'Проверьте подключение и попробуйте еще раз.',
+      enText: 'Check your connection and try again.',
+    );
+    return UxErrorState(
+      stateKey: stateKey,
+      title: title,
+      message: message,
+      retryLabel: FFLocalizations.of(context).getVariableText(
+        ruText: 'Повторить',
+        enText: 'Retry',
+      ),
+      retrySemanticsLabel: FFLocalizations.of(context).getVariableText(
+        ruText: 'Повторить загрузку отзывов преподавателя',
+        enText: 'Retry loading tutor reviews',
+      ),
+      retryButtonKey: nativeSpeakerReviewsRetryButtonKey,
+      onRetry: _retryReviews,
+      showIcon: false,
+      contained: true,
+      maxWidth: double.infinity,
+      padding: const EdgeInsets.all(ExpatlioDesign.space12),
+      titleSize: 15.0,
+      messageSize: 13.0,
+      retryMinHeight: 40.0,
+    );
+  }
 
-        return Container(
-          decoration: BoxDecoration(),
-          child: Builder(
-            builder: (context) {
+  Widget _buildReviewsContent(
+    UserPublicProfilesRecord nativeSpeakerProfile,
+    List<ReviewsRecord> containerReviewsRecordList,
+  ) {
+    final ratingBuckets = <int, int>{1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
+    for (final review in containerReviewsRecordList) {
+      if (ratingBuckets.containsKey(review.rating)) {
+        ratingBuckets[review.rating] = ratingBuckets[review.rating]! + 1;
+      }
+    }
+    final totalReviews = nativeSpeakerProfile.ratingCount;
+
+    int countForRating(int ratingValue) => ratingBuckets[ratingValue] ?? 0;
+
+    double percentForRating(int ratingValue) {
+      if (totalReviews <= 0) {
+        return 0.0;
+      }
+      final percent = countForRating(ratingValue) / totalReviews;
+      return percent.clamp(0.0, 1.0).toDouble();
+    }
+
+    return Container(
+      key: nativeSpeakerReviewsSectionKey,
+      decoration: BoxDecoration(),
+      child: Builder(
+        builder: (context) {
               if (containerReviewsRecordList.isNotEmpty) {
                 return Column(
                   mainAxisSize: MainAxisSize.max,
@@ -1438,6 +2211,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                             mainAxisSize: MainAxisSize.max,
                             children: [
                               InkWell(
+                                key: nativeSpeakerRatingFilterKey(0),
                                 splashColor: Colors.transparent,
                                 focusColor: Colors.transparent,
                                 hoverColor: Colors.transparent,
@@ -1487,6 +2261,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                 ),
                               ),
                               InkWell(
+                                key: nativeSpeakerRatingFilterKey(5),
                                 splashColor: Colors.transparent,
                                 focusColor: Colors.transparent,
                                 hoverColor: Colors.transparent,
@@ -1547,6 +2322,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                 ),
                               ),
                               InkWell(
+                                key: nativeSpeakerRatingFilterKey(4),
                                 splashColor: Colors.transparent,
                                 focusColor: Colors.transparent,
                                 hoverColor: Colors.transparent,
@@ -1607,6 +2383,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                 ),
                               ),
                               InkWell(
+                                key: nativeSpeakerRatingFilterKey(3),
                                 splashColor: Colors.transparent,
                                 focusColor: Colors.transparent,
                                 hoverColor: Colors.transparent,
@@ -1667,6 +2444,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                 ),
                               ),
                               InkWell(
+                                key: nativeSpeakerRatingFilterKey(2),
                                 splashColor: Colors.transparent,
                                 focusColor: Colors.transparent,
                                 hoverColor: Colors.transparent,
@@ -1727,6 +2505,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                 ),
                               ),
                               InkWell(
+                                key: nativeSpeakerRatingFilterKey(1),
                                 splashColor: Colors.transparent,
                                 focusColor: Colors.transparent,
                                 hoverColor: Colors.transparent,
@@ -1820,6 +2599,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                           }
 
                           return ListView.separated(
+                            key: nativeSpeakerReviewsListKey,
                             padding: EdgeInsets.zero,
                             primary: false,
                             shrinkWrap: true,
@@ -1836,8 +2616,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                     ExpatlioDesign.space16,
                                     ExpatlioDesign.space0),
                                 child: ReviewCardWidget(
-                                  key: Key(
-                                      'Keyngy_${rewIndex}_of_${rew.length}'),
+                                  key: nativeSpeakerReviewKey(rewItem),
                                   rewDoc: rewItem,
                                 ),
                               );
@@ -1850,14 +2629,13 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                 );
               } else {
                 return EmptyWidget(
+                  key: nativeSpeakerReviewsEmptyKey,
                   txt:
                       'У этого преподавателя пока нет оценок и отзывов. После первых занятий студенты смогут поделиться впечатлениями, и отзывы появятся здесь.',
                 );
               }
-            },
-          ),
-        );
-      },
+        },
+      ),
     );
   }
 }

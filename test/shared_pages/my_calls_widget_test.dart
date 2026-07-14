@@ -8,6 +8,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:small_talk/auth/firebase_auth/auth_util.dart';
 import 'package:small_talk/backend/backend.dart';
+import 'package:small_talk/components/basic_page_header.dart';
 import 'package:small_talk/components/call_history_card.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/shared_pages/my_calls/my_calls_widget.dart';
@@ -107,6 +108,7 @@ void main() {
   tearDown(() {
     currentUser = null;
     currentUserDocument = null;
+    MyCallsModel.debugClearSessionCache();
   });
 
   testWidgets(
@@ -394,6 +396,100 @@ void main() {
   });
 
   testWidgets(
+      'warm refresh preserves long-list scroll state through error and retry',
+      (tester) async {
+    final refreshCompleter = Completer<List<VideoSessionsRecord>>();
+    final retryCompleter = Completer<List<VideoSessionsRecord>>();
+    final sessions = List<VideoSessionsRecord>.generate(
+      20,
+      (index) => _session(
+        'stable-session-$index',
+        'Стабильный собеседник $index',
+      ),
+    );
+    var calls = 0;
+    addTearDown(() {
+      if (!refreshCompleter.isCompleted) {
+        refreshCompleter.complete(sessions);
+      }
+      if (!retryCompleter.isCompleted) {
+        retryCompleter.complete(sessions);
+      }
+    });
+
+    Future<List<VideoSessionsRecord>> loader(String userId) {
+      expect(userId, 'user-a');
+      calls += 1;
+      return switch (calls) {
+        1 => Future<List<VideoSessionsRecord>>.value(sessions),
+        2 => refreshCompleter.future,
+        _ => retryCompleter.future,
+      };
+    }
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: MyCallsWidget(
+          historyLoader: loader,
+          userIdProvider: () => 'user-a',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final scrollableFinder = find.descendant(
+      of: find.byKey(myCallsListKey),
+      matching: find.byType(Scrollable),
+    );
+    expect(scrollableFinder, findsOneWidget);
+    await tester.drag(
+      find.byKey(myCallsListKey),
+      const Offset(0.0, -700.0),
+    );
+    await tester.pumpAndSettle();
+
+    final stableScrollableState =
+        tester.state<ScrollableState>(scrollableFinder);
+    final stableOffset = stableScrollableState.position.pixels;
+    expect(stableOffset, greaterThan(0.0));
+
+    void expectStableScroll() {
+      final currentState = tester.state<ScrollableState>(scrollableFinder);
+      expect(currentState, same(stableScrollableState));
+      expect(currentState.position.pixels, closeTo(stableOffset, 0.01));
+    }
+
+    await tester.tap(find.byKey(myCallsRefreshButtonKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
+
+    expect(calls, 2);
+    expect(find.byKey(myCallsRefreshingKey), findsOneWidget);
+    expectStableScroll();
+
+    refreshCompleter.completeError(StateError('refresh failed'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(myCallsRefreshErrorKey), findsOneWidget);
+    expectStableScroll();
+
+    await tester.tap(find.byKey(myCallsErrorRetryButtonKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
+
+    expect(calls, 3);
+    expect(find.byKey(myCallsRefreshingKey), findsOneWidget);
+    expectStableScroll();
+
+    retryCompleter.complete(sessions);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(myCallsRefreshingKey), findsNothing);
+    expect(find.byKey(myCallsRefreshErrorKey), findsNothing);
+    expectStableScroll();
+  });
+
+  testWidgets(
       'warm empty refresh stays empty through pending, error, and retry',
       (tester) async {
     final refreshCompleter = Completer<List<VideoSessionsRecord>>();
@@ -462,6 +558,85 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(myCallsEmptyKey), findsOneWidget);
     expect(find.byKey(myCallsRefreshingKey), findsNothing);
+  });
+
+  testWidgets(
+      'same-owner remount restores data and empty through pending and error',
+      (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+    try {
+      for (final cachedEmpty in <bool>[false, true]) {
+        MyCallsModel.debugClearSessionCache();
+        final ownerUid = 'remount-${cachedEmpty ? 'empty' : 'data'}';
+        final cachedSessions = cachedEmpty
+            ? const <VideoSessionsRecord>[]
+            : <VideoSessionsRecord>[
+                _session('cached-remount-session', 'Кэшированный собеседник'),
+              ];
+
+        await tester.pumpWidget(
+          _buildTestApp(
+            home: MyCallsWidget(
+              historyLoader: (_) async => cachedSessions,
+              userIdProvider: () => ownerUid,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final contentFinder = cachedEmpty
+            ? find.byKey(myCallsEmptyKey)
+            : find.byType(CallHistoryCard);
+        final initialContentRect = tester.getRect(contentFinder);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+
+        final reconnectCompleter = Completer<List<VideoSessionsRecord>>();
+        await tester.pumpWidget(
+          _buildTestApp(
+            home: MyCallsWidget(
+              historyLoader: (_) => reconnectCompleter.future,
+              userIdProvider: () => ownerUid,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        expect(contentFinder, findsOneWidget);
+        expect(tester.getRect(contentFinder), initialContentRect);
+        expect(find.byKey(myCallsRefreshingKey), findsOneWidget);
+        expect(find.byKey(myCallsLoadingKey), findsNothing);
+        expect(find.byKey(myCallsErrorKey), findsNothing);
+        final refreshingSemantics = tester.getSemantics(
+          find.byKey(myCallsRefreshingKey),
+        );
+        expect(refreshingSemantics.label, 'Обновление истории звонков');
+        expect(
+          refreshingSemantics.getSemanticsData().flagsCollection.isLiveRegion,
+          isTrue,
+        );
+        expect(
+          tester.getRect(find.byKey(myCallsRefreshingKey)).top,
+          greaterThanOrEqualTo(BasicPageHeader.height),
+        );
+
+        reconnectCompleter.completeError(StateError('remount failed'));
+        await tester.pumpAndSettle();
+
+        expect(contentFinder, findsOneWidget);
+        expect(tester.getRect(contentFinder), initialContentRect);
+        expect(find.byKey(myCallsRefreshErrorKey), findsOneWidget);
+        expect(find.byKey(myCallsErrorRetryButtonKey), findsOneWidget);
+        expect(find.byKey(myCallsLoadingKey), findsNothing);
+        expect(find.byKey(myCallsErrorKey), findsNothing);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+      }
+    } finally {
+      semanticsHandle.dispose();
+    }
   });
 
   testWidgets('auth UID event removes resolved A while B history is pending',
@@ -635,6 +810,66 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
       unawaited(authUidController.close());
     }
+  });
+
+  testWidgets('raw B to A clears cached A before coalesced A2 load',
+      (tester) async {
+    final authUidController = StreamController<String>(sync: true);
+    final a2Completer = Completer<List<VideoSessionsRecord>>();
+    var aRequestCount = 0;
+    addTearDown(authUidController.close);
+    addTearDown(() {
+      if (!a2Completer.isCompleted) {
+        a2Completer.complete(const <VideoSessionsRecord>[]);
+      }
+    });
+
+    Future<List<VideoSessionsRecord>> loader(String ownerUid) {
+      if (ownerUid == 'user-b') {
+        return Completer<List<VideoSessionsRecord>>().future;
+      }
+      aRequestCount += 1;
+      if (aRequestCount == 1) {
+        return Future<List<VideoSessionsRecord>>.value(
+          <VideoSessionsRecord>[
+            _session('cached-a1', 'Кэшированный собеседник A1'),
+          ],
+        );
+      }
+      return a2Completer.future;
+    }
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: MyCallsWidget(
+          historyLoader: loader,
+          authUidStream: authUidController.stream,
+        ),
+      ),
+    );
+    authUidController.add('user-a');
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.text('Кэшированный собеседник A1'), findsOneWidget);
+
+    authUidController.add('user-b');
+    authUidController.add('user-a');
+    await tester.tap(find.byType(CallHistoryCard));
+    await tester.pump();
+
+    expect(aRequestCount, 2);
+    expect(find.text('Кэшированный собеседник A1'), findsNothing);
+    expect(find.byKey(myCallsLoadingKey), findsOneWidget);
+    expect(find.byKey(myCallsRefreshingKey), findsNothing);
+    expect(tester.takeException(), isNull);
+
+    a2Completer.complete(
+      <VideoSessionsRecord>[
+        _session('current-a2', 'Актуальный собеседник A2'),
+      ],
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Актуальный собеседник A2'), findsOneWidget);
   });
 
   testWidgets('loaded row refuses navigation after direct uid change',

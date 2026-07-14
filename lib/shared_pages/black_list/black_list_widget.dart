@@ -51,6 +51,20 @@ typedef BlackListBlockedUserRemover = Future<void> Function(
   DocumentReference userReference,
 );
 
+List<DocumentReference> _mergeBlockedUsersWithAuthoritativeBaseline({
+  required List<DocumentReference> authoritativeBaseline,
+  required List<DocumentReference> incoming,
+}) {
+  final mergedByPath = <String, DocumentReference>{};
+  for (final reference in authoritativeBaseline) {
+    mergedByPath[reference.path] = reference;
+  }
+  for (final reference in incoming) {
+    mergedByPath.putIfAbsent(reference.path, () => reference);
+  }
+  return List<DocumentReference>.unmodifiable(mergedByPath.values);
+}
+
 sealed class BlackListOwnerState {
   const BlackListOwnerState({required this.ownerUid});
 
@@ -204,12 +218,15 @@ class _BlackListWidgetState extends State<BlackListWidget> {
   StreamSubscription<String>? _authUidSubscription;
   StreamSubscription<BlackListOwnerState>? _ownerStateSubscription;
   BlackListOwnerData? _displayedOwnerData;
+  List<DocumentReference> _authoritativeBlockedUsers = const [];
   bool _hasAuthoritativeOwnerData = false;
   bool _ownerRefreshing = false;
   Object? _ownerStateError;
   String _activeOwnerUid = '';
   String _sourceOwnerUid = '';
+  String? _lastObservedSessionCacheOwnerUid;
   int _ownerEpoch = 0;
+  int _ownerCacheGeneration = 0;
   int _authSubscriptionGeneration = 0;
   int _subscriptionGeneration = 0;
 
@@ -266,7 +283,11 @@ class _BlackListWidgetState extends State<BlackListWidget> {
   void initState() {
     super.initState();
     _model = createModel(context, () => BlackListModel());
-    _activeOwnerUid = _currentUid();
+    BlackListModel.ensureSessionCacheLifecycleRegistered();
+    final initialOwnerUid = _currentUid();
+    _lastObservedSessionCacheOwnerUid =
+        initialOwnerUid.isEmpty ? null : initialOwnerUid;
+    _beginOwnerSession(initialOwnerUid, force: true);
     _sourceOwnerUid = _activeOwnerUid;
     _subscribeToConfiguredSources();
   }
@@ -274,7 +295,9 @@ class _BlackListWidgetState extends State<BlackListWidget> {
   @override
   void didUpdateWidget(covariant BlackListWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _applyOwnerBoundary(_currentUid());
+    final currentUid = _currentUid();
+    _observeSessionCacheOwner(currentUid);
+    _applyOwnerBoundary(currentUid);
     if (oldWidget.ownerStateStream != widget.ownerStateStream ||
         oldWidget.authUidStream != widget.authUidStream ||
         oldWidget.ownerStateStreamFactory != widget.ownerStateStreamFactory) {
@@ -346,6 +369,7 @@ class _BlackListWidgetState extends State<BlackListWidget> {
       return;
     }
     final ownerUid = rawOwnerUid.trim();
+    _observeSessionCacheOwner(ownerUid);
     late final int ownerEpoch;
     setState(() {
       _beginOwnerSession(ownerUid, force: true);
@@ -361,6 +385,7 @@ class _BlackListWidgetState extends State<BlackListWidget> {
     if (!mounted || generation != _authSubscriptionGeneration) {
       return;
     }
+    _observeSessionCacheOwner('');
     setState(() {
       _beginOwnerSession('', force: true);
       _ownerStateError = error;
@@ -433,15 +458,35 @@ class _BlackListWidgetState extends State<BlackListWidget> {
     _beginOwnerSession(currentUid, force: false);
   }
 
+  void _observeSessionCacheOwner(String ownerUid) {
+    final previousOwnerUid = _lastObservedSessionCacheOwnerUid;
+    if (previousOwnerUid != null && previousOwnerUid != ownerUid) {
+      BlackListModel.debugClearSessionCache();
+    }
+    _lastObservedSessionCacheOwnerUid = ownerUid;
+  }
+
   void _beginOwnerSession(String ownerUid, {required bool force}) {
     if (!force && _activeOwnerUid == ownerUid) {
       return;
     }
+    final cachedBlockedUsers =
+        ownerUid.isEmpty ? null : BlackListModel.cachedBlockedUsers(ownerUid);
     _ownerEpoch += 1;
+    _ownerCacheGeneration = BlackListModel.sessionCacheGeneration;
     _activeOwnerUid = ownerUid;
-    _displayedOwnerData = null;
-    _hasAuthoritativeOwnerData = false;
-    _ownerRefreshing = false;
+    _authoritativeBlockedUsers = cachedBlockedUsers == null
+        ? const []
+        : List<DocumentReference>.unmodifiable(cachedBlockedUsers);
+    _displayedOwnerData = cachedBlockedUsers == null
+        ? null
+        : BlackListOwnerData(
+            ownerUid: ownerUid,
+            blockedUsers: _authoritativeBlockedUsers,
+            isServerConfirmed: true,
+          );
+    _hasAuthoritativeOwnerData = cachedBlockedUsers != null;
+    _ownerRefreshing = cachedBlockedUsers != null;
     _ownerStateError = null;
     _userFutureCache.clear();
   }
@@ -449,15 +494,19 @@ class _BlackListWidgetState extends State<BlackListWidget> {
   bool _ownerBoundaryMatches({
     required String ownerUid,
     required int ownerEpoch,
-  }) =>
-      ownerUid.isNotEmpty &&
-      ownerUid == _activeOwnerUid &&
-      ownerEpoch == _ownerEpoch &&
-      _currentUid() == ownerUid &&
-      _displayedOwnerData?.ownerUid == ownerUid;
+  }) {
+    final currentUid = _currentUid();
+    _observeSessionCacheOwner(currentUid);
+    return ownerUid.isNotEmpty &&
+        ownerUid == _activeOwnerUid &&
+        ownerEpoch == _ownerEpoch &&
+        currentUid == ownerUid &&
+        _displayedOwnerData?.ownerUid == ownerUid;
+  }
 
   void _invalidateForDirectOwnerBoundaryMismatch() {
     final currentUid = _currentUid();
+    _observeSessionCacheOwner(currentUid);
     if (!mounted || currentUid == _activeOwnerUid) {
       return;
     }
@@ -481,6 +530,7 @@ class _BlackListWidgetState extends State<BlackListWidget> {
         (ownerEpoch != null && ownerEpoch != _ownerEpoch)) {
       return;
     }
+    _observeSessionCacheOwner(_currentUid());
     setState(() {
       final currentUid = _currentUid();
       _applyOwnerBoundary(currentUid);
@@ -500,17 +550,43 @@ class _BlackListWidgetState extends State<BlackListWidget> {
         _ownerRefreshing = _hasDisplayableOwnerData;
         return;
       }
-      _ownerRefreshing = false;
       if (ownerState is! BlackListOwnerData) {
         return;
       }
-      if (ownerState.blockedUsers.isEmpty && !ownerState.isServerConfirmed) {
+
+      if (ownerState.isServerConfirmed) {
+        _authoritativeBlockedUsers = List<DocumentReference>.unmodifiable(
+          ownerState.blockedUsers,
+        );
+        _displayedOwnerData = BlackListOwnerData(
+          ownerUid: currentUid,
+          blockedUsers: _authoritativeBlockedUsers,
+          isServerConfirmed: true,
+        );
+        _hasAuthoritativeOwnerData = true;
+        _ownerRefreshing = false;
+        BlackListModel.cacheBlockedUsers(
+          currentUid,
+          _authoritativeBlockedUsers,
+          expectedGeneration: _ownerCacheGeneration,
+        );
         return;
       }
-      _displayedOwnerData = ownerState;
-      if (ownerState.isServerConfirmed) {
-        _hasAuthoritativeOwnerData = true;
+
+      final mergedBlockedUsers = _mergeBlockedUsersWithAuthoritativeBaseline(
+        authoritativeBaseline: _authoritativeBlockedUsers,
+        incoming: ownerState.blockedUsers,
+      );
+      if (mergedBlockedUsers.isEmpty && !_hasAuthoritativeOwnerData) {
+        _ownerRefreshing = false;
+        return;
       }
+      _displayedOwnerData = BlackListOwnerData(
+        ownerUid: currentUid,
+        blockedUsers: mergedBlockedUsers,
+        isServerConfirmed: false,
+      );
+      _ownerRefreshing = true;
     });
   }
 
@@ -530,6 +606,7 @@ class _BlackListWidgetState extends State<BlackListWidget> {
         'BlackListWidget: owner state source failed: ${error.runtimeType}',
       );
     }
+    _observeSessionCacheOwner(_currentUid());
     setState(() {
       final currentUid = _currentUid();
       _applyOwnerBoundary(currentUid);
@@ -967,7 +1044,9 @@ class _BlackListWidgetState extends State<BlackListWidget> {
               ),
               child: Builder(builder: (context) {
                 final currentUid = _currentUid();
+                _observeSessionCacheOwner(currentUid);
                 if (currentUid.isEmpty || currentUid != _activeOwnerUid) {
+                  _scheduleDirectOwnerBoundaryCheck();
                   return _buildLoadingState(context);
                 }
                 final ownerData = _displayedOwnerData;

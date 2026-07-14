@@ -78,6 +78,7 @@ class _MyCallsWidgetState extends State<MyCallsWidget> {
   Object? _historyError;
   late Stream<_CallHistoryAuthEmission> _authSessionStream;
   String _latestAuthStreamUserId = '';
+  String? _lastObservedSessionCacheOwnerUid;
   int _latestAuthSessionEpoch = 0;
   String _historyOwnerUserId = '';
   int _historyOwnerEpoch = 0;
@@ -90,11 +91,15 @@ class _MyCallsWidgetState extends State<MyCallsWidget> {
   @override
   void initState() {
     super.initState();
-    _latestAuthStreamUserId = _initialHistoryOwnerUserId();
+    _model = createModel(context, () => MyCallsModel());
+    MyCallsModel.ensureSessionCacheLifecycleRegistered();
+    final initialOwnerUserId = _initialHistoryOwnerUserId();
+    _latestAuthStreamUserId = initialOwnerUserId;
+    _lastObservedSessionCacheOwnerUid =
+        initialOwnerUserId.isEmpty ? null : initialOwnerUserId;
     _authSessionStream = _trackAuthSessions(
       widget.authUidStream ?? _watchAuthenticatedUserIds(),
     );
-    _model = createModel(context, () => MyCallsModel());
   }
 
   @override
@@ -218,10 +223,19 @@ class _MyCallsWidgetState extends State<MyCallsWidget> {
   ) {
     return authUidStream.map((rawUserId) {
       final userId = rawUserId.trim();
+      _observeSessionCacheOwner(userId);
       _latestAuthStreamUserId = userId;
       final epoch = ++_latestAuthSessionEpoch;
       return _CallHistoryAuthEmission(userId: userId, epoch: epoch);
     });
+  }
+
+  void _observeSessionCacheOwner(String ownerUserId) {
+    final previousOwnerUserId = _lastObservedSessionCacheOwnerUid;
+    if (previousOwnerUserId != null && previousOwnerUserId != ownerUserId) {
+      MyCallsModel.debugClearSessionCache();
+    }
+    _lastObservedSessionCacheOwnerUid = ownerUserId;
   }
 
   _CallHistoryAuthEmission _initialAuthEmission() => _CallHistoryAuthEmission(
@@ -237,6 +251,7 @@ class _MyCallsWidgetState extends State<MyCallsWidget> {
       return streamOwnerUserId;
     }
     final directOwnerUserId = _directAuthUid();
+    _observeSessionCacheOwner(directOwnerUserId);
     return streamOwnerUserId == directOwnerUserId ? directOwnerUserId : '';
   }
 
@@ -246,19 +261,26 @@ class _MyCallsWidgetState extends State<MyCallsWidget> {
         _latestAuthSessionEpoch != ownerEpoch) {
       return false;
     }
-    return !_hasIndependentDirectAuthUid || _directAuthUid() == ownerUserId;
+    if (!_hasIndependentDirectAuthUid) {
+      return true;
+    }
+    final directOwnerUserId = _directAuthUid();
+    _observeSessionCacheOwner(directOwnerUserId);
+    return directOwnerUserId == ownerUserId;
   }
 
   bool _requestIsCurrent(
     int requestId,
     String ownerUserId,
     int ownerEpoch,
+    int cacheGeneration,
   ) =>
       mounted &&
       requestId == _historyRequestSerial &&
       ownerUserId == _historyOwnerUserId &&
       ownerEpoch == _historyOwnerEpoch &&
-      ownerEpoch == _latestAuthSessionEpoch;
+      ownerEpoch == _latestAuthSessionEpoch &&
+      cacheGeneration == MyCallsModel.sessionCacheGeneration;
 
   void _invalidateForAuthBoundaryMismatch() {
     if (!mounted) {
@@ -286,15 +308,25 @@ class _MyCallsWidgetState extends State<MyCallsWidget> {
   }
 
   void _resetHistoryStateForOwner(String ownerUserId, int ownerEpoch) {
+    final cacheGeneration = MyCallsModel.sessionCacheGeneration;
+    final cachedSessions =
+        ownerUserId.isEmpty ? null : MyCallsModel.cachedHistory(ownerUserId);
     _historyOwnerUserId = ownerUserId;
     _historyOwnerEpoch = ownerEpoch;
-    _lastLoadedSessions = const [];
-    _hasAuthoritativeHistory = false;
+    _lastLoadedSessions = cachedSessions == null
+        ? const []
+        : List<VideoSessionsRecord>.unmodifiable(cachedSessions);
+    _hasAuthoritativeHistory = cachedSessions != null;
     _historyError = null;
     final requestId = ++_historyRequestSerial;
     _historyFuture = ownerUserId.isEmpty
         ? null
-        : _loadCallHistory(requestId, ownerUserId, ownerEpoch);
+        : _loadCallHistory(
+            requestId,
+            ownerUserId,
+            ownerEpoch,
+            cacheGeneration,
+          );
   }
 
   void _syncHistoryOwner(String ownerUserId, int ownerEpoch) {
@@ -314,12 +346,18 @@ class _MyCallsWidgetState extends State<MyCallsWidget> {
     }
     _historyError = null;
     final requestId = ++_historyRequestSerial;
-    _historyFuture = _loadCallHistory(requestId, ownerUserId, ownerEpoch);
+    _historyFuture = _loadCallHistory(
+      requestId,
+      ownerUserId,
+      ownerEpoch,
+      MyCallsModel.sessionCacheGeneration,
+    );
   }
 
   void _reloadHistory() {
     final ownerUserId = _historyOwnerUserId;
     final ownerEpoch = _historyOwnerEpoch;
+    final cacheGeneration = MyCallsModel.sessionCacheGeneration;
     if (!_authBoundaryMatches(ownerUserId, ownerEpoch)) {
       _invalidateForAuthBoundaryMismatch();
       return;
@@ -329,7 +367,12 @@ class _MyCallsWidgetState extends State<MyCallsWidget> {
       _historyError = null;
       _historyFuture = Future<List<VideoSessionsRecord>>.delayed(
         Duration.zero,
-        () => _loadCallHistory(requestId, ownerUserId, ownerEpoch),
+        () => _loadCallHistory(
+          requestId,
+          ownerUserId,
+          ownerEpoch,
+          cacheGeneration,
+        ),
       );
     });
   }
@@ -338,13 +381,19 @@ class _MyCallsWidgetState extends State<MyCallsWidget> {
     int requestId,
     String ownerUserId,
     int ownerEpoch,
+    int cacheGeneration,
   ) async {
     try {
       final sessions = await (widget.historyLoader?.call(ownerUserId) ??
           CallHistoryRepository.loadCallHistorySessions(
             userId: ownerUserId,
           ));
-      if (!_requestIsCurrent(requestId, ownerUserId, ownerEpoch)) {
+      if (!_requestIsCurrent(
+        requestId,
+        ownerUserId,
+        ownerEpoch,
+        cacheGeneration,
+      )) {
         throw const _StaleCallHistoryRequest();
       }
       if (!_authBoundaryMatches(ownerUserId, ownerEpoch)) {
@@ -354,12 +403,22 @@ class _MyCallsWidgetState extends State<MyCallsWidget> {
       _historyError = null;
       _lastLoadedSessions = List<VideoSessionsRecord>.unmodifiable(sessions);
       _hasAuthoritativeHistory = true;
-      return sessions;
+      MyCallsModel.cacheHistory(
+        ownerUserId,
+        _lastLoadedSessions,
+        expectedGeneration: cacheGeneration,
+      );
+      return _lastLoadedSessions;
     } catch (error) {
       if (error is _StaleCallHistoryRequest) {
         rethrow;
       }
-      if (!_requestIsCurrent(requestId, ownerUserId, ownerEpoch)) {
+      if (!_requestIsCurrent(
+        requestId,
+        ownerUserId,
+        ownerEpoch,
+        cacheGeneration,
+      )) {
         throw const _StaleCallHistoryRequest();
       }
       if (!_authBoundaryMatches(ownerUserId, ownerEpoch)) {
@@ -378,10 +437,13 @@ class _MyCallsWidgetState extends State<MyCallsWidget> {
     BuildContext context,
     List<VideoSessionsRecord> sessions,
     String historyOwnerUserId,
-    int historyOwnerEpoch,
-  ) {
+    int historyOwnerEpoch, {
+    bool refreshing = false,
+    bool refreshError = false,
+  }) {
+    late final Widget content;
     if (sessions.isEmpty) {
-      return Center(
+      content = Center(
         key: myCallsEmptyKey,
         child: SizedBox(
           height: 500.0,
@@ -395,91 +457,81 @@ class _MyCallsWidgetState extends State<MyCallsWidget> {
           ),
         ),
       );
+    } else {
+      final contentTopPadding = MediaQuery.paddingOf(context).top +
+          BasicPageHeader.height +
+          ExpatlioDesign.sectionSpacing;
+      content = ListView.separated(
+        key: myCallsListKey,
+        padding: EdgeInsets.fromLTRB(
+          ExpatlioDesign.space0,
+          contentTopPadding,
+          ExpatlioDesign.space0,
+          ExpatlioDesign.pageBottomSpacing,
+        ),
+        itemCount: sessions.length,
+        separatorBuilder: (_, __) =>
+            const SizedBox(height: ExpatlioDesign.space0),
+        itemBuilder: (context, index) {
+          return CallHistoryCard(
+            key: ValueKey<String>(sessions[index].reference.path),
+            session: sessions[index],
+            isTeacher: _isTeacher,
+            canOpen: () => _canOpenCallHistory(
+              historyOwnerUserId,
+              historyOwnerEpoch,
+            ),
+          );
+        },
+      );
     }
 
-    final contentTopPadding = MediaQuery.paddingOf(context).top +
-        BasicPageHeader.height +
-        ExpatlioDesign.sectionSpacing;
-    return ListView.separated(
-      key: myCallsListKey,
-      padding: EdgeInsets.fromLTRB(
-        ExpatlioDesign.space0,
-        contentTopPadding,
-        ExpatlioDesign.space0,
-        ExpatlioDesign.pageBottomSpacing,
-      ),
-      itemCount: sessions.length,
-      separatorBuilder: (_, __) =>
-          const SizedBox(height: ExpatlioDesign.space0),
-      itemBuilder: (context, index) {
-        return CallHistoryCard(
-          key: ValueKey<String>(sessions[index].reference.path),
-          session: sessions[index],
-          isTeacher: _isTeacher,
-          canOpen: () => _canOpenCallHistory(
-            historyOwnerUserId,
-            historyOwnerEpoch,
-          ),
-        );
-      },
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        content,
+        if (refreshing) _buildRefreshingHistoryOverlay(context),
+        if (refreshError) _buildHistoryRefreshErrorOverlay(context),
+      ],
     );
   }
 
-  Widget _buildRefreshingHistory(
-    BuildContext context,
-    Widget content,
-  ) {
+  Widget _buildRefreshingHistoryOverlay(BuildContext context) {
     final label = FFLocalizations.of(context).getVariableText(
       ruText: 'Обновление истории звонков',
       enText: 'Refreshing call history',
     );
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        content,
-        PositionedDirectional(
-          start: ExpatlioDesign.space0,
-          end: ExpatlioDesign.space0,
-          top: MediaQuery.paddingOf(context).top + BasicPageHeader.height,
-          child: Semantics(
-            key: myCallsRefreshingKey,
-            container: true,
-            liveRegion: true,
-            label: label,
-            child: const ExcludeSemantics(
-              child: LinearProgressIndicator(
-                minHeight: 2.0,
-                color: ExpatlioDesign.primary,
-                backgroundColor: Colors.transparent,
-              ),
-            ),
+    return PositionedDirectional(
+      start: ExpatlioDesign.space0,
+      end: ExpatlioDesign.space0,
+      top: MediaQuery.paddingOf(context).top + BasicPageHeader.height,
+      child: Semantics(
+        key: myCallsRefreshingKey,
+        container: true,
+        liveRegion: true,
+        label: label,
+        child: const ExcludeSemantics(
+          child: LinearProgressIndicator(
+            minHeight: 2.0,
+            color: ExpatlioDesign.primary,
+            backgroundColor: Colors.transparent,
           ),
         ),
-      ],
+      ),
     );
   }
 
-  Widget _buildHistoryWithRefreshError(
-    BuildContext context,
-    Widget content,
-  ) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        content,
-        PositionedDirectional(
-          start: ExpatlioDesign.space0,
-          end: ExpatlioDesign.space0,
-          bottom:
-              MediaQuery.viewPaddingOf(context).bottom + ExpatlioDesign.space16,
-          child: Material(
-            color: Colors.transparent,
-            elevation: 4.0,
-            borderRadius: BorderRadius.circular(ExpatlioDesign.cardRadius),
-            child: _MyCallsRefreshErrorState(onRetry: _reloadHistory),
-          ),
-        ),
-      ],
+  Widget _buildHistoryRefreshErrorOverlay(BuildContext context) {
+    return PositionedDirectional(
+      start: ExpatlioDesign.space0,
+      end: ExpatlioDesign.space0,
+      bottom: MediaQuery.viewPaddingOf(context).bottom + ExpatlioDesign.space16,
+      child: Material(
+        color: Colors.transparent,
+        elevation: 4.0,
+        borderRadius: BorderRadius.circular(ExpatlioDesign.cardRadius),
+        child: _MyCallsRefreshErrorState(onRetry: _reloadHistory),
+      ),
     );
   }
 
@@ -492,53 +544,52 @@ class _MyCallsWidgetState extends State<MyCallsWidget> {
     }
 
     return FutureBuilder<List<VideoSessionsRecord>>(
-      key: ObjectKey(historyFuture),
+      key: ValueKey<(String, int)>(
+        (historyOwnerUserId, historyOwnerEpoch),
+      ),
       future: historyFuture,
       builder: (context, snapshot) {
         if (snapshot.error is _StaleCallHistoryRequest) {
           return _buildLoadingState(context);
         }
-        if (snapshot.hasError) {
+        if (snapshot.connectionState != ConnectionState.done) {
           if (_hasAuthoritativeHistory) {
-            return _buildHistoryWithRefreshError(
+            return _buildHistoryContent(
               context,
-              _buildHistoryContent(
-                context,
-                _lastLoadedSessions,
-                historyOwnerUserId,
-                historyOwnerEpoch,
-              ),
-            );
-          }
-          return _buildErrorState(context);
-        }
-
-        if (snapshot.connectionState != ConnectionState.done ||
-            !snapshot.hasData) {
-          if (_hasAuthoritativeHistory) {
-            return _buildRefreshingHistory(
-              context,
-              _buildHistoryContent(
-                context,
-                _lastLoadedSessions,
-                historyOwnerUserId,
-                historyOwnerEpoch,
-              ),
+              _lastLoadedSessions,
+              historyOwnerUserId,
+              historyOwnerEpoch,
+              refreshing: true,
             );
           }
           return _buildLoadingState(context);
         }
 
+        if (snapshot.hasError) {
+          if (_hasAuthoritativeHistory) {
+            return _buildHistoryContent(
+              context,
+              _lastLoadedSessions,
+              historyOwnerUserId,
+              historyOwnerEpoch,
+              refreshError: true,
+            );
+          }
+          return _buildErrorState(context);
+        }
+
+        if (!snapshot.hasData) {
+          return _buildLoadingState(context);
+        }
+
         final sessions = snapshot.data!;
-        final content = _buildHistoryContent(
+        return _buildHistoryContent(
           context,
           sessions,
           historyOwnerUserId,
           historyOwnerEpoch,
+          refreshError: _historyError != null,
         );
-        return _historyError == null
-            ? content
-            : _buildHistoryWithRefreshError(context, content);
       },
     );
   }

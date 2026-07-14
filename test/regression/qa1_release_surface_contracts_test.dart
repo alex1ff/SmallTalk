@@ -212,12 +212,15 @@ void main() {
       expect(myRewNS, contains('return AuthUserStreamWidget('));
       expect(
         myRewNS,
-        contains('if (loggedIn && currentUserDocument == null)'),
+        contains(
+            'final ownerDocumentMatches = hasCurrentUserDocumentForUid(ownerUid);'),
       );
       expect(
         myRewNS,
-        contains('_model.reviewsFuture ??= queryReviewsRecordOnce('),
+        contains('!canAccessTeacherSurfaces(currentUserDocument)'),
       );
+      expect(myRewNS, contains('MyRewNSModel.cachedReviews(ownerUid)'));
+      expect(myRewNS, contains('UxRefreshingIndicatorOverlay('));
     });
 
     test('pending native-speaker shell keeps dashboard card and online guard',

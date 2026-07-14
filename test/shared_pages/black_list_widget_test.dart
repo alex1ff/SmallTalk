@@ -60,6 +60,7 @@ void main() {
   tearDown(() {
     currentUser = null;
     currentUserDocument = null;
+    BlackListModel.debugClearSessionCache();
   });
 
   group('blacklist owner snapshot resolver', () {
@@ -395,10 +396,12 @@ void main() {
         isServerConfirmed: false,
       ),
     );
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump();
 
     expect(find.byKey(blackListUserRowKey(blockedUser)), findsOneWidget);
     expect(find.byKey(blackListRefreshErrorKey), findsNothing);
+    expect(find.byKey(blackListRefreshingKey), findsOneWidget);
     expect(source.listenCount, 1);
 
     source.addError(StateError('partial source failed'));
@@ -420,6 +423,21 @@ void main() {
     expect(find.byKey(blackListUserRowKey(blockedUser)), findsOneWidget);
     expect(find.byKey(blackListRefreshingKey), findsOneWidget);
     expect(find.byKey(blackListRefreshErrorKey), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    await tester.pumpWidget(
+      _buildTestApp(
+        ownerStateStream: const Stream<BlackListOwnerState>.empty(),
+        currentUidProvider: () => 'user-a',
+        profileLoader: (_) async => null,
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(blackListUserRowKey(blockedUser)), findsNothing);
+    expect(find.byKey(blackListLoadingKey), findsOneWidget);
+    expect(find.byKey(blackListRefreshingKey), findsNothing);
   });
 
   testWidgets('confirmed empty stays visible while refresh and retry fail',
@@ -476,6 +494,161 @@ void main() {
     expect(find.byKey(blackListRefreshErrorKey), findsOneWidget);
     expect(find.byKey(blackListLoadingKey), findsNothing);
     expect(find.byKey(blackListErrorKey), findsNothing);
+  });
+
+  testWidgets(
+      'server cache remount keeps row geometry and merges partial updates',
+      (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+    final firstSource = _ReopenableOwnerStateSource();
+    final reconnectSource = _ReopenableOwnerStateSource();
+    final cachedUser = UsersRecord.collection.doc('cached-remount-user');
+    final incomingUser = UsersRecord.collection.doc('incoming-remount-user');
+
+    try {
+      Future<UserPublicProfilesRecord?> loadProfile(
+        DocumentReference reference,
+      ) async =>
+          _profile(reference.id, displayName: reference.id);
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          ownerStateStream: firstSource.stream,
+          currentUidProvider: () => 'user-a',
+          profileLoader: loadProfile,
+        ),
+      );
+      await tester.pump();
+      firstSource.add(
+        BlackListOwnerData(
+          ownerUid: 'user-a',
+          blockedUsers: [cachedUser],
+          isServerConfirmed: true,
+        ),
+      );
+      await tester.pumpAndSettle();
+      final cachedRowRect = tester.getRect(
+        find.byKey(blackListUserRowKey(cachedUser)),
+      );
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      await tester.pumpWidget(
+        _buildTestApp(
+          ownerStateStream: reconnectSource.stream,
+          currentUidProvider: () => 'user-a',
+          profileLoader: loadProfile,
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byKey(blackListUserRowKey(cachedUser)), findsOneWidget);
+      expect(
+        tester.getRect(find.byKey(blackListUserRowKey(cachedUser))),
+        cachedRowRect,
+      );
+      expect(find.byKey(blackListRefreshingKey), findsOneWidget);
+      expect(find.byKey(blackListLoadingKey), findsNothing);
+      final refreshingSemantics = tester.getSemantics(
+        find.byKey(blackListRefreshingKey),
+      );
+      expect(refreshingSemantics.label, 'Обновление чёрного списка');
+      expect(
+        refreshingSemantics.getSemanticsData().flagsCollection.isLiveRegion,
+        isTrue,
+      );
+
+      reconnectSource.add(
+        BlackListOwnerData(
+          ownerUid: 'user-a',
+          blockedUsers: [incomingUser],
+          isServerConfirmed: false,
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byKey(blackListUserRowKey(cachedUser)), findsOneWidget);
+      expect(find.byKey(blackListUserRowKey(incomingUser)), findsOneWidget);
+      expect(
+        tester.getRect(find.byKey(blackListUserRowKey(cachedUser))),
+        cachedRowRect,
+      );
+      expect(find.byKey(blackListRefreshingKey), findsOneWidget);
+
+      reconnectSource.add(
+        BlackListOwnerData(
+          ownerUid: 'user-a',
+          blockedUsers: [incomingUser],
+          isServerConfirmed: true,
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byKey(blackListUserRowKey(cachedUser)), findsNothing);
+      expect(find.byKey(blackListUserRowKey(incomingUser)), findsOneWidget);
+      expect(find.byKey(blackListRefreshingKey), findsNothing);
+      expect(find.byKey(blackListRefreshErrorKey), findsNothing);
+    } finally {
+      semanticsHandle.dispose();
+    }
+  });
+
+  testWidgets('server empty cache remount survives error and retry',
+      (tester) async {
+    final firstSource = _ReopenableOwnerStateSource();
+    final reconnectSource = _ReopenableOwnerStateSource();
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        ownerStateStream: firstSource.stream,
+        currentUidProvider: () => 'user-a',
+        profileLoader: (_) async => null,
+      ),
+    );
+    await tester.pump();
+    firstSource.add(
+      BlackListOwnerData(
+        ownerUid: 'user-a',
+        blockedUsers: const [],
+        isServerConfirmed: true,
+      ),
+    );
+    await tester.pump();
+    final emptyRect = tester.getRect(find.byKey(blackListEmptyKey));
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    await tester.pumpWidget(
+      _buildTestApp(
+        ownerStateStream: reconnectSource.stream,
+        currentUidProvider: () => 'user-a',
+        profileLoader: (_) async => null,
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(blackListEmptyKey), findsOneWidget);
+    expect(tester.getRect(find.byKey(blackListEmptyKey)), emptyRect);
+    expect(find.byKey(blackListRefreshingKey), findsOneWidget);
+    expect(find.byKey(blackListLoadingKey), findsNothing);
+
+    reconnectSource.addError(StateError('remount failed'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(blackListEmptyKey), findsOneWidget);
+    expect(tester.getRect(find.byKey(blackListEmptyKey)), emptyRect);
+    expect(find.byKey(blackListRefreshErrorKey), findsOneWidget);
+    expect(find.byKey(blackListErrorKey), findsNothing);
+    expect(find.byKey(blackListLoadingKey), findsNothing);
+
+    await tester.tap(find.byKey(blackListRefreshErrorKey));
+    await tester.pump();
+
+    expect(reconnectSource.listenCount, 2);
+    expect(find.byKey(blackListEmptyKey), findsOneWidget);
+    expect(find.byKey(blackListRefreshingKey), findsOneWidget);
+    expect(find.byKey(blackListRefreshErrorKey), findsNothing);
   });
 
   testWidgets('initial loading is localized, live, and hides spinner semantics',
@@ -815,6 +988,7 @@ void main() {
       'raw B to A without a frame creates fresh A2 source and profile epoch',
       (tester) async {
     for (final lateA1Fails in <bool>[false, true]) {
+      BlackListModel.debugClearSessionCache();
       final authUidController = StreamController<String>(sync: true);
       final ownerSources = _OwnerStateSourceFactory();
       final a1Profile = Completer<UserPublicProfilesRecord?>();
