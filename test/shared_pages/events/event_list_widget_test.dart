@@ -657,6 +657,8 @@ void main() {
 
     expect(calls, 1);
     expect(find.text('Loaded before refresh'), findsOneWidget);
+    expect(find.byKey(eventListCardShellKey), findsOneWidget);
+    final beforeRefreshGeometry = _eventCardGeometry(tester);
 
     await tester.tap(_dateFilterFinder(EventListDateFilter.today));
     await tester.pumpAndSettle();
@@ -667,6 +669,7 @@ void main() {
     expect(find.byKey(eventListRefreshingIndicatorKey), findsNothing);
     expect(find.byType(UxRefreshingIndicatorPill), findsNothing);
     expect(find.text('Loaded before refresh'), findsOneWidget);
+    expect(_eventCardGeometry(tester), beforeRefreshGeometry);
 
     await tester.tap(find.byKey(eventListErrorRetryButtonKey));
     await tester.pumpAndSettle();
@@ -674,6 +677,8 @@ void main() {
     expect(calls, 3);
     expect(find.byKey(eventListErrorStateKey), findsNothing);
     expect(find.text('Loaded after retry'), findsOneWidget);
+    expect(_eventCardGeometry(tester), beforeRefreshGeometry);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('keeps loaded event cards visible while refresh is pending',
@@ -740,6 +745,8 @@ void main() {
 
     expect(calls, 1);
     expect(find.text('Loaded before pending'), findsOneWidget);
+    expect(find.byKey(eventListCardShellKey), findsOneWidget);
+    final beforeRefreshGeometry = _eventCardGeometry(tester);
 
     await tester.tap(_dateFilterFinder(EventListDateFilter.today));
     await tester.pump();
@@ -749,6 +756,7 @@ void main() {
     expect(find.byType(UxRefreshingIndicatorPill), findsOneWidget);
     expect(find.byKey(eventListLoadingStateKey), findsNothing);
     expect(find.text('Loaded before pending'), findsOneWidget);
+    expect(_eventCardGeometry(tester), beforeRefreshGeometry);
 
     refreshCompleter.complete(FFFirestorePage<EventsRecord>(
       [
@@ -767,6 +775,8 @@ void main() {
     expect(find.text('Loaded before pending'), findsNothing);
     expect(find.byKey(eventListRefreshingIndicatorKey), findsNothing);
     expect(find.byType(UxRefreshingIndicatorPill), findsNothing);
+    expect(_eventCardGeometry(tester), beforeRefreshGeometry);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('keeps loaded event cards visible while level filter is pending',
@@ -835,6 +845,8 @@ void main() {
 
     expect(calls, 1);
     expect(find.text('Loaded before level pending'), findsOneWidget);
+    expect(find.byKey(eventListCardShellKey), findsOneWidget);
+    final beforeRefreshGeometry = _eventCardGeometry(tester);
 
     await tester.tap(_levelFilterFinder('B2'));
     await tester.pump();
@@ -844,6 +856,7 @@ void main() {
     expect(find.byType(UxRefreshingIndicatorPill), findsOneWidget);
     expect(find.byKey(eventListLoadingStateKey), findsNothing);
     expect(find.text('Loaded before level pending'), findsOneWidget);
+    expect(_eventCardGeometry(tester), beforeRefreshGeometry);
 
     levelCompleter.complete(FFFirestorePage<EventsRecord>(
       [
@@ -863,6 +876,8 @@ void main() {
     expect(find.byKey(eventListRefreshingIndicatorKey), findsNothing);
     expect(find.byType(UxRefreshingIndicatorPill), findsNothing);
     expect(find.byKey(eventListLoadingStateKey), findsNothing);
+    expect(_eventCardGeometry(tester), beforeRefreshGeometry);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('waits for the active filter before showing empty state',
