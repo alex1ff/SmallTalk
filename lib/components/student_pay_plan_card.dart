@@ -2,6 +2,20 @@ import '/components/student_pay_plan.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
 
+const double studentPayPriceSlotBaseHeight = 30.0;
+
+ValueKey<String> studentPayPlanCardKey(StudentPayPlanKind kind) =>
+    ValueKey<String>('student_pay_plan_card_${kind.name}');
+
+ValueKey<String> studentPayPlanIconSlotKey(StudentPayPlanKind kind) =>
+    ValueKey<String>('student_pay_plan_icon_slot_${kind.name}');
+
+ValueKey<String> studentPayPlanPriceSlotKey(StudentPayPlanKind kind) =>
+    ValueKey<String>('student_pay_plan_price_slot_${kind.name}');
+
+ValueKey<String> studentPayPlanSelectionSlotKey(StudentPayPlanKind kind) =>
+    ValueKey<String>('student_pay_plan_selection_slot_${kind.name}');
+
 class StudentPayPlanCard extends StatelessWidget {
   const StudentPayPlanCard({
     super.key,
@@ -28,16 +42,13 @@ class StudentPayPlanCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(ExpatlioDesign.cardRadius),
       onTap: onTap,
       child: AnimatedContainer(
+        key: studentPayPlanCardKey(plan.kind),
         duration: const Duration(milliseconds: 160),
         curve: Curves.easeOut,
         width: double.infinity,
         decoration: BoxDecoration(
           color: selected ? _selectedBackground : ExpatlioDesign.card,
           borderRadius: BorderRadius.circular(ExpatlioDesign.cardRadius),
-          border: Border.all(
-            color: _cardBorder,
-            width: selected ? 2.0 : 1.0,
-          ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.03),
@@ -46,12 +57,22 @@ class StudentPayPlanCard extends StatelessWidget {
             ),
           ],
         ),
+        foregroundDecoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(ExpatlioDesign.cardRadius),
+          border: Border.all(
+            color: _cardBorder,
+            width: selected ? 2.0 : 1.0,
+          ),
+        ),
         child: Padding(
           padding: const EdgeInsetsDirectional.all(ExpatlioDesign.space16),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _StudentPayPlanIcon(icon: plan.icon),
+              _StudentPayPlanIcon(
+                kind: plan.kind,
+                icon: plan.icon,
+              ),
               const SizedBox(width: ExpatlioDesign.space12),
               Expanded(
                 child: Column(
@@ -70,6 +91,7 @@ class StudentPayPlanCard extends StatelessWidget {
                     ),
                     const SizedBox(height: ExpatlioDesign.space8),
                     _StudentPayPriceLine(
+                      kind: plan.kind,
                       price: price,
                       periodLabel: plan.periodLabel,
                       priceAvailable: priceAvailable,
@@ -84,7 +106,10 @@ class StudentPayPlanCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: ExpatlioDesign.space12),
-              _StudentPaySelectionIndicator(selected: selected),
+              _StudentPaySelectionIndicator(
+                kind: plan.kind,
+                selected: selected,
+              ),
             ],
           ),
         ),
@@ -94,13 +119,18 @@ class StudentPayPlanCard extends StatelessWidget {
 }
 
 class _StudentPayPlanIcon extends StatelessWidget {
-  const _StudentPayPlanIcon({required this.icon});
+  const _StudentPayPlanIcon({
+    required this.kind,
+    required this.icon,
+  });
 
+  final StudentPayPlanKind kind;
   final IconData icon;
 
   @override
   Widget build(BuildContext context) {
     return Container(
+      key: studentPayPlanIconSlotKey(kind),
       width: 52.0,
       height: 52.0,
       decoration: BoxDecoration(
@@ -125,7 +155,7 @@ class _StudentPayPlanTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Flexible(
+        Expanded(
           child: Text(
             plan.title,
             maxLines: 1,
@@ -140,24 +170,29 @@ class _StudentPayPlanTitle extends StatelessWidget {
         ),
         if (plan.badge != null) ...[
           const SizedBox(width: ExpatlioDesign.space8),
-          Container(
-            padding: const EdgeInsetsDirectional.fromSTEB(
-                ExpatlioDesign.space8,
-                ExpatlioDesign.space4,
-                ExpatlioDesign.space8,
-                ExpatlioDesign.space4),
-            decoration: BoxDecoration(
-              color: ExpatlioDesign.primary,
-              borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
-            ),
-            child: Text(
-              plan.badge!,
-              style: ExpatlioDesign.textStyle(
-                context,
-                color: ExpatlioDesign.card,
-                size: 10.0,
-                weight: FontWeight.w700,
-                height: 1.2,
+          Flexible(
+            child: Container(
+              padding: const EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space8,
+                  ExpatlioDesign.space4,
+                  ExpatlioDesign.space8,
+                  ExpatlioDesign.space4),
+              decoration: BoxDecoration(
+                color: ExpatlioDesign.primary,
+                borderRadius:
+                    BorderRadius.circular(ExpatlioDesign.radiusMedium),
+              ),
+              child: Text(
+                plan.badge!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: ExpatlioDesign.textStyle(
+                  context,
+                  color: ExpatlioDesign.card,
+                  size: 10.0,
+                  weight: FontWeight.w700,
+                  height: 1.2,
+                ),
               ),
             ),
           ),
@@ -169,52 +204,65 @@ class _StudentPayPlanTitle extends StatelessWidget {
 
 class _StudentPayPriceLine extends StatelessWidget {
   const _StudentPayPriceLine({
+    required this.kind,
     required this.price,
     required this.periodLabel,
     required this.priceAvailable,
   });
 
+  final StudentPayPlanKind kind;
   final String price;
   final String periodLabel;
   final bool priceAvailable;
 
   @override
   Widget build(BuildContext context) {
-    if (!priceAvailable) {
-      return Text(
-        price,
-        style: ExpatlioDesign.textStyle(
-          context,
-          color: ExpatlioDesign.muted,
-          size: 15.0,
-          weight: FontWeight.w600,
-        ),
-      );
-    }
-
-    return RichText(
-      textScaler: MediaQuery.of(context).textScaler,
-      text: TextSpan(
-        children: [
-          TextSpan(
-            text: price,
-            style: ExpatlioDesign.textStyle(
-              context,
-              color: ExpatlioDesign.primary,
-              size: 24.0,
-              weight: FontWeight.w800,
-              height: 1.18,
-            ),
-          ),
-          TextSpan(
-            text: ' / $periodLabel',
-            style: ExpatlioDesign.textStyle(
-              context,
-              color: ExpatlioDesign.muted,
-              size: 16.0,
-            ),
-          ),
-        ],
+    return SizedBox(
+      key: studentPayPlanPriceSlotKey(kind),
+      height: MediaQuery.textScalerOf(context).scale(
+        studentPayPriceSlotBaseHeight,
+      ),
+      child: Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: priceAvailable
+            ? RichText(
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textScaler: MediaQuery.of(context).textScaler,
+                text: TextSpan(
+                  children: [
+                    TextSpan(
+                      text: price,
+                      style: ExpatlioDesign.textStyle(
+                        context,
+                        color: ExpatlioDesign.primary,
+                        size: 24.0,
+                        weight: FontWeight.w800,
+                        height: 1.18,
+                      ),
+                    ),
+                    TextSpan(
+                      text: ' / $periodLabel',
+                      style: ExpatlioDesign.textStyle(
+                        context,
+                        color: ExpatlioDesign.muted,
+                        size: 16.0,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : Text(
+                price,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: ExpatlioDesign.textStyle(
+                  context,
+                  color: ExpatlioDesign.muted,
+                  size: 15.0,
+                  weight: FontWeight.w600,
+                ),
+              ),
       ),
     );
   }
@@ -252,14 +300,19 @@ class _StudentPayFeatureLine extends StatelessWidget {
 }
 
 class _StudentPaySelectionIndicator extends StatelessWidget {
-  const _StudentPaySelectionIndicator({required this.selected});
+  const _StudentPaySelectionIndicator({
+    required this.kind,
+    required this.selected,
+  });
 
+  final StudentPayPlanKind kind;
   final bool selected;
 
   @override
   Widget build(BuildContext context) {
     if (selected) {
       return Container(
+        key: studentPayPlanSelectionSlotKey(kind),
         width: 28.0,
         height: 28.0,
         decoration: const BoxDecoration(
@@ -275,6 +328,7 @@ class _StudentPaySelectionIndicator extends StatelessWidget {
     }
 
     return Container(
+      key: studentPayPlanSelectionSlotKey(kind),
       width: 28.0,
       height: 28.0,
       decoration: BoxDecoration(

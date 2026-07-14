@@ -1,4 +1,3 @@
-import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
@@ -6,12 +5,33 @@ import '/flutter_flow/flutter_flow_util.dart';
 import '/components/bottom_sheet_header.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/components/delete_card_widget.dart';
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'edit_card_model.dart';
 export 'edit_card_model.dart';
 
+const editCardRevokedKey = ValueKey<String>('edit_card_revoked');
+
+ValueKey<String> editCardDeleteButtonKey(String cardPath) =>
+    ValueKey<String>('edit_card_delete_$cardPath');
+
 class EditCardWidget extends StatefulWidget {
-  const EditCardWidget({super.key});
+  const EditCardWidget({
+    super.key,
+    required this.owner,
+    required this.ownerIsCurrent,
+    this.cardsStream,
+    this.deleteCard,
+    this.revocation,
+    this.onPaymentRouteBuilt,
+  });
+
+  final DocumentReference owner;
+  final bool Function() ownerIsCurrent;
+  final Stream<List<CardsRecord>>? cardsStream;
+  final DeleteCardHandler? deleteCard;
+  final ValueListenable<bool>? revocation;
+  final ValueChanged<Route<dynamic>?>? onPaymentRouteBuilt;
 
   @override
   State<EditCardWidget> createState() => _EditCardWidgetState();
@@ -30,9 +50,10 @@ class _EditCardWidgetState extends State<EditCardWidget> {
   void initState() {
     super.initState();
     _model = createModel(context, () => EditCardModel());
-    _model.cardsStream = queryCardsRecord(
-      parent: currentUserReference,
-    );
+    _model.cardsStream = widget.cardsStream ??
+        queryCardsRecord(
+          parent: widget.owner,
+        );
   }
 
   @override
@@ -44,6 +65,10 @@ class _EditCardWidgetState extends State<EditCardWidget> {
 
   @override
   Widget build(BuildContext context) {
+    if (!widget.ownerIsCurrent()) {
+      return const SizedBox.shrink(key: editCardRevokedKey);
+    }
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.start,
@@ -140,6 +165,9 @@ class _EditCardWidgetState extends State<EditCardWidget> {
                                   ),
                                 ),
                                 FlutterFlowIconButton(
+                                  key: editCardDeleteButtonKey(
+                                    listViewCardsRecord.reference.path,
+                                  ),
                                   borderRadius: ExpatlioDesign.controlRadius,
                                   buttonSize: 52.0,
                                   icon: Icon(
@@ -148,17 +176,41 @@ class _EditCardWidgetState extends State<EditCardWidget> {
                                     size: 18.0,
                                   ),
                                   onPressed: () async {
+                                    if (!widget.ownerIsCurrent()) {
+                                      return;
+                                    }
                                     await showModalBottomSheet(
                                       isScrollControlled: true,
                                       backgroundColor: Colors.transparent,
                                       context: context,
                                       builder: (context) {
-                                        return Padding(
-                                          padding:
-                                              MediaQuery.viewInsetsOf(context),
-                                          child: DeleteCardWidget(
-                                            doc: listViewCardsRecord,
-                                          ),
+                                        widget.onPaymentRouteBuilt?.call(
+                                          ModalRoute.of(context),
+                                        );
+                                        Widget buildDeleteCard() => Padding(
+                                              padding: MediaQuery.viewInsetsOf(
+                                                  context),
+                                              child: DeleteCardWidget(
+                                                doc: listViewCardsRecord,
+                                                owner: widget.owner,
+                                                ownerIsCurrent:
+                                                    widget.ownerIsCurrent,
+                                                deleteCard: widget.deleteCard,
+                                              ),
+                                            );
+
+                                        final revocation = widget.revocation;
+                                        if (revocation == null) {
+                                          return buildDeleteCard();
+                                        }
+                                        return ValueListenableBuilder<bool>(
+                                          valueListenable: revocation,
+                                          builder: (context, revoked, _) {
+                                            if (revoked) {
+                                              return const SizedBox.shrink();
+                                            }
+                                            return buildDeleteCard();
+                                          },
                                         );
                                       },
                                     ).then((value) => safeSetState(() {}));

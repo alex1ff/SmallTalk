@@ -13,8 +13,24 @@ import 'package:purchases_flutter/purchases_flutter.dart';
 import 'pay_model.dart';
 export 'pay_model.dart';
 
+typedef StudentPayCatalogLoader = Future<Map<String, String>> Function();
+typedef StudentPayPurchaseHandler = Future<void> Function(String productId);
+
 class PayWidget extends StatefulWidget {
-  const PayWidget({super.key});
+  const PayWidget({super.key})
+      : _catalogLoader = null,
+        _purchaseHandler = null;
+
+  @visibleForTesting
+  const PayWidget.withPaymentGateway({
+    super.key,
+    required StudentPayCatalogLoader catalogLoader,
+    required StudentPayPurchaseHandler purchaseHandler,
+  })  : _catalogLoader = catalogLoader,
+        _purchaseHandler = purchaseHandler;
+
+  final StudentPayCatalogLoader? _catalogLoader;
+  final StudentPayPurchaseHandler? _purchaseHandler;
 
   static String routeName = 'Pay';
   static String routePath = '/pay';
@@ -61,6 +77,7 @@ class _PayWidgetState extends State<PayWidget> {
   StudentPayPlanKind _selected = StudentPayPlanKind.quarterly;
   Map<String, Package> _packagesByProductId = const {};
   Map<String, StoreProduct> _storeProductsByProductId = const {};
+  Map<String, String> _injectedPricesByProductId = const {};
   bool _isLoadingPackages = true;
   bool _isPurchasing = false;
   bool _isRestoringPurchases = false;
@@ -94,6 +111,30 @@ class _PayWidgetState extends State<PayWidget> {
       safeSetState(() {
         _isLoadingPackages = true;
       });
+    }
+
+    final catalogLoader = widget._catalogLoader;
+    if (catalogLoader != null) {
+      Map<String, String> prices = const {};
+      try {
+        prices = await catalogLoader().timeout(
+          const Duration(seconds: 20),
+          onTimeout: () => const {},
+        );
+      } catch (e, st) {
+        debugPrint('⚠️ PayWidget._loadPackages failed: $e\n$st');
+        if (mounted) {
+          _showSnackBar('Не удалось загрузить тарифы. Попробуйте еще раз.');
+        }
+      }
+      if (!mounted) {
+        return;
+      }
+      safeSetState(() {
+        _injectedPricesByProductId = Map.unmodifiable(prices);
+        _isLoadingPackages = false;
+      });
+      return;
     }
 
     List<Package> packages;
@@ -132,6 +173,10 @@ class _PayWidgetState extends State<PayWidget> {
   }
 
   String _priceFor(StudentPayPlan plan) {
+    final injectedPrice = _injectedPricesByProductId[plan.productId];
+    if (injectedPrice != null) {
+      return injectedPrice;
+    }
     final package = _packagesByProductId[plan.productId];
     if (package != null) {
       return package.storeProduct.priceString;
@@ -144,11 +189,42 @@ class _PayWidgetState extends State<PayWidget> {
   }
 
   bool _hasPackageFor(StudentPayPlan plan) =>
+      _injectedPricesByProductId.containsKey(plan.productId) ||
       _packagesByProductId.containsKey(plan.productId) ||
       _storeProductsByProductId.containsKey(plan.productId);
 
   Future<void> _purchaseSelectedPlan() async {
     if (_isPurchasing || _isLoadingPackages) {
+      return;
+    }
+
+    final purchaseHandler = widget._purchaseHandler;
+    if (purchaseHandler != null) {
+      if (!_hasPackageFor(_selectedPlan)) {
+        await _loadPackages();
+      }
+      if (!mounted || !_hasPackageFor(_selectedPlan)) {
+        _showSnackBar(
+            'Покупки пока недоступны. Проверьте продукты RevenueCat.');
+        return;
+      }
+
+      safeSetState(() {
+        _isPurchasing = true;
+      });
+      try {
+        await purchaseHandler(_selectedPlan.productId);
+      } catch (_) {
+        if (mounted) {
+          _showSnackBar('Не удалось оформить подписку. Попробуйте еще раз.');
+        }
+      } finally {
+        if (mounted) {
+          safeSetState(() {
+            _isPurchasing = false;
+          });
+        }
+      }
       return;
     }
 
@@ -302,17 +378,17 @@ class _PayWidgetState extends State<PayWidget> {
                 ),
               ),
             ),
-            StudentPayBottomBar(
-              plan: _selectedPlan,
-              price: _priceFor(_selectedPlan),
-              canPurchase: _hasPackageFor(_selectedPlan),
-              isBusy: _isPurchasing,
-              isLoading: _isLoadingPackages,
-              onPressed: _hasPackageFor(_selectedPlan)
-                  ? _purchaseSelectedPlan
-                  : _loadPackages,
-            ),
           ],
+        ),
+        bottomNavigationBar: StudentPayBottomBar(
+          plan: _selectedPlan,
+          price: _priceFor(_selectedPlan),
+          canPurchase: _hasPackageFor(_selectedPlan),
+          isBusy: _isPurchasing,
+          isLoading: _isLoadingPackages,
+          onPressed: _hasPackageFor(_selectedPlan)
+              ? _purchaseSelectedPlan
+              : _loadPackages,
         ),
       ),
     );

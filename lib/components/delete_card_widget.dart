@@ -6,18 +6,29 @@ import '/flutter_flow/flutter_flow_util.dart';
 import '/components/bottom_sheet_header.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/flutter_flow/flutter_flow_widgets.dart';
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'delete_card_model.dart';
 export 'delete_card_model.dart';
+
+typedef DeleteCardHandler = Future<void> Function(CardsRecord card);
+
+const deleteCardRevokedKey = ValueKey<String>('delete_card_revoked');
+const deleteCardConfirmButtonKey =
+    ValueKey<String>('delete_card_confirm_button');
 
 class DeleteCardWidget extends StatefulWidget {
   const DeleteCardWidget({
     super.key,
     required this.doc,
+    required this.owner,
+    required this.ownerIsCurrent,
+    this.deleteCard,
   });
 
   final CardsRecord? doc;
+  final DocumentReference owner;
+  final bool Function() ownerIsCurrent;
+  final DeleteCardHandler? deleteCard;
 
   @override
   State<DeleteCardWidget> createState() => _DeleteCardWidgetState();
@@ -25,6 +36,7 @@ class DeleteCardWidget extends StatefulWidget {
 
 class _DeleteCardWidgetState extends State<DeleteCardWidget> {
   late DeleteCardModel _model;
+  bool _isDeleting = false;
 
   @override
   void setState(VoidCallback callback) {
@@ -45,8 +57,42 @@ class _DeleteCardWidgetState extends State<DeleteCardWidget> {
     super.dispose();
   }
 
+  bool get _canDeleteCurrentOwnerCard {
+    final card = widget.doc;
+    return card != null &&
+        widget.ownerIsCurrent() &&
+        card.reference.parent.parent?.path == widget.owner.path;
+  }
+
+  Future<void> _deleteCard() async {
+    if (_isDeleting || !_canDeleteCurrentOwnerCard) {
+      return;
+    }
+    safeSetState(() => _isDeleting = true);
+    final card = widget.doc!;
+    try {
+      final deleteCard = widget.deleteCard;
+      if (deleteCard != null) {
+        await deleteCard(card);
+      } else {
+        await card.reference.delete();
+      }
+    } finally {
+      if (mounted) {
+        safeSetState(() => _isDeleting = false);
+      }
+    }
+    if (mounted && widget.ownerIsCurrent()) {
+      Navigator.pop(context);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (!_canDeleteCurrentOwnerCard) {
+      return const SizedBox.shrink(key: deleteCardRevokedKey);
+    }
+
     return Stack(
       alignment: AlignmentDirectional(0.0, 1.0),
       children: [
@@ -156,14 +202,8 @@ class _DeleteCardWidgetState extends State<DeleteCardWidget> {
                           ExpatlioDesign.space0,
                           ExpatlioDesign.space0),
                       child: FFButtonWidget(
-                        onPressed: () async {
-                          unawaited(
-                            () async {
-                              await widget.doc!.reference.delete();
-                            }(),
-                          );
-                          Navigator.pop(context);
-                        },
+                        key: deleteCardConfirmButtonKey,
+                        onPressed: _isDeleting ? null : _deleteCard,
                         text: FFLocalizations.of(context).getText(
                           'ikt9ul7g' /* Удалить карту */,
                         ),

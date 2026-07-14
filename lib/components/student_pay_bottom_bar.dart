@@ -2,6 +2,11 @@ import '/components/student_pay_plan.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
 
+const studentPayBottomBarKey = ValueKey<String>('student_pay_bottom_bar');
+const studentPayPurchaseCtaKey = ValueKey<String>('student_pay_purchase_cta');
+const studentPayPurchaseContentSlotKey =
+    ValueKey<String>('student_pay_purchase_content_slot');
+
 class StudentPayBottomBar extends StatelessWidget {
   const StudentPayBottomBar({
     super.key,
@@ -23,8 +28,11 @@ class StudentPayBottomBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      key: studentPayBottomBarKey,
       decoration: const BoxDecoration(
         color: ExpatlioDesign.background,
+      ),
+      foregroundDecoration: const BoxDecoration(
         border: Border(
           top: BorderSide(color: ExpatlioDesign.border),
         ),
@@ -39,6 +47,7 @@ class StudentPayBottomBar extends StatelessWidget {
             ExpatlioDesign.space12,
           ),
           child: Center(
+            heightFactor: 1.0,
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 520.0),
               child: InkWell(
@@ -46,6 +55,7 @@ class StudentPayBottomBar extends StatelessWidget {
                     BorderRadius.circular(ExpatlioDesign.buttonRadius),
                 onTap: isBusy || isLoading ? null : onPressed,
                 child: Container(
+                  key: studentPayPurchaseCtaKey,
                   width: double.infinity,
                   height: ExpatlioDesign.buttonHeight,
                   decoration: BoxDecoration(
@@ -54,26 +64,34 @@ class StudentPayBottomBar extends StatelessWidget {
                         BorderRadius.circular(ExpatlioDesign.buttonRadius),
                   ),
                   alignment: Alignment.center,
-                  child: isBusy || isLoading
-                      ? const SizedBox(
-                          width: 24.0,
-                          height: 24.0,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        )
-                      : Text(
-                          canPurchase
-                              ? 'Выбрать ${plan.title} · $price/${plan.periodLabel}'
-                              : 'Повторить загрузку',
-                          textAlign: TextAlign.center,
-                          style: ExpatlioDesign.buttonTextStyle(
-                            context,
-                            color: ExpatlioDesign.card,
-                          ).copyWith(height: 1.2),
-                        ),
+                  child: SizedBox.expand(
+                    key: studentPayPurchaseContentSlotKey,
+                    child: Center(
+                      child: isBusy || isLoading
+                          ? const SizedBox(
+                              width: 24.0,
+                              height: 24.0,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.white,
+                                ),
+                              ),
+                            )
+                          : Text(
+                              canPurchase
+                                  ? 'Выбрать ${plan.title} · $price/${plan.periodLabel}'
+                                  : 'Повторить загрузку',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                              style: ExpatlioDesign.buttonTextStyle(
+                                context,
+                                color: ExpatlioDesign.card,
+                              ).copyWith(height: 1.2),
+                            ),
+                    ),
+                  ),
                 ),
               ),
             ),

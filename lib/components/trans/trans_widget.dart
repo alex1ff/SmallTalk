@@ -2,6 +2,7 @@ import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/components/payment_transaction_row.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
 import 'trans_model.dart';
@@ -11,9 +12,15 @@ class TransWidget extends StatefulWidget {
   const TransWidget({
     super.key,
     required this.trans,
+    this.layoutId,
+    this.refreshState = PaymentTransactionRefreshState.idle,
+    this.onRetry,
   });
 
   final TransactionsRecord? trans;
+  final String? layoutId;
+  final PaymentTransactionRefreshState refreshState;
+  final VoidCallback? onRetry;
 
   @override
   State<TransWidget> createState() => _TransWidgetState();
@@ -24,6 +31,8 @@ class _TransWidgetState extends State<TransWidget> {
   Future<VideoSessionsRecord>? _sessionFuture;
 
   bool get _isPurchase => widget.trans?.type == TypeTransactions.purchase;
+  String get _layoutId =>
+      widget.layoutId ?? widget.trans?.reference.path ?? 'empty';
   bool get _isWithdrawal => widget.trans?.type == TypeTransactions.withdrawal;
 
   bool get _isCallTransaction =>
@@ -244,6 +253,7 @@ class _TransWidgetState extends State<TransWidget> {
           color: ExpatlioDesign.muted,
           fontSize: 12.0,
           letterSpacing: 0.0,
+          lineHeight: 1.2,
         );
 
     if (_sessionFuture == null) {
@@ -297,186 +307,152 @@ class _TransWidgetState extends State<TransWidget> {
     super.dispose();
   }
 
+  String _titleLabel(BuildContext context) {
+    return switch (widget.trans?.type) {
+      TypeTransactions.purchase => FFLocalizations.of(context).getVariableText(
+          ruText: 'Пополнение баланса',
+          enText: 'Top up balance',
+        ),
+      TypeTransactions.bonus => FFLocalizations.of(context).getVariableText(
+          ruText: 'Бонус',
+          enText: 'Bonus',
+        ),
+      TypeTransactions.call_charge =>
+        FFLocalizations.of(context).getVariableText(
+          ruText: 'Оплата разговора',
+          enText: 'Call payment',
+        ),
+      TypeTransactions.earning => FFLocalizations.of(context).getVariableText(
+          ruText: 'Заработок за разговор',
+          enText: 'Call earnings',
+        ),
+      TypeTransactions.withdrawal =>
+        FFLocalizations.of(context).getVariableText(
+          ruText: 'Вывод средств',
+          enText: 'Withdrawal',
+        ),
+      TypeTransactions.promocode => FFLocalizations.of(context).getVariableText(
+          ruText: 'Промокод',
+          enText: 'Promo code',
+        ),
+      _ => FFLocalizations.of(context).getVariableText(
+          ruText: 'Операция',
+          enText: 'Transaction',
+        ),
+    };
+  }
+
+  String _statusLabel(BuildContext context) {
+    if (widget.trans?.type == TypeTransactions.purchase) {
+      return _purchaseSubtitle(context);
+    }
+    if ((widget.trans?.type == TypeTransactions.call_charge) ||
+        (widget.trans?.type == TypeTransactions.earning)) {
+      return '${FFLocalizations.of(context).getVariableText(
+        ruText: 'Разговор ',
+        enText: 'Call ',
+      )}${widget.trans?.callDuration}${FFLocalizations.of(context).getVariableText(
+        ruText: ' мин',
+        enText: ' min',
+      )}';
+    }
+    if (widget.trans?.type == TypeTransactions.bonus) {
+      return FFLocalizations.of(context).getVariableText(
+        ruText: 'Спасибо за регистрацию!',
+        enText: 'Thanks for registering!',
+      );
+    }
+    if (widget.trans?.type == TypeTransactions.withdrawal) {
+      return _withdrawalSubtitle(context);
+    }
+    if (widget.trans?.type == TypeTransactions.promocode) {
+      return '${FFLocalizations.of(context).getVariableText(
+        ruText: 'Промокод ',
+        enText: 'Promo code ',
+      )}${widget.trans?.promoCode}';
+    }
+    return ' -';
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      height: 60.0,
-      decoration: BoxDecoration(
-        color: ExpatlioDesign.card,
-        borderRadius: BorderRadius.circular(ExpatlioDesign.cardRadius),
-        border: Border.all(
-          color: ExpatlioDesign.border,
+    return PaymentTransactionRowFrame(
+      layoutId: _layoutId,
+      refreshState: widget.refreshState,
+      onRetry: widget.onRetry,
+      leading: Container(
+        decoration: BoxDecoration(
+          color: _leadingBackgroundColor(context),
+          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
+        ),
+        child: Icon(
+          FFIcons.kcoinsStacked01,
+          color: _leadingIconColor(context),
+          size: 20.0,
         ),
       ),
-      child: Padding(
-        padding: EdgeInsets.all(ExpatlioDesign.space4),
-        child: Row(
-          mainAxisSize: MainAxisSize.max,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 52.0,
-              height: 52.0,
-              decoration: BoxDecoration(
-                color: _leadingBackgroundColor(context),
-                borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
-              ),
-              child: Icon(
-                FFIcons.kcoinsStacked01,
-                color: _leadingIconColor(context),
-                size: 20.0,
-              ),
-            ),
-            Expanded(
-              child: Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(
-                    ExpatlioDesign.space12,
-                    ExpatlioDesign.space0,
-                    ExpatlioDesign.space0,
-                    ExpatlioDesign.space0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.max,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      () {
-                        if (widget.trans?.type == TypeTransactions.purchase) {
-                          return FFLocalizations.of(context).getVariableText(
-                            ruText: 'Пополнение баланса',
-                            enText: 'Top up balance',
-                          );
-                        } else if (widget.trans?.type ==
-                            TypeTransactions.bonus) {
-                          return FFLocalizations.of(context).getVariableText(
-                            ruText: 'Бонус',
-                            enText: 'Bonus',
-                          );
-                        } else if (widget.trans?.type ==
-                            TypeTransactions.call_charge) {
-                          return FFLocalizations.of(context).getVariableText(
-                            ruText: 'Оплата разговора',
-                            enText: 'Call payment',
-                          );
-                        } else if (widget.trans?.type ==
-                            TypeTransactions.earning) {
-                          return FFLocalizations.of(context).getVariableText(
-                            ruText: 'Заработок за разговор',
-                            enText: 'Call earnings',
-                          );
-                        } else if (widget.trans?.type ==
-                            TypeTransactions.withdrawal) {
-                          return FFLocalizations.of(context).getVariableText(
-                            ruText: 'Вывод средств',
-                            enText: 'Withdrawal',
-                          );
-                        } else if (widget.trans?.type ==
-                            TypeTransactions.promocode) {
-                          return FFLocalizations.of(context).getVariableText(
-                            ruText: 'Промокод',
-                            enText: 'Promo code',
-                          );
-                        } else {
-                          return FFLocalizations.of(context).getVariableText(
-                            ruText: 'Операция',
-                            enText: 'Transaction',
-                          );
-                        }
-                      }(),
-                      style: FlutterFlowTheme.of(context).bodyMedium.override(
-                            fontFamily: 'sf pro display',
-                            color: _titleColor(context),
-                            fontSize: 15.0,
-                            letterSpacing: 0.0,
-                          ),
-                    ),
-                    Padding(
-                      padding: EdgeInsetsDirectional.fromSTEB(
-                          ExpatlioDesign.space0,
-                          ExpatlioDesign.space4,
-                          ExpatlioDesign.space0,
-                          ExpatlioDesign.space0),
-                      child: _buildDateText(context),
-                    ),
-                  ],
+      primary: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _titleLabel(context),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: FlutterFlowTheme.of(context).bodyMedium.override(
+                  fontFamily: 'sf pro display',
+                  color: _titleColor(context),
+                  fontSize: 15.0,
+                  letterSpacing: 0.0,
+                  lineHeight: 1.2,
                 ),
-              ),
+          ),
+          Padding(
+            padding: const EdgeInsetsDirectional.only(
+              top: ExpatlioDesign.space4,
             ),
-            Padding(
-              padding: EdgeInsetsDirectional.fromSTEB(
-                  ExpatlioDesign.space0,
-                  ExpatlioDesign.space0,
-                  ExpatlioDesign.space12,
-                  ExpatlioDesign.space0),
-              child: Column(
-                mainAxisSize: MainAxisSize.max,
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    _amountLabel(context),
-                    style: FlutterFlowTheme.of(context).bodyMedium.override(
-                          fontFamily: 'sf pro display',
-                          color: _amountColor(context),
-                          fontSize: 15.0,
-                          letterSpacing: 0.0,
-                          fontWeight: FontWeight.normal,
-                        ),
-                  ),
-                  Padding(
-                    padding: EdgeInsetsDirectional.fromSTEB(
-                        ExpatlioDesign.space0,
-                        ExpatlioDesign.space4,
-                        ExpatlioDesign.space0,
-                        ExpatlioDesign.space0),
-                    child: Text(
-                      () {
-                        if (widget.trans?.type == TypeTransactions.purchase) {
-                          return _purchaseSubtitle(context);
-                        } else if ((widget.trans?.type ==
-                                TypeTransactions.call_charge) ||
-                            (widget.trans?.type == TypeTransactions.earning)) {
-                          return '${FFLocalizations.of(context).getVariableText(
-                            ruText: 'Разговор ',
-                            enText: 'Call ',
-                          )}${widget.trans?.callDuration}${FFLocalizations.of(context).getVariableText(
-                            ruText: ' мин',
-                            enText: ' min',
-                          )}';
-                        } else if (widget.trans?.type ==
-                            TypeTransactions.bonus) {
-                          return FFLocalizations.of(context).getVariableText(
-                            ruText: 'Спасибо за регистрацию!',
-                            enText: 'Thanks for registering!',
-                          );
-                        } else if (widget.trans?.type ==
-                            TypeTransactions.withdrawal) {
-                          return _withdrawalSubtitle(context);
-                        } else if (widget.trans?.type ==
-                            TypeTransactions.promocode) {
-                          return '${FFLocalizations.of(context).getVariableText(
-                            ruText: 'Промокод ',
-                            enText: 'Promo code ',
-                          )}${widget.trans?.promoCode}';
-                        } else {
-                          return ' -';
-                        }
-                      }(),
-                      style: FlutterFlowTheme.of(context).bodyMedium.override(
-                            fontFamily: 'sf pro display',
-                            color: _subtitleColor(context),
-                            fontSize: 12.0,
-                            letterSpacing: 0.0,
-                            fontWeight: FontWeight.normal,
-                          ),
-                    ),
-                  ),
-                ],
-              ),
+            child: _buildDateText(context),
+          ),
+        ],
+      ),
+      meta: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(
+            _amountLabel(context),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.end,
+            style: FlutterFlowTheme.of(context).bodyMedium.override(
+                  fontFamily: 'sf pro display',
+                  color: _amountColor(context),
+                  fontSize: 15.0,
+                  letterSpacing: 0.0,
+                  fontWeight: FontWeight.normal,
+                  lineHeight: 1.2,
+                ),
+          ),
+          Padding(
+            padding: const EdgeInsetsDirectional.only(
+              top: ExpatlioDesign.space4,
             ),
-          ],
-        ),
+            child: Text(
+              _statusLabel(context),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.end,
+              style: FlutterFlowTheme.of(context).bodyMedium.override(
+                    fontFamily: 'sf pro display',
+                    color: _subtitleColor(context),
+                    fontSize: 12.0,
+                    letterSpacing: 0.0,
+                    fontWeight: FontWeight.normal,
+                    lineHeight: 1.2,
+                  ),
+            ),
+          ),
+        ],
       ),
     );
   }

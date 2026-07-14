@@ -1,4 +1,3 @@
-import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/components/bottom_sheet_header.dart';
@@ -10,8 +9,26 @@ import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 import 'add_card_model.dart';
 export 'add_card_model.dart';
 
+typedef AddCardWriter = Future<void> Function({
+  required DocumentReference owner,
+  required String number,
+  required String pan,
+});
+
+const addCardRevokedKey = ValueKey<String>('add_card_revoked');
+const addCardSaveButtonKey = ValueKey<String>('add_card_save_button');
+
 class AddCardWidget extends StatefulWidget {
-  const AddCardWidget({super.key});
+  const AddCardWidget({
+    super.key,
+    required this.owner,
+    required this.ownerIsCurrent,
+    this.cardWriter,
+  });
+
+  final DocumentReference owner;
+  final bool Function() ownerIsCurrent;
+  final AddCardWriter? cardWriter;
 
   @override
   State<AddCardWidget> createState() => _AddCardWidgetState();
@@ -48,18 +65,31 @@ class _AddCardWidgetState extends State<AddCardWidget> {
         !_model.formKey.currentState!.validate()) {
       return;
     }
-    await CardsRecord.createDoc(currentUserReference!)
-        .set(createCardsRecordData(
-      num: _model.nameTextController.text,
-      pan: functions.maskCardNumber(_model.nameTextController.text),
-    ));
-    if (mounted) {
+    if (!widget.ownerIsCurrent()) {
+      return;
+    }
+
+    final number = _model.nameTextController.text;
+    final pan = functions.maskCardNumber(number);
+    final cardWriter = widget.cardWriter;
+    if (cardWriter != null) {
+      await cardWriter(owner: widget.owner, number: number, pan: pan);
+    } else {
+      await CardsRecord.createDoc(widget.owner).set(
+        createCardsRecordData(num: number, pan: pan),
+      );
+    }
+    if (mounted && widget.ownerIsCurrent()) {
       Navigator.pop(context);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (!widget.ownerIsCurrent()) {
+      return const SizedBox.shrink(key: addCardRevokedKey);
+    }
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.start,
@@ -139,6 +169,7 @@ class _AddCardWidgetState extends State<AddCardWidget> {
                 ),
               ),
               BottomSheetPrimaryButton(
+                key: addCardSaveButtonKey,
                 text: FFLocalizations.of(context).getVariableText(
                   ruText: 'Сохранить',
                   enText: 'Save',
