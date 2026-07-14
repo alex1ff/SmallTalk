@@ -406,7 +406,7 @@ Retry behavior:
 - [x] Добавить widget/golden проверку payments: price/package/tariff/purchase bar/cards/transactions rows сохраняют slots при loading/error.
 - [x] Добавить widget-тесты на отсутствие empty state во время первой загрузки.
 - [x] Добавить widget-тест: пустой Firestore cache snapshot без server confirmation/marker не показывает empty.
-- [ ] Добавить widget-тест: `conversations + eventChats`, где один stream pending, не показывает empty.
+- [x] Добавить widget-тест: `conversations + eventChats`, где один stream pending, не показывает empty.
 - [ ] Добавить widget-тест: смена фильтра оставляет stale data до результата нового `activeDataKey`.
 - [ ] Добавить widget-тест: пустая вторая страница pagination показывает `noMoreItems`, а не empty всего списка.
 - [ ] Добавить widget-тест: cached missing detail без marker/server confirmation не показывает `notFound`.

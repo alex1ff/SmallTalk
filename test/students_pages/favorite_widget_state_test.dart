@@ -710,6 +710,43 @@ void main() {
     }
   });
 
+  for (final pendingConversations in <bool>[true, false]) {
+    final pendingSource = pendingConversations ? 'conversations' : 'eventChats';
+    testWidgets('All tab waits for $pendingSource before showing empty',
+        (tester) async {
+      final sources = _FavoriteSources();
+      await _mount(tester, sources);
+      await _emitFriends(
+        tester,
+        sources,
+        'user-a',
+        _friendsState(ownerUid: 'user-a', authoritative: true),
+      );
+
+      if (pendingConversations) {
+        await _emitEventChats(tester, sources, 'user-a');
+      } else {
+        await _emitConversations(tester, sources, 'user-a', const []);
+      }
+
+      expect(find.byType(EmptyWidget), findsNothing);
+      expect(find.text('У вас пока нет сообщений.'), findsNothing);
+      expect(find.byKey(favoriteMessagesListKey), findsNothing);
+      expect(find.byKey(favoriteMessagesLoadErrorKey), findsNothing);
+
+      if (pendingConversations) {
+        await _emitConversations(tester, sources, 'user-a', const []);
+      } else {
+        await _emitEventChats(tester, sources, 'user-a');
+      }
+
+      expect(find.byType(EmptyWidget), findsOneWidget);
+      expect(find.text('У вас пока нет сообщений.'), findsOneWidget);
+      expect(find.byKey(favoriteMessagesListKey), findsNothing);
+      expect(find.byKey(favoriteMessagesLoadErrorKey), findsNothing);
+    });
+  }
+
   testWidgets(
       'optional row enrichment and Friends event source do not refresh tabs',
       (tester) async {
