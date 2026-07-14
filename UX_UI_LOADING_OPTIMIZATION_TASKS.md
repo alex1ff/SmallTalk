@@ -399,7 +399,7 @@ Retry behavior:
 - [x] Добавить widget/golden проверку chat row: unread `0/1/99+`, avatar/time/divider не меняют позиции.
 - [x] Добавить widget/golden проверку chat message bubble: `sending/sent/failed/retry`, timestamp/status/retry slots не меняют размер bubble и позиции соседних сообщений.
 - [x] Добавить widget/golden проверку event card: loading/loaded/error participant profiles, join/leave и filter refresh не меняют высоту карточки.
-- [ ] Добавить widget/golden проверку dictionary row: длинный original/translation не слипается и не выходит за min/max height.
+- [x] Добавить widget/golden проверку dictionary row: длинный original/translation не слипается и не выходит за min/max height.
 - [ ] Добавить widget/golden проверку repeat panel: большие counts не обрезают CTA и не меняют высоту панели.
 - [ ] Добавить widget/golden проверку profile blocks: avatar/email/progress/tariff cards сохраняют размеры при loading/error.
 - [ ] Добавить widget/golden проверку bottom bars: chat composer/event action/repeat panel не получают double safe-area padding и не меняют внутреннюю высоту при keyboard inset.
