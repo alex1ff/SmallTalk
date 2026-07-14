@@ -603,6 +603,1743 @@ void main() {
     expect(find.byKey(eventListCitySelectorKey), findsNothing);
   });
 
+  testWidgets('empty second page shows no more items without emptying the list',
+      (tester) async {
+    final marker = _FakeQueryDocumentSnapshot('pagination-cursor');
+    final secondPage = Completer<FFFirestorePage<EventsRecord>>();
+    final receivedMarkers = <DocumentSnapshot?>[];
+    var calls = 0;
+    addTearDown(() {
+      if (!secondPage.isCompleted) {
+        secondPage.complete(
+          FFFirestorePage<EventsRecord>(const [], null, null),
+        );
+      }
+    });
+    currentUserDocument = _userFixture(
+      uid: 'pagination-empty-page-user',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+    final firstPageEvents = List<EventsRecord>.generate(
+      8,
+      (index) => _eventsRecordFixture(
+        'pagination-first-$index',
+        title: 'First page event $index',
+        startsAt: DateTime.utc(2035, 6, 14, 15 + index),
+      ),
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+          eventPageLoader: (
+            collection,
+            recordBuilder, {
+            queryBuilder,
+            nextPageMarker,
+            required pageSize,
+            required isStream,
+          }) {
+            calls += 1;
+            receivedMarkers.add(nextPageMarker);
+            if (calls == 1) {
+              return Future.value(
+                FFFirestorePage<EventsRecord>(
+                  firstPageEvents,
+                  null,
+                  marker,
+                ),
+              );
+            }
+            return secondPage.future;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+    expect(receivedMarkers, <DocumentSnapshot?>[null]);
+    expect(find.text('First page event 0'), findsOneWidget);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+    expect(find.byKey(eventListNoMoreItemsKey), findsNothing);
+
+    await tester.drag(
+      find.byKey(eventListScrollViewKey),
+      const Offset(0, -5000),
+    );
+    await tester.pump();
+
+    expect(calls, 2);
+    expect(receivedMarkers, <DocumentSnapshot?>[null, marker]);
+    expect(find.text('First page event 0'), findsOneWidget);
+    expect(find.text('First page event 7'), findsOneWidget);
+    expect(find.byKey(eventListCardShellKey), findsNWidgets(8));
+    expect(find.byKey(eventListPaginationLoadingKey), findsOneWidget);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+
+    await tester.drag(
+      find.byKey(eventListScrollViewKey),
+      const Offset(0, -400),
+    );
+    await tester.pump();
+    expect(calls, 2);
+
+    secondPage.complete(
+      FFFirestorePage<EventsRecord>(const [], null, null),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('First page event 0'), findsOneWidget);
+    expect(find.text('First page event 7'), findsOneWidget);
+    expect(find.byKey(eventListCardShellKey), findsNWidgets(8));
+    expect(find.byKey(eventListPaginationLoadingKey), findsNothing);
+    expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
+    expect(find.text('Больше событий нет'), findsOneWidget);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+    final noMoreSemantics = tester.widget<Semantics>(
+      find.byKey(eventListNoMoreItemsKey),
+    );
+    expect(noMoreSemantics.properties.label, 'Больше событий нет');
+    expect(noMoreSemantics.properties.liveRegion, isTrue);
+
+    await tester.drag(
+      find.byKey(eventListScrollViewKey),
+      const Offset(0, -400),
+    );
+    await tester.pump();
+    expect(calls, 2);
+  });
+
+  testWidgets(
+      'undersized first page loads the empty second page without scroll',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final marker = _FakeQueryDocumentSnapshot('undersized-cursor');
+    final secondPage = Completer<FFFirestorePage<EventsRecord>>();
+    final receivedMarkers = <DocumentSnapshot?>[];
+    var calls = 0;
+    addTearDown(() {
+      if (!secondPage.isCompleted) {
+        secondPage.complete(
+          FFFirestorePage<EventsRecord>(const [], null, null),
+        );
+      }
+    });
+    currentUserDocument = _userFixture(
+      uid: 'pagination-undersized-user',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+          eventPageLoader: (
+            collection,
+            recordBuilder, {
+            queryBuilder,
+            nextPageMarker,
+            required pageSize,
+            required isStream,
+          }) {
+            calls += 1;
+            receivedMarkers.add(nextPageMarker);
+            if (calls == 1) {
+              return Future.value(
+                FFFirestorePage<EventsRecord>(
+                  [
+                    _eventsRecordFixture(
+                      'undersized-first-event',
+                      title: 'Undersized first event',
+                      startsAt: DateTime.utc(2035, 6, 14, 15),
+                    ),
+                  ],
+                  null,
+                  marker,
+                ),
+              );
+            }
+            return secondPage.future;
+          },
+        ),
+      ),
+    );
+    for (var pump = 0; pump < 10 && calls < 2; pump += 1) {
+      await tester.pump();
+    }
+    await tester.pump();
+
+    expect(calls, 2);
+    expect(receivedMarkers, <DocumentSnapshot?>[null, marker]);
+    expect(find.text('Undersized first event'), findsOneWidget);
+    expect(find.byKey(eventListPaginationLoadingKey), findsOneWidget);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+
+    secondPage.complete(
+      FFFirestorePage<EventsRecord>(const [], null, null),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Undersized first event'), findsOneWidget);
+    expect(find.byKey(eventListPaginationLoadingKey), findsNothing);
+    expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+  });
+
+  testWidgets('duplicate-only page advances to the next cursor',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final firstMarker = _FakeQueryDocumentSnapshot('duplicate-cursor-1');
+    final secondMarker = _FakeQueryDocumentSnapshot('duplicate-cursor-2');
+    final thirdPage = Completer<FFFirestorePage<EventsRecord>>();
+    final receivedMarkers = <DocumentSnapshot?>[];
+    final firstEvent = _eventsRecordFixture(
+      'duplicate-first-event',
+      title: 'Duplicate first event',
+      startsAt: DateTime.utc(2035, 6, 14, 15),
+    );
+    var calls = 0;
+    addTearDown(() {
+      if (!thirdPage.isCompleted) {
+        thirdPage.complete(
+          FFFirestorePage<EventsRecord>(const [], null, null),
+        );
+      }
+    });
+    currentUserDocument = _userFixture(
+      uid: 'pagination-duplicate-user',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+          eventPageLoader: (
+            collection,
+            recordBuilder, {
+            queryBuilder,
+            nextPageMarker,
+            required pageSize,
+            required isStream,
+          }) {
+            calls += 1;
+            receivedMarkers.add(nextPageMarker);
+            if (calls == 1) {
+              return Future.value(
+                FFFirestorePage<EventsRecord>(
+                  [firstEvent],
+                  null,
+                  firstMarker,
+                ),
+              );
+            }
+            if (calls == 2) {
+              return Future.value(
+                FFFirestorePage<EventsRecord>(
+                  [firstEvent],
+                  null,
+                  secondMarker,
+                ),
+              );
+            }
+            if (calls == 3) {
+              return thirdPage.future;
+            }
+            return Future.error(StateError('unexpected pagination request'));
+          },
+        ),
+      ),
+    );
+    for (var pump = 0; pump < 20 && calls < 3; pump += 1) {
+      await tester.pump();
+    }
+    await tester.pump();
+
+    expect(calls, 3);
+    expect(
+      receivedMarkers,
+      <DocumentSnapshot?>[null, firstMarker, secondMarker],
+    );
+    expect(find.text('Duplicate first event'), findsOneWidget);
+    expect(find.byKey(eventListPaginationLoadingKey), findsOneWidget);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+
+    thirdPage.complete(
+      FFFirestorePage<EventsRecord>(
+        [firstEvent],
+        null,
+        _FakeQueryDocumentSnapshot(secondMarker.id),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(calls, 3);
+    expect(find.text('Duplicate first event'), findsOneWidget);
+    expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+  });
+
+  testWidgets('cached no-more state reopens with the first page intact',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const userId = 'pagination-cache-user';
+    final marker = _FakeQueryDocumentSnapshot('pagination-cache-cursor');
+    final receivedMarkerIds = <String?>[];
+    var calls = 0;
+    currentUser = _TestAuthUser(userId);
+    currentUserDocument = _userFixture(
+      uid: userId,
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) async {
+      calls += 1;
+      receivedMarkerIds.add(nextPageMarker?.id);
+      if (calls == 1) {
+        expect(nextPageMarker, isNull);
+        return FFFirestorePage<EventsRecord>(
+          [
+            _eventsRecordFixture(
+              'pagination-cached-event',
+              title: 'Cached pagination event',
+              startsAt: DateTime.utc(2035, 6, 14, 15),
+            ),
+          ],
+          null,
+          marker,
+        );
+      }
+      if (calls == 2) {
+        expect(nextPageMarker, same(marker));
+        return FFFirestorePage<EventsRecord>(const [], null, null);
+      }
+      throw StateError('cached pagination must not reload');
+    };
+    final EventListCurrentUserParticipantLoader participantLoader =
+        (_, __) async => null;
+    final EventListActiveParticipantsLoader activeParticipantsLoader =
+        (_) async => const <EventParticipantsRecord>[];
+    final EventListPublicProfilesLoader publicProfilesLoader = (userIds) async {
+      return UserPublicProfilePreloadResult(
+        profilesByUserId: {
+          for (final userId in userIds)
+            userId: _userPublicProfileFixture(userId),
+        },
+      );
+    };
+
+    Widget buildList() => _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+            eventPageLoader: pageLoader,
+            currentUserParticipantLoader: participantLoader,
+            activeParticipantsLoader: activeParticipantsLoader,
+            publicProfilesLoader: publicProfilesLoader,
+          ),
+        );
+
+    await tester.pumpWidget(buildList());
+    await tester.pumpAndSettle();
+
+    expect(receivedMarkerIds, <String?>[null, marker.id]);
+    expect(calls, 2);
+    expect(find.text('Cached pagination event'), findsOneWidget);
+    expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(buildList());
+    await tester.pumpAndSettle();
+
+    expect(receivedMarkerIds, <String?>[null, marker.id]);
+    expect(calls, 2);
+    expect(find.text('Cached pagination event'), findsOneWidget);
+    expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+  });
+
+  testWidgets('dispose ignores a pending second-page response', (tester) async {
+    tester.view.physicalSize = const Size(390, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final marker = _FakeQueryDocumentSnapshot('pagination-dispose-cursor');
+    final secondPage = Completer<FFFirestorePage<EventsRecord>>();
+    var calls = 0;
+    addTearDown(() {
+      if (!secondPage.isCompleted) {
+        secondPage.complete(
+          FFFirestorePage<EventsRecord>(const [], null, null),
+        );
+      }
+    });
+    currentUserDocument = _userFixture(
+      uid: 'pagination-dispose-user',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+          eventPageLoader: (
+            collection,
+            recordBuilder, {
+            queryBuilder,
+            nextPageMarker,
+            required pageSize,
+            required isStream,
+          }) {
+            calls += 1;
+            if (calls == 1) {
+              return Future.value(
+                FFFirestorePage<EventsRecord>(
+                  [
+                    _eventsRecordFixture(
+                      'pagination-dispose-event',
+                      title: 'Dispose pagination event',
+                      startsAt: DateTime.utc(2035, 6, 14, 15),
+                    ),
+                  ],
+                  null,
+                  marker,
+                ),
+              );
+            }
+            expect(nextPageMarker, same(marker));
+            return secondPage.future;
+          },
+        ),
+      ),
+    );
+    for (var pump = 0; pump < 10 && calls < 2; pump += 1) {
+      await tester.pump();
+    }
+
+    expect(calls, 2);
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    secondPage.complete(
+      FFFirestorePage<EventsRecord>(const [], null, null),
+    );
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(eventListNoMoreItemsKey), findsNothing);
+  });
+
+  testWidgets('late first-page enrichment preserves pagination no-more state',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const userId = 'pagination-late-enrichment-user';
+    final marker =
+        _FakeQueryDocumentSnapshot('pagination-late-enrichment-cursor');
+    final participant = Completer<EventParticipantsRecord?>();
+    var calls = 0;
+    addTearDown(() {
+      if (!participant.isCompleted) {
+        participant.complete(null);
+      }
+    });
+    currentUser = _TestAuthUser(userId);
+    currentUserDocument = _userFixture(
+      uid: userId,
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+          eventPageLoader: (
+            collection,
+            recordBuilder, {
+            queryBuilder,
+            nextPageMarker,
+            required pageSize,
+            required isStream,
+          }) async {
+            calls += 1;
+            if (calls == 1) {
+              return FFFirestorePage<EventsRecord>(
+                [
+                  _eventsRecordFixture(
+                    'pagination-late-enrichment-event',
+                    title: 'Late enrichment event',
+                    startsAt: DateTime.utc(2035, 6, 14, 15),
+                  ),
+                ],
+                null,
+                marker,
+              );
+            }
+            expect(nextPageMarker, same(marker));
+            return FFFirestorePage<EventsRecord>(const [], null, null);
+          },
+          currentUserParticipantLoader: (_, __) => participant.future,
+          activeParticipantsLoader: (_) async =>
+              const <EventParticipantsRecord>[],
+          publicProfilesLoader: (_) async => UserPublicProfilePreloadResult(),
+        ),
+      ),
+    );
+    for (var pump = 0; pump < 10 && calls < 2; pump += 1) {
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(find.text('Late enrichment event'), findsOneWidget);
+    expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+
+    participant.complete(null);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Late enrichment event'), findsOneWidget);
+    expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+  });
+
+  testWidgets('ready cache stays atomic while appended enrichment is pending',
+      (tester) async {
+    const userId = 'pagination-overlap-cache-user';
+    const appendedEventId = 'pagination-overlap-appended';
+    final firstMarker =
+        _FakeQueryDocumentSnapshot('pagination-overlap-cursor-1');
+    final secondMarker =
+        _FakeQueryDocumentSnapshot('pagination-overlap-cursor-2');
+    final appendedParticipant = Completer<EventParticipantsRecord?>();
+    final reopenedBase = Completer<FFFirestorePage<EventsRecord>>();
+    final receivedMarkerIds = <String?>[];
+    var calls = 0;
+    addTearDown(() {
+      if (!appendedParticipant.isCompleted) {
+        appendedParticipant.complete(null);
+      }
+      if (!reopenedBase.isCompleted) {
+        reopenedBase.complete(
+          FFFirestorePage<EventsRecord>(const [], null, null),
+        );
+      }
+    });
+    currentUser = _TestAuthUser(userId);
+    currentUserDocument = _userFixture(
+      uid: userId,
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) {
+      calls += 1;
+      receivedMarkerIds.add(nextPageMarker?.id);
+      if (calls == 1) {
+        return Future.value(
+          FFFirestorePage<EventsRecord>(
+            List<EventsRecord>.generate(
+              8,
+              (index) => _eventsRecordFixture(
+                'pagination-overlap-first-$index',
+                title: 'Overlap first event $index',
+                startsAt: DateTime.utc(2035, 6, 14, 15 + index),
+              ),
+            ),
+            null,
+            firstMarker,
+          ),
+        );
+      }
+      if (calls == 2) {
+        expect(nextPageMarker, same(firstMarker));
+        return Future.value(
+          FFFirestorePage<EventsRecord>(
+            [
+              _eventsRecordFixture(
+                appendedEventId,
+                title: 'Overlap appended event',
+                startsAt: DateTime.utc(2035, 6, 14, 16),
+              ),
+            ],
+            null,
+            secondMarker,
+          ),
+        );
+      }
+      if (calls == 3) {
+        expect(nextPageMarker, same(secondMarker));
+        return Future.value(
+          FFFirestorePage<EventsRecord>(
+            const [],
+            null,
+            null,
+          ),
+        );
+      }
+      if (calls == 4) {
+        expect(nextPageMarker, isNull);
+        return reopenedBase.future;
+      }
+      return Future.error(StateError('unexpected overlap pagination request'));
+    };
+    final EventListCurrentUserParticipantLoader participantLoader =
+        (eventRef, _) {
+      if (eventRef.id == appendedEventId) {
+        return appendedParticipant.future;
+      }
+      return Future<EventParticipantsRecord?>.value();
+    };
+    final EventListActiveParticipantsLoader activeParticipantsLoader =
+        (_) async => const <EventParticipantsRecord>[];
+    final EventListPublicProfilesLoader publicProfilesLoader = (userIds) async {
+      return UserPublicProfilePreloadResult(
+        profilesByUserId: {
+          for (final profileUserId in userIds)
+            profileUserId: _userPublicProfileFixture(profileUserId),
+        },
+      );
+    };
+
+    Widget buildList() => _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+            eventPageLoader: pageLoader,
+            currentUserParticipantLoader: participantLoader,
+            activeParticipantsLoader: activeParticipantsLoader,
+            publicProfilesLoader: publicProfilesLoader,
+          ),
+        );
+
+    await tester.pumpWidget(buildList());
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+    expect(find.text('Overlap first event 0'), findsOneWidget);
+
+    await tester.drag(
+      find.byKey(eventListScrollViewKey),
+      const Offset(0, -5000),
+    );
+    for (var pump = 0; pump < 10 && calls < 2; pump += 1) {
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+    if (calls < 3) {
+      await tester.drag(
+        find.byKey(eventListScrollViewKey),
+        const Offset(0, -5000),
+      );
+      for (var pump = 0; pump < 10 && calls < 3; pump += 1) {
+        await tester.pump();
+      }
+    }
+    await tester.pump();
+
+    expect(receivedMarkerIds, <String?>[
+      null,
+      firstMarker.id,
+      secondMarker.id,
+    ]);
+    expect(calls, 3);
+    expect(find.text('Overlap first event 0'), findsOneWidget);
+    expect(find.text('Overlap appended event'), findsOneWidget);
+    expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(buildList());
+    for (var pump = 0; pump < 10 && calls < 4; pump += 1) {
+      await tester.pump();
+    }
+    await tester.pump();
+
+    expect(receivedMarkerIds, <String?>[
+      null,
+      firstMarker.id,
+      secondMarker.id,
+      null,
+    ]);
+    expect(calls, 4);
+    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
+    expect(find.text('Overlap appended event'), findsNothing);
+
+    appendedParticipant.complete(null);
+    reopenedBase.complete(
+      FFFirestorePage<EventsRecord>(const [], null, null),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('failed appended enrichment keeps the whole session uncached',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const userId = 'pagination-failed-enrichment-user';
+    const firstEventId = 'pagination-failed-enrichment-first';
+    const appendedEventId = 'pagination-failed-enrichment-appended';
+    final marker =
+        _FakeQueryDocumentSnapshot('pagination-failed-enrichment-cursor');
+    final firstParticipant = Completer<EventParticipantsRecord?>();
+    final reopenedBase = Completer<FFFirestorePage<EventsRecord>>();
+    final receivedMarkerIds = <String?>[];
+    var calls = 0;
+    addTearDown(() {
+      if (!firstParticipant.isCompleted) {
+        firstParticipant.complete(null);
+      }
+      if (!reopenedBase.isCompleted) {
+        reopenedBase.complete(
+          FFFirestorePage<EventsRecord>(const [], null, null),
+        );
+      }
+    });
+    currentUser = _TestAuthUser(userId);
+    currentUserDocument = _userFixture(
+      uid: userId,
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) {
+      calls += 1;
+      receivedMarkerIds.add(nextPageMarker?.id);
+      if (calls == 1) {
+        return Future.value(
+          FFFirestorePage<EventsRecord>(
+            [
+              _eventsRecordFixture(
+                firstEventId,
+                title: 'Failed enrichment first event',
+                startsAt: DateTime.utc(2035, 6, 14, 15),
+              ),
+            ],
+            null,
+            marker,
+          ),
+        );
+      }
+      if (calls == 2) {
+        expect(nextPageMarker, same(marker));
+        return Future.value(
+          FFFirestorePage<EventsRecord>(
+            [
+              _eventsRecordFixture(
+                appendedEventId,
+                title: 'Failed enrichment appended event',
+                startsAt: DateTime.utc(2035, 6, 14, 16),
+              ),
+            ],
+            null,
+            null,
+          ),
+        );
+      }
+      if (calls == 3) {
+        expect(nextPageMarker, isNull);
+        return reopenedBase.future;
+      }
+      return Future.error(
+        StateError('unexpected failed-enrichment pagination request'),
+      );
+    };
+    final EventListCurrentUserParticipantLoader participantLoader =
+        (eventRef, _) {
+      if (eventRef.id == firstEventId) {
+        return firstParticipant.future;
+      }
+      if (eventRef.id == appendedEventId) {
+        return Future<EventParticipantsRecord?>.error(
+          StateError('membership enrichment failed'),
+        );
+      }
+      return Future<EventParticipantsRecord?>.value();
+    };
+    final EventListActiveParticipantsLoader activeParticipantsLoader =
+        (_) async => const <EventParticipantsRecord>[];
+    final EventListPublicProfilesLoader publicProfilesLoader = (userIds) async {
+      return UserPublicProfilePreloadResult(
+        profilesByUserId: {
+          for (final profileUserId in userIds)
+            profileUserId: _userPublicProfileFixture(profileUserId),
+        },
+      );
+    };
+
+    Widget buildList() => _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+            eventPageLoader: pageLoader,
+            currentUserParticipantLoader: participantLoader,
+            activeParticipantsLoader: activeParticipantsLoader,
+            publicProfilesLoader: publicProfilesLoader,
+          ),
+        );
+
+    await tester.pumpWidget(buildList());
+    for (var pump = 0; pump < 10 && calls < 2; pump += 1) {
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(find.text('Failed enrichment first event'), findsOneWidget);
+    expect(find.text('Failed enrichment appended event'), findsOneWidget);
+    expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
+
+    firstParticipant.complete(null);
+    await tester.pumpAndSettle();
+
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(buildList());
+    for (var pump = 0; pump < 10 && calls < 3; pump += 1) {
+      await tester.pump();
+    }
+    await tester.pump();
+
+    expect(receivedMarkerIds, <String?>[null, marker.id, null]);
+    expect(calls, 3);
+    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
+    expect(find.text('Failed enrichment appended event'), findsNothing);
+
+    reopenedBase.complete(
+      FFFirestorePage<EventsRecord>(const [], null, null),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('initial active-participant failure keeps the session uncached',
+      (tester) async {
+    const userId = 'pagination-initial-active-failure-user';
+    const eventId = 'pagination-initial-active-failure-event';
+    final reopenedBase = Completer<FFFirestorePage<EventsRecord>>();
+    var calls = 0;
+    addTearDown(() {
+      if (!reopenedBase.isCompleted) {
+        reopenedBase.complete(
+          FFFirestorePage<EventsRecord>(const [], null, null),
+        );
+      }
+    });
+    currentUser = _TestAuthUser(userId);
+    currentUserDocument = _userFixture(
+      uid: userId,
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) {
+      calls += 1;
+      expect(nextPageMarker, isNull);
+      if (calls == 1) {
+        return Future.value(
+          FFFirestorePage<EventsRecord>(
+            [
+              _eventsRecordFixture(
+                eventId,
+                title: 'Initial active failure event',
+                startsAt: DateTime.utc(2035, 6, 14, 15),
+              ),
+            ],
+            null,
+            null,
+          ),
+        );
+      }
+      if (calls == 2) {
+        return reopenedBase.future;
+      }
+      return Future.error(
+        StateError('unexpected initial-active-failure request'),
+      );
+    };
+    final EventListCurrentUserParticipantLoader participantLoader =
+        (_, __) async => null;
+    final EventListActiveParticipantsLoader activeParticipantsLoader =
+        (_) => Future<List<EventParticipantsRecord>>.error(
+              StateError('active participants failed'),
+            );
+    final EventListPublicProfilesLoader publicProfilesLoader = (userIds) async {
+      return UserPublicProfilePreloadResult(
+        profilesByUserId: {
+          for (final profileUserId in userIds)
+            profileUserId: _userPublicProfileFixture(profileUserId),
+        },
+      );
+    };
+
+    Widget buildList() => _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+            eventPageLoader: pageLoader,
+            currentUserParticipantLoader: participantLoader,
+            activeParticipantsLoader: activeParticipantsLoader,
+            publicProfilesLoader: publicProfilesLoader,
+          ),
+        );
+
+    await tester.pumpWidget(buildList());
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+    expect(find.text('Initial active failure event'), findsOneWidget);
+
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(buildList());
+    for (var pump = 0; pump < 10 && calls < 2; pump += 1) {
+      await tester.pump();
+    }
+    await tester.pump();
+
+    expect(calls, 2);
+    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
+    expect(find.text('Initial active failure event'), findsNothing);
+
+    reopenedBase.complete(
+      FFFirestorePage<EventsRecord>(const [], null, null),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('appended active-participant failure survives late page-one work',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const userId = 'pagination-appended-active-failure-user';
+    const firstEventId = 'pagination-appended-active-failure-first';
+    const appendedEventId = 'pagination-appended-active-failure-second';
+    final marker =
+        _FakeQueryDocumentSnapshot('pagination-appended-active-failure-cursor');
+    final firstParticipant = Completer<EventParticipantsRecord?>();
+    final reopenedBase = Completer<FFFirestorePage<EventsRecord>>();
+    final receivedMarkerIds = <String?>[];
+    var calls = 0;
+    addTearDown(() {
+      if (!firstParticipant.isCompleted) {
+        firstParticipant.complete(null);
+      }
+      if (!reopenedBase.isCompleted) {
+        reopenedBase.complete(
+          FFFirestorePage<EventsRecord>(const [], null, null),
+        );
+      }
+    });
+    currentUser = _TestAuthUser(userId);
+    currentUserDocument = _userFixture(
+      uid: userId,
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) {
+      calls += 1;
+      receivedMarkerIds.add(nextPageMarker?.id);
+      if (calls == 1) {
+        return Future.value(
+          FFFirestorePage<EventsRecord>(
+            [
+              _eventsRecordFixture(
+                firstEventId,
+                title: 'Appended active failure first event',
+                startsAt: DateTime.utc(2035, 6, 14, 15),
+              ),
+            ],
+            null,
+            marker,
+          ),
+        );
+      }
+      if (calls == 2) {
+        expect(nextPageMarker, same(marker));
+        return Future.value(
+          FFFirestorePage<EventsRecord>(
+            [
+              _eventsRecordFixture(
+                appendedEventId,
+                title: 'Appended active failure second event',
+                startsAt: DateTime.utc(2035, 6, 14, 16),
+              ),
+            ],
+            null,
+            null,
+          ),
+        );
+      }
+      if (calls == 3) {
+        expect(nextPageMarker, isNull);
+        return reopenedBase.future;
+      }
+      return Future.error(
+        StateError('unexpected appended-active-failure request'),
+      );
+    };
+    final EventListCurrentUserParticipantLoader participantLoader =
+        (eventRef, _) {
+      if (eventRef.id == firstEventId) {
+        return firstParticipant.future;
+      }
+      return Future<EventParticipantsRecord?>.value();
+    };
+    final EventListActiveParticipantsLoader activeParticipantsLoader =
+        (eventRef) {
+      if (eventRef.id == appendedEventId) {
+        return Future<List<EventParticipantsRecord>>.error(
+          StateError('appended active participants failed'),
+        );
+      }
+      return Future.value(const <EventParticipantsRecord>[]);
+    };
+    final EventListPublicProfilesLoader publicProfilesLoader = (userIds) async {
+      return UserPublicProfilePreloadResult(
+        profilesByUserId: {
+          for (final profileUserId in userIds)
+            profileUserId: _userPublicProfileFixture(profileUserId),
+        },
+      );
+    };
+
+    Widget buildList() => _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+            eventPageLoader: pageLoader,
+            currentUserParticipantLoader: participantLoader,
+            activeParticipantsLoader: activeParticipantsLoader,
+            publicProfilesLoader: publicProfilesLoader,
+          ),
+        );
+
+    await tester.pumpWidget(buildList());
+    for (var pump = 0; pump < 10 && calls < 2; pump += 1) {
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(find.text('Appended active failure first event'), findsOneWidget);
+    expect(find.text('Appended active failure second event'), findsOneWidget);
+    expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
+
+    firstParticipant.complete(null);
+    await tester.pumpAndSettle();
+
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(buildList());
+    for (var pump = 0; pump < 10 && calls < 3; pump += 1) {
+      await tester.pump();
+    }
+    await tester.pump();
+
+    expect(receivedMarkerIds, <String?>[null, marker.id, null]);
+    expect(calls, 3);
+    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
+    expect(find.text('Appended active failure second event'), findsNothing);
+
+    reopenedBase.complete(
+      FFFirestorePage<EventsRecord>(const [], null, null),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('appended profile failure survives late page-one enrichment',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const userId = 'pagination-appended-profile-failure-user';
+    const firstEventId = 'pagination-appended-profile-failure-first';
+    const appendedEventId = 'pagination-appended-profile-failure-second';
+    const appendedParticipantId =
+        'pagination-appended-profile-failure-participant';
+    final marker = _FakeQueryDocumentSnapshot(
+      'pagination-appended-profile-failure-cursor',
+    );
+    final firstParticipant = Completer<EventParticipantsRecord?>();
+    final reopenedBase = Completer<FFFirestorePage<EventsRecord>>();
+    final receivedMarkerIds = <String?>[];
+    var calls = 0;
+    var profileLoads = 0;
+    addTearDown(() {
+      if (!firstParticipant.isCompleted) {
+        firstParticipant.complete(null);
+      }
+      if (!reopenedBase.isCompleted) {
+        reopenedBase.complete(
+          FFFirestorePage<EventsRecord>(const [], null, null),
+        );
+      }
+    });
+    currentUser = _TestAuthUser(userId);
+    currentUserDocument = _userFixture(
+      uid: userId,
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) {
+      calls += 1;
+      receivedMarkerIds.add(nextPageMarker?.id);
+      if (calls == 1) {
+        return Future.value(
+          FFFirestorePage<EventsRecord>(
+            [
+              _eventsRecordFixture(
+                firstEventId,
+                title: 'Appended profile failure first event',
+                startsAt: DateTime.utc(2035, 6, 14, 15),
+              ),
+            ],
+            null,
+            marker,
+          ),
+        );
+      }
+      if (calls == 2) {
+        expect(nextPageMarker, same(marker));
+        return Future.value(
+          FFFirestorePage<EventsRecord>(
+            [
+              _eventsRecordFixture(
+                appendedEventId,
+                title: 'Appended profile failure second event',
+                startsAt: DateTime.utc(2035, 6, 14, 16),
+              ),
+            ],
+            null,
+            null,
+          ),
+        );
+      }
+      if (calls == 3) {
+        expect(nextPageMarker, isNull);
+        return reopenedBase.future;
+      }
+      return Future.error(
+        StateError('unexpected appended-profile-failure request'),
+      );
+    };
+    final EventListCurrentUserParticipantLoader participantLoader =
+        (eventRef, _) {
+      if (eventRef.id == firstEventId) {
+        return firstParticipant.future;
+      }
+      return Future<EventParticipantsRecord?>.value();
+    };
+    final EventListActiveParticipantsLoader activeParticipantsLoader =
+        (eventRef) {
+      if (eventRef.id == appendedEventId) {
+        return Future.value(
+          [
+            _eventParticipantRecordFixture(
+              eventRef,
+              userId: appendedParticipantId,
+              displayName: 'Appended profile snapshot',
+              joinedAt: DateTime.utc(2035, 6, 14, 8),
+            ),
+          ],
+        );
+      }
+      return Future.value(const <EventParticipantsRecord>[]);
+    };
+    final EventListPublicProfilesLoader publicProfilesLoader = (userIds) {
+      profileLoads += 1;
+      expect(userIds, <String>{appendedParticipantId});
+      return Future<UserPublicProfilePreloadResult>.error(
+        StateError('appended public profiles failed'),
+      );
+    };
+
+    Widget buildList() => _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+            eventPageLoader: pageLoader,
+            currentUserParticipantLoader: participantLoader,
+            activeParticipantsLoader: activeParticipantsLoader,
+            publicProfilesLoader: publicProfilesLoader,
+          ),
+        );
+
+    await tester.pumpWidget(buildList());
+    for (var pump = 0; pump < 10 && calls < 2; pump += 1) {
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(profileLoads, greaterThan(0));
+    expect(find.text('Appended profile failure first event'), findsOneWidget);
+    expect(find.text('Appended profile failure second event'), findsOneWidget);
+    expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
+
+    firstParticipant.complete(null);
+    await tester.pumpAndSettle();
+    final profileLoadsAfterLatePageOne = profileLoads;
+
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(buildList());
+    for (var pump = 0; pump < 10 && calls < 3; pump += 1) {
+      await tester.pump();
+    }
+    await tester.pump();
+
+    expect(receivedMarkerIds, <String?>[null, marker.id, null]);
+    expect(calls, 3);
+    expect(profileLoads, profileLoadsAfterLatePageOne);
+    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
+    expect(find.text('Appended profile failure second event'), findsNothing);
+
+    reopenedBase.complete(
+      FFFirestorePage<EventsRecord>(const [], null, null),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('successful appended enrichment reopens the complete cache',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const userId = 'pagination-successful-enrichment-user';
+    final marker =
+        _FakeQueryDocumentSnapshot('pagination-successful-enrichment-cursor');
+    final receivedMarkerIds = <String?>[];
+    var calls = 0;
+    currentUser = _TestAuthUser(userId);
+    currentUserDocument = _userFixture(
+      uid: userId,
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) async {
+      calls += 1;
+      receivedMarkerIds.add(nextPageMarker?.id);
+      if (calls == 1) {
+        return FFFirestorePage<EventsRecord>(
+          [
+            _eventsRecordFixture(
+              'pagination-successful-enrichment-first',
+              title: 'Successful enrichment first event',
+              startsAt: DateTime.utc(2035, 6, 14, 15),
+            ),
+          ],
+          null,
+          marker,
+        );
+      }
+      if (calls == 2) {
+        expect(nextPageMarker, same(marker));
+        return FFFirestorePage<EventsRecord>(
+          [
+            _eventsRecordFixture(
+              'pagination-successful-enrichment-appended',
+              title: 'Successful enrichment appended event',
+              startsAt: DateTime.utc(2035, 6, 14, 16),
+            ),
+          ],
+          null,
+          null,
+        );
+      }
+      throw StateError('complete pagination cache must not reload');
+    };
+    final EventListCurrentUserParticipantLoader participantLoader =
+        (_, __) async => null;
+    final EventListActiveParticipantsLoader activeParticipantsLoader =
+        (_) async => const <EventParticipantsRecord>[];
+    final EventListPublicProfilesLoader publicProfilesLoader = (userIds) async {
+      return UserPublicProfilePreloadResult(
+        profilesByUserId: {
+          for (final profileUserId in userIds)
+            profileUserId: _userPublicProfileFixture(profileUserId),
+        },
+      );
+    };
+
+    Widget buildList() => _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+            eventPageLoader: pageLoader,
+            currentUserParticipantLoader: participantLoader,
+            activeParticipantsLoader: activeParticipantsLoader,
+            publicProfilesLoader: publicProfilesLoader,
+          ),
+        );
+
+    await tester.pumpWidget(buildList());
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(receivedMarkerIds, <String?>[null, marker.id]);
+    expect(find.text('Successful enrichment first event'), findsOneWidget);
+    expect(find.text('Successful enrichment appended event'), findsOneWidget);
+    expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
+
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(buildList());
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(receivedMarkerIds, <String?>[null, marker.id]);
+    expect(find.text('Successful enrichment first event'), findsOneWidget);
+    expect(find.text('Successful enrichment appended event'), findsOneWidget);
+    expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+  });
+
+  testWidgets('next-page error keeps cards and retries the same cursor',
+      (tester) async {
+    final marker = _FakeQueryDocumentSnapshot('pagination-retry-cursor');
+    final receivedMarkers = <DocumentSnapshot?>[];
+    var calls = 0;
+    currentUserDocument = _userFixture(
+      uid: 'pagination-retry-user',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+    final firstPageEvents = List<EventsRecord>.generate(
+      8,
+      (index) => _eventsRecordFixture(
+        'pagination-retry-$index',
+        title: 'Retry page event $index',
+        startsAt: DateTime.utc(2035, 6, 14, 15 + index),
+      ),
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+          eventPageLoader: (
+            collection,
+            recordBuilder, {
+            queryBuilder,
+            nextPageMarker,
+            required pageSize,
+            required isStream,
+          }) {
+            calls += 1;
+            receivedMarkers.add(nextPageMarker);
+            if (calls == 1) {
+              return Future.value(
+                FFFirestorePage<EventsRecord>(
+                  firstPageEvents,
+                  null,
+                  marker,
+                ),
+              );
+            }
+            if (calls == 2) {
+              return Future.error(StateError('next page failed'));
+            }
+            return Future.value(
+              FFFirestorePage<EventsRecord>(const [], null, null),
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.drag(
+      find.byKey(eventListScrollViewKey),
+      const Offset(0, -5000),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(calls, 2);
+    expect(find.text('Retry page event 0'), findsOneWidget);
+    expect(find.byKey(eventListPaginationErrorKey), findsOneWidget);
+    expect(find.byKey(eventListErrorStateKey), findsNothing);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+
+    await tester.ensureVisible(find.byKey(eventListPaginationRetryButtonKey));
+    await tester.pump();
+    await tester.tap(find.byKey(eventListPaginationRetryButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(calls, 3);
+    expect(receivedMarkers, <DocumentSnapshot?>[null, marker, marker]);
+    expect(find.text('Retry page event 0'), findsOneWidget);
+    expect(find.byKey(eventListPaginationErrorKey), findsNothing);
+    expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+  });
+
+  testWidgets('non-empty next page appends cards without replacing page one',
+      (tester) async {
+    final marker = _FakeQueryDocumentSnapshot('pagination-append-cursor');
+    var calls = 0;
+    currentUserDocument = _userFixture(
+      uid: 'pagination-append-user',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+    final firstPageEvents = List<EventsRecord>.generate(
+      8,
+      (index) => _eventsRecordFixture(
+        'pagination-append-$index',
+        title: 'Append page event $index',
+        startsAt: DateTime.utc(2035, 6, 14, 15 + index),
+      ),
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+          eventPageLoader: (
+            collection,
+            recordBuilder, {
+            queryBuilder,
+            nextPageMarker,
+            required pageSize,
+            required isStream,
+          }) {
+            calls += 1;
+            if (calls == 1) {
+              return Future.value(
+                FFFirestorePage<EventsRecord>(
+                  firstPageEvents,
+                  null,
+                  marker,
+                ),
+              );
+            }
+            expect(nextPageMarker, same(marker));
+            return Future.value(
+              FFFirestorePage<EventsRecord>(
+                [
+                  _eventsRecordFixture(
+                    'pagination-appended-event',
+                    title: 'Appended event',
+                    startsAt: DateTime.utc(2035, 6, 15, 9),
+                  ),
+                ],
+                null,
+                null,
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.drag(
+      find.byKey(eventListScrollViewKey),
+      const Offset(0, -5000),
+    );
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(find.text('Append page event 0'), findsOneWidget);
+    expect(find.text('Appended event'), findsOneWidget);
+    expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+  });
+
+  testWidgets('late next page is ignored after the active filter changes',
+      (tester) async {
+    final marker = _FakeQueryDocumentSnapshot('pagination-stale-cursor');
+    final stalePage = Completer<FFFirestorePage<EventsRecord>>();
+    var calls = 0;
+    addTearDown(() {
+      if (!stalePage.isCompleted) {
+        stalePage.complete(
+          FFFirestorePage<EventsRecord>(const [], null, null),
+        );
+      }
+    });
+    currentUserDocument = _userFixture(
+      uid: 'pagination-stale-user',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+    final firstPageEvents = List<EventsRecord>.generate(
+      8,
+      (index) => _eventsRecordFixture(
+        'pagination-stale-$index',
+        title: 'Stale base event $index',
+        startsAt: DateTime.utc(2035, 6, 14, 15 + index),
+      ),
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+          eventPageLoader: (
+            collection,
+            recordBuilder, {
+            queryBuilder,
+            nextPageMarker,
+            required pageSize,
+            required isStream,
+          }) {
+            calls += 1;
+            if (calls == 1) {
+              return Future.value(
+                FFFirestorePage<EventsRecord>(
+                  firstPageEvents,
+                  null,
+                  marker,
+                ),
+              );
+            }
+            if (calls == 2) {
+              expect(nextPageMarker, same(marker));
+              return stalePage.future;
+            }
+            return Future.value(
+              FFFirestorePage<EventsRecord>(
+                [
+                  _eventsRecordFixture(
+                    'pagination-filter-result',
+                    title: 'Active filter result',
+                    startsAt: DateTime.utc(2035, 6, 14, 18),
+                  ),
+                ],
+                null,
+                null,
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.drag(
+      find.byKey(eventListScrollViewKey),
+      const Offset(0, -5000),
+    );
+    await tester.pump();
+    expect(calls, 2);
+    expect(find.byKey(eventListPaginationLoadingKey), findsOneWidget);
+
+    await tester.drag(
+      find.byKey(eventListScrollViewKey),
+      const Offset(0, 5000),
+    );
+    await tester.pump();
+    await tester.tap(_dateFilterFinder(EventListDateFilter.today));
+    await tester.pumpAndSettle();
+
+    expect(calls, 3);
+    expect(find.text('Active filter result'), findsOneWidget);
+    expect(find.byKey(eventListPaginationLoadingKey), findsNothing);
+
+    stalePage.complete(
+      FFFirestorePage<EventsRecord>(
+        [
+          _eventsRecordFixture(
+            'pagination-late-result',
+            title: 'Late stale page',
+            startsAt: DateTime.utc(2035, 6, 14, 19),
+          ),
+        ],
+        null,
+        null,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Active filter result'), findsOneWidget);
+    expect(find.text('Late stale page'), findsNothing);
+    expect(find.byKey(eventListNoMoreItemsKey), findsNothing);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+  });
+
   testWidgets('keeps loaded event cards visible when refresh fails',
       (tester) async {
     var calls = 0;
@@ -11162,6 +12899,33 @@ Widget _buildEventProfileFallbackTestApp({
       publicProfilesLoader: publicProfilesLoader,
     ),
   );
+}
+
+// Test-only cursor token; it is passed only to the injected page loader.
+// ignore: subtype_of_sealed_class
+class _FakeQueryDocumentSnapshot implements QueryDocumentSnapshot<Object?> {
+  _FakeQueryDocumentSnapshot([this.id = 'query-cursor']);
+
+  @override
+  final String id;
+
+  @override
+  bool get exists => true;
+
+  @override
+  SnapshotMetadata get metadata => throw UnimplementedError();
+
+  @override
+  DocumentReference<Object?> get reference => throw UnimplementedError();
+
+  @override
+  Object? data() => const <String, Object?>{};
+
+  @override
+  Object? get(Object field) => throw UnimplementedError();
+
+  @override
+  Object? operator [](Object field) => get(field);
 }
 
 UserPublicProfilesRecord _userPublicProfileFixture(

@@ -408,7 +408,7 @@ Retry behavior:
 - [x] Добавить widget-тест: пустой Firestore cache snapshot без server confirmation/marker не показывает empty.
 - [x] Добавить widget-тест: `conversations + eventChats`, где один stream pending, не показывает empty.
 - [x] Добавить widget-тест: смена фильтра оставляет stale data до результата нового `activeDataKey`.
-- [ ] Добавить widget-тест: пустая вторая страница pagination показывает `noMoreItems`, а не empty всего списка.
+- [x] Добавить widget-тест: пустая вторая страница pagination показывает `noMoreItems`, а не empty всего списка.
 - [ ] Добавить widget-тест: cached missing detail без marker/server confirmation не показывает `notFound`.
 - [ ] Добавить widget-тесты на сохранение previous data при refresh.
 - [ ] Добавить widget-тесты на optimistic send message.

@@ -38,6 +38,8 @@ const ValueKey<String> eventListCreateButtonKey =
     ValueKey<String>('event_list_create_button');
 const ValueKey<String> eventListCitySelectorKey =
     ValueKey<String>('event_list_city_selector');
+const ValueKey<String> eventListScrollViewKey =
+    ValueKey<String>('event_list_scroll_view');
 const ValueKey<String> eventManualCitySearchFieldKey =
     ValueKey<String>('event_manual_city_search_field');
 const ValueKey<String> eventListLoadingStateKey =
@@ -52,6 +54,14 @@ const ValueKey<String> eventListErrorStateKey =
     ValueKey<String>('event_list_error_state');
 const ValueKey<String> eventListErrorRetryButtonKey =
     ValueKey<String>('event_list_error_retry_button');
+const ValueKey<String> eventListPaginationLoadingKey =
+    ValueKey<String>('event_list_pagination_loading');
+const ValueKey<String> eventListNoMoreItemsKey =
+    ValueKey<String>('event_list_no_more_items');
+const ValueKey<String> eventListPaginationErrorKey =
+    ValueKey<String>('event_list_pagination_error');
+const ValueKey<String> eventListPaginationRetryButtonKey =
+    ValueKey<String>('event_list_pagination_retry_button');
 const ValueKey<String> eventListCardShellKey =
     ValueKey<String>('event_list_card_shell');
 const ValueKey<String> eventListCardHeaderKey =
@@ -122,6 +132,7 @@ const int _eventListCardsCacheMaxEntries = 24;
 const Duration _eventListCardsCacheTtl = Duration(minutes: 5);
 const double _eventListHorizontalPadding = 17.0;
 const double _eventListTopPadding = 10.0;
+const double _eventListPaginationPrefetchExtent = 240.0;
 const double _eventListCardRadius = 15.0;
 const double _eventListCardBorderWidth = 1.0;
 const double _eventListCardPadding = 16.0;
@@ -474,6 +485,7 @@ class _EventListWidgetState extends State<EventListWidget> {
   List<EventListCardViewModel>? _eventCardsFutureInitialCards;
   _EventListLoadedCards? _lastLoadedCards;
   _EventListPublicProfileSession? _publicProfileSession;
+  _EventListPaginationSession? _eventListPaginationSession;
   double _eventListProfileScrollOriginPixels = 0;
   bool _eventListScrollResetPending = false;
   int _eventListLoadGeneration = 0;
@@ -795,6 +807,7 @@ class _EventListWidgetState extends State<EventListWidget> {
                       const SizedBox(height: 10),
                       Expanded(
                         child: SingleChildScrollView(
+                          key: eventListScrollViewKey,
                           controller: _scrollController,
                           padding: const EdgeInsetsDirectional.only(
                             bottom: ExpatlioDesign.pageBottomSpacing,
@@ -880,6 +893,10 @@ class _EventListWidgetState extends State<EventListWidget> {
                                     initialData: _eventCardsFutureInitialCards,
                                     builder: (context, eventsSnapshot) {
                                       final activeLoadKey = _eventListLoadKey;
+                                      final paginationState =
+                                          _eventListPaginationViewState(
+                                        activeLoadKey,
+                                      );
                                       final previousCards =
                                           _previousCardsForActiveKey(
                                         activeLoadKey,
@@ -904,6 +921,7 @@ class _EventListWidgetState extends State<EventListWidget> {
                                                 _openEventCardDetail,
                                             openEventCardChat:
                                                 _openEventCardChat,
+                                            paginationState: paginationState,
                                             showParticipantRequiredSnackBar: () =>
                                                 _showEventListChatParticipantRequiredSnackBar(
                                               context,
@@ -981,6 +999,7 @@ class _EventListWidgetState extends State<EventListWidget> {
                                         openEventCardDetail:
                                             _openEventCardDetail,
                                         openEventCardChat: _openEventCardChat,
+                                        paginationState: paginationState,
                                         showParticipantRequiredSnackBar: () =>
                                             _showEventListChatParticipantRequiredSnackBar(
                                           context,
@@ -1058,6 +1077,7 @@ class _EventListWidgetState extends State<EventListWidget> {
       }
       _eventListLoadGeneration += 1;
       _eventListLoadKey = key;
+      _eventListPaginationSession = null;
       final loadGeneration = _eventListLoadGeneration;
       final participantActionSourceRevision =
           _eventListParticipantActionCoordinator.currentConfirmedRevision;
@@ -1068,6 +1088,24 @@ class _EventListWidgetState extends State<EventListWidget> {
       );
       final cachedCards = cachedEntry?.cards;
       if (cachedCards != null) {
+        final entry = cachedEntry!;
+        final paginationSession = _EventListPaginationSession(
+          key: key,
+          loadGeneration: loadGeneration,
+          cacheOwnerToken: cacheOwnerToken,
+          selected: selected,
+          localDateRange: localDateRange,
+          nowUtc: normalizedNowUtc,
+          selectedLevel: _selectedLevel,
+          currentUserId: viewerUserId,
+          participantActionSourceRevision: participantActionSourceRevision,
+          events: entry.events,
+          nextPageMarker: entry.nextPageMarker,
+          hasRequestedNextPage: entry.hasRequestedNextPage,
+          noMoreItems: entry.noMoreItems,
+        );
+        _eventListPaginationSession = paginationSession;
+        _scheduleEventListPaginationCheck(paginationSession);
         _eventListCardsCache.registerEventsIfOwner(
           key,
           cacheOwnerToken,
@@ -1078,9 +1116,9 @@ class _EventListWidgetState extends State<EventListWidget> {
           key: key,
           loadGeneration: loadGeneration,
           cards: cachedCards,
-          nowUtc: cachedEntry!.fetchedAtUtc,
+          nowUtc: entry.fetchedAtUtc,
           currentUserId: viewerUserId,
-          hydratedProfileCardCount: cachedEntry.hydratedProfileCardCount,
+          hydratedProfileCardCount: entry.hydratedProfileCardCount,
           cacheOwnerToken: cacheOwnerToken,
         );
       }
@@ -1100,8 +1138,28 @@ class _EventListWidgetState extends State<EventListWidget> {
                 baseLoad.events.map((event) => event.reference.id),
               );
               if (_eventListLoadIsCurrent(key, loadGeneration)) {
+                final paginationSession = _EventListPaginationSession(
+                  key: key,
+                  loadGeneration: loadGeneration,
+                  cacheOwnerToken: cacheOwnerToken,
+                  selected: selected,
+                  localDateRange: localDateRange,
+                  nowUtc: normalizedNowUtc,
+                  selectedLevel: _selectedLevel,
+                  currentUserId: viewerUserId,
+                  participantActionSourceRevision:
+                      participantActionSourceRevision,
+                  events: baseLoad.events,
+                  nextPageMarker: baseLoad.nextPageMarker,
+                  noMoreItems: baseLoad.nextPageMarker == null,
+                );
+                _eventListPaginationSession = paginationSession;
+                _scheduleEventListPaginationCheck(paginationSession);
                 _rememberLoadedCards(key, baseLoad.cards);
                 if (baseLoad.cards.isNotEmpty) {
+                  paginationSession.pendingEnrichmentEventIds.addAll(
+                    baseLoad.cards.map((card) => card.eventId),
+                  );
                   unawaited(
                     _enrichEventCards(
                       events: baseLoad.events,
@@ -1113,6 +1171,7 @@ class _EventListWidgetState extends State<EventListWidget> {
                       cacheOwnerToken: cacheOwnerToken,
                       participantActionSourceRevision:
                           participantActionSourceRevision,
+                      paginationSession: paginationSession,
                     ),
                   );
                 }
@@ -1177,6 +1236,7 @@ class _EventListWidgetState extends State<EventListWidget> {
     _eventCardsFuture = null;
     _eventCardsFutureInitialCards = null;
     _publicProfileSession = null;
+    _eventListPaginationSession = null;
     _eventListProfileScrollOriginPixels = 0;
     _scheduleEventListScrollReset();
     if (clearLastLoadedCards) {
@@ -1205,18 +1265,46 @@ class _EventListWidgetState extends State<EventListWidget> {
     required String currentUserId,
     required int participantActionSourceRevision,
   }) async {
-    final page = localDateRange == null
-        ? await EventListRepository.loadLevelFilteredActiveEventPage(
+    final page = await _loadEventRecordsPage(
+      selected: selected,
+      localDateRange: localDateRange,
+      nowUtc: nowUtc,
+      selectedLevel: selectedLevel,
+    );
+
+    final cards = _eventListBaseCardsFromEvents(
+      events: page.data,
+      fallbackTimeZoneId: selected.city.timeZoneId,
+      nowUtc: nowUtc,
+      currentUserId: currentUserId,
+      participantActionSourceRevision: participantActionSourceRevision,
+    );
+    return _EventListBaseCardsLoad(
+      events: page.data,
+      cards: cards,
+      nextPageMarker: page.nextPageMarker,
+    );
+  }
+
+  Future<FFFirestorePage<EventsRecord>> _loadEventRecordsPage({
+    required EventSelectedCity selected,
+    required EventListLocalDateRange? localDateRange,
+    required DateTime nowUtc,
+    required String? selectedLevel,
+    DocumentSnapshot? nextPageMarker,
+  }) {
+    return localDateRange == null
+        ? EventListRepository.loadLevelFilteredActiveEventPage(
             countryCode: selected.city.countryCode,
             cityKey: selected.city.cityKey,
             lowerBoundUtc: nowUtc,
             upperBoundUtc: _eventListAllEventsUpperBoundUtc,
             pageSize: _eventListPageSize,
             selectedLevel: selectedLevel,
+            nextPageMarker: nextPageMarker,
             pageLoader: widget.eventPageLoader,
           )
-        : await EventListRepository
-            .loadLevelFilteredActiveEventPageForDateRange(
+        : EventListRepository.loadLevelFilteredActiveEventPageForDateRange(
             countryCode: selected.city.countryCode,
             cityKey: selected.city.cityKey,
             timeZoneId: selected.city.timeZoneId,
@@ -1224,14 +1312,23 @@ class _EventListWidgetState extends State<EventListWidget> {
             nowUtc: nowUtc,
             pageSize: _eventListPageSize,
             selectedLevel: selectedLevel,
+            nextPageMarker: nextPageMarker,
             pageLoader: widget.eventPageLoader,
           );
+  }
 
-    final cards = page.data
+  List<EventListCardViewModel> _eventListBaseCardsFromEvents({
+    required List<EventsRecord> events,
+    required String fallbackTimeZoneId,
+    required DateTime nowUtc,
+    required String currentUserId,
+    required int participantActionSourceRevision,
+  }) {
+    return events
         .map(
           (event) => _eventListCardFromRecord(
             event,
-            fallbackTimeZoneId: selected.city.timeZoneId,
+            fallbackTimeZoneId: fallbackTimeZoneId,
             nowUtc: nowUtc,
             currentUserId: currentUserId,
             participantActionSourceRevision: participantActionSourceRevision,
@@ -1245,7 +1342,6 @@ class _EventListWidgetState extends State<EventListWidget> {
         )
         .whereType<EventListCardViewModel>()
         .toList(growable: false);
-    return _EventListBaseCardsLoad(events: page.data, cards: cards);
   }
 
   Future<void> _enrichEventCards({
@@ -1257,6 +1353,7 @@ class _EventListWidgetState extends State<EventListWidget> {
     required int loadGeneration,
     required int cacheOwnerToken,
     required int participantActionSourceRevision,
+    required _EventListPaginationSession paginationSession,
   }) async {
     final currentParticipantsFuture =
         _loadCurrentUserParticipantRecordsByEventId(
@@ -1274,10 +1371,10 @@ class _EventListWidgetState extends State<EventListWidget> {
         _loadActiveParticipantRecordsByEventId(events: initialEvents);
     final remainingActiveParticipantsFuture =
         _loadActiveParticipantRecordsByEventId(events: remainingEvents);
-    final initialActiveParticipantRecordsByEventId =
-        await initialActiveParticipantsFuture;
+    final initialActiveParticipantsLoad = await initialActiveParticipantsFuture;
 
-    if (!_eventListLoadIsCurrent(key, loadGeneration)) {
+    if (!_eventListLoadIsCurrent(key, loadGeneration) ||
+        !_eventListPaginationSessionIsCurrent(paginationSession)) {
       return;
     }
 
@@ -1288,7 +1385,7 @@ class _EventListWidgetState extends State<EventListWidget> {
       currentUserId: currentUserId,
       participantActionSourceRevision: participantActionSourceRevision,
       activeParticipantRecordsByEventId:
-          initialActiveParticipantRecordsByEventId,
+          initialActiveParticipantsLoad.recordsByEventId,
     );
     final canPreloadProfiles =
         _canPreloadEventListPublicProfiles(currentUserId);
@@ -1306,20 +1403,25 @@ class _EventListWidgetState extends State<EventListWidget> {
         : Future<UserPublicProfilePreloadResult>.value(
             UserPublicProfilePreloadResult(),
           );
-    final remainingActiveParticipantRecordsByEventId =
+    final remainingActiveParticipantsLoad =
         await remainingActiveParticipantsFuture;
     final activeParticipantRecordsByEventId =
         <String, List<EventParticipantsRecord>>{
-      ...initialActiveParticipantRecordsByEventId,
-      ...remainingActiveParticipantRecordsByEventId,
+      ...initialActiveParticipantsLoad.recordsByEventId,
+      ...remainingActiveParticipantsLoad.recordsByEventId,
+    };
+    final activeParticipantFailedEventIds = <String>{
+      ...initialActiveParticipantsLoad.failedEventIds,
+      ...remainingActiveParticipantsLoad.failedEventIds,
     };
     final membershipLoad = await currentParticipantsFuture;
 
-    if (!_eventListLoadIsCurrent(key, loadGeneration)) {
+    if (!_eventListLoadIsCurrent(key, loadGeneration) ||
+        !_eventListPaginationSessionIsCurrent(paginationSession)) {
       return;
     }
 
-    final participantCards = _eventListCardsFromParticipantRecords(
+    var participantCards = _eventListCardsFromParticipantRecords(
       events: events,
       fallbackTimeZoneId: fallbackTimeZoneId,
       nowUtc: nowUtc,
@@ -1327,6 +1429,10 @@ class _EventListWidgetState extends State<EventListWidget> {
       participantActionSourceRevision: participantActionSourceRevision,
       activeParticipantRecordsByEventId: activeParticipantRecordsByEventId,
       membershipLoad: membershipLoad,
+    );
+    participantCards = _replaceEventListCards(
+      _displayedEventListCards(paginationSession),
+      participantCards,
     );
     final finalProfileIds = canPreloadProfiles
         ? _eventListVisibleParticipantUserIds(
@@ -1354,12 +1460,17 @@ class _EventListWidgetState extends State<EventListWidget> {
           );
 
     if (!canPreloadProfiles) {
-      if (participantCards.isNotEmpty &&
-          membershipLoad.failedEventIds.isEmpty) {
-        _eventListCardsCache.writeIfOwner(
-          key,
-          cacheOwnerToken,
-          participantCards,
+      paginationSession.pendingEnrichmentEventIds.removeAll(
+        events.map((event) => event.reference.id),
+      );
+      if (membershipLoad.failedEventIds.isNotEmpty ||
+          activeParticipantFailedEventIds.isNotEmpty) {
+        _markEventListPaginationCacheUnsafe(paginationSession);
+      } else if (participantCards.isNotEmpty) {
+        _writeEventListCardsCacheIfOwner(
+          key: key,
+          cacheOwnerToken: cacheOwnerToken,
+          cards: participantCards,
           fetchedAtUtc: nowUtc,
           hydratedProfileCardCount: participantCards.length,
         );
@@ -1385,7 +1496,8 @@ class _EventListWidgetState extends State<EventListWidget> {
       ),
       completedCardCount: 0,
       scrollStartPixels: _eventListProfileScrollOriginPixels,
-      canCacheCards: membershipLoad.failedEventIds.isEmpty,
+      canCacheCards: membershipLoad.failedEventIds.isEmpty &&
+          activeParticipantFailedEventIds.isEmpty,
       requestedUserIds: <String>{
         ...earlyProfileIds,
         ...additionalProfileIds,
@@ -1393,6 +1505,10 @@ class _EventListWidgetState extends State<EventListWidget> {
       requestInFlight: true,
       cacheOwnerToken: cacheOwnerToken,
     );
+    if (membershipLoad.failedEventIds.isNotEmpty ||
+        activeParticipantFailedEventIds.isNotEmpty) {
+      _markEventListPaginationCacheUnsafe(paginationSession);
+    }
     if (!_eventListScrollResetPending) {
       session.targetCardCount = math.max(
         session.targetCardCount,
@@ -1420,6 +1536,9 @@ class _EventListWidgetState extends State<EventListWidget> {
     session.completedCardCount = math.min(
       participantCards.length,
       _eventListInitialProfileCardBudget,
+    );
+    paginationSession.pendingEnrichmentEventIds.removeAll(
+      events.map((event) => event.reference.id),
     );
     _applyEventListPublicProfileLoad(session, profileLoad);
     await _pumpEventListPublicProfileSession(session);
@@ -1509,16 +1628,354 @@ class _EventListWidgetState extends State<EventListWidget> {
   }
 
   void _handleEventListScroll() {
-    final session = _publicProfileSession;
-    if (session == null || !_eventListPublicProfileSessionIsCurrent(session)) {
+    final profileSession = _publicProfileSession;
+    if (profileSession != null &&
+        _eventListPublicProfileSessionIsCurrent(profileSession)) {
+      final targetCardCount = _eventListProfileCardBudget(profileSession);
+      if (targetCardCount > profileSession.targetCardCount) {
+        profileSession.targetCardCount = targetCardCount;
+        unawaited(_pumpEventListPublicProfileSession(profileSession));
+      }
+    }
+    _maybeLoadNextEventPage();
+  }
+
+  void _maybeLoadNextEventPage() {
+    final session = _eventListPaginationSession;
+    if (session == null ||
+        !_eventListPaginationSessionIsCurrent(session) ||
+        session.requestInFlight ||
+        session.noMoreItems ||
+        session.error != null ||
+        session.nextPageMarker == null ||
+        !_scrollController.hasClients) {
       return;
     }
-    final targetCardCount = _eventListProfileCardBudget(session);
-    if (targetCardCount <= session.targetCardCount) {
+    final position = _scrollController.position;
+    if (!position.hasContentDimensions ||
+        position.extentAfter > _eventListPaginationPrefetchExtent) {
       return;
     }
-    session.targetCardCount = targetCardCount;
-    unawaited(_pumpEventListPublicProfileSession(session));
+    unawaited(_loadNextEventPage(session));
+  }
+
+  void _scheduleEventListPaginationCheck(
+    _EventListPaginationSession session,
+  ) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_eventListPaginationSessionIsCurrent(session)) {
+        return;
+      }
+      _maybeLoadNextEventPage();
+    });
+  }
+
+  bool _eventListPaginationSessionIsCurrent(
+    _EventListPaginationSession session,
+  ) {
+    return mounted &&
+        identical(_eventListPaginationSession, session) &&
+        currentUserUid == session.currentUserId &&
+        _eventListLoadIsCurrent(session.key, session.loadGeneration);
+  }
+
+  _EventListPaginationViewState _eventListPaginationViewState(
+    _EventListLoadKey? key,
+  ) {
+    final session = _eventListPaginationSession;
+    if (session == null ||
+        key == null ||
+        session.key != key ||
+        !_eventListPaginationSessionIsCurrent(session)) {
+      return const _EventListPaginationViewState();
+    }
+    return _EventListPaginationViewState(
+      isLoading: session.requestInFlight,
+      showsNoMoreItems: session.hasRequestedNextPage && session.noMoreItems,
+      error: session.error,
+      onRetry: session.error == null ? null : _retryNextEventPage,
+    );
+  }
+
+  Future<void> _loadNextEventPage(
+    _EventListPaginationSession session,
+  ) async {
+    final requestMarker = session.nextPageMarker;
+    if (!_eventListPaginationSessionIsCurrent(session) ||
+        session.requestInFlight ||
+        session.noMoreItems ||
+        requestMarker == null) {
+      return;
+    }
+
+    setState(() {
+      session
+        ..requestInFlight = true
+        ..hasRequestedNextPage = true
+        ..error = null;
+    });
+
+    try {
+      final page = await _loadEventRecordsPage(
+        selected: session.selected,
+        localDateRange: session.localDateRange,
+        nowUtc: session.nowUtc,
+        selectedLevel: session.selectedLevel,
+        nextPageMarker: requestMarker,
+      );
+      if (!_eventListPaginationSessionIsCurrent(session) ||
+          !identical(session.nextPageMarker, requestMarker)) {
+        return;
+      }
+
+      final knownEventIds =
+          session.events.map((event) => event.reference.id).toSet();
+      final additionalEvents = page.data
+          .where((event) => knownEventIds.add(event.reference.id))
+          .toList(growable: false);
+      final nextPageMarker = page.nextPageMarker;
+      final cursorDidNotAdvance = nextPageMarker != null &&
+          (identical(nextPageMarker, requestMarker) ||
+              nextPageMarker.id == requestMarker.id);
+      session
+        ..requestInFlight = false
+        ..nextPageMarker = nextPageMarker
+        ..noMoreItems = page.data.isEmpty ||
+            nextPageMarker == null ||
+            (additionalEvents.isEmpty && cursorDidNotAdvance);
+
+      if (additionalEvents.isEmpty) {
+        if (session.pendingEnrichmentEventIds.isEmpty) {
+          _eventListCardsCache.updatePaginationIfOwner(
+            session.key,
+            session.cacheOwnerToken,
+            events: session.events,
+            nextPageMarker: session.nextPageMarker,
+            hasRequestedNextPage: session.hasRequestedNextPage,
+            noMoreItems: session.noMoreItems,
+          );
+        } else {
+          _eventListCardsCache.removeIfOwner(
+            session.key,
+            session.cacheOwnerToken,
+          );
+        }
+        setState(() {});
+        if (!session.noMoreItems) {
+          _scheduleEventListPaginationCheck(session);
+        }
+        return;
+      }
+
+      session.events = List<EventsRecord>.unmodifiable(
+        <EventsRecord>[...session.events, ...additionalEvents],
+      );
+      final additionalCards = _eventListBaseCardsFromEvents(
+        events: additionalEvents,
+        fallbackTimeZoneId: session.selected.city.timeZoneId,
+        nowUtc: session.nowUtc,
+        currentUserId: session.currentUserId,
+        participantActionSourceRevision:
+            session.participantActionSourceRevision,
+      );
+      session.pendingEnrichmentEventIds.addAll(
+        additionalCards.map((card) => card.eventId),
+      );
+      if (additionalCards.isNotEmpty) {
+        _eventListCardsCache.removeIfOwner(
+          session.key,
+          session.cacheOwnerToken,
+        );
+      }
+      final mergedCards = _appendUniqueEventListCards(
+        _displayedEventListCards(session),
+        additionalCards,
+      );
+      final profileSession = _publicProfileSession;
+      if (profileSession != null &&
+          _eventListPublicProfileSessionIsCurrent(profileSession)) {
+        profileSession.cards = mergedCards;
+      }
+      _eventListCardsCache.registerEventsIfOwner(
+        session.key,
+        session.cacheOwnerToken,
+        session.events.map((event) => event.reference.id),
+      );
+      setState(() {
+        _publishEventListCards(session, mergedCards);
+      });
+      if (!session.noMoreItems) {
+        _scheduleEventListPaginationCheck(session);
+      }
+      unawaited(
+        _enrichNextEventPage(
+          session: session,
+          events: additionalEvents,
+        ),
+      );
+    } catch (error) {
+      if (!_eventListPaginationSessionIsCurrent(session) ||
+          !identical(session.nextPageMarker, requestMarker)) {
+        return;
+      }
+      setState(() {
+        session
+          ..requestInFlight = false
+          ..error = error;
+      });
+    }
+  }
+
+  void _retryNextEventPage() {
+    final session = _eventListPaginationSession;
+    if (session == null || !_eventListPaginationSessionIsCurrent(session)) {
+      return;
+    }
+    unawaited(_loadNextEventPage(session));
+  }
+
+  List<EventListCardViewModel> _displayedEventListCards(
+    _EventListPaginationSession session,
+  ) {
+    final profileSession = _publicProfileSession;
+    if (profileSession != null &&
+        _eventListPublicProfileSessionIsCurrent(profileSession)) {
+      return profileSession.cards;
+    }
+    final currentCards = _eventCardsFutureInitialCards;
+    if (currentCards != null) {
+      return currentCards;
+    }
+    final previous = _lastLoadedCards;
+    if (previous != null && previous.key == session.key) {
+      return previous.cards;
+    }
+    return const <EventListCardViewModel>[];
+  }
+
+  List<EventListCardViewModel> _appendUniqueEventListCards(
+    List<EventListCardViewModel> existing,
+    List<EventListCardViewModel> additions,
+  ) {
+    final cardsById = LinkedHashMap<String, EventListCardViewModel>();
+    for (final card in existing) {
+      cardsById[card.eventId] = card;
+    }
+    for (final card in additions) {
+      cardsById.putIfAbsent(card.eventId, () => card);
+    }
+    return List<EventListCardViewModel>.unmodifiable(cardsById.values);
+  }
+
+  List<EventListCardViewModel> _replaceEventListCards(
+    List<EventListCardViewModel> existing,
+    List<EventListCardViewModel> replacements,
+  ) {
+    final replacementsById = <String, EventListCardViewModel>{
+      for (final card in replacements) card.eventId: card,
+    };
+    return List<EventListCardViewModel>.unmodifiable(
+      existing.map(
+        (card) => replacementsById[card.eventId] ?? card,
+      ),
+    );
+  }
+
+  void _publishEventListCards(
+    _EventListPaginationSession session,
+    List<EventListCardViewModel> cards,
+  ) {
+    _eventCardsFutureInitialCards = cards;
+    _eventCardsFuture = Future<List<EventListCardViewModel>>.value(cards);
+    _rememberLoadedCards(session.key, cards);
+  }
+
+  Future<void> _enrichNextEventPage({
+    required _EventListPaginationSession session,
+    required List<EventsRecord> events,
+  }) async {
+    final currentParticipantsFuture =
+        _loadCurrentUserParticipantRecordsByEventId(
+      events: events,
+      currentUserId: session.currentUserId,
+    );
+    final activeParticipantsFuture =
+        _loadActiveParticipantRecordsByEventId(events: events);
+    final activeParticipantsLoad = await activeParticipantsFuture;
+    final membershipLoad = await currentParticipantsFuture;
+    if (!_eventListPaginationSessionIsCurrent(session)) {
+      return;
+    }
+
+    var enrichedCards = _eventListCardsFromParticipantRecords(
+      events: events,
+      fallbackTimeZoneId: session.selected.city.timeZoneId,
+      nowUtc: session.nowUtc,
+      currentUserId: session.currentUserId,
+      participantActionSourceRevision: session.participantActionSourceRevision,
+      activeParticipantRecordsByEventId:
+          activeParticipantsLoad.recordsByEventId,
+      membershipLoad: membershipLoad,
+    );
+    final profileUserIds = _eventListVisibleParticipantUserIds(enrichedCards);
+    final profileLoad = await _preloadEventListPublicProfiles(
+      profileUserIds,
+      currentUserId: session.currentUserId,
+    );
+    if (!_eventListPaginationSessionIsCurrent(session)) {
+      return;
+    }
+    enrichedCards = _eventListCardsWithPublicProfiles(
+      enrichedCards,
+      profileLoad.profilesByUserId,
+    );
+
+    final mergedCards = _replaceEventListCards(
+      _displayedEventListCards(session),
+      enrichedCards,
+    );
+    final profileSession = _publicProfileSession;
+    if (profileSession != null &&
+        _eventListPublicProfileSessionIsCurrent(profileSession)) {
+      profileSession
+        ..cards = mergedCards
+        ..requestedUserIds.addAll(profileUserIds);
+      if (membershipLoad.failedEventIds.isNotEmpty ||
+          activeParticipantsLoad.failedEventIds.isNotEmpty ||
+          profileLoad.failedUserIds.isNotEmpty ||
+          profileLoad.missingUserIds.isNotEmpty) {
+        profileSession.canCacheCards = false;
+      }
+    }
+    setState(() {
+      _publishEventListCards(session, mergedCards);
+    });
+    session.pendingEnrichmentEventIds.removeAll(
+      events.map((event) => event.reference.id),
+    );
+    final enrichmentCanCache = membershipLoad.failedEventIds.isEmpty &&
+        activeParticipantsLoad.failedEventIds.isEmpty &&
+        profileLoad.failedUserIds.isEmpty &&
+        profileLoad.missingUserIds.isEmpty &&
+        (profileSession?.canCacheCards ?? true);
+    if (!enrichmentCanCache) {
+      _markEventListPaginationCacheUnsafe(session);
+    }
+    if (enrichmentCanCache && session.canCacheCards) {
+      _writeEventListCardsCacheIfOwner(
+        key: session.key,
+        cacheOwnerToken: session.cacheOwnerToken,
+        cards: mergedCards,
+        fetchedAtUtc: session.nowUtc,
+        hydratedProfileCardCount:
+            profileSession?.completedCardCount ?? mergedCards.length,
+      );
+    } else {
+      _eventListCardsCache.removeIfOwner(
+        session.key,
+        session.cacheOwnerToken,
+      );
+    }
   }
 
   bool _eventListPublicProfileSessionIsCurrent(
@@ -1581,10 +2038,17 @@ class _EventListWidgetState extends State<EventListWidget> {
     if (profileLoad.failedUserIds.isNotEmpty ||
         profileLoad.missingUserIds.isNotEmpty) {
       session.canCacheCards = false;
-      _eventListCardsCache.removeIfOwner(
-        session.key,
-        session.cacheOwnerToken,
-      );
+      final paginationSession = _eventListPaginationSession;
+      if (paginationSession != null &&
+          paginationSession.key == session.key &&
+          paginationSession.cacheOwnerToken == session.cacheOwnerToken) {
+        _markEventListPaginationCacheUnsafe(paginationSession);
+      } else {
+        _eventListCardsCache.removeIfOwner(
+          session.key,
+          session.cacheOwnerToken,
+        );
+      }
     }
     session.cards = _eventListCardsWithPublicProfiles(
       session.cards,
@@ -1608,12 +2072,59 @@ class _EventListWidgetState extends State<EventListWidget> {
         !_eventListPublicProfileSessionIsCurrent(session)) {
       return;
     }
-    _eventListCardsCache.writeIfOwner(
-      session.key,
-      session.cacheOwnerToken,
-      session.cards,
+    _writeEventListCardsCacheIfOwner(
+      key: session.key,
+      cacheOwnerToken: session.cacheOwnerToken,
+      cards: session.cards,
       fetchedAtUtc: session.nowUtc,
       hydratedProfileCardCount: session.completedCardCount,
+    );
+  }
+
+  bool _writeEventListCardsCacheIfOwner({
+    required _EventListLoadKey key,
+    required int cacheOwnerToken,
+    required List<EventListCardViewModel> cards,
+    required DateTime fetchedAtUtc,
+    required int hydratedProfileCardCount,
+  }) {
+    final paginationSession = _eventListPaginationSession;
+    final hasMatchingPagination = paginationSession != null &&
+        paginationSession.key == key &&
+        paginationSession.cacheOwnerToken == cacheOwnerToken;
+    if (paginationSession != null &&
+        hasMatchingPagination &&
+        (!paginationSession.canCacheCards ||
+            paginationSession.pendingEnrichmentEventIds.isNotEmpty)) {
+      return false;
+    }
+    return _eventListCardsCache.writeIfOwner(
+      key,
+      cacheOwnerToken,
+      cards,
+      fetchedAtUtc: fetchedAtUtc,
+      hydratedProfileCardCount: hydratedProfileCardCount,
+      events: hasMatchingPagination
+          ? paginationSession.events
+          : const <EventsRecord>[],
+      nextPageMarker:
+          hasMatchingPagination ? paginationSession.nextPageMarker : null,
+      hasRequestedNextPage:
+          hasMatchingPagination && paginationSession.hasRequestedNextPage,
+      noMoreItems: hasMatchingPagination && paginationSession.noMoreItems,
+    );
+  }
+
+  void _markEventListPaginationCacheUnsafe(
+    _EventListPaginationSession session,
+  ) {
+    if (!_eventListPaginationSessionIsCurrent(session)) {
+      return;
+    }
+    session.canCacheCards = false;
+    _eventListCardsCache.removeIfOwner(
+      session.key,
+      session.cacheOwnerToken,
     );
   }
 
@@ -1755,16 +2266,16 @@ class _EventListWidgetState extends State<EventListWidget> {
     );
   }
 
-  Future<Map<String, List<EventParticipantsRecord>>>
+  Future<_EventListActiveParticipantsLoad>
       _loadActiveParticipantRecordsByEventId({
     required List<EventsRecord> events,
   }) async {
     if (events.isEmpty) {
-      return const <String, List<EventParticipantsRecord>>{};
+      return const _EventListActiveParticipantsLoad();
     }
     if (widget.activeParticipantsLoader == null &&
         widget.eventPageLoader != null) {
-      return const <String, List<EventParticipantsRecord>>{};
+      return const _EventListActiveParticipantsLoad();
     }
     final loader = widget.activeParticipantsLoader ??
         _loadEventListActiveParticipantPreview;
@@ -1777,17 +2288,27 @@ class _EventListWidgetState extends State<EventListWidget> {
                   participant.status.trim() == eventStatusActive &&
                   participant.parentReference.path == event.reference.path)
               .toList(growable: false);
-          if (activeParticipants.isEmpty) {
-            return null;
-          }
-          return MapEntry(event.reference.id, activeParticipants);
+          return _EventListActiveParticipantsLookupResult(
+            eventId: event.reference.id,
+            participants: activeParticipants,
+          );
         } catch (_) {
-          return null;
+          return _EventListActiveParticipantsLookupResult(
+            eventId: event.reference.id,
+            failed: true,
+          );
         }
       }),
     );
-    return Map<String, List<EventParticipantsRecord>>.fromEntries(
-      entries.whereType<MapEntry<String, List<EventParticipantsRecord>>>(),
+    return _EventListActiveParticipantsLoad(
+      recordsByEventId: Map<String, List<EventParticipantsRecord>>.fromEntries(
+        entries.where((entry) => entry.participants.isNotEmpty).map(
+              (entry) => MapEntry(entry.eventId, entry.participants),
+            ),
+      ),
+      failedEventIds: Set<String>.unmodifiable(
+        entries.where((entry) => entry.failed).map((entry) => entry.eventId),
+      ),
     );
   }
 
@@ -2272,6 +2793,7 @@ class _EventListCards extends StatelessWidget {
     required this.openEventCardDetail,
     required this.openEventCardChat,
     required this.showParticipantRequiredSnackBar,
+    this.paginationState = const _EventListPaginationViewState(),
   });
 
   final List<EventListCardViewModel> eventCards;
@@ -2284,6 +2806,7 @@ class _EventListCards extends StatelessWidget {
     required EventSelectedCity? selectedCity,
   }) openEventCardChat;
   final VoidCallback showParticipantRequiredSnackBar;
+  final _EventListPaginationViewState paginationState;
 
   @override
   Widget build(BuildContext context) {
@@ -2313,7 +2836,121 @@ class _EventListCards extends StatelessWidget {
           if (eventCard != eventCards.last)
             const SizedBox(height: ExpatlioDesign.space12),
         ],
+        if (paginationState.isVisible) ...[
+          const SizedBox(height: ExpatlioDesign.space12),
+          _EventListPaginationFooter(state: paginationState),
+        ],
       ],
+    );
+  }
+}
+
+class _EventListPaginationViewState {
+  const _EventListPaginationViewState({
+    this.isLoading = false,
+    this.showsNoMoreItems = false,
+    this.error,
+    this.onRetry,
+  });
+
+  final bool isLoading;
+  final bool showsNoMoreItems;
+  final Object? error;
+  final VoidCallback? onRetry;
+
+  bool get isVisible => isLoading || showsNoMoreItems || error != null;
+}
+
+class _EventListPaginationFooter extends StatelessWidget {
+  const _EventListPaginationFooter({required this.state});
+
+  final _EventListPaginationViewState state;
+
+  @override
+  Widget build(BuildContext context) {
+    if (state.error != null) {
+      final title = FFLocalizations.of(context).getVariableText(
+        ruText: 'Не удалось загрузить ещё события',
+        enText: 'Could not load more events',
+      );
+      final message = FFLocalizations.of(context).getVariableText(
+        ruText: 'Проверьте подключение и попробуйте снова.',
+        enText: 'Check your connection and try again.',
+      );
+      final retryLabel = FFLocalizations.of(context).getVariableText(
+        ruText: 'Повторить',
+        enText: 'Retry',
+      );
+      return UxErrorState(
+        stateKey: eventListPaginationErrorKey,
+        title: title,
+        message: message,
+        semanticsLabel: '$title. $message',
+        retryLabel: retryLabel,
+        retrySemanticsLabel: title,
+        retryButtonKey: eventListPaginationRetryButtonKey,
+        onRetry: state.onRetry,
+        contained: true,
+        borderColor: _eventListBorderColor,
+        maxWidth: double.infinity,
+        showIcon: false,
+        padding: const EdgeInsetsDirectional.all(ExpatlioDesign.space12),
+        titleSize: 16.0,
+        messageSize: 14.0,
+        retryMinHeight: 44.0,
+      );
+    }
+
+    if (state.isLoading) {
+      final label = FFLocalizations.of(context).getVariableText(
+        ruText: 'Загружаем ещё события',
+        enText: 'Loading more events',
+      );
+      return Semantics(
+        key: eventListPaginationLoadingKey,
+        container: true,
+        liveRegion: true,
+        label: label,
+        child: const ExcludeSemantics(
+          child: SizedBox(
+            height: 48,
+            child: Center(
+              child: SizedBox.square(
+                dimension: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final label = FFLocalizations.of(context).getVariableText(
+      ruText: 'Больше событий нет',
+      enText: 'No more events',
+    );
+    return Semantics(
+      key: eventListNoMoreItemsKey,
+      container: true,
+      liveRegion: true,
+      label: label,
+      child: ExcludeSemantics(
+        child: SizedBox(
+          height: 48,
+          child: Center(
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: ExpatlioDesign.textStyle(
+                context,
+                color: ExpatlioDesign.muted,
+                size: 13,
+                weight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -2666,10 +3303,48 @@ class _EventListBaseCardsLoad {
   const _EventListBaseCardsLoad({
     required this.events,
     required this.cards,
+    required this.nextPageMarker,
   });
 
   final List<EventsRecord> events;
   final List<EventListCardViewModel> cards;
+  final DocumentSnapshot? nextPageMarker;
+}
+
+class _EventListPaginationSession {
+  _EventListPaginationSession({
+    required this.key,
+    required this.loadGeneration,
+    required this.cacheOwnerToken,
+    required this.selected,
+    required this.localDateRange,
+    required this.nowUtc,
+    required this.selectedLevel,
+    required this.currentUserId,
+    required this.participantActionSourceRevision,
+    required List<EventsRecord> events,
+    required this.nextPageMarker,
+    this.hasRequestedNextPage = false,
+    this.noMoreItems = false,
+  }) : events = List<EventsRecord>.unmodifiable(events);
+
+  final _EventListLoadKey key;
+  final int loadGeneration;
+  final int cacheOwnerToken;
+  final EventSelectedCity selected;
+  final EventListLocalDateRange? localDateRange;
+  final DateTime nowUtc;
+  final String? selectedLevel;
+  final String currentUserId;
+  final int participantActionSourceRevision;
+  List<EventsRecord> events;
+  DocumentSnapshot? nextPageMarker;
+  bool hasRequestedNextPage;
+  bool noMoreItems;
+  bool requestInFlight = false;
+  Object? error;
+  bool canCacheCards = true;
+  final Set<String> pendingEnrichmentEventIds = <String>{};
 }
 
 class _EventListMembershipLoad {
@@ -2679,6 +3354,16 @@ class _EventListMembershipLoad {
   });
 
   final Map<String, EventParticipantsRecord> recordsByEventId;
+  final Set<String> failedEventIds;
+}
+
+class _EventListActiveParticipantsLoad {
+  const _EventListActiveParticipantsLoad({
+    this.recordsByEventId = const <String, List<EventParticipantsRecord>>{},
+    this.failedEventIds = const <String>{},
+  });
+
+  final Map<String, List<EventParticipantsRecord>> recordsByEventId;
   final Set<String> failedEventIds;
 }
 
@@ -2722,6 +3407,18 @@ class _EventListMembershipLookupResult {
 
   final String eventId;
   final EventParticipantsRecord? participant;
+  final bool failed;
+}
+
+class _EventListActiveParticipantsLookupResult {
+  const _EventListActiveParticipantsLookupResult({
+    required this.eventId,
+    this.participants = const <EventParticipantsRecord>[],
+    this.failed = false,
+  });
+
+  final String eventId;
+  final List<EventParticipantsRecord> participants;
   final bool failed;
 }
 
@@ -2913,6 +3610,10 @@ class _EventListCardsMemoryCache {
     List<EventListCardViewModel> cards, {
     required DateTime fetchedAtUtc,
     required int hydratedProfileCardCount,
+    required List<EventsRecord> events,
+    required DocumentSnapshot? nextPageMarker,
+    required bool hasRequestedNextPage,
+    required bool noMoreItems,
   }) {
     if (!_isCurrentOwner(key, ownerToken)) {
       return false;
@@ -2929,10 +3630,41 @@ class _EventListCardsMemoryCache {
       cards: List.unmodifiable(cards),
       fetchedAtUtc: fetchedAtUtc,
       hydratedProfileCardCount: hydratedProfileCardCount,
+      events: List<EventsRecord>.unmodifiable(events),
+      nextPageMarker: nextPageMarker,
+      hasRequestedNextPage: hasRequestedNextPage,
+      noMoreItems: noMoreItems,
     );
     while (_entries.length > maxEntries) {
       _entries.remove(_entries.keys.first);
     }
+    return true;
+  }
+
+  bool updatePaginationIfOwner(
+    _EventListLoadKey key,
+    int ownerToken, {
+    required List<EventsRecord> events,
+    required DocumentSnapshot? nextPageMarker,
+    required bool hasRequestedNextPage,
+    required bool noMoreItems,
+  }) {
+    if (!_isCurrentOwner(key, ownerToken)) {
+      return false;
+    }
+    final entry = _entries.remove(key);
+    if (entry == null) {
+      return false;
+    }
+    _entries[key] = _EventListCardsCacheEntry(
+      cards: entry.cards,
+      fetchedAtUtc: entry.fetchedAtUtc,
+      hydratedProfileCardCount: entry.hydratedProfileCardCount,
+      events: List<EventsRecord>.unmodifiable(events),
+      nextPageMarker: nextPageMarker,
+      hasRequestedNextPage: hasRequestedNextPage,
+      noMoreItems: noMoreItems,
+    );
     return true;
   }
 
@@ -2990,11 +3722,19 @@ class _EventListCardsCacheEntry {
     required this.cards,
     required this.fetchedAtUtc,
     required this.hydratedProfileCardCount,
+    required this.events,
+    required this.nextPageMarker,
+    required this.hasRequestedNextPage,
+    required this.noMoreItems,
   });
 
   final List<EventListCardViewModel> cards;
   final DateTime fetchedAtUtc;
   final int hydratedProfileCardCount;
+  final List<EventsRecord> events;
+  final DocumentSnapshot? nextPageMarker;
+  final bool hasRequestedNextPage;
+  final bool noMoreItems;
 
   bool isFresh({
     required DateTime nowUtc,
