@@ -411,7 +411,7 @@ Retry behavior:
 - [x] Добавить widget-тест: пустая вторая страница pagination показывает `noMoreItems`, а не empty всего списка.
 - [x] Добавить widget-тест: cached missing detail без marker/server confirmation не показывает `notFound`.
 - [x] Добавить widget-тесты на сохранение previous data при refresh.
-- [ ] Добавить widget-тесты на optimistic send message.
+- [x] Добавить widget-тесты на optimistic send message.
 - [ ] Добавить widget-тесты на optimistic join/leave event.
 - [ ] Добавить widget-тест: optimistic rollback возвращает empty только если последняя успешная server/cache загрузка была пустой.
 - [ ] Проверить вручную вкладки `Чаты`, `События`, `Словарь`, `Профиль`.

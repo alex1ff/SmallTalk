@@ -22,6 +22,10 @@ void main() {
     );
     expect(source, contains('_ChatThreadMessagesCacheEntry('));
     expect(source, contains('limit: _messageLimit'));
+    expect(
+      source,
+      contains('.orderBy(FieldPath.documentId, descending: true)'),
+    );
     expect(source, contains('cachedMessagesEntry?.limit'));
     expect(source, contains('UxSessionCacheLifecycle.register'));
     expect(source, contains('currentUserUid'));
@@ -51,6 +55,16 @@ void main() {
     expect(source, contains('snapshots(includeMetadataChanges: true)'));
     expect(source, contains('snapshot.metadata.isFromCache'));
     expect(source, contains('snapshot.metadata.hasPendingWrites'));
+    expect(source, contains('pendingWriteMessagePaths: snapshot.docs'));
+    expect(source, contains('document.metadata.hasPendingWrites'));
+    expect(source, contains('_retainedPendingWriteMessagePathsFor('));
+    expect(
+      source,
+      contains('_mergeNonAuthoritativePendingWriteMessagePaths('),
+    );
+    expect(source, contains('pendingWritesObservedAt'));
+    expect(source, contains('_retainedPendingWriteObservedAtByPathFor('));
+    expect(source, contains('pendingWriteObservedAtByPath:'));
     expect(source, contains('.where((state) => state.canResolveEmpty)'));
     expect(source, contains('.where((state) => state.canResolveMissing)'));
     expect(source, isNot(contains('queryMessagesRecord(')));
@@ -70,7 +84,7 @@ void main() {
     expect(
         source, contains('MessagesRecord.createDoc(conversation.reference)'));
     expect(source, contains('messageRef.set('));
-    expect(source, contains('_displayMessages(serverMessages)'));
+    expect(source, contains('_displayMessages('));
     expect(source, contains('_buildPendingMessageBubble('));
     expect(source, contains('_ChatThreadDisplayMessage.pending'));
     expect(source, contains('String get itemKey =>'));
@@ -134,10 +148,11 @@ void main() {
     final createdAt = DateTime.utc(2026, 1, 1, 14);
 
     final merged = mergeChatThreadMessageItemsForTesting(
-      records: const <ChatThreadMessageMergeItem>[
+      records: <ChatThreadMessageMergeItem>[
         ChatThreadMessageMergeItem(
           key: 'conversations/1/messages/local-echo',
           createdAt: null,
+          sortCreatedAt: createdAt,
           isPending: false,
         ),
       ],
@@ -153,5 +168,68 @@ void main() {
     expect(merged, hasLength(1));
     expect(merged.single.isPending, isTrue);
     expect(merged.single.key, 'conversations/1/messages/local-echo');
+  });
+
+  test('chat thread merge sorts unconfirmed records without confirming them',
+      () {
+    final older = DateTime.utc(2026, 1, 1, 12);
+    final observed = DateTime.utc(2026, 1, 1, 14);
+
+    final merged = mergeChatThreadMessageItemsForTesting(
+      records: <ChatThreadMessageMergeItem>[
+        ChatThreadMessageMergeItem(
+          key: 'conversations/1/messages/local-echo',
+          createdAt: null,
+          sortCreatedAt: observed,
+          isPending: false,
+        ),
+        ChatThreadMessageMergeItem(
+          key: 'conversations/1/messages/older-server',
+          createdAt: older,
+          isPending: false,
+        ),
+      ],
+      pending: <ChatThreadMessageMergeItem>[
+        ChatThreadMessageMergeItem(
+          key: 'conversations/1/messages/local-echo',
+          createdAt: observed,
+          isPending: true,
+        ),
+      ],
+    );
+
+    expect(
+      merged.map((item) => '${item.isPending}:${item.key}'),
+      <String>[
+        'true:conversations/1/messages/local-echo',
+        'false:conversations/1/messages/older-server',
+      ],
+    );
+  });
+
+  test('chat thread merge uses a stable descending key tie break', () {
+    final createdAt = DateTime.utc(2026, 1, 1, 14);
+
+    List<String> mergeKeys(List<String> keys) {
+      return mergeChatThreadMessageItemsForTesting(
+        records: <ChatThreadMessageMergeItem>[
+          for (final key in keys)
+            ChatThreadMessageMergeItem(
+              key: 'conversations/1/messages/$key',
+              createdAt: createdAt,
+              isPending: false,
+            ),
+        ],
+        pending: const <ChatThreadMessageMergeItem>[],
+      ).map((item) => item.key).toList(growable: false);
+    }
+
+    const expected = <String>[
+      'conversations/1/messages/c',
+      'conversations/1/messages/b',
+      'conversations/1/messages/a',
+    ];
+    expect(mergeKeys(<String>['a', 'c', 'b']), expected);
+    expect(mergeKeys(<String>['b', 'a', 'c']), expected);
   });
 }

@@ -221,6 +221,760 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('optimistic send replaces the initial messages loader',
+      (tester) async {
+    final sources = _ChatThreadSources();
+    addTearDown(sources.close);
+    final conversation = _conversationFixture('optimistic-loading-chat');
+    final writeCompleter = Completer<void>();
+    addTearDown(() {
+      if (!writeCompleter.isCompleted) {
+        writeCompleter.complete();
+      }
+    });
+    DocumentReference? writtenRef;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: ChatThreadWidget(
+          conversationRef: conversation.reference,
+          debugConversationStream: sources.watchConversation,
+          debugMessagesStream: sources.watchMessages,
+          debugPublicProfileStream: (_) => Stream.value(null),
+          debugAuthenticatedOwnerUidStream: Stream.value('user-a'),
+          debugMessageWrite: (messageRef, _) {
+            writtenRef = messageRef;
+            return writeCompleter.future;
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    sources.conversations.single.add(_conversationState(conversation));
+    await tester.pump();
+
+    expect(sources.messages, hasLength(1));
+    expect(find.byType(SpinKitCircle), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(chatThreadMessageInputKey),
+      'Send while loading',
+    );
+    await tester.tap(find.byKey(chatThreadSendButtonKey));
+    await tester.pump();
+
+    final messageRef = writtenRef!;
+    final pendingItem = find.byKey(
+      chatThreadMessageItemKey(messageRef.path),
+    );
+    expect(pendingItem, findsOneWidget);
+    expect(find.text('Send while loading'), findsOneWidget);
+    expect(find.byType(SpinKitCircle), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byKey(chatThreadMessageStatusSlotKey(messageRef.path)),
+        matching: find.byIcon(Icons.schedule_rounded),
+      ),
+      findsOneWidget,
+    );
+
+    writeCompleter.complete();
+    await tester.pump();
+    expect(pendingItem, findsOneWidget);
+  });
+
+  testWidgets(
+      'firestore pending record stays sending without in-memory optimistic state',
+      (tester) async {
+    final sources = _ChatThreadSources();
+    addTearDown(sources.close);
+    final conversation = _conversationFixture('firestore-pending-chat');
+    final messageRef = MessagesRecord.createDoc(
+      conversation.reference,
+      id: 'local-pending-message',
+    );
+    final confirmedMessageRef = MessagesRecord.createDoc(
+      conversation.reference,
+      id: 'confirmed-message',
+    );
+    final confirmedMessage = _outgoingMessageFixture(
+      messageRef: confirmedMessageRef,
+      text: 'Confirmed outgoing message',
+      createdAt: DateTime.utc(2026, 7, 14, 10),
+    );
+    final pendingObservedAt = DateTime.utc(2026, 7, 14, 10, 5);
+    final pendingItem = find.byKey(
+      chatThreadMessageItemKey(messageRef.path),
+    );
+    final confirmedItem = find.byKey(
+      chatThreadMessageItemKey(confirmedMessageRef.path),
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: ChatThreadWidget(
+          conversationRef: conversation.reference,
+          debugConversationStream: sources.watchConversation,
+          debugMessagesStream: sources.watchMessages,
+          debugPublicProfileStream: (_) => Stream.value(null),
+          debugAuthenticatedOwnerUidStream: Stream.value('user-a'),
+        ),
+      ),
+    );
+    await tester.pump();
+    sources.conversations.single.add(_conversationState(conversation));
+    await tester.pump();
+    sources.messages.single.add(
+      _messagesState(
+        <MessagesRecord>[
+          _outgoingMessageFixture(
+            messageRef: messageRef,
+            text: 'Restored local write',
+          ),
+          confirmedMessage,
+        ],
+        isFromCache: true,
+        hasPendingWrites: true,
+        pendingWriteMessagePaths: <String>[messageRef.path],
+        pendingWritesObservedAt: pendingObservedAt,
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Restored local write'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(chatThreadMessageStatusSlotKey(messageRef.path)),
+        matching: find.byIcon(Icons.schedule_rounded),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(chatThreadMessageStatusSlotKey(messageRef.path)),
+        matching: find.byIcon(Icons.done_rounded),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(
+          chatThreadMessageStatusSlotKey(confirmedMessageRef.path),
+        ),
+        matching: find.byIcon(Icons.done_rounded),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.getCenter(pendingItem).dy,
+        greaterThan(tester.getCenter(confirmedItem).dy));
+
+    sources.messages.single.add(
+      _messagesState(
+        <MessagesRecord>[confirmedMessage],
+        isFromCache: true,
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Restored local write'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(chatThreadMessageStatusSlotKey(messageRef.path)),
+        matching: find.byIcon(Icons.schedule_rounded),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(
+          chatThreadMessageStatusSlotKey(confirmedMessageRef.path),
+        ),
+        matching: find.byIcon(Icons.done_rounded),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.getCenter(pendingItem).dy,
+        greaterThan(tester.getCenter(confirmedItem).dy));
+
+    sources.messages.single.add(
+      _messagesState(
+        <MessagesRecord>[
+          _outgoingMessageFixture(
+            messageRef: messageRef,
+            text: 'Restored local write',
+            createdAt: pendingObservedAt,
+          ),
+          confirmedMessage,
+        ],
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.descendant(
+        of: find.byKey(chatThreadMessageStatusSlotKey(messageRef.path)),
+        matching: find.byIcon(Icons.done_rounded),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.schedule_rounded), findsNothing);
+    expect(tester.getCenter(pendingItem).dy,
+        greaterThan(tester.getCenter(confirmedItem).dy));
+  });
+
+  testWidgets(
+      'optimistic private message appears immediately and reconciles once',
+      (tester) async {
+    final sources = _ChatThreadSources();
+    addTearDown(sources.close);
+    final conversation = _conversationFixture('optimistic-send-chat');
+    final previousMessage = _messageFixture(
+      conversationRef: conversation.reference,
+      messageId: 'previous-message',
+      text: 'Previous server message',
+    );
+    final writeCompleter = Completer<void>();
+    addTearDown(() {
+      if (!writeCompleter.isCompleted) {
+        writeCompleter.complete();
+      }
+    });
+    DocumentReference? writtenRef;
+    Map<String, dynamic>? writtenData;
+    var writeCount = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: ChatThreadWidget(
+          conversationRef: conversation.reference,
+          debugConversationStream: sources.watchConversation,
+          debugMessagesStream: sources.watchMessages,
+          debugPublicProfileStream: (_) => Stream.value(null),
+          debugAuthenticatedOwnerUidStream: Stream.value('user-a'),
+          debugMessageWrite: (messageRef, data) {
+            writeCount += 1;
+            writtenRef = messageRef;
+            writtenData = Map<String, dynamic>.from(data);
+            return writeCompleter.future;
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    sources.conversations.single.add(_conversationState(conversation));
+    await tester.pump();
+    sources.messages.single.add(
+      _messagesState(<MessagesRecord>[previousMessage]),
+    );
+    await tester.pump();
+
+    await tester.enterText(
+      find.byKey(chatThreadMessageInputKey),
+      '  Optimistic hello  ',
+    );
+    await tester.tap(find.byKey(chatThreadSendButtonKey));
+    await tester.pump();
+
+    expect(writeCount, 1);
+    final messageRef = writtenRef!;
+    final pendingItem = find.byKey(
+      chatThreadMessageItemKey(messageRef.path),
+    );
+    expect(find.text('Previous server message'), findsOneWidget);
+    expect(pendingItem, findsOneWidget);
+    expect(
+      find.descendant(
+        of: pendingItem,
+        matching: find.text('Optimistic hello'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(chatThreadMessageStatusSlotKey(messageRef.path)),
+        matching: find.byIcon(Icons.schedule_rounded),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<TextFormField>(find.byKey(chatThreadMessageInputKey))
+          .controller
+          ?.text,
+      isEmpty,
+    );
+    expect(writtenData?['senderId'], 'user-a');
+    expect(writtenData?['senderRef'], UsersRecord.collection.doc('user-a'));
+    expect(writtenData?['type'], kConversationMessageTypeText);
+    expect(writtenData?['text'], 'Optimistic hello');
+    expect(writtenData?['createdAt'], isA<FieldValue>());
+
+    sources.messages.single.add(
+      _messagesState(
+        <MessagesRecord>[
+          previousMessage,
+          _outgoingMessageFixture(
+            messageRef: messageRef,
+            text: 'Optimistic hello',
+          ),
+        ],
+        hasPendingWrites: true,
+        pendingWriteMessagePaths: <String>[messageRef.path],
+      ),
+    );
+    await tester.pump();
+
+    expect(pendingItem, findsOneWidget);
+    expect(find.text('Optimistic hello'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(chatThreadMessageStatusSlotKey(messageRef.path)),
+        matching: find.byIcon(Icons.schedule_rounded),
+      ),
+      findsOneWidget,
+    );
+
+    writeCompleter.complete();
+    await tester.pump();
+
+    expect(
+      find.descendant(
+        of: find.byKey(chatThreadMessageStatusSlotKey(messageRef.path)),
+        matching: find.byIcon(Icons.done_rounded),
+      ),
+      findsOneWidget,
+    );
+
+    sources.messages.single.add(
+      _messagesState(<MessagesRecord>[
+        previousMessage,
+        _outgoingMessageFixture(
+          messageRef: messageRef,
+          text: 'Optimistic hello',
+          createdAt: DateTime.utc(2026, 7, 14, 10, 1),
+        ),
+      ]),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(writeCount, 1);
+    expect(pendingItem, findsOneWidget);
+    expect(find.text('Optimistic hello'), findsOneWidget);
+  });
+
+  testWidgets('failed optimistic private message retries the same write once',
+      (tester) async {
+    final sources = _ChatThreadSources();
+    addTearDown(sources.close);
+    final conversation = _conversationFixture('optimistic-retry-chat');
+    final writes =
+        <(DocumentReference, Map<String, dynamic>, Completer<void>)>[];
+    addTearDown(() {
+      for (final write in writes) {
+        if (!write.$3.isCompleted) {
+          write.$3.complete();
+        }
+      }
+    });
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: ChatThreadWidget(
+          conversationRef: conversation.reference,
+          debugConversationStream: sources.watchConversation,
+          debugMessagesStream: sources.watchMessages,
+          debugPublicProfileStream: (_) => Stream.value(null),
+          debugAuthenticatedOwnerUidStream: Stream.value('user-a'),
+          debugMessageWrite: (messageRef, data) {
+            final completion = Completer<void>();
+            writes.add((
+              messageRef,
+              Map<String, dynamic>.from(data),
+              completion,
+            ));
+            return completion.future;
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    sources.conversations.single.add(_conversationState(conversation));
+    await tester.pump();
+    sources.messages.single.add(_messagesState(const <MessagesRecord>[]));
+    await tester.pump();
+
+    await tester.enterText(
+      find.byKey(chatThreadMessageInputKey),
+      'Retry this message',
+    );
+    await tester.tap(find.byKey(chatThreadSendButtonKey));
+    await tester.pump();
+
+    expect(writes, hasLength(1));
+    final messageRef = writes.single.$1;
+    final pendingItem = find.byKey(
+      chatThreadMessageItemKey(messageRef.path),
+    );
+    expect(pendingItem, findsOneWidget);
+    expect(find.text('Retry this message'), findsOneWidget);
+
+    const foreignSnackBarKey = ValueKey<String>('foreign_chat_snack_bar');
+    ScaffoldMessenger.of(
+      tester.element(find.byKey(chatThreadMessageInputKey)),
+    ).showSnackBar(
+      const SnackBar(
+        key: foreignSnackBarKey,
+        content: Text('Foreign notification'),
+      ),
+    );
+    await tester.pump();
+    expect(find.byKey(foreignSnackBarKey), findsOneWidget);
+
+    writes.single.$3.completeError(StateError('write failed'));
+    await tester.pump();
+
+    final retryButton = find.byKey(
+      chatThreadMessageRetryButtonKey(messageRef.path),
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(chatThreadMessageStatusSlotKey(messageRef.path)),
+        matching: find.byIcon(Icons.error_outline_rounded),
+      ),
+      findsOneWidget,
+    );
+    expect(retryButton.hitTestable(), findsOneWidget);
+    expect(find.byKey(foreignSnackBarKey), findsNothing);
+    expect(find.byKey(chatThreadSendErrorSnackBarKey), findsOneWidget);
+
+    await tester.tap(retryButton);
+    await tester.tap(retryButton);
+    await tester.pump();
+
+    expect(writes, hasLength(2));
+    expect(find.byKey(chatThreadSendErrorSnackBarKey), findsNothing);
+    expect(writes.last.$1.path, messageRef.path);
+    expect(writes.last.$2['senderId'], writes.first.$2['senderId']);
+    expect(writes.last.$2['senderRef'], writes.first.$2['senderRef']);
+    expect(writes.last.$2['type'], writes.first.$2['type']);
+    expect(writes.last.$2['text'], writes.first.$2['text']);
+    expect(
+      find.descendant(
+        of: find.byKey(chatThreadMessageStatusSlotKey(messageRef.path)),
+        matching: find.byIcon(Icons.schedule_rounded),
+      ),
+      findsOneWidget,
+    );
+    expect(retryButton.hitTestable(), findsNothing);
+
+    writes.last.$3.complete();
+    await tester.pump();
+
+    expect(find.byKey(chatThreadSendErrorSnackBarKey), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byKey(chatThreadMessageStatusSlotKey(messageRef.path)),
+        matching: find.byIcon(Icons.done_rounded),
+      ),
+      findsOneWidget,
+    );
+    await tester.pump(const Duration(seconds: 5));
+    expect(find.byKey(chatThreadSendErrorSnackBarKey), findsNothing);
+
+    sources.messages.single.add(
+      _messagesState(<MessagesRecord>[
+        _outgoingMessageFixture(
+          messageRef: messageRef,
+          text: 'Retry this message',
+          createdAt: DateTime.utc(2026, 7, 14, 10, 2),
+        ),
+      ]),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(pendingItem, findsOneWidget);
+    expect(find.text('Retry this message'), findsOneWidget);
+  });
+
+  testWidgets('send error snackbar clears on path boundary and dispose',
+      (tester) async {
+    final sources = _ChatThreadSources();
+    addTearDown(sources.close);
+    final firstConversation = _conversationFixture('snackbar-first-chat');
+    final secondConversation = _conversationFixture('snackbar-second-chat');
+    final ownerStream = Stream<String>.value('user-a');
+    final writes = <Completer<void>>[];
+    addTearDown(() {
+      for (final write in writes) {
+        if (!write.isCompleted) {
+          write.complete();
+        }
+      }
+    });
+
+    ChatThreadWidget buildThread(ConversationsRecord conversation) {
+      return ChatThreadWidget(
+        conversationRef: conversation.reference,
+        debugConversationStream: sources.watchConversation,
+        debugMessagesStream: sources.watchMessages,
+        debugPublicProfileStream: (_) => Stream.value(null),
+        debugAuthenticatedOwnerUidStream: ownerStream,
+        debugMessageWrite: (_, __) {
+          final completion = Completer<void>();
+          writes.add(completion);
+          return completion.future;
+        },
+      );
+    }
+
+    await tester.pumpWidget(
+      _buildTestApp(home: buildThread(firstConversation)),
+    );
+    await tester.pump();
+    sources.conversations.single.add(_conversationState(firstConversation));
+    await tester.pump();
+    sources.messages.single.add(_messagesState(const <MessagesRecord>[]));
+    await tester.pump();
+
+    await tester.enterText(
+      find.byKey(chatThreadMessageInputKey),
+      'First path failure',
+    );
+    await tester.tap(find.byKey(chatThreadSendButtonKey));
+    await tester.pump();
+    writes.single.completeError(StateError('first path failed'));
+    await tester.pump();
+    expect(find.byKey(chatThreadSendErrorSnackBarKey), findsOneWidget);
+
+    await tester.pumpWidget(
+      _buildTestApp(home: buildThread(secondConversation)),
+    );
+    await tester.pump();
+    expect(find.byKey(chatThreadSendErrorSnackBarKey), findsNothing);
+    expect(find.text('First path failure'), findsNothing);
+
+    sources.conversations.last.add(_conversationState(secondConversation));
+    await tester.pump();
+    sources.messages.last.add(_messagesState(const <MessagesRecord>[]));
+    await tester.pump();
+
+    await tester.enterText(
+      find.byKey(chatThreadMessageInputKey),
+      'Dispose failure',
+    );
+    await tester.tap(find.byKey(chatThreadSendButtonKey));
+    await tester.pump();
+    writes.last.completeError(StateError('dispose failed'));
+    await tester.pump();
+    expect(find.byKey(chatThreadSendErrorSnackBarKey), findsOneWidget);
+
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    await tester.pump();
+    expect(find.byKey(chatThreadSendErrorSnackBarKey), findsNothing);
+  });
+
+  testWidgets('confirmed optimistic message ignores a late write failure',
+      (tester) async {
+    final sources = _ChatThreadSources();
+    addTearDown(sources.close);
+    final conversation = _conversationFixture('optimistic-confirmed-chat');
+    final writeCompleter = Completer<void>();
+    addTearDown(() {
+      if (!writeCompleter.isCompleted) {
+        writeCompleter.complete();
+      }
+    });
+    DocumentReference? writtenRef;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: ChatThreadWidget(
+          conversationRef: conversation.reference,
+          debugConversationStream: sources.watchConversation,
+          debugMessagesStream: sources.watchMessages,
+          debugPublicProfileStream: (_) => Stream.value(null),
+          debugAuthenticatedOwnerUidStream: Stream.value('user-a'),
+          debugMessageWrite: (messageRef, _) {
+            writtenRef = messageRef;
+            return writeCompleter.future;
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    sources.conversations.single.add(_conversationState(conversation));
+    await tester.pump();
+    sources.messages.single.add(_messagesState(const <MessagesRecord>[]));
+    await tester.pump();
+
+    await tester.enterText(
+      find.byKey(chatThreadMessageInputKey),
+      'Already confirmed',
+    );
+    await tester.tap(find.byKey(chatThreadSendButtonKey));
+    await tester.pump();
+
+    final messageRef = writtenRef!;
+    sources.messages.single.add(
+      _messagesState(<MessagesRecord>[
+        _outgoingMessageFixture(
+          messageRef: messageRef,
+          text: 'Already confirmed',
+          createdAt: DateTime.utc(2026, 7, 14, 10, 3),
+        ),
+      ]),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Already confirmed'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(chatThreadMessageStatusSlotKey(messageRef.path)),
+        matching: find.byIcon(Icons.done_rounded),
+      ),
+      findsOneWidget,
+    );
+
+    writeCompleter.completeError(StateError('late write failure'));
+    await tester.pump();
+
+    expect(find.text('Already confirmed'), findsOneWidget);
+    expect(find.byKey(chatThreadSendErrorSnackBarKey), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'old owner write completion cannot affect a fresh optimistic send',
+      (tester) async {
+    final sources = _ChatThreadSources();
+    addTearDown(sources.close);
+    final authenticatedOwners = StreamController<String>.broadcast(sync: true);
+    addTearDown(authenticatedOwners.close);
+    final conversation = _conversationFixture('optimistic-owner-aba-chat');
+    final writes = <(DocumentReference, Completer<void>)>[];
+    addTearDown(() {
+      for (final write in writes) {
+        if (!write.$2.isCompleted) {
+          write.$2.complete();
+        }
+      }
+    });
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: ChatThreadWidget(
+          conversationRef: conversation.reference,
+          debugConversationStream: sources.watchConversation,
+          debugMessagesStream: sources.watchMessages,
+          debugPublicProfileStream: (_) => Stream.value(null),
+          debugAuthenticatedOwnerUidStream: authenticatedOwners.stream,
+          debugMessageWrite: (messageRef, _) {
+            final completion = Completer<void>();
+            writes.add((messageRef, completion));
+            return completion.future;
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    sources.conversations.single.add(_conversationState(conversation));
+    await tester.pump();
+    sources.messages.single.add(_messagesState(const <MessagesRecord>[]));
+    await tester.pump();
+
+    await tester.enterText(
+      find.byKey(chatThreadMessageInputKey),
+      'Old owner pending',
+    );
+    await tester.tap(find.byKey(chatThreadSendButtonKey));
+    await tester.pump();
+
+    expect(writes, hasLength(1));
+    expect(find.text('Old owner pending'), findsOneWidget);
+
+    authenticatedOwners.add('user-b');
+    await tester.pump();
+    expect(find.text('Old owner pending'), findsNothing);
+    sources.conversations.last.add(
+      _conversationState(conversation, ownerUid: 'user-b'),
+    );
+    await tester.pump();
+    sources.messages.last.add(
+      _messagesState(const <MessagesRecord>[], ownerUid: 'user-b'),
+    );
+    await tester.pump();
+
+    authenticatedOwners.add('user-a');
+    await tester.pump();
+    sources.conversations.last.add(_conversationState(conversation));
+    await tester.pump();
+    sources.messages.last.add(_messagesState(const <MessagesRecord>[]));
+    await tester.pump();
+
+    await tester.enterText(
+      find.byKey(chatThreadMessageInputKey),
+      'Current owner pending',
+    );
+    await tester.tap(find.byKey(chatThreadSendButtonKey));
+    await tester.pump();
+
+    expect(writes, hasLength(2));
+    final currentMessageRef = writes.last.$1;
+    expect(
+      find.descendant(
+        of: find.byKey(
+          chatThreadMessageStatusSlotKey(currentMessageRef.path),
+        ),
+        matching: find.byIcon(Icons.schedule_rounded),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.enterText(
+      find.byKey(chatThreadMessageInputKey),
+      'Keep this draft',
+    );
+    writes.first.$2.completeError(StateError('stale owner failure'));
+    await tester.pump();
+
+    expect(find.byKey(chatThreadSendErrorSnackBarKey), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byKey(
+          chatThreadMessageStatusSlotKey(currentMessageRef.path),
+        ),
+        matching: find.byIcon(Icons.schedule_rounded),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(chatThreadSendButtonKey));
+    await tester.pump();
+    expect(writes, hasLength(2));
+    expect(
+      tester
+          .widget<TextFormField>(find.byKey(chatThreadMessageInputKey))
+          .controller
+          ?.text,
+      'Keep this draft',
+    );
+
+    writes.last.$2.complete();
+    await tester.pump();
+
+    expect(
+      find.descendant(
+        of: find.byKey(
+          chatThreadMessageStatusSlotKey(currentMessageRef.path),
+        ),
+        matching: find.byIcon(Icons.done_rounded),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('cold conversation error exposes retry with a fresh source',
       (tester) async {
     final sources = _ChatThreadSources();
@@ -467,16 +1221,35 @@ void main() {
       _messagesState(
         <MessagesRecord>[pendingMessage],
         hasPendingWrites: true,
+        pendingWriteMessagePaths: <String>[pendingMessage.reference.path],
       ),
     );
     await tester.pump();
     expect(find.text('Pending-only message'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(
+          chatThreadMessageStatusSlotKey(pendingMessage.reference.path),
+        ),
+        matching: find.byIcon(Icons.schedule_rounded),
+      ),
+      findsOneWidget,
+    );
 
     firstSources.messages.single.addError(StateError('offline'));
     await tester.pump();
 
     expect(find.text('Pending-only message'), findsOneWidget);
     expect(find.byKey(chatThreadMessagesInlineErrorKey), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(
+          chatThreadMessageStatusSlotKey(pendingMessage.reference.path),
+        ),
+        matching: find.byIcon(Icons.schedule_rounded),
+      ),
+      findsOneWidget,
+    );
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
@@ -1014,12 +1787,16 @@ ChatThreadMessagesLoadState _messagesState(
   String ownerUid = 'user-a',
   bool isFromCache = false,
   bool hasPendingWrites = false,
+  Iterable<String> pendingWriteMessagePaths = const <String>[],
+  DateTime? pendingWritesObservedAt,
 }) {
   return ChatThreadMessagesLoadState(
     ownerUid: ownerUid,
     messages: messages,
     isFromCache: isFromCache,
     hasPendingWrites: hasPendingWrites,
+    pendingWriteMessagePaths: pendingWriteMessagePaths,
+    pendingWritesObservedAt: pendingWritesObservedAt,
   );
 }
 
@@ -1081,5 +1858,22 @@ MessagesRecord _pendingMessageFixture({
       'text': text,
     },
     MessagesRecord.createDoc(conversationRef, id: messageId),
+  );
+}
+
+MessagesRecord _outgoingMessageFixture({
+  required DocumentReference messageRef,
+  required String text,
+  DateTime? createdAt,
+}) {
+  return MessagesRecord.getDocumentFromData(
+    <String, dynamic>{
+      'senderId': 'user-a',
+      'senderRef': UsersRecord.collection.doc('user-a'),
+      'type': kConversationMessageTypeText,
+      'text': text,
+      if (createdAt != null) 'createdAt': createdAt,
+    },
+    messageRef,
   );
 }

@@ -32,6 +32,12 @@ const ValueKey<String> chatThreadMessagesInlineErrorKey =
     ValueKey<String>('chat_thread_messages_inline_error');
 const ValueKey<String> chatThreadMessagesRetryButtonKey =
     ValueKey<String>('chat_thread_messages_retry_button');
+const ValueKey<String> chatThreadMessageInputKey =
+    ValueKey<String>('chat_thread_message_input');
+const ValueKey<String> chatThreadSendButtonKey =
+    ValueKey<String>('chat_thread_send_button');
+const ValueKey<String> chatThreadSendErrorSnackBarKey =
+    ValueKey<String>('chat_thread_send_error_snack_bar');
 
 final class ChatThreadConversationLoadState {
   const ChatThreadConversationLoadState({
@@ -56,12 +62,20 @@ final class ChatThreadMessagesLoadState {
     required Iterable<MessagesRecord> messages,
     required this.isFromCache,
     required this.hasPendingWrites,
-  }) : messages = List<MessagesRecord>.unmodifiable(messages);
+    Iterable<String> pendingWriteMessagePaths = const <String>[],
+    DateTime? pendingWritesObservedAt,
+  })  : messages = List<MessagesRecord>.unmodifiable(messages),
+        pendingWriteMessagePaths = Set<String>.unmodifiable(
+          pendingWriteMessagePaths,
+        ),
+        pendingWritesObservedAt = pendingWritesObservedAt ?? DateTime.now();
 
   final String ownerUid;
   final List<MessagesRecord> messages;
   final bool isFromCache;
   final bool hasPendingWrites;
+  final Set<String> pendingWriteMessagePaths;
+  final DateTime pendingWritesObservedAt;
 
   bool get isAuthoritative => !isFromCache && !hasPendingWrites;
   bool get canResolveEmpty => messages.isNotEmpty || isAuthoritative;
@@ -90,6 +104,10 @@ typedef ChatThreadMessagesStream = Stream<ChatThreadMessagesLoadState> Function(
 typedef ChatThreadPublicProfileStream = Stream<UserPublicProfilesRecord?>
     Function(
   DocumentReference userRef,
+);
+typedef ChatThreadMessageWrite = Future<void> Function(
+  DocumentReference messageRef,
+  Map<String, dynamic> data,
 );
 
 ValueKey<String> chatThreadMessageItemKey(String messageKey) =>
@@ -345,6 +363,7 @@ class ChatThreadWidget extends StatefulWidget {
     this.debugMessagesStream,
     this.debugPublicProfileStream,
     this.debugAuthenticatedOwnerUidStream,
+    this.debugMessageWrite,
   });
 
   final DocumentReference? conversationRef;
@@ -353,6 +372,8 @@ class ChatThreadWidget extends StatefulWidget {
   final ChatThreadMessagesStream? debugMessagesStream;
   final ChatThreadPublicProfileStream? debugPublicProfileStream;
   final Stream<String>? debugAuthenticatedOwnerUidStream;
+  @visibleForTesting
+  final ChatThreadMessageWrite? debugMessageWrite;
 
   static String routeName = 'chatThread';
   static String routePath = '/chatThread';
@@ -396,24 +417,46 @@ class _PendingChatMessage {
       );
 }
 
+class _ChatThreadSendErrorSnackBarHandle {
+  _ChatThreadSendErrorSnackBarHandle({
+    required this.controller,
+    required this.messenger,
+    required this.messagePath,
+  });
+
+  final ScaffoldFeatureController<SnackBar, SnackBarClosedReason> controller;
+  final ScaffoldMessengerState messenger;
+  final String messagePath;
+  bool isClosed = false;
+}
+
 class _ChatThreadDisplayMessage {
   const _ChatThreadDisplayMessage._({
     this.record,
     this.pending,
+    this.sortCreatedAt,
   });
 
-  factory _ChatThreadDisplayMessage.record(MessagesRecord record) =>
-      _ChatThreadDisplayMessage._(record: record);
+  factory _ChatThreadDisplayMessage.record(
+    MessagesRecord record, {
+    DateTime? sortCreatedAt,
+  }) =>
+      _ChatThreadDisplayMessage._(
+        record: record,
+        sortCreatedAt: sortCreatedAt,
+      );
 
   factory _ChatThreadDisplayMessage.pending(_PendingChatMessage pending) =>
       _ChatThreadDisplayMessage._(pending: pending);
 
   final MessagesRecord? record;
   final _PendingChatMessage? pending;
+  final DateTime? sortCreatedAt;
 
   String get itemKey => record?.reference.path ?? pending!.messageRef.path;
 
-  DateTime? get createdAt => record?.createdAt ?? pending?.createdAt;
+  DateTime? get createdAt =>
+      record?.createdAt ?? pending?.createdAt ?? sortCreatedAt;
 }
 
 @visibleForTesting
@@ -422,11 +465,13 @@ class ChatThreadMessageMergeItem {
     required this.key,
     required this.createdAt,
     required this.isPending,
+    this.sortCreatedAt,
   });
 
   final String key;
   final DateTime? createdAt;
   final bool isPending;
+  final DateTime? sortCreatedAt;
 }
 
 class _IndexedChatThreadMessageMergeItem {
@@ -459,12 +504,14 @@ List<ChatThreadMessageMergeItem> mergeChatThreadMessageItemsForTesting({
       _IndexedChatThreadMessageMergeItem(items[index], index),
   ];
   indexedItems.sort((left, right) {
-    final dateComparison = _compareChatThreadMessageDates(
-      left.item.createdAt,
-      right.item.createdAt,
+    final orderComparison = _compareChatThreadMessageOrder(
+      leftCreatedAt: left.item.sortCreatedAt ?? left.item.createdAt,
+      leftKey: left.item.key,
+      rightCreatedAt: right.item.sortCreatedAt ?? right.item.createdAt,
+      rightKey: right.item.key,
     );
-    if (dateComparison != 0) {
-      return dateComparison;
+    if (orderComparison != 0) {
+      return orderComparison;
     }
     return left.index.compareTo(right.index);
   });
@@ -486,6 +533,22 @@ int _compareChatThreadMessageDates(DateTime? left, DateTime? right) {
   return right.compareTo(left);
 }
 
+int _compareChatThreadMessageOrder({
+  required DateTime? leftCreatedAt,
+  required String leftKey,
+  required DateTime? rightCreatedAt,
+  required String rightKey,
+}) {
+  final dateComparison = _compareChatThreadMessageDates(
+    leftCreatedAt,
+    rightCreatedAt,
+  );
+  if (dateComparison != 0) {
+    return dateComparison;
+  }
+  return rightKey.compareTo(leftKey);
+}
+
 class _ChatThreadWidgetState extends State<ChatThreadWidget> {
   static const int _messagePageSize = 60;
   static final UxSessionLoadedResultCache<_ChatThreadMessagesCacheEntry>
@@ -502,6 +565,9 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
   ChatThreadConversationStream? _conversationStreamLoader;
   ConversationsRecord? _retainedConversation;
   List<MessagesRecord>? _retainedMessages;
+  Set<String> _retainedPendingWriteMessagePaths = const <String>{};
+  Map<String, DateTime> _retainedPendingWriteObservedAtByPath =
+      const <String, DateTime>{};
   String? _retainedMessagesOwnerUid;
   String? _retainedMessagesConversationPath;
   String _activeOwnerUid = '';
@@ -511,6 +577,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
   final _publicProfileStreams = <String, Stream<UserPublicProfilesRecord?>>{};
   final _messageStreams = <String, Stream<ChatThreadMessagesLoadState>>{};
   final List<_PendingChatMessage> _pendingMessages = <_PendingChatMessage>[];
+  _ChatThreadSendErrorSnackBarHandle? _sendErrorSnackBarHandle;
   DateTime? _lastReadMarkerTarget;
   DateTime? _scheduledReadMarkerTarget;
   int _pendingMessageSerial = 0;
@@ -582,6 +649,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
       return;
     }
 
+    _scheduleDismissSendErrorSnackBar();
     _dataGeneration += 1;
     final initialConversation = widget.initialConversation;
     _retainedConversation = !ownerChanged &&
@@ -593,6 +661,8 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
         ? initialConversation
         : null;
     _retainedMessages = null;
+    _retainedPendingWriteMessagePaths = const <String>{};
+    _retainedPendingWriteObservedAtByPath = const <String, DateTime>{};
     _retainedMessagesOwnerUid = null;
     _retainedMessagesConversationPath = null;
     _lastReadMarkerTarget = null;
@@ -698,6 +768,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
         ? debugStream(conversation, _messageLimit, ownerUid)
         : MessagesRecord.collection(conversation)
             .orderBy('createdAt', descending: true)
+            .orderBy(FieldPath.documentId, descending: true)
             .limit(_messageLimit)
             .snapshots(includeMetadataChanges: true)
             .map((snapshot) {
@@ -706,6 +777,9 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
               messages: snapshot.docs.map(MessagesRecord.fromSnapshot),
               isFromCache: snapshot.metadata.isFromCache,
               hasPendingWrites: snapshot.metadata.hasPendingWrites,
+              pendingWriteMessagePaths: snapshot.docs
+                  .where((document) => document.metadata.hasPendingWrites)
+                  .map((document) => document.reference.path),
             );
           });
 
@@ -776,11 +850,43 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
 
   void _retainMessages(
     DocumentReference conversation,
-    Iterable<MessagesRecord> messages,
-  ) {
+    Iterable<MessagesRecord> messages, {
+    Iterable<String> pendingWriteMessagePaths = const <String>[],
+    Map<String, DateTime> pendingWriteObservedAtByPath =
+        const <String, DateTime>{},
+  }) {
     _retainedMessages = List<MessagesRecord>.unmodifiable(messages);
+    _retainedPendingWriteMessagePaths = Set<String>.unmodifiable(
+      pendingWriteMessagePaths,
+    );
+    _retainedPendingWriteObservedAtByPath =
+        Map<String, DateTime>.unmodifiable(<String, DateTime>{
+      for (final path in _retainedPendingWriteMessagePaths)
+        if (pendingWriteObservedAtByPath[path] case final observedAt?)
+          path: observedAt,
+    });
     _retainedMessagesOwnerUid = _activeOwnerUid;
     _retainedMessagesConversationPath = conversation.path;
+  }
+
+  Set<String> _retainedPendingWriteMessagePathsFor(
+    DocumentReference conversation,
+  ) {
+    if (_retainedMessagesOwnerUid == _activeOwnerUid &&
+        _retainedMessagesConversationPath == conversation.path) {
+      return _retainedPendingWriteMessagePaths;
+    }
+    return const <String>{};
+  }
+
+  Map<String, DateTime> _retainedPendingWriteObservedAtByPathFor(
+    DocumentReference conversation,
+  ) {
+    if (_retainedMessagesOwnerUid == _activeOwnerUid &&
+        _retainedMessagesConversationPath == conversation.path) {
+      return _retainedPendingWriteObservedAtByPath;
+    }
+    return const <String, DateTime>{};
   }
 
   List<MessagesRecord> _mergeNonAuthoritativeMessages(
@@ -793,16 +899,30 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     };
     final mergedMessages = messagesByPath.values.toList(growable: false)
       ..sort((left, right) {
-        final dateComparison = _compareChatThreadMessageDates(
-          left.createdAt,
-          right.createdAt,
+        return _compareChatThreadMessageOrder(
+          leftCreatedAt: left.createdAt,
+          leftKey: left.reference.path,
+          rightCreatedAt: right.createdAt,
+          rightKey: right.reference.path,
         );
-        if (dateComparison != 0) {
-          return dateComparison;
-        }
-        return left.reference.path.compareTo(right.reference.path);
       });
     return List<MessagesRecord>.unmodifiable(mergedMessages);
+  }
+
+  Set<String> _mergeNonAuthoritativePendingWriteMessagePaths({
+    required Iterable<String> previousPaths,
+    required Iterable<MessagesRecord> incomingMessages,
+    required Set<String> incomingPaths,
+  }) {
+    final incomingMessagePaths =
+        incomingMessages.map((message) => message.reference.path).toSet();
+    return Set<String>.unmodifiable(<String>{
+      for (final path in previousPaths)
+        if (!incomingMessagePaths.contains(path) ||
+            incomingPaths.contains(path))
+          path,
+      ...incomingPaths,
+    });
   }
 
   void _rememberMessages(
@@ -863,8 +983,11 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
   }
 
   void _discardRetainedMessages(DocumentReference conversationRef) {
+    _scheduleDismissSendErrorSnackBar();
     _messagesCacheByConversationPath.remove(_messagesCacheKey(conversationRef));
     _retainedMessages = null;
+    _retainedPendingWriteMessagePaths = const <String>{};
+    _retainedPendingWriteObservedAtByPath = const <String, DateTime>{};
     _retainedMessagesOwnerUid = null;
     _retainedMessagesConversationPath = null;
     _pendingMessages.clear();
@@ -1153,6 +1276,87 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     });
   }
 
+  Map<String, dynamic> _textMessageData({
+    required String senderId,
+    required DocumentReference senderRef,
+    required String text,
+  }) =>
+      mapToFirestore(
+        <String, dynamic>{
+          'senderId': senderId,
+          'senderRef': senderRef,
+          'type': kConversationMessageTypeText,
+          'text': text,
+          'createdAt': FieldValue.serverTimestamp(),
+        },
+      );
+
+  Future<void> _writeMessage(
+    DocumentReference messageRef,
+    Map<String, dynamic> data,
+  ) {
+    final debugWrite = widget.debugMessageWrite;
+    if (debugWrite != null) {
+      return debugWrite(messageRef, data);
+    }
+    return messageRef.set(data);
+  }
+
+  void _showSendErrorSnackBar(String messagePath) {
+    _dismissSendErrorSnackBar();
+    final messenger = ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..removeCurrentSnackBar();
+    final controller = messenger.showSnackBar(
+      SnackBar(
+        key: chatThreadSendErrorSnackBarKey,
+        content: Text(
+          FFLocalizations.of(context).getVariableText(
+            ruText: 'Не удалось отправить сообщение.',
+            enText: 'Unable to send message.',
+          ),
+        ),
+      ),
+    );
+    final handle = _ChatThreadSendErrorSnackBarHandle(
+      controller: controller,
+      messenger: messenger,
+      messagePath: messagePath,
+    );
+    _sendErrorSnackBarHandle = handle;
+    controller.closed.then((_) {
+      handle.isClosed = true;
+      if (identical(_sendErrorSnackBarHandle, handle)) {
+        _sendErrorSnackBarHandle = null;
+      }
+    });
+  }
+
+  void _dismissSendErrorSnackBar({String? messagePath}) {
+    final handle = _sendErrorSnackBarHandle;
+    if (handle == null ||
+        (messagePath != null && handle.messagePath != messagePath)) {
+      return;
+    }
+    _sendErrorSnackBarHandle = null;
+    if (!handle.isClosed && handle.messenger.mounted) {
+      handle.messenger.removeCurrentSnackBar();
+    }
+  }
+
+  void _scheduleDismissSendErrorSnackBar() {
+    final handle = _sendErrorSnackBarHandle;
+    if (handle == null) {
+      return;
+    }
+    _sendErrorSnackBarHandle = null;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!handle.isClosed && handle.messenger.mounted) {
+        handle.messenger.removeCurrentSnackBar();
+      }
+    });
+  }
+
   Future<void> _sendMessage(ConversationsRecord conversation) async {
     final currentUid = _activeOwnerUid;
     if (currentUid.isEmpty || _isSending || _chatActionsBlocked) {
@@ -1181,15 +1385,12 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     FocusScope.of(context).unfocus();
 
     try {
-      await messageRef.set(
-        mapToFirestore(
-          <String, dynamic>{
-            'senderId': currentUid,
-            'senderRef': currentRef,
-            'type': kConversationMessageTypeText,
-            'text': text,
-            'createdAt': FieldValue.serverTimestamp(),
-          },
+      await _writeMessage(
+        messageRef,
+        _textMessageData(
+          senderId: currentUid,
+          senderRef: currentRef,
+          text: text,
         ),
       );
       if (!_isCurrentDataGeneration(
@@ -1218,27 +1419,18 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
       )) {
         return;
       }
+      final pendingIndex = _pendingMessages.indexWhere(
+        (message) => message.localId == pendingMessage.localId,
+      );
+      if (pendingIndex == -1) {
+        return;
+      }
       setState(() {
-        final pendingIndex = _pendingMessages.indexWhere(
-          (message) => message.localId == pendingMessage.localId,
-        );
-        if (pendingIndex == -1) {
-          return;
-        }
         _pendingMessages[pendingIndex] = pendingMessage.copyWith(
           status: ChatLocalMessageStatus.failed,
         );
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            FFLocalizations.of(context).getVariableText(
-              ruText: 'Не удалось отправить сообщение.',
-              enText: 'Unable to send message.',
-            ),
-          ),
-        ),
-      );
+      _showSendErrorSnackBar(pendingMessage.messageRef.path);
       debugPrint(
         'Failed to send chat message for ${conversation.reference.path}: $error',
       );
@@ -1273,6 +1465,9 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
 
     final conversationPath = conversation.reference.path;
     final generation = _dataGeneration;
+    _dismissSendErrorSnackBar(
+      messagePath: pendingMessage.messageRef.path,
+    );
     setState(() {
       _isSending = true;
       _updatePendingMessageStatus(
@@ -1282,15 +1477,12 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     });
 
     try {
-      await pendingMessage.messageRef.set(
-        mapToFirestore(
-          <String, dynamic>{
-            'senderId': currentUid,
-            'senderRef': currentRef,
-            'type': kConversationMessageTypeText,
-            'text': pendingMessage.text,
-            'createdAt': FieldValue.serverTimestamp(),
-          },
+      await _writeMessage(
+        pendingMessage.messageRef,
+        _textMessageData(
+          senderId: currentUid,
+          senderRef: currentRef,
+          text: pendingMessage.text,
         ),
       );
       if (!_isCurrentDataGeneration(
@@ -1298,6 +1490,12 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
         conversationPath: conversationPath,
         generation: generation,
       )) {
+        return;
+      }
+      final pendingIndex = _pendingMessages.indexWhere(
+        (message) => message.localId == pendingMessage.localId,
+      );
+      if (pendingIndex == -1) {
         return;
       }
       setState(() {
@@ -1314,22 +1512,19 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
       )) {
         return;
       }
+      final pendingIndex = _pendingMessages.indexWhere(
+        (message) => message.localId == pendingMessage.localId,
+      );
+      if (pendingIndex == -1) {
+        return;
+      }
       setState(() {
         _updatePendingMessageStatus(
           pendingMessage.localId,
           ChatLocalMessageStatus.failed,
         );
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            FFLocalizations.of(context).getVariableText(
-              ruText: 'Не удалось отправить сообщение.',
-              enText: 'Unable to send message.',
-            ),
-          ),
-        ),
-      );
+      _showSendErrorSnackBar(pendingMessage.messageRef.path);
       debugPrint(
         'Failed to retry chat message for ${conversation.reference.path}: '
         '$error',
@@ -1380,8 +1575,9 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
   }
 
   List<_ChatThreadDisplayMessage> _displayMessages(
-    List<MessagesRecord> records,
-  ) {
+    List<MessagesRecord> records, {
+    required Map<String, DateTime> pendingWriteObservedAtByPath,
+  }) {
     final recordsByPath = <String, MessagesRecord>{
       for (final record in records) record.reference.path: record,
     };
@@ -1393,6 +1589,8 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
         (record) => ChatThreadMessageMergeItem(
           key: record.reference.path,
           createdAt: record.createdAt,
+          sortCreatedAt: record.createdAt ??
+              pendingWriteObservedAtByPath[record.reference.path],
           isPending: false,
         ),
       ),
@@ -1410,7 +1608,10 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
         if (item.isPending)
           _ChatThreadDisplayMessage.pending(pendingByPath[item.key]!)
         else
-          _ChatThreadDisplayMessage.record(recordsByPath[item.key]!),
+          _ChatThreadDisplayMessage.record(
+            recordsByPath[item.key]!,
+            sortCreatedAt: item.sortCreatedAt ?? item.createdAt,
+          ),
     ];
   }
 
@@ -1451,6 +1652,11 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
           (message) => confirmedPaths.contains(message.messageRef.path),
         );
       });
+      final errorMessagePath = _sendErrorSnackBarHandle?.messagePath;
+      if (errorMessagePath != null &&
+          confirmedPaths.contains(errorMessagePath)) {
+        _dismissSendErrorSnackBar(messagePath: errorMessagePath);
+      }
     });
   }
 
@@ -1869,13 +2075,18 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     required MessagesRecord message,
     required bool isCurrentUser,
     required bool isReadByPartner,
+    ChatLocalMessageStatus? localStatus,
+    DateTime? displayCreatedAt,
   }) {
     return ChatThreadMessageBubble(
       messageKey: message.reference.path,
       text: message.text,
-      timestampText: _formatMessageTimestamp(message.createdAt),
+      timestampText: _formatMessageTimestamp(
+        displayCreatedAt ?? message.createdAt,
+      ),
       isCurrentUser: isCurrentUser,
       isReadByPartner: isReadByPartner,
+      localStatus: localStatus,
     );
   }
 
@@ -2222,6 +2433,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
 
   @override
   void dispose() {
+    _scheduleDismissSendErrorSnackBar();
     _messagesScrollController.removeListener(_handleMessagesScroll);
     _messagesScrollController.dispose();
     _model.dispose();
@@ -2454,6 +2666,14 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                         );
                         final previousMessages =
                             retainedMessages ?? const <MessagesRecord>[];
+                        final previousPendingWriteMessagePaths =
+                            _retainedPendingWriteMessagePathsFor(
+                          resolvedConversation.reference,
+                        );
+                        final previousPendingWriteObservedAtByPath =
+                            _retainedPendingWriteObservedAtByPathFor(
+                          resolvedConversation.reference,
+                        );
                         List<MessagesRecord>? messages = retainedMessages;
                         if (!messagesSnapshot.hasError &&
                             incomingMessagesState != null) {
@@ -2463,6 +2683,14 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                             _retainMessages(
                               resolvedConversation.reference,
                               messages,
+                              pendingWriteMessagePaths: incomingMessagesState
+                                  .pendingWriteMessagePaths,
+                              pendingWriteObservedAtByPath: {
+                                for (final path in incomingMessagesState
+                                    .pendingWriteMessagePaths)
+                                  path: incomingMessagesState
+                                      .pendingWritesObservedAt,
+                              },
                             );
                             final confirmedMessages = messages
                                 .where((message) => message.createdAt != null)
@@ -2477,9 +2705,26 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                               previousMessages,
                               incomingMessagesState.messages,
                             );
+                            final mergedPendingWriteMessagePaths =
+                                _mergeNonAuthoritativePendingWriteMessagePaths(
+                              previousPaths: previousPendingWriteMessagePaths,
+                              incomingMessages: incomingMessagesState.messages,
+                              incomingPaths: incomingMessagesState
+                                  .pendingWriteMessagePaths,
+                            );
                             _retainMessages(
                               resolvedConversation.reference,
                               messages,
+                              pendingWriteMessagePaths:
+                                  mergedPendingWriteMessagePaths,
+                              pendingWriteObservedAtByPath: {
+                                for (final path
+                                    in mergedPendingWriteMessagePaths)
+                                  path: previousPendingWriteObservedAtByPath[
+                                          path] ??
+                                      incomingMessagesState
+                                          .pendingWritesObservedAt,
+                              },
                             );
                           }
                         }
@@ -2505,10 +2750,21 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                         }
                         final serverMessages =
                             messages ?? const <MessagesRecord>[];
+                        final pendingWriteMessagePaths =
+                            _retainedPendingWriteMessagePathsFor(
+                          resolvedConversation.reference,
+                        );
+                        final pendingWriteObservedAtByPath =
+                            _retainedPendingWriteObservedAtByPathFor(
+                          resolvedConversation.reference,
+                        );
                         _canLoadOlderMessages =
                             serverMessages.length >= _messageLimit;
-                        final displayMessages =
-                            _displayMessages(serverMessages);
+                        final displayMessages = _displayMessages(
+                          serverMessages,
+                          pendingWriteObservedAtByPath:
+                              pendingWriteObservedAtByPath,
+                        );
 
                         if (displayMessages.isEmpty) {
                           return _withMessagesRefreshError(
@@ -2618,6 +2874,13 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                                     message: record,
                                     isCurrentUser: isCurrentUser,
                                     isReadByPartner: isReadByPartner,
+                                    displayCreatedAt: displayMessage.createdAt,
+                                    localStatus: isCurrentUser &&
+                                            pendingWriteMessagePaths.contains(
+                                              record.reference.path,
+                                            )
+                                        ? ChatLocalMessageStatus.sending
+                                        : null,
                                   ),
                                 );
                               }
@@ -2667,6 +2930,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                           child: SizedBox(
                             height: ExpatlioDesign.formFieldHeight,
                             child: TextFormField(
+                              key: chatThreadMessageInputKey,
                               controller: _model.messageTextController,
                               focusNode: _model.messageFocusNode,
                               enabled: !_chatActionsBlocked,
@@ -2698,6 +2962,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                             borderRadius: BorderRadius.circular(
                                 ExpatlioDesign.radiusMedium),
                             child: InkWell(
+                              key: chatThreadSendButtonKey,
                               borderRadius: BorderRadius.circular(
                                   ExpatlioDesign.radiusMedium),
                               onTap: _isSending || _chatActionsBlocked
