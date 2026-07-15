@@ -8538,6 +8538,163 @@ void main() {
     },
   );
 
+  testWidgets(
+    'failed optimistic leave restores a server-confirmed joined card',
+    (tester) async {
+      const userId = 'server-confirmed-leave-rollback-user';
+      const eventId = 'server-confirmed-leave-rollback-event';
+      currentUser = _TestAuthUser(userId);
+      currentUserDocument = _userFixture(
+        uid: userId,
+        data: const {'display_name': 'Lena Rollback'},
+      );
+      final leaveCompleter = Completer<Object?>();
+      addTearDown(() {
+        if (!leaveCompleter.isCompleted) {
+          leaveCompleter.complete(
+            _eventListLeaveResponse(
+              eventId: eventId,
+              participantsCount: 4,
+            ),
+          );
+        }
+      });
+      var calls = 0;
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: _selectedCityFixture(),
+            nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+            eventCardsOverride: [
+              _eventCardFixture(
+                eventId: eventId,
+                participants: const [
+                  EventListParticipantViewModel(
+                    userId: userId,
+                    displayName: 'Lena Rollback',
+                  ),
+                  EventListParticipantViewModel(
+                    userId: 'remaining-participant',
+                    displayName: 'Marco',
+                  ),
+                ],
+                participantsCount: 5,
+                capacity: 6,
+                joinCtaState: EventListJoinCtaState.joined,
+                chatCtaState: EventListChatCtaState.enabled,
+                reserveParticipantPreviewSpace: true,
+              ),
+            ],
+            leaveEventInvoker: (_, __) {
+              calls += 1;
+              return leaveCompleter.future;
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final beforeGeometry = _eventCardGeometry(tester);
+      final beforeStack =
+          tester.getRect(find.byKey(eventListParticipantAvatarStackKey));
+      final beforeSlots = _participantAvatarSlotRects(tester, count: 6);
+      expect(find.text('Покинуть'), findsOneWidget);
+      expect(find.text('5/6 мест'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: _participantAvatarFinder(0),
+          matching: find.text('L'),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(eventListCardPrimaryCtaKey));
+      await tester.pump();
+
+      expect(calls, 1);
+      expect(find.text('Покидаем...'), findsOneWidget);
+      expect(find.text('4/6 мест'), findsOneWidget);
+      expect(find.text('L'), findsNothing);
+      expect(
+        find.descendant(
+          of: _participantAvatarFinder(0),
+          matching: find.text('M'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .getSemantics(find.byKey(eventListCardPrimaryCtaKey))
+            .flagsCollection
+            .isEnabled,
+        isFalse,
+      );
+      expect(
+        tester
+            .getSemantics(find.byKey(eventListCardChatCtaKey))
+            .flagsCollection
+            .isEnabled,
+        isFalse,
+      );
+      expect(_eventCardGeometry(tester), beforeGeometry);
+      expect(
+        tester.getRect(find.byKey(eventListParticipantAvatarStackKey)),
+        beforeStack,
+      );
+      expect(_participantAvatarSlotRects(tester, count: 6), beforeSlots);
+
+      await tester.tap(find.byKey(eventListCardPrimaryCtaKey));
+      await tester.pump();
+      expect(calls, 1);
+
+      leaveCompleter.completeError(StateError('leave failed'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Покинуть'), findsOneWidget);
+      expect(find.text('5/6 мест'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: _participantAvatarFinder(0),
+          matching: find.text('L'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .getSemantics(find.byKey(eventListCardPrimaryCtaKey))
+            .flagsCollection
+            .isEnabled,
+        isTrue,
+      );
+      expect(
+        tester
+            .getSemantics(find.byKey(eventListCardChatCtaKey))
+            .flagsCollection
+            .isEnabled,
+        isTrue,
+      );
+      expect(_eventCardGeometry(tester), beforeGeometry);
+      expect(
+        tester.getRect(find.byKey(eventListParticipantAvatarStackKey)),
+        beforeStack,
+      );
+      expect(_participantAvatarSlotRects(tester, count: 6), beforeSlots);
+      expect(
+        find.byKey(eventListParticipantActionErrorSnackBarKey),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Не удалось выполнить действие. Попробуйте снова.'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('successful leave may remain above a legacy event capacity',
       (tester) async {
     const userId = 'optimistic-over-capacity-leave-user';
