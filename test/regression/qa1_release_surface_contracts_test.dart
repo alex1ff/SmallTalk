@@ -93,13 +93,17 @@ void main() {
           _source('lib/shared_pages/chat_thread/chat_thread_widget.dart');
       final callEventCard = _source('lib/components/chat_call_event_card.dart');
 
-      expect(source,
-          contains('!conversation.participantIds.contains(currentUserUid)'));
-      expect(source, contains('!conversation.isUnlocked'));
+      expect(
+        source,
+        contains(
+          '!resolvedConversation.participantIds.contains(_activeOwnerUid)',
+        ),
+      );
+      expect(source, contains('!resolvedConversation.isUnlocked'));
       expect(source, contains('This chat is not available yet.'));
       expect(
           source, contains('MessagesRecord.createDoc(conversation.reference)'));
-      expect(source, contains('messageIsCallEvent(message)'));
+      expect(source, contains('messageIsCallEvent(record)'));
       expect(source, contains('buildAddFriendUpdateData'));
       expect(source, contains('buildRemoveFriendUpdateData'));
       expect(source, contains('CallDetailsWidget(videoDocRef: sessionRef)'));
@@ -115,11 +119,12 @@ void main() {
       expect(source, contains("descending: true"));
       expect(source, contains('limit: _messageLimit'));
       expect(source, contains('_messagePageSize'));
+      expect(source,
+          contains('conversationIsUnreadForUser(conversation, ownerUid)'));
       expect(
-          source,
-          contains(
-              'conversationIsUnreadForUser(conversation, currentUserUid)'));
-      expect(source, contains('_scheduleMarkConversationRead(conversation)'));
+        source,
+        contains('_scheduleMarkConversationRead(resolvedConversation)'),
+      );
       expect(source, isNot(contains('jumpTo(position.maxScrollExtent)')));
       expect(source, isNot(contains('..sort(compareMessagesForThread)')));
       expect(source, contains('height: 44.0'));

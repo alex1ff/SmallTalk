@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 
@@ -16,10 +17,80 @@ import '/shared_pages/chat_local_message_status_icon.dart';
 import '/shared_pages/chat_message_bubble_style.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/components/chat_call_event_card.dart';
+import '/services/ux_loading_state.dart';
+import '/services/ux_session_cache_lifecycle.dart';
 import '/services/ux_session_loaded_result_cache.dart';
 import 'chat_thread_formatters.dart';
 import 'chat_thread_model.dart';
 export 'chat_thread_model.dart';
+
+const ValueKey<String> chatThreadConversationInlineErrorKey =
+    ValueKey<String>('chat_thread_conversation_inline_error');
+const ValueKey<String> chatThreadConversationRetryButtonKey =
+    ValueKey<String>('chat_thread_conversation_retry_button');
+const ValueKey<String> chatThreadMessagesInlineErrorKey =
+    ValueKey<String>('chat_thread_messages_inline_error');
+const ValueKey<String> chatThreadMessagesRetryButtonKey =
+    ValueKey<String>('chat_thread_messages_retry_button');
+
+final class ChatThreadConversationLoadState {
+  const ChatThreadConversationLoadState({
+    required this.ownerUid,
+    required this.conversation,
+    required this.isFromCache,
+    required this.hasPendingWrites,
+  });
+
+  final String ownerUid;
+  final ConversationsRecord? conversation;
+  final bool isFromCache;
+  final bool hasPendingWrites;
+
+  bool get isAuthoritative => !isFromCache && !hasPendingWrites;
+  bool get canResolveMissing => conversation != null || isAuthoritative;
+}
+
+final class ChatThreadMessagesLoadState {
+  ChatThreadMessagesLoadState({
+    required this.ownerUid,
+    required Iterable<MessagesRecord> messages,
+    required this.isFromCache,
+    required this.hasPendingWrites,
+  }) : messages = List<MessagesRecord>.unmodifiable(messages);
+
+  final String ownerUid;
+  final List<MessagesRecord> messages;
+  final bool isFromCache;
+  final bool hasPendingWrites;
+
+  bool get isAuthoritative => !isFromCache && !hasPendingWrites;
+  bool get canResolveEmpty => messages.isNotEmpty || isAuthoritative;
+}
+
+final class _ChatThreadMessagesCacheEntry {
+  _ChatThreadMessagesCacheEntry({
+    required Iterable<MessagesRecord> messages,
+    required this.limit,
+  }) : messages = List<MessagesRecord>.unmodifiable(messages);
+
+  final List<MessagesRecord> messages;
+  final int limit;
+}
+
+typedef ChatThreadConversationStream = Stream<ChatThreadConversationLoadState>
+    Function(
+  DocumentReference conversationRef,
+  String ownerUid,
+);
+typedef ChatThreadMessagesStream = Stream<ChatThreadMessagesLoadState> Function(
+  DocumentReference conversationRef,
+  int limit,
+  String ownerUid,
+);
+typedef ChatThreadPublicProfileStream = Stream<UserPublicProfilesRecord?>
+    Function(
+  DocumentReference userRef,
+);
 
 ValueKey<String> chatThreadMessageItemKey(String messageKey) =>
     ValueKey<String>('chat_thread_message_item_$messageKey');
@@ -270,10 +341,18 @@ class ChatThreadWidget extends StatefulWidget {
     super.key,
     required this.conversationRef,
     this.initialConversation,
+    this.debugConversationStream,
+    this.debugMessagesStream,
+    this.debugPublicProfileStream,
+    this.debugAuthenticatedOwnerUidStream,
   });
 
   final DocumentReference? conversationRef;
   final ConversationsRecord? initialConversation;
+  final ChatThreadConversationStream? debugConversationStream;
+  final ChatThreadMessagesStream? debugMessagesStream;
+  final ChatThreadPublicProfileStream? debugPublicProfileStream;
+  final Stream<String>? debugAuthenticatedOwnerUidStream;
 
   static String routeName = 'chatThread';
   static String routePath = '/chatThread';
@@ -283,7 +362,7 @@ class ChatThreadWidget extends StatefulWidget {
 
   @visibleForTesting
   static void debugResetMessageCacheForTesting() {
-    _ChatThreadWidgetState._messagesCacheByConversationPath.clear();
+    _ChatThreadWidgetState._clearMessagesCache();
   }
 }
 
@@ -409,17 +488,28 @@ int _compareChatThreadMessageDates(DateTime? left, DateTime? right) {
 
 class _ChatThreadWidgetState extends State<ChatThreadWidget> {
   static const int _messagePageSize = 60;
-  static final UxSessionLoadedResultCache<List<MessagesRecord>>
+  static final UxSessionLoadedResultCache<_ChatThreadMessagesCacheEntry>
       _messagesCacheByConversationPath =
-      UxSessionLoadedResultCache<List<MessagesRecord>>();
+      UxSessionLoadedResultCache<_ChatThreadMessagesCacheEntry>();
 
   late ChatThreadModel _model;
+  late Stream<String> _authenticatedOwnerUidStream;
   final scaffoldKey = GlobalKey<ScaffoldState>();
   final ScrollController _messagesScrollController = ScrollController();
-  Stream<ConversationsRecord?>? _conversationStream;
+  Stream<ChatThreadConversationLoadState>? _conversationStream;
   String? _conversationStreamPath;
+  String? _conversationStreamOwnerUid;
+  ChatThreadConversationStream? _conversationStreamLoader;
+  ConversationsRecord? _retainedConversation;
+  List<MessagesRecord>? _retainedMessages;
+  String? _retainedMessagesOwnerUid;
+  String? _retainedMessagesConversationPath;
+  String _activeOwnerUid = '';
+  int _dataGeneration = 0;
+  int _conversationStreamRevision = 0;
+  int _messageStreamRevision = 0;
   final _publicProfileStreams = <String, Stream<UserPublicProfilesRecord?>>{};
-  final _messageStreams = <String, Stream<List<MessagesRecord>>>{};
+  final _messageStreams = <String, Stream<ChatThreadMessagesLoadState>>{};
   final List<_PendingChatMessage> _pendingMessages = <_PendingChatMessage>[];
   DateTime? _lastReadMarkerTarget;
   DateTime? _scheduledReadMarkerTarget;
@@ -428,87 +518,460 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
   bool _canLoadOlderMessages = true;
   bool _messageLimitIncreaseScheduled = false;
   bool _isSending = false;
+  bool _conversationActionsBlocked = false;
+  bool _messageActionsBlocked = false;
+  bool _hasConfirmedUnavailableConversation = false;
+  bool _hasConfirmedConversationAccessDenied = false;
+  bool _chatBoundaryRebuildScheduled = false;
+  bool _clearComposerOnBoundaryRebuild = false;
+
+  bool get _chatActionsBlocked =>
+      _conversationActionsBlocked || _messageActionsBlocked;
+
+  static void _clearMessagesCache() {
+    _messagesCacheByConversationPath.clear();
+  }
+
+  String _readAuthenticatedOwnerUid() =>
+      (FirebaseAuth.instance.currentUser?.uid ?? currentUser?.uid ?? '').trim();
+
+  Stream<String> _createAuthenticatedOwnerUidStream() =>
+      widget.debugAuthenticatedOwnerUidStream ??
+      FirebaseAuth.instance
+          .authStateChanges()
+          .map((user) => (user?.uid ?? '').trim())
+          .distinct();
+
+  void _synchronizeAuthenticatedOwner(String ownerUid) {
+    final normalizedOwnerUid = ownerUid.trim();
+    if (_activeOwnerUid == normalizedOwnerUid) {
+      return;
+    }
+    UxSessionCacheLifecycle.updateAuthenticatedUser(
+      normalizedOwnerUid.isEmpty ? null : normalizedOwnerUid,
+    );
+    _activeOwnerUid = normalizedOwnerUid;
+    _bindConversationRef();
+  }
 
   void _bindConversationRef() {
     final conversationRef = widget.conversationRef;
     final path = conversationRef?.path;
-    if (_conversationStreamPath == path) {
+    final ownerUid = _activeOwnerUid;
+    final loader = widget.debugConversationStream;
+    if (_conversationStreamPath == path &&
+        _conversationStreamOwnerUid == ownerUid &&
+        identical(_conversationStreamLoader, loader)) {
       return;
     }
 
+    final previousOwnerUid = _conversationStreamOwnerUid;
+    final dataKeyChanged =
+        _conversationStreamPath != path || previousOwnerUid != ownerUid;
+    final ownerChanged =
+        previousOwnerUid != null && previousOwnerUid != ownerUid;
     _conversationStreamPath = path;
-    _conversationStream = conversationRef?.snapshots().map(
-      (snapshot) {
-        if (!snapshot.exists || snapshot.data() == null) {
-          return null;
-        }
-        return ConversationsRecord.fromSnapshot(snapshot);
-      },
-    );
+    _conversationStreamOwnerUid = ownerUid;
+    _conversationStreamLoader = loader;
+    _conversationStream = conversationRef == null || ownerUid.isEmpty
+        ? null
+        : _createConversationStream(conversationRef);
+    _conversationStreamRevision += 1;
+
+    if (!dataKeyChanged) {
+      return;
+    }
+
+    _dataGeneration += 1;
+    final initialConversation = widget.initialConversation;
+    _retainedConversation = !ownerChanged &&
+            initialConversation != null &&
+            conversationRef != null &&
+            initialConversation.reference.path == conversationRef.path &&
+            ownerUid.isNotEmpty &&
+            initialConversation.participantIds.contains(ownerUid)
+        ? initialConversation
+        : null;
+    _retainedMessages = null;
+    _retainedMessagesOwnerUid = null;
+    _retainedMessagesConversationPath = null;
     _lastReadMarkerTarget = null;
     _scheduledReadMarkerTarget = null;
-    _messageLimit = _messagePageSize;
-    _canLoadOlderMessages = true;
+    final cachedMessagesEntry = conversationRef != null && ownerUid.isNotEmpty
+        ? _cachedMessagesEntry(conversationRef)
+        : null;
+    _messageLimit = math.max(
+      _messagePageSize,
+      cachedMessagesEntry?.limit ?? _messagePageSize,
+    );
+    _messageStreamRevision = 0;
+    _canLoadOlderMessages = cachedMessagesEntry == null ||
+        cachedMessagesEntry.messages.length >= _messageLimit;
     _messageLimitIncreaseScheduled = false;
     _isSending = false;
+    _conversationActionsBlocked = false;
+    _messageActionsBlocked = false;
+    _hasConfirmedUnavailableConversation = false;
+    _hasConfirmedConversationAccessDenied = false;
+    _clearComposerOnBoundaryRebuild = false;
     _pendingMessages.clear();
+    _messageStreams.clear();
+    _publicProfileStreams.clear();
+    _model.messageTextController?.clear();
+    _model.messageFocusNode?.unfocus();
+  }
+
+  Stream<ChatThreadConversationLoadState> _createConversationStream(
+    DocumentReference conversationRef,
+  ) {
+    final ownerUid = _activeOwnerUid;
+    final debugStream = widget.debugConversationStream;
+    final stream = debugStream != null
+        ? debugStream(conversationRef, ownerUid)
+        : conversationRef
+            .snapshots(includeMetadataChanges: true)
+            .map((snapshot) {
+            final conversation = !snapshot.exists || snapshot.data() == null
+                ? null
+                : ConversationsRecord.fromSnapshot(snapshot);
+            return ChatThreadConversationLoadState(
+              ownerUid: ownerUid,
+              conversation: conversation,
+              isFromCache: snapshot.metadata.isFromCache,
+              hasPendingWrites: snapshot.metadata.hasPendingWrites,
+            );
+          });
+
+    return stream.map((state) {
+      final conversation = state.conversation;
+      if (state.ownerUid != ownerUid) {
+        throw StateError('Conversation belongs to another owner.');
+      }
+      if (conversation != null &&
+          conversation.reference.path != conversationRef.path) {
+        throw StateError(
+          'Conversation stream returned ${conversation.reference.path} '
+          'for ${conversationRef.path}.',
+        );
+      }
+      return state;
+    }).where((state) => state.canResolveMissing);
   }
 
   Stream<UserPublicProfilesRecord?> _watchPublicProfile(DocumentReference ref) {
     return _publicProfileStreams.putIfAbsent(
       ref.path,
-      () => UserPublicProfilesRecord.maybeGetDocument(
-        UserPublicProfilesRecord.collection.doc(ref.id),
-      ),
+      () =>
+          widget.debugPublicProfileStream?.call(ref) ??
+          UserPublicProfilesRecord.maybeGetDocument(
+            UserPublicProfilesRecord.collection.doc(ref.id),
+          ),
     );
   }
 
-  Stream<List<MessagesRecord>> _watchMessages(DocumentReference conversation) {
-    final streamKey = '${conversation.path}:$_messageLimit';
+  String _messageStreamKey(DocumentReference conversation) =>
+      '$_activeOwnerUid:${conversation.path}:$_messageLimit';
+
+  PageStorageKey<String> _messagesListKey(
+    DocumentReference conversation,
+  ) =>
+      PageStorageKey<String>(
+        'chat_thread_messages:${_activeOwnerUid}:${conversation.path}',
+      );
+
+  Stream<ChatThreadMessagesLoadState> _watchMessages(
+    DocumentReference conversation,
+  ) {
+    final streamKey = _messageStreamKey(conversation);
     return _messageStreams.putIfAbsent(
       streamKey,
-      () => queryMessagesRecord(
-        parent: conversation,
-        queryBuilder: (messagesRecord) => messagesRecord.orderBy(
-          'createdAt',
-          descending: true,
-        ),
-        limit: _messageLimit,
-      ),
+      () => _createMessagesStream(conversation),
     );
+  }
+
+  Stream<ChatThreadMessagesLoadState> _createMessagesStream(
+    DocumentReference conversation,
+  ) {
+    final ownerUid = _activeOwnerUid;
+    final debugStream = widget.debugMessagesStream;
+    final stream = debugStream != null
+        ? debugStream(conversation, _messageLimit, ownerUid)
+        : MessagesRecord.collection(conversation)
+            .orderBy('createdAt', descending: true)
+            .limit(_messageLimit)
+            .snapshots(includeMetadataChanges: true)
+            .map((snapshot) {
+            return ChatThreadMessagesLoadState(
+              ownerUid: ownerUid,
+              messages: snapshot.docs.map(MessagesRecord.fromSnapshot),
+              isFromCache: snapshot.metadata.isFromCache,
+              hasPendingWrites: snapshot.metadata.hasPendingWrites,
+            );
+          });
+
+    return stream.map((state) {
+      if (state.ownerUid != ownerUid) {
+        throw StateError('Chat messages belong to another owner.');
+      }
+      for (final message in state.messages) {
+        if (message.parentReference.path != conversation.path) {
+          throw StateError(
+            'Message stream returned ${message.reference.path} '
+            'for ${conversation.path}.',
+          );
+        }
+      }
+      return state;
+    }).where((state) => state.canResolveEmpty);
   }
 
   Object _messagesCacheKey(DocumentReference conversation) => [
         'chatThreadMessages',
-        currentUserUid,
+        _activeOwnerUid,
         conversation.path,
       ];
 
+  _ChatThreadMessagesCacheEntry? _cachedMessagesEntry(
+    DocumentReference conversation,
+  ) {
+    return _messagesCacheByConversationPath
+        .read(_messagesCacheKey(conversation))
+        ?.data;
+  }
+
   List<MessagesRecord>? _cachedMessages(DocumentReference conversation) {
-    final messages = _messagesCacheByConversationPath.readItems(
-      _messagesCacheKey(conversation),
-    );
-    if (messages == null || messages.isEmpty) {
+    return _cachedMessagesEntry(conversation)?.messages;
+  }
+
+  ChatThreadMessagesLoadState? _cachedMessagesState(
+    DocumentReference conversation,
+  ) {
+    final messages = _cachedMessages(conversation);
+    if (messages == null) {
       return null;
     }
-    return messages;
+    return ChatThreadMessagesLoadState(
+      ownerUid: _activeOwnerUid,
+      messages: messages,
+      isFromCache: true,
+      hasPendingWrites: false,
+    );
+  }
+
+  List<MessagesRecord>? _retainedMessagesFor(
+    DocumentReference conversation,
+  ) {
+    if (_retainedMessagesOwnerUid == _activeOwnerUid &&
+        _retainedMessagesConversationPath == conversation.path) {
+      return _retainedMessages;
+    }
+
+    final cachedMessages = _cachedMessages(conversation);
+    if (cachedMessages == null) {
+      return null;
+    }
+    _retainMessages(conversation, cachedMessages);
+    return _retainedMessages;
+  }
+
+  void _retainMessages(
+    DocumentReference conversation,
+    Iterable<MessagesRecord> messages,
+  ) {
+    _retainedMessages = List<MessagesRecord>.unmodifiable(messages);
+    _retainedMessagesOwnerUid = _activeOwnerUid;
+    _retainedMessagesConversationPath = conversation.path;
+  }
+
+  List<MessagesRecord> _mergeNonAuthoritativeMessages(
+    Iterable<MessagesRecord> previousMessages,
+    Iterable<MessagesRecord> incomingMessages,
+  ) {
+    final messagesByPath = <String, MessagesRecord>{
+      for (final message in previousMessages) message.reference.path: message,
+      for (final message in incomingMessages) message.reference.path: message,
+    };
+    final mergedMessages = messagesByPath.values.toList(growable: false)
+      ..sort((left, right) {
+        final dateComparison = _compareChatThreadMessageDates(
+          left.createdAt,
+          right.createdAt,
+        );
+        if (dateComparison != 0) {
+          return dateComparison;
+        }
+        return left.reference.path.compareTo(right.reference.path);
+      });
+    return List<MessagesRecord>.unmodifiable(mergedMessages);
   }
 
   void _rememberMessages(
     DocumentReference conversation,
     List<MessagesRecord> messages,
   ) {
-    _messagesCacheByConversationPath.writeItems(
-      dataKey: _messagesCacheKey(conversation),
-      items: List<MessagesRecord>.unmodifiable(messages),
+    final dataKey = _messagesCacheKey(conversation);
+    _messagesCacheByConversationPath.write(
+      UxLoadedResult<_ChatThreadMessagesCacheEntry>.data(
+        dataKey: dataKey,
+        data: _ChatThreadMessagesCacheEntry(
+          messages: messages,
+          limit: _messageLimit,
+        ),
+      ),
     );
   }
 
-  DocumentReference? _otherParticipantRef(ConversationsRecord conversation) {
-    final currentRef = currentUserReference;
-    if (currentRef == null) {
+  ConversationsRecord? _retainedConversationFor(
+    DocumentReference conversationRef,
+  ) {
+    final conversation = _retainedConversation;
+    if (conversation == null ||
+        conversation.reference.path != conversationRef.path ||
+        _activeOwnerUid.isEmpty ||
+        !conversation.participantIds.contains(_activeOwnerUid)) {
       return null;
     }
+    return conversation;
+  }
+
+  ChatThreadConversationLoadState? _retainedConversationState(
+    DocumentReference conversationRef,
+  ) {
+    final conversation = _retainedConversationFor(conversationRef);
+    if (conversation == null) {
+      return null;
+    }
+    return ChatThreadConversationLoadState(
+      ownerUid: _activeOwnerUid,
+      conversation: conversation,
+      isFromCache: true,
+      hasPendingWrites: false,
+    );
+  }
+
+  void _rememberConversation(
+    DocumentReference conversationRef,
+    ConversationsRecord conversation,
+  ) {
+    if (conversation.reference.path == conversationRef.path &&
+        _activeOwnerUid.isNotEmpty &&
+        conversation.participantIds.contains(_activeOwnerUid)) {
+      _retainedConversation = conversation;
+    } else {
+      _retainedConversation = null;
+    }
+  }
+
+  void _discardRetainedMessages(DocumentReference conversationRef) {
+    _messagesCacheByConversationPath.remove(_messagesCacheKey(conversationRef));
+    _retainedMessages = null;
+    _retainedMessagesOwnerUid = null;
+    _retainedMessagesConversationPath = null;
+    _pendingMessages.clear();
+  }
+
+  void _discardRetainedConversation(
+    DocumentReference conversationRef, {
+    required bool confirmedUnavailable,
+    bool accessDenied = false,
+  }) {
+    if (!_conversationActionsBlocked) {
+      _messageStreams.clear();
+      _publicProfileStreams.clear();
+      _messageStreamRevision += 1;
+    }
+    _retainedConversation = null;
+    _hasConfirmedUnavailableConversation = confirmedUnavailable;
+    _hasConfirmedConversationAccessDenied = accessDenied;
+    _discardRetainedMessages(conversationRef);
+    _blockChatActions(conversation: true);
+  }
+
+  void _blockChatActions({
+    bool conversation = false,
+    bool messages = false,
+  }) {
+    final wasBlocked = _chatActionsBlocked;
+    if (conversation) {
+      _conversationActionsBlocked = true;
+    }
+    if (messages) {
+      _messageActionsBlocked = true;
+    }
+    if (wasBlocked || !_chatActionsBlocked) {
+      return;
+    }
+
+    _dataGeneration += 1;
+    _lastReadMarkerTarget = null;
+    _scheduledReadMarkerTarget = null;
+    _isSending = false;
+    _pendingMessages.clear();
+    _clearComposerOnBoundaryRebuild = true;
+    _scheduleChatBoundaryRebuild();
+  }
+
+  void _allowConversationActions() {
+    final wasBlocked = _chatActionsBlocked;
+    _conversationActionsBlocked = false;
+    if (wasBlocked != _chatActionsBlocked) {
+      _scheduleChatBoundaryRebuild();
+    }
+  }
+
+  void _allowMessageActions() {
+    final wasBlocked = _chatActionsBlocked;
+    _messageActionsBlocked = false;
+    if (wasBlocked != _chatActionsBlocked) {
+      _scheduleChatBoundaryRebuild();
+    }
+  }
+
+  void _scheduleChatBoundaryRebuild() {
+    if (_chatBoundaryRebuildScheduled) {
+      return;
+    }
+    _chatBoundaryRebuildScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _chatBoundaryRebuildScheduled = false;
+      if (mounted) {
+        if (_clearComposerOnBoundaryRebuild) {
+          _clearComposerOnBoundaryRebuild = false;
+          _model.messageTextController?.clear();
+          _model.messageFocusNode?.unfocus();
+        }
+        setState(() {});
+      }
+    });
+  }
+
+  void _retryConversation() {
+    final conversationRef = widget.conversationRef;
+    if (conversationRef == null || _activeOwnerUid.isEmpty) {
+      return;
+    }
+    setState(() {
+      _conversationStream = _createConversationStream(conversationRef);
+      _conversationStreamRevision += 1;
+    });
+  }
+
+  void _retryMessages(DocumentReference conversationRef) {
+    if (_activeOwnerUid.isEmpty ||
+        widget.conversationRef?.path != conversationRef.path) {
+      return;
+    }
+    setState(() {
+      _messageStreams.remove(_messageStreamKey(conversationRef));
+      _messageStreamRevision += 1;
+    });
+  }
+
+  DocumentReference? _otherParticipantRef(ConversationsRecord conversation) {
+    if (_activeOwnerUid.isEmpty) {
+      return null;
+    }
+    final currentRef = UsersRecord.collection.doc(_activeOwnerUid);
 
     for (final participantRef in conversation.participantRefs) {
       if (participantRef.path != currentRef.path) {
@@ -566,12 +1029,32 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     return '';
   }
 
-  Future<void> _markConversationRead(ConversationsRecord conversation) async {
-    if (currentUserReference == null || currentUserUid.isEmpty) {
+  bool _isCurrentDataGeneration({
+    required String ownerUid,
+    required String conversationPath,
+    required int generation,
+  }) =>
+      mounted &&
+      !_chatActionsBlocked &&
+      _activeOwnerUid == ownerUid &&
+      widget.conversationRef?.path == conversationPath &&
+      _dataGeneration == generation;
+
+  Future<void> _markConversationRead(
+    ConversationsRecord conversation, {
+    required String ownerUid,
+    required int generation,
+  }) async {
+    if (!_isCurrentDataGeneration(
+          ownerUid: ownerUid,
+          conversationPath: conversation.reference.path,
+          generation: generation,
+        ) ||
+        ownerUid.isEmpty) {
       return;
     }
 
-    if (!conversationIsUnreadForUser(conversation, currentUserUid)) {
+    if (!conversationIsUnreadForUser(conversation, ownerUid)) {
       return;
     }
 
@@ -580,7 +1063,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
       return;
     }
 
-    final currentReadAt = conversation.lastReadAtByUserId[currentUserUid];
+    final currentReadAt = conversation.lastReadAtByUserId[ownerUid];
     if (currentReadAt != null && !currentReadAt.isBefore(target)) {
       return;
     }
@@ -593,7 +1076,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     _lastReadMarkerTarget = target;
     try {
       await conversation.reference.update({
-        'lastReadAtByUserId.$currentUserUid': FieldValue.serverTimestamp(),
+        'lastReadAtByUserId.$ownerUid': FieldValue.serverTimestamp(),
       });
     } catch (error) {
       debugPrint(
@@ -603,7 +1086,10 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
   }
 
   void _scheduleMarkConversationRead(ConversationsRecord conversation) {
-    if (!conversationIsUnreadForUser(conversation, currentUserUid)) {
+    final ownerUid = _activeOwnerUid;
+    final generation = _dataGeneration;
+    if (_chatActionsBlocked ||
+        !conversationIsUnreadForUser(conversation, ownerUid)) {
       return;
     }
 
@@ -612,7 +1098,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
       return;
     }
 
-    final currentReadAt = conversation.lastReadAtByUserId[currentUserUid];
+    final currentReadAt = conversation.lastReadAtByUserId[ownerUid];
     if (currentReadAt != null && !currentReadAt.isBefore(target)) {
       return;
     }
@@ -629,11 +1115,19 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
 
     _scheduledReadMarkerTarget = target;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) {
+      if (!_isCurrentDataGeneration(
+        ownerUid: ownerUid,
+        conversationPath: conversation.reference.path,
+        generation: generation,
+      )) {
         return;
       }
       _scheduledReadMarkerTarget = null;
-      _markConversationRead(conversation);
+      _markConversationRead(
+        conversation,
+        ownerUid: ownerUid,
+        generation: generation,
+      );
     });
   }
 
@@ -660,11 +1154,11 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
   }
 
   Future<void> _sendMessage(ConversationsRecord conversation) async {
-    final currentRef = currentUserReference;
-    final currentUid = currentUserUid;
-    if (currentRef == null || currentUid.isEmpty || _isSending) {
+    final currentUid = _activeOwnerUid;
+    if (currentUid.isEmpty || _isSending || _chatActionsBlocked) {
       return;
     }
+    final currentRef = UsersRecord.collection.doc(currentUid);
 
     final text = _model.messageTextController?.text.trim() ?? '';
     if (text.isEmpty) {
@@ -672,6 +1166,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     }
 
     final conversationPath = conversation.reference.path;
+    final generation = _dataGeneration;
     final messageRef = MessagesRecord.createDoc(conversation.reference);
     final pendingMessage = _createPendingMessage(
       messageRef: messageRef,
@@ -697,7 +1192,11 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
           },
         ),
       );
-      if (!mounted || widget.conversationRef?.path != conversationPath) {
+      if (!_isCurrentDataGeneration(
+        ownerUid: currentUid,
+        conversationPath: conversationPath,
+        generation: generation,
+      )) {
         return;
       }
       setState(() {
@@ -712,7 +1211,11 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
         );
       });
     } catch (error) {
-      if (!mounted || widget.conversationRef?.path != conversationPath) {
+      if (!_isCurrentDataGeneration(
+        ownerUid: currentUid,
+        conversationPath: conversationPath,
+        generation: generation,
+      )) {
         return;
       }
       setState(() {
@@ -740,7 +1243,11 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
         'Failed to send chat message for ${conversation.reference.path}: $error',
       );
     } finally {
-      if (mounted && widget.conversationRef?.path == conversationPath) {
+      if (_isCurrentDataGeneration(
+        ownerUid: currentUid,
+        conversationPath: conversationPath,
+        generation: generation,
+      )) {
         setState(() {
           _isSending = false;
         });
@@ -752,16 +1259,20 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     ConversationsRecord conversation,
     _PendingChatMessage pendingMessage,
   ) async {
-    final currentRef = currentUserReference;
-    final currentUid = currentUserUid;
-    if (currentRef == null ||
-        currentUid.isEmpty ||
+    final currentUid = _activeOwnerUid;
+    if (currentUid.isEmpty ||
         _isSending ||
-        pendingMessage.status != ChatLocalMessageStatus.failed) {
+        _chatActionsBlocked ||
+        pendingMessage.status != ChatLocalMessageStatus.failed ||
+        pendingMessage.senderId != currentUid ||
+        pendingMessage.messageRef.parent.parent?.path !=
+            conversation.reference.path) {
       return;
     }
+    final currentRef = UsersRecord.collection.doc(currentUid);
 
     final conversationPath = conversation.reference.path;
+    final generation = _dataGeneration;
     setState(() {
       _isSending = true;
       _updatePendingMessageStatus(
@@ -782,7 +1293,11 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
           },
         ),
       );
-      if (!mounted || widget.conversationRef?.path != conversationPath) {
+      if (!_isCurrentDataGeneration(
+        ownerUid: currentUid,
+        conversationPath: conversationPath,
+        generation: generation,
+      )) {
         return;
       }
       setState(() {
@@ -792,7 +1307,11 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
         );
       });
     } catch (error) {
-      if (!mounted || widget.conversationRef?.path != conversationPath) {
+      if (!_isCurrentDataGeneration(
+        ownerUid: currentUid,
+        conversationPath: conversationPath,
+        generation: generation,
+      )) {
         return;
       }
       setState(() {
@@ -816,7 +1335,11 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
         '$error',
       );
     } finally {
-      if (mounted && widget.conversationRef?.path == conversationPath) {
+      if (_isCurrentDataGeneration(
+        ownerUid: currentUid,
+        conversationPath: conversationPath,
+        generation: generation,
+      )) {
         setState(() {
           _isSending = false;
         });
@@ -908,9 +1431,19 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     if (!hasConfirmedPending) {
       return;
     }
+    final ownerUid = _activeOwnerUid;
+    final conversationPath = _conversationStreamPath;
+    final generation = _dataGeneration;
+    if (conversationPath == null) {
+      return;
+    }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) {
+      if (!_isCurrentDataGeneration(
+        ownerUid: ownerUid,
+        conversationPath: conversationPath,
+        generation: generation,
+      )) {
         return;
       }
       setState(() {
@@ -923,10 +1456,16 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
 
   Future<void> _toggleFriend(
       DocumentReference partnerRef, bool isFriend) async {
-    final currentRef = currentUserReference;
-    if (currentRef == null) {
+    final ownerUid = _activeOwnerUid;
+    final conversationPath = widget.conversationRef?.path;
+    final generation = _dataGeneration;
+    if (ownerUid.isEmpty ||
+        conversationPath == null ||
+        _chatActionsBlocked ||
+        !hasCurrentUserDocumentForUid(ownerUid)) {
       return;
     }
+    final currentRef = UsersRecord.collection.doc(ownerUid);
 
     try {
       await currentRef.update(
@@ -937,7 +1476,11 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     } catch (error) {
       debugPrint(
           'Failed to update friend state for ${partnerRef.path}: $error');
-      if (!mounted) {
+      if (!_isCurrentDataGeneration(
+        ownerUid: ownerUid,
+        conversationPath: conversationPath,
+        generation: generation,
+      )) {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1034,20 +1577,42 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     );
   }
 
-  Widget _buildEmptyState(BuildContext context) {
+  Widget _buildEmptyState(
+    BuildContext context, {
+    bool showRefreshError = false,
+  }) {
     return Scaffold(
       key: scaffoldKey,
       backgroundColor: ExpatlioDesign.background,
-      body: Center(
-        child: SizedBox(
-          height: 500.0,
-          child: EmptyWidget(
-            txt: FFLocalizations.of(context).getVariableText(
-              ruText: 'Чат пока недоступен.',
-              enText: 'This chat is not available yet.',
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          Center(
+            child: SizedBox(
+              height: 500.0,
+              child: EmptyWidget(
+                txt: FFLocalizations.of(context).getVariableText(
+                  ruText: 'Чат пока недоступен.',
+                  enText: 'This chat is not available yet.',
+                ),
+              ),
             ),
           ),
-        ),
+          if (showRefreshError)
+            PositionedDirectional(
+              start: ExpatlioDesign.pagePadding,
+              end: ExpatlioDesign.pagePadding,
+              top: ExpatlioDesign.space112,
+              child: _buildRefreshErrorBanner(
+                context,
+                stateKey: chatThreadConversationInlineErrorKey,
+                retryKey: chatThreadConversationRetryButtonKey,
+                ruText: 'Не удалось обновить чат.',
+                enText: 'Could not refresh chat.',
+                onRetry: _retryConversation,
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -1058,23 +1623,41 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
   Widget _buildChatUnavailableState(
     BuildContext context, {
     required Object? error,
+    bool preservePermissionDenied = false,
   }) {
+    final permissionDenied =
+        preservePermissionDenied || _isPermissionDenied(error);
     return Scaffold(
       key: scaffoldKey,
       backgroundColor: ExpatlioDesign.background,
       body: Center(
         child: SizedBox(
           height: 500.0,
-          child: EmptyWidget(
-            txt: _isPermissionDenied(error)
-                ? FFLocalizations.of(context).getVariableText(
-                    ruText: 'У вас нет доступа к этому чату.',
-                    enText: 'You do not have access to this chat.',
-                  )
-                : FFLocalizations.of(context).getVariableText(
-                    ruText: 'Не удалось загрузить чат. Попробуйте позже.',
-                    enText: 'Could not load this chat. Please try again later.',
-                  ),
+          child: Column(
+            children: [
+              Expanded(
+                child: EmptyWidget(
+                  txt: permissionDenied
+                      ? FFLocalizations.of(context).getVariableText(
+                          ruText: 'У вас нет доступа к этому чату.',
+                          enText: 'You do not have access to this chat.',
+                        )
+                      : FFLocalizations.of(context).getVariableText(
+                          ruText: 'Не удалось загрузить чат. Попробуйте позже.',
+                          enText:
+                              'Could not load this chat. Please try again later.',
+                        ),
+                ),
+              ),
+              if (!permissionDenied)
+                _buildContextualRetryButton(
+                  context,
+                  key: chatThreadConversationRetryButtonKey,
+                  ruLabel: 'Повторить загрузку чата',
+                  enLabel: 'Retry loading chat',
+                  onRetry: _retryConversation,
+                ),
+            ],
           ),
         ),
       ),
@@ -1084,22 +1667,150 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
   Widget _buildMessagesUnavailableState(
     BuildContext context, {
     required Object? error,
+    bool preservePermissionDenied = false,
   }) {
+    final permissionDenied =
+        preservePermissionDenied || _isPermissionDenied(error);
     return Center(
       child: SizedBox(
-        height: 260.0,
-        child: EmptyWidget(
-          txt: _isPermissionDenied(error)
-              ? FFLocalizations.of(context).getVariableText(
-                  ruText: 'У вас нет доступа к сообщениям этого чата.',
-                  enText: 'You do not have access to this chat history.',
-                )
-              : FFLocalizations.of(context).getVariableText(
-                  ruText: 'Не удалось загрузить сообщения.',
-                  enText: 'Could not load messages.',
-                ),
+        height: 340.0,
+        child: Column(
+          children: [
+            Expanded(
+              child: EmptyWidget(
+                txt: permissionDenied
+                    ? FFLocalizations.of(context).getVariableText(
+                        ruText: 'У вас нет доступа к сообщениям этого чата.',
+                        enText: 'You do not have access to this chat history.',
+                      )
+                    : FFLocalizations.of(context).getVariableText(
+                        ruText: 'Не удалось загрузить сообщения.',
+                        enText: 'Could not load messages.',
+                      ),
+              ),
+            ),
+            if (!permissionDenied)
+              _buildContextualRetryButton(
+                context,
+                key: chatThreadMessagesRetryButtonKey,
+                ruLabel: 'Повторить загрузку сообщений',
+                enLabel: 'Retry loading messages',
+                onRetry: () {
+                  final conversationRef = widget.conversationRef;
+                  if (conversationRef != null) {
+                    _retryMessages(conversationRef);
+                  }
+                },
+              ),
+          ],
         ),
       ),
+    );
+  }
+
+  Widget _buildContextualRetryButton(
+    BuildContext context, {
+    required Key key,
+    required String ruLabel,
+    required String enLabel,
+    required VoidCallback onRetry,
+  }) {
+    final semanticLabel = FFLocalizations.of(context).getVariableText(
+      ruText: ruLabel,
+      enText: enLabel,
+    );
+    return Semantics(
+      button: true,
+      label: semanticLabel,
+      child: ExcludeSemantics(
+        child: TextButton(
+          key: key,
+          onPressed: onRetry,
+          child: Text(
+            FFLocalizations.of(context).getVariableText(
+              ruText: 'Повторить',
+              enText: 'Retry',
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRefreshErrorBanner(
+    BuildContext context, {
+    required Key stateKey,
+    required Key retryKey,
+    required String ruText,
+    required String enText,
+    required VoidCallback onRetry,
+  }) {
+    final message = FFLocalizations.of(context).getVariableText(
+      ruText: ruText,
+      enText: enText,
+    );
+    return Material(
+      elevation: 4.0,
+      borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
+      child: Semantics(
+        key: stateKey,
+        container: true,
+        liveRegion: true,
+        label: message,
+        child: Container(
+          padding: const EdgeInsetsDirectional.fromSTEB(
+            ExpatlioDesign.space12,
+            ExpatlioDesign.space8,
+            ExpatlioDesign.space8,
+            ExpatlioDesign.space8,
+          ),
+          decoration: BoxDecoration(
+            color: ExpatlioDesign.card,
+            borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
+            border: Border.all(color: ExpatlioDesign.danger),
+          ),
+          child: Row(
+            children: [
+              Expanded(child: Text(message)),
+              _buildContextualRetryButton(
+                context,
+                key: retryKey,
+                ruLabel: '$ruText Повторить обновление.',
+                enLabel: '$enText Retry refresh.',
+                onRetry: onRetry,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _withMessagesRefreshError(
+    BuildContext context, {
+    required DocumentReference conversationRef,
+    required bool showError,
+    required Widget child,
+  }) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        child,
+        if (showError)
+          PositionedDirectional(
+            start: ExpatlioDesign.pagePadding,
+            end: ExpatlioDesign.pagePadding,
+            bottom: ExpatlioDesign.space112,
+            child: _buildRefreshErrorBanner(
+              context,
+              stateKey: chatThreadMessagesInlineErrorKey,
+              retryKey: chatThreadMessagesRetryButtonKey,
+              ruText: 'Не удалось обновить сообщения.',
+              enText: 'Could not refresh messages.',
+              onRetry: () => _retryMessages(conversationRef),
+            ),
+          ),
+      ],
     );
   }
 
@@ -1141,7 +1852,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     final presentation = buildChatCallEventPresentation(
       context,
       message: message,
-      currentUserUid: currentUserUid,
+      currentUserUid: _activeOwnerUid,
     );
 
     return ChatCallEventCard(
@@ -1192,6 +1903,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     required UserPublicProfilesRecord? partnerProfile,
     required DocumentReference partnerRef,
     required bool isFriend,
+    required bool canUpdateFriend,
   }) {
     final partnerName = _partnerDisplayName(
       context,
@@ -1309,10 +2021,13 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                 const SizedBox(width: ExpatlioDesign.space8),
                 Semantics(
                   button: true,
+                  enabled: canUpdateFriend,
                   label: friendButtonLabel,
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
-                    onTap: () => _toggleFriend(partnerRef, isFriend),
+                    onTap: canUpdateFriend
+                        ? () => _toggleFriend(partnerRef, isFriend)
+                        : null,
                     child: SizedBox(
                       width: friendButtonWidth,
                       height: 44.0,
@@ -1470,6 +2185,12 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
   void initState() {
     super.initState();
     _model = createModel(context, () => ChatThreadModel());
+    UxSessionCacheLifecycle.register(_clearMessagesCache);
+    _activeOwnerUid = _readAuthenticatedOwnerUid();
+    UxSessionCacheLifecycle.updateAuthenticatedUser(
+      _activeOwnerUid.isEmpty ? null : _activeOwnerUid,
+    );
+    _authenticatedOwnerUidStream = _createAuthenticatedOwnerUidStream();
     _messagesScrollController.addListener(_handleMessagesScroll);
     _bindConversationRef();
   }
@@ -1477,6 +2198,25 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
   @override
   void didUpdateWidget(ChatThreadWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!identical(
+      oldWidget.debugAuthenticatedOwnerUidStream,
+      widget.debugAuthenticatedOwnerUidStream,
+    )) {
+      _authenticatedOwnerUidStream = _createAuthenticatedOwnerUidStream();
+    }
+    if (!identical(
+      oldWidget.debugMessagesStream,
+      widget.debugMessagesStream,
+    )) {
+      _messageStreams.clear();
+      _messageStreamRevision += 1;
+    }
+    if (!identical(
+      oldWidget.debugPublicProfileStream,
+      widget.debugPublicProfileStream,
+    )) {
+      _publicProfileStreams.clear();
+    }
     _bindConversationRef();
   }
 
@@ -1490,48 +2230,144 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
 
   @override
   Widget build(BuildContext context) {
+    return StreamBuilder<String>(
+      stream: _authenticatedOwnerUidStream,
+      initialData: _activeOwnerUid,
+      builder: (context, ownerSnapshot) {
+        final ownerUid = ownerSnapshot.data ?? '';
+        _synchronizeAuthenticatedOwner(ownerUid);
+        return _buildAuthenticatedChat(context);
+      },
+    );
+  }
+
+  Widget _buildAuthenticatedChat(BuildContext context) {
+    _bindConversationRef();
     final conversationRef = widget.conversationRef;
-    if (conversationRef == null) {
+    if (conversationRef == null || _activeOwnerUid.isEmpty) {
       return _buildEmptyState(context);
     }
 
-    return StreamBuilder<ConversationsRecord?>(
+    return StreamBuilder<ChatThreadConversationLoadState>(
+      key: ValueKey<(String, String, int)>((
+        conversationRef.path,
+        _activeOwnerUid,
+        _conversationStreamRevision,
+      )),
       stream: _conversationStream,
-      initialData: widget.initialConversation,
+      initialData: _retainedConversationState(conversationRef),
       builder: (context, snapshot) {
+        var showConversationRefreshError = false;
+        ConversationsRecord? conversation;
         if (snapshot.hasError) {
           debugPrint(
             'ChatThreadWidget: conversation stream error for ${conversationRef.path}: ${snapshot.error}',
           );
-          return _buildChatUnavailableState(
-            context,
-            error: snapshot.error,
+          if (_isPermissionDenied(snapshot.error)) {
+            _discardRetainedConversation(
+              conversationRef,
+              confirmedUnavailable: false,
+              accessDenied: true,
+            );
+            return _buildChatUnavailableState(
+              context,
+              error: snapshot.error,
+            );
+          }
+          conversation = _retainedConversationFor(conversationRef);
+          if (conversation == null) {
+            if (_hasConfirmedUnavailableConversation) {
+              return _buildEmptyState(
+                context,
+                showRefreshError: true,
+              );
+            }
+            if (_hasConfirmedConversationAccessDenied) {
+              return _buildChatUnavailableState(
+                context,
+                error: snapshot.error,
+                preservePermissionDenied: true,
+              );
+            }
+            return _buildChatUnavailableState(
+              context,
+              error: snapshot.error,
+            );
+          }
+          showConversationRefreshError = true;
+        } else if (snapshot.hasData) {
+          final conversationState = snapshot.data!;
+          conversation = conversationState.conversation;
+          if (conversation == null) {
+            _discardRetainedConversation(
+              conversationRef,
+              confirmedUnavailable: true,
+            );
+            return _buildEmptyState(context);
+          }
+          if (_conversationActionsBlocked &&
+              !conversationState.isAuthoritative) {
+            if (_hasConfirmedUnavailableConversation) {
+              return _buildEmptyState(context);
+            }
+            if (_hasConfirmedConversationAccessDenied) {
+              return _buildChatUnavailableState(
+                context,
+                error: null,
+                preservePermissionDenied: true,
+              );
+            }
+          }
+          _rememberConversation(conversationRef, conversation);
+        } else {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            conversation = _retainedConversationFor(conversationRef);
+            if (conversation == null) {
+              if (_hasConfirmedUnavailableConversation) {
+                return _buildEmptyState(context);
+              }
+              if (_hasConfirmedConversationAccessDenied) {
+                return _buildChatUnavailableState(
+                  context,
+                  error: null,
+                  preservePermissionDenied: true,
+                );
+              }
+              return _buildLoadingState(context);
+            }
+          } else {
+            _discardRetainedConversation(
+              conversationRef,
+              confirmedUnavailable: true,
+            );
+            return _buildEmptyState(context);
+          }
+        }
+
+        final resolvedConversation = conversation;
+        if (_activeOwnerUid.isEmpty ||
+            !resolvedConversation.participantIds.contains(_activeOwnerUid) ||
+            !resolvedConversation.isUnlocked) {
+          _discardRetainedConversation(
+            conversationRef,
+            confirmedUnavailable: true,
           );
-        }
-
-        if (!snapshot.hasData &&
-            snapshot.connectionState == ConnectionState.waiting) {
-          return _buildLoadingState(context);
-        }
-
-        final conversation = snapshot.data;
-        if (conversation == null) {
           return _buildEmptyState(context);
         }
 
-        final currentRef = currentUserReference;
-        if (currentRef == null ||
-            !conversation.participantIds.contains(currentUserUid) ||
-            !conversation.isUnlocked) {
-          return _buildEmptyState(context);
-        }
-
-        final partnerRef = _otherParticipantRef(conversation);
+        final partnerRef = _otherParticipantRef(resolvedConversation);
         if (partnerRef == null) {
+          _discardRetainedConversation(
+            conversationRef,
+            confirmedUnavailable: true,
+          );
           return _buildEmptyState(context);
         }
 
-        _scheduleMarkConversationRead(conversation);
+        _hasConfirmedUnavailableConversation = false;
+        _hasConfirmedConversationAccessDenied = false;
+        _allowConversationActions();
+        _scheduleMarkConversationRead(resolvedConversation);
 
         return Scaffold(
           key: scaffoldKey,
@@ -1551,41 +2387,110 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
 
                       return AuthUserStreamWidget(
                         builder: (context) {
-                          final isFriend = userHasFriend(
-                            currentUserDocument,
-                            partnerRef,
-                          );
+                          final hasOwnerDocument = !_chatActionsBlocked &&
+                              hasCurrentUserDocumentForUid(_activeOwnerUid);
+                          final isFriend = hasOwnerDocument &&
+                              userHasFriend(
+                                currentUserDocument,
+                                partnerRef,
+                              );
 
                           return _buildHeader(
                             context,
-                            conversation: conversation,
+                            conversation: resolvedConversation,
                             partnerProfile: partnerSnapshot.hasError
                                 ? null
                                 : partnerSnapshot.data,
                             partnerRef: partnerRef,
                             isFriend: isFriend,
+                            canUpdateFriend: hasOwnerDocument,
                           );
                         },
                       );
                     },
                   ),
                   Expanded(
-                    child: StreamBuilder<List<MessagesRecord>>(
-                      stream: _watchMessages(conversation.reference),
-                      initialData: _cachedMessages(conversation.reference),
+                    child: StreamBuilder<ChatThreadMessagesLoadState>(
+                      key: ValueKey<(String, String, int)>((
+                        _activeOwnerUid,
+                        resolvedConversation.reference.path,
+                        _messageStreamRevision,
+                      )),
+                      stream: _watchMessages(resolvedConversation.reference),
+                      initialData: _cachedMessagesState(
+                        resolvedConversation.reference,
+                      ),
                       builder: (context, messagesSnapshot) {
                         if (messagesSnapshot.hasError) {
                           debugPrint(
-                            'ChatThreadWidget: messages stream error for ${conversation.reference.path}: ${messagesSnapshot.error}',
+                            'ChatThreadWidget: messages stream error for ${resolvedConversation.reference.path}: ${messagesSnapshot.error}',
                           );
+                        }
+
+                        if (messagesSnapshot.hasError &&
+                            _isPermissionDenied(messagesSnapshot.error)) {
+                          _discardRetainedMessages(
+                            resolvedConversation.reference,
+                          );
+                          _blockChatActions(messages: true);
                           return _buildMessagesUnavailableState(
                             context,
                             error: messagesSnapshot.error,
                           );
                         }
 
-                        final messages = messagesSnapshot.data ??
-                            _cachedMessages(conversation.reference);
+                        final incomingMessagesState = messagesSnapshot.data;
+                        if (_messageActionsBlocked &&
+                            (incomingMessagesState == null ||
+                                !incomingMessagesState.isAuthoritative)) {
+                          return _buildMessagesUnavailableState(
+                            context,
+                            error: messagesSnapshot.error,
+                            preservePermissionDenied: true,
+                          );
+                        }
+                        final retainedMessages = _retainedMessagesFor(
+                          resolvedConversation.reference,
+                        );
+                        final previousMessages =
+                            retainedMessages ?? const <MessagesRecord>[];
+                        List<MessagesRecord>? messages = retainedMessages;
+                        if (!messagesSnapshot.hasError &&
+                            incomingMessagesState != null) {
+                          if (incomingMessagesState.isAuthoritative) {
+                            _allowMessageActions();
+                            messages = incomingMessagesState.messages;
+                            _retainMessages(
+                              resolvedConversation.reference,
+                              messages,
+                            );
+                            final confirmedMessages = messages
+                                .where((message) => message.createdAt != null)
+                                .toList(growable: false);
+                            _rememberMessages(
+                              resolvedConversation.reference,
+                              confirmedMessages,
+                            );
+                            _schedulePruneConfirmedPendingMessages(messages);
+                          } else {
+                            messages = _mergeNonAuthoritativeMessages(
+                              previousMessages,
+                              incomingMessagesState.messages,
+                            );
+                            _retainMessages(
+                              resolvedConversation.reference,
+                              messages,
+                            );
+                          }
+                        }
+                        if (messagesSnapshot.hasError &&
+                            messages == null &&
+                            _pendingMessages.isEmpty) {
+                          return _buildMessagesUnavailableState(
+                            context,
+                            error: messagesSnapshot.error,
+                          );
+                        }
                         if (messages == null && _pendingMessages.isEmpty) {
                           return Center(
                             child: SizedBox(
@@ -1598,20 +2503,6 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                             ),
                           );
                         }
-
-                        if (messagesSnapshot.connectionState !=
-                                ConnectionState.waiting &&
-                            messagesSnapshot.hasData &&
-                            messages != null) {
-                          final confirmedMessages = messages
-                              .where((message) => message.createdAt != null)
-                              .toList(growable: false);
-                          _rememberMessages(
-                            conversation.reference,
-                            confirmedMessages,
-                          );
-                          _schedulePruneConfirmedPendingMessages(messages);
-                        }
                         final serverMessages =
                             messages ?? const <MessagesRecord>[];
                         _canLoadOlderMessages =
@@ -1620,66 +2511,117 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                             _displayMessages(serverMessages);
 
                         if (displayMessages.isEmpty) {
-                          return Center(
-                            child: Padding(
-                              padding:
-                                  const EdgeInsets.all(ExpatlioDesign.space24),
-                              child: Text(
-                                FFLocalizations.of(context).getVariableText(
-                                  ruText:
-                                      'Чат открыт. Напишите первое сообщение.',
-                                  enText:
-                                      'The chat is open. Send the first message.',
+                          return _withMessagesRefreshError(
+                            context,
+                            conversationRef: resolvedConversation.reference,
+                            showError: messagesSnapshot.hasError,
+                            child: Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(
+                                  ExpatlioDesign.space24,
                                 ),
-                                textAlign: TextAlign.center,
-                                style: FlutterFlowTheme.of(context)
-                                    .bodyMedium
-                                    .override(
-                                      fontFamily: 'sf pro display',
-                                      color: FlutterFlowTheme.of(context)
-                                          .secondaryText,
-                                      fontSize: 15.0,
-                                      letterSpacing: 0.0,
-                                    ),
+                                child: Text(
+                                  FFLocalizations.of(context).getVariableText(
+                                    ruText:
+                                        'Чат открыт. Напишите первое сообщение.',
+                                    enText:
+                                        'The chat is open. Send the first message.',
+                                  ),
+                                  textAlign: TextAlign.center,
+                                  style: FlutterFlowTheme.of(context)
+                                      .bodyMedium
+                                      .override(
+                                        fontFamily: 'sf pro display',
+                                        color: FlutterFlowTheme.of(context)
+                                            .secondaryText,
+                                        fontSize: 15.0,
+                                        letterSpacing: 0.0,
+                                      ),
+                                ),
                               ),
                             ),
                           );
                         }
 
-                        return ListView.builder(
-                          controller: _messagesScrollController,
-                          reverse: true,
-                          padding: const EdgeInsetsDirectional.fromSTEB(
-                            ExpatlioDesign.pagePadding,
-                            ExpatlioDesign.space12,
-                            ExpatlioDesign.pagePadding,
-                            ExpatlioDesign.space112,
-                          ),
-                          itemCount: displayMessages.length,
-                          itemBuilder: (context, index) {
-                            final displayMessage = displayMessages[index];
-                            final itemChildren = <Widget>[];
-                            if (_shouldShowDateDivider(
-                              displayMessages,
-                              index,
-                            )) {
-                              itemChildren.add(
-                                _buildDateDivider(
-                                  context,
-                                  displayMessage.createdAt!,
-                                ),
-                              );
-                            }
+                        return _withMessagesRefreshError(
+                          context,
+                          conversationRef: resolvedConversation.reference,
+                          showError: messagesSnapshot.hasError,
+                          child: ListView.builder(
+                            key: _messagesListKey(
+                              resolvedConversation.reference,
+                            ),
+                            controller: _messagesScrollController,
+                            reverse: true,
+                            padding: const EdgeInsetsDirectional.fromSTEB(
+                              ExpatlioDesign.pagePadding,
+                              ExpatlioDesign.space12,
+                              ExpatlioDesign.pagePadding,
+                              ExpatlioDesign.space112,
+                            ),
+                            itemCount: displayMessages.length,
+                            itemBuilder: (context, index) {
+                              final displayMessage = displayMessages[index];
+                              final itemChildren = <Widget>[];
+                              if (_shouldShowDateDivider(
+                                displayMessages,
+                                index,
+                              )) {
+                                itemChildren.add(
+                                  _buildDateDivider(
+                                    context,
+                                    displayMessage.createdAt!,
+                                  ),
+                                );
+                              }
 
-                            final record = displayMessage.record;
-                            final pendingMessage = displayMessage.pending;
-                            if (record != null && messageIsCallEvent(record)) {
-                              itemChildren.add(
-                                _buildCallEventMessageCard(
-                                  context,
-                                  message: record,
-                                ),
-                              );
+                              final record = displayMessage.record;
+                              final pendingMessage = displayMessage.pending;
+                              if (record != null &&
+                                  messageIsCallEvent(record)) {
+                                itemChildren.add(
+                                  _buildCallEventMessageCard(
+                                    context,
+                                    message: record,
+                                  ),
+                                );
+                                return Column(
+                                  key: chatThreadMessageItemKey(
+                                    displayMessage.itemKey,
+                                  ),
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: itemChildren,
+                                );
+                              }
+
+                              if (pendingMessage != null) {
+                                itemChildren.add(
+                                  _buildPendingMessageBubble(
+                                    context,
+                                    conversation: resolvedConversation,
+                                    message: pendingMessage,
+                                  ),
+                                );
+                              } else if (record != null) {
+                                final isCurrentUser =
+                                    record.senderId == _activeOwnerUid;
+                                final partnerReadAt = resolvedConversation
+                                    .lastReadAtByUserId[partnerRef.id];
+                                final isReadByPartner = isCurrentUser &&
+                                    record.createdAt != null &&
+                                    partnerReadAt != null &&
+                                    !partnerReadAt.isBefore(record.createdAt!);
+                                itemChildren.add(
+                                  _buildMessageBubble(
+                                    context,
+                                    message: record,
+                                    isCurrentUser: isCurrentUser,
+                                    isReadByPartner: isReadByPartner,
+                                  ),
+                                );
+                              }
+
                               return Column(
                                 key: chatThreadMessageItemKey(
                                   displayMessage.itemKey,
@@ -1687,43 +2629,8 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: itemChildren,
                               );
-                            }
-
-                            if (pendingMessage != null) {
-                              itemChildren.add(
-                                _buildPendingMessageBubble(
-                                  context,
-                                  conversation: conversation,
-                                  message: pendingMessage,
-                                ),
-                              );
-                            } else if (record != null) {
-                              final isCurrentUser =
-                                  record.senderId == currentUserUid;
-                              final partnerReadAt = conversation
-                                  .lastReadAtByUserId[partnerRef.id];
-                              final isReadByPartner = isCurrentUser &&
-                                  record.createdAt != null &&
-                                  partnerReadAt != null &&
-                                  !partnerReadAt.isBefore(record.createdAt!);
-                              itemChildren.add(
-                                _buildMessageBubble(
-                                  context,
-                                  message: record,
-                                  isCurrentUser: isCurrentUser,
-                                  isReadByPartner: isReadByPartner,
-                                ),
-                              );
-                            }
-
-                            return Column(
-                              key: chatThreadMessageItemKey(
-                                displayMessage.itemKey,
-                              ),
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: itemChildren,
-                            );
-                          },
+                            },
+                          ),
                         );
                       },
                     ),
@@ -1762,6 +2669,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                             child: TextFormField(
                               controller: _model.messageTextController,
                               focusNode: _model.messageFocusNode,
+                              enabled: !_chatActionsBlocked,
                               textCapitalization: TextCapitalization.sentences,
                               textInputAction: TextInputAction.send,
                               textAlignVertical: TextAlignVertical.center,
@@ -1777,7 +2685,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                               ),
                               style: ExpatlioDesign.formTextStyle(context),
                               onFieldSubmitted: (_) =>
-                                  _sendMessage(conversation),
+                                  _sendMessage(resolvedConversation),
                             ),
                           ),
                         ),
@@ -1792,9 +2700,9 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                             child: InkWell(
                               borderRadius: BorderRadius.circular(
                                   ExpatlioDesign.radiusMedium),
-                              onTap: _isSending
+                              onTap: _isSending || _chatActionsBlocked
                                   ? null
-                                  : () => _sendMessage(conversation),
+                                  : () => _sendMessage(resolvedConversation),
                               child: Icon(
                                 _isSending
                                     ? Icons.hourglass_top_rounded
@@ -1811,6 +2719,20 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                   ),
                 ),
               ),
+              if (showConversationRefreshError)
+                PositionedDirectional(
+                  start: ExpatlioDesign.pagePadding,
+                  end: ExpatlioDesign.pagePadding,
+                  top: ExpatlioDesign.space112,
+                  child: _buildRefreshErrorBanner(
+                    context,
+                    stateKey: chatThreadConversationInlineErrorKey,
+                    retryKey: chatThreadConversationRetryButtonKey,
+                    ruText: 'Не удалось обновить чат.',
+                    enText: 'Could not refresh chat.',
+                    onRetry: _retryConversation,
+                  ),
+                ),
             ],
           ),
         );

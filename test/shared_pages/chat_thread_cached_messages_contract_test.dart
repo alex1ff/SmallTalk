@@ -10,33 +10,50 @@ void main() {
 
     expect(
       source,
-      contains('UxSessionLoadedResultCache<List<MessagesRecord>>'),
+      contains('UxSessionLoadedResultCache<_ChatThreadMessagesCacheEntry>'),
     );
     expect(
       source,
-      contains('_messagesCacheByConversationPath.readItems'),
+      contains('_messagesCacheByConversationPath\n        .read('),
     );
     expect(
       source,
-      contains('_messagesCacheByConversationPath.writeItems'),
+      contains('_messagesCacheByConversationPath.write('),
     );
+    expect(source, contains('_ChatThreadMessagesCacheEntry('));
+    expect(source, contains('limit: _messageLimit'));
+    expect(source, contains('cachedMessagesEntry?.limit'));
+    expect(source, contains('UxSessionCacheLifecycle.register'));
     expect(source, contains('currentUserUid'));
     expect(
       source,
-      contains('initialData: _cachedMessages(conversation.reference)'),
+      matches(
+        RegExp(
+          r'initialData:\s*_cachedMessagesState\(\s*resolvedConversation\.reference,?\s*\)',
+        ),
+      ),
     );
     expect(
       source,
       matches(
         RegExp(
-          r'_rememberMessages\(\s*conversation\.reference,\s*confirmedMessages,',
+          r'_rememberMessages\(\s*resolvedConversation\.reference,\s*confirmedMessages,',
         ),
       ),
     );
-    expect(source, contains('messages == null || messages.isEmpty'));
+    expect(source, isNot(contains('messages == null || messages.isEmpty')));
     expect(source, contains('debugResetMessageCacheForTesting'));
-    expect(source, contains('messagesSnapshot.data ??'));
-    expect(source, contains('_cachedMessages(conversation.reference)'));
+    expect(source, contains('final retainedMessages = _retainedMessagesFor('));
+    expect(source, contains('_mergeNonAuthoritativeMessages('));
+    expect(source, contains('if (incomingMessagesState.isAuthoritative)'));
+    expect(source, contains('_cachedMessages(conversation)'));
+    expect(source, contains('StreamBuilder<ChatThreadMessagesLoadState>'));
+    expect(source, contains('snapshots(includeMetadataChanges: true)'));
+    expect(source, contains('snapshot.metadata.isFromCache'));
+    expect(source, contains('snapshot.metadata.hasPendingWrites'));
+    expect(source, contains('.where((state) => state.canResolveEmpty)'));
+    expect(source, contains('.where((state) => state.canResolveMissing)'));
+    expect(source, isNot(contains('queryMessagesRecord(')));
     expect(
         source, contains('final List<_PendingChatMessage> _pendingMessages'));
     expect(source, contains('_pendingMessages.add(pendingMessage)'));
@@ -68,14 +85,7 @@ void main() {
             "record.createdAt != null || !pendingKeys.contains(record.key)"));
     expect(source, contains('final confirmedMessages = messages'));
     expect(source, contains('.where((message) => message.createdAt != null)'));
-    expect(
-      source,
-      matches(
-        RegExp(
-          r'messagesSnapshot\.connectionState\s*!=\s*ConnectionState\.waiting',
-        ),
-      ),
-    );
+    expect(source, contains('_retainMessages('));
   });
 
   test('chat thread merge prunes confirmed pending and keeps newest first', () {
