@@ -243,6 +243,16 @@ UserRole? inferRoleFromUserDocument(UsersRecord? user) =>
       hasStudentSignals: _hasStudentRoleSignals(user),
     );
 
+Map<String, dynamic> buildCanonicalUserRoleUpdateData({
+  required UserRole role,
+}) {
+  final updateData = createUsersRecordData(role: role);
+  if (role == UserRole.student) {
+    updateData['availabilityToday'] = FieldValue.delete();
+  }
+  return updateData;
+}
+
 Future<UsersRecord?> persistCanonicalUserRole({
   required DocumentReference userRef,
   required UserRole role,
@@ -256,14 +266,7 @@ Future<UsersRecord?> persistCanonicalUserRole({
       grantStudentBonus &&
       !(existingUser?.hasBalanceST() ?? false);
 
-  final updateData = <String, dynamic>{
-    ...createUsersRecordData(
-      role: role,
-    ),
-  };
-  if (role == UserRole.student) {
-    updateData['availabilityToday'] = FieldValue.delete();
-  }
+  final updateData = buildCanonicalUserRoleUpdateData(role: role);
 
   await userRef.set(updateData, SetOptions(merge: true));
 

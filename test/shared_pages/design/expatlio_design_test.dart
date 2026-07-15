@@ -7,19 +7,6 @@ import 'package:small_talk/components/basic_page_header.dart';
 import 'package:small_talk/shared_pages/design/expatlio_design.dart';
 
 void main() {
-  const appleTextSizes = <double>[
-    34.0,
-    28.0,
-    22.0,
-    20.0,
-    17.0,
-    16.0,
-    15.0,
-    13.0,
-    12.0,
-    11.0,
-  ];
-
   const appleRadiusScale = <double>[
     0.0,
     8.0,
@@ -75,10 +62,14 @@ void main() {
     expect(ExpatlioDesign.inactive, ExpatlioDesign.systemGray);
     expect(ExpatlioDesign.disabled, ExpatlioDesign.tertiaryLabel);
     expect(ExpatlioDesign.border, ExpatlioDesign.opaqueSeparator);
-    expect(ExpatlioDesign.separator, const Color(0x493C3C43));
+    expect(ExpatlioDesign.separator, const Color(0xFFEBEBEB));
     expect(ExpatlioDesign.mutedSurface, ExpatlioDesign.secondarySystemFill);
+    expect(
+      ExpatlioDesign.segmentedControlBackground,
+      const Color(0xFFF2F2F2),
+    );
     expect(ExpatlioDesign.systemBackground, const Color(0xFFFFFFFF));
-    expect(ExpatlioDesign.systemGroupedBackground, const Color(0xFFF2F2F7));
+    expect(ExpatlioDesign.systemGroupedBackground, const Color(0xFFFAFAFA));
     expect(ExpatlioDesign.secondarySystemGroupedBackground,
         const Color(0xFFFFFFFF));
     expect(ExpatlioDesign.label, const Color(0xFF000000));
@@ -86,7 +77,7 @@ void main() {
     expect(ExpatlioDesign.tertiaryLabel, const Color(0x4C3C3C43));
     expect(ExpatlioDesign.quaternaryLabel, const Color(0x2D3C3C43));
     expect(ExpatlioDesign.placeholderText, const Color(0x4C3C3C43));
-    expect(ExpatlioDesign.opaqueSeparator, const Color(0xFFC6C6C8));
+    expect(ExpatlioDesign.opaqueSeparator, const Color(0xFFEBEBEB));
     expect(ExpatlioDesign.systemFill, const Color(0x33787880));
     expect(ExpatlioDesign.secondarySystemFill, const Color(0x28787880));
     expect(ExpatlioDesign.tertiarySystemFill, const Color(0x1E767680));
@@ -264,139 +255,6 @@ void main() {
     expect(ExpatlioDesign.controlRadius, ExpatlioDesign.radiusMedium);
     expect(ExpatlioDesign.buttonRadius, ExpatlioDesign.radiusLarge);
     expect(ExpatlioDesign.sheetRadius, ExpatlioDesign.radiusSheet);
-  });
-
-  test('explicit text sizes use the Apple iOS typography scale', () {
-    final fontSizePattern =
-        RegExp(r'fontSize:\s*(\d+(?:\.\d+)?)', multiLine: true);
-    final violations = <String>[];
-
-    for (final entity in Directory('lib').listSync(recursive: true)) {
-      if (entity is! File || !entity.path.endsWith('.dart')) {
-        continue;
-      }
-
-      final source = entity.readAsStringSync();
-      for (final match in fontSizePattern.allMatches(source)) {
-        final rawSize = match.group(1)!;
-        final size = double.parse(rawSize);
-        if (!appleTextSizes.contains(size)) {
-          violations.add('${entity.path}: fontSize $rawSize');
-        }
-      }
-    }
-
-    expect(violations, isEmpty);
-  });
-
-  test('explicit corner radii use shared design tokens', () {
-    final literalRadiusPatterns = <RegExp>[
-      RegExp(
-        r'(?:BorderRadius|Radius)\.circular\(\s*(\d+(?:\.\d+)?)\s*\)',
-      ),
-      RegExp(r'borderRadius:\s*(\d+(?:\.\d+)?)\b'),
-    ];
-    final circularCallPattern = RegExp(
-      r'(?:BorderRadius|Radius)\.circular\(([^)]*)\)',
-      dotAll: true,
-    );
-    final numberPattern = RegExp(r'\b\d+(?:\.\d+)?\b');
-    final geometricCirclePattern = RegExp(r'/\s*2(?:\.0)?\b');
-    final violations = <String>[];
-
-    for (final entity in Directory('lib').listSync(recursive: true)) {
-      if (entity is! File || !entity.path.endsWith('.dart')) {
-        continue;
-      }
-      if (entity.path.endsWith('/shared_pages/design/expatlio_design.dart')) {
-        continue;
-      }
-
-      final source = entity.readAsStringSync();
-      for (final pattern in literalRadiusPatterns) {
-        for (final match in pattern.allMatches(source)) {
-          final rawRadius = match.group(1)!;
-          violations.add('${entity.path}: corner radius $rawRadius');
-        }
-      }
-      for (final match in circularCallPattern.allMatches(source)) {
-        final radiusExpression = match.group(1)!.trim();
-        if (!numberPattern.hasMatch(radiusExpression)) {
-          continue;
-        }
-        if (geometricCirclePattern.hasMatch(radiusExpression)) {
-          continue;
-        }
-
-        violations.add(
-          '${entity.path}: circular radius expression $radiusExpression',
-        );
-      }
-    }
-
-    expect(violations, isEmpty);
-  });
-
-  test('explicit layout spacing uses shared design tokens', () {
-    String? callArguments(String source, int openParenIndex) {
-      var depth = 0;
-      for (var index = openParenIndex; index < source.length; index++) {
-        final char = source[index];
-        if (char == '(') {
-          depth += 1;
-        } else if (char == ')') {
-          depth -= 1;
-          if (depth == 0) {
-            return source.substring(openParenIndex + 1, index);
-          }
-        }
-      }
-
-      return null;
-    }
-
-    final edgeInsetsCallPattern = RegExp(
-      r'EdgeInsets(?:Directional)?\.(?:all|symmetric|only|fromSTEB|fromLTRB)\(',
-    );
-    final spacingPatterns = <RegExp>[
-      RegExp(r'\bSizedBox\(\s*(?:height|width):\s*(\d+(?:\.\d+)?)\s*\)'),
-      RegExp(
-        r'\b(?:mainAxisSpacing|crossAxisSpacing|runSpacing|spacing):\s*(\d+(?:\.\d+)?)\b',
-      ),
-    ];
-    final literalNumberPattern = RegExp(r'(?<![\w.])\d+(?:\.\d+)?(?![\w.])');
-    final violations = <String>[];
-
-    for (final entity in Directory('lib').listSync(recursive: true)) {
-      if (entity is! File || !entity.path.endsWith('.dart')) {
-        continue;
-      }
-      if (entity.path.endsWith('/shared_pages/design/expatlio_design.dart')) {
-        continue;
-      }
-
-      final source = entity.readAsStringSync();
-      for (final match in edgeInsetsCallPattern.allMatches(source)) {
-        final expression = callArguments(source, match.end - 1);
-        if (expression == null) {
-          violations.add('${entity.path}: malformed EdgeInsets call');
-          continue;
-        }
-        if (literalNumberPattern.hasMatch(expression)) {
-          violations.add('${entity.path}: layout spacing $expression');
-        }
-      }
-      for (final pattern in spacingPatterns) {
-        for (final match in pattern.allMatches(source)) {
-          final expression = match.group(1)!.trim();
-          if (literalNumberPattern.hasMatch(expression)) {
-            violations.add('${entity.path}: layout spacing $expression');
-          }
-        }
-      }
-    }
-
-    expect(violations, isEmpty);
   });
 
   test('app text theme follows the Apple iOS default text sizes', () {

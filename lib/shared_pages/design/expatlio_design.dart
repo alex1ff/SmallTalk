@@ -46,6 +46,7 @@ class ExpatlioDesign {
   static const Color disabled = tertiaryLabel;
   static const Color border = opaqueSeparator;
   static const Color mutedSurface = secondarySystemFill;
+  static const Color segmentedControlBackground = Color(0xFFF2F2F2);
   static const Color primary = Color(0xFF7430E8);
   static const Color primaryPressed = Color(0xFF5F24C8);
   static const Color primaryEnd = primary;

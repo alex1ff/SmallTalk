@@ -8,7 +8,7 @@ void main() {
         File('lib/components/segmented_tab_bar.dart').readAsStringSync();
 
     expect(source, contains('static const double height = 38.0;'));
-    expect(source, contains('ExpatlioDesign.mutedSurface'));
+    expect(source, contains('ExpatlioDesign.segmentedControlBackground'));
     expect(source, contains('ExpatlioDesign.card'));
     expect(source, contains('ExpatlioDesign.text'));
     expect(source, contains('ExpatlioDesign.inactive'));

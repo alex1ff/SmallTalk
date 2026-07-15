@@ -1,11 +1,20 @@
-import 'dart:io';
-
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:small_talk/auth/firebase_auth/auth_util.dart';
 import 'package:small_talk/authorization/shared/social_auth_entry_logic.dart';
 import 'package:small_talk/backend/schema/enums/enums.dart';
+import 'package:small_talk/backend/schema/users_record.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUpAll(() async {
+    setupFirebaseCoreMocks();
+    await Firebase.initializeApp();
+  });
+
   group('resolveSocialAuthEntryDecision', () {
     test('routes existing users to loading and ignores toggle', () {
       final decision = resolveSocialAuthEntryDecision(
@@ -67,27 +76,37 @@ void main() {
 
   group('inferRoleFromProfileShape', () {
     test('student role persistence deletes legacy availabilityToday', () {
-      final source = File(
-        'lib/authorization/shared/social_auth_entry_logic.dart',
-      ).readAsStringSync();
-      final persistRoleBody = RegExp(
-        r'Future<UsersRecord\?> persistCanonicalUserRole\([\s\S]*?\n}',
-      ).firstMatch(source)!.group(0)!;
+      final updateData = buildCanonicalUserRoleUpdateData(
+        role: UserRole.student,
+      );
 
-      expect(persistRoleBody, contains('role == UserRole.student'));
-      expect(persistRoleBody, contains("updateData['availabilityToday']"));
-      expect(persistRoleBody, contains('FieldValue.delete()'));
+      expect(updateData['role'], 'student');
+      expect(updateData['availabilityToday'], FieldValue.delete());
     });
 
-    test('does not treat availabilityToday as a teacher role signal', () {
-      final source = File(
-        'lib/authorization/shared/social_auth_entry_logic.dart',
-      ).readAsStringSync();
-      final teacherSignalsBody = RegExp(
-        r'bool _hasTeacherRoleSignals\([\s\S]*?\n}',
-      ).firstMatch(source)!.group(0)!;
+    test('native speaker role persistence leaves availabilityToday intact', () {
+      final updateData = buildCanonicalUserRoleUpdateData(
+        role: UserRole.native_speaker,
+      );
 
-      expect(teacherSignalsBody, isNot(contains('hasAvailabilityToday')));
+      expect(updateData['role'], 'native_speaker');
+      expect(updateData, isNot(contains('availabilityToday')));
+    });
+
+    test('availabilityToday alone does not infer a teacher role', () {
+      final user = UsersRecord.getDocumentFromData(
+        {
+          'uid': 'availability-only',
+          'availabilityToday': {
+            'enabled': true,
+            'intervals': const <dynamic>[],
+          },
+        },
+        UsersRecord.collection.doc('availability-only'),
+      );
+
+      expect(user.hasAvailabilityToday(), isTrue);
+      expect(inferRoleFromUserDocument(user), isNull);
     });
 
     test('infers native speaker when only teacher signals are present', () {

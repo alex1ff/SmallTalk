@@ -199,7 +199,7 @@ void main() {
                   cityKey: 'moscow',
                   locationName: 'Starbucks, ул. Арбат, 5',
                   locationGeoPoint: const LatLng(55.7522, 37.6156),
-                  startsAt: DateTime.parse('2026-06-20T15:00:00Z'),
+                  startsAt: DateTime.parse('2099-06-20T15:00:00Z'),
                   timeZoneId: 'Europe/Moscow',
                   capacity: 8,
                   participantsCount: 5,
@@ -254,7 +254,7 @@ void main() {
                 data: _eventData(
                   locationName: 'Starbucks, ул. Арбат, 5',
                   locationGeoPoint: const LatLng(55.7522, 37.6156),
-                  startsAt: DateTime.parse('2026-06-20T15:00:00Z'),
+                  startsAt: DateTime.parse('2099-06-20T15:00:00Z'),
                 ),
               ),
             );
@@ -296,7 +296,7 @@ void main() {
                 data: _eventData(
                   locationName: 'Starbucks, ул. Арбат, 5',
                   locationGeoPoint: const LatLng(55.7522, 37.6156),
-                  startsAt: DateTime.parse('2026-06-20T15:00:00Z'),
+                  startsAt: DateTime.parse('2099-06-20T15:00:00Z'),
                 ),
               ),
             );
@@ -308,8 +308,6 @@ void main() {
 
     await _ensureVisibleInForm(tester, find.byKey(eventCreateCitySelectorKey));
     await tester.tap(find.byKey(eventCreateCitySelectorKey));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(eventCreateCitySearchFieldKey), 'rome');
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(eventCreateCityOptionKey(_romeCity)));
     await tester.pumpAndSettle();

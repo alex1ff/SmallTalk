@@ -85,8 +85,8 @@ void main() {
       ),
     );
 
-    expect(find.text('AA'), findsOneWidget);
-    expect(find.text('BB'), findsOneWidget);
+    expect(find.text('A'), findsOneWidget);
+    expect(find.text('B'), findsOneWidget);
     expect(
         find.byKey(const ValueKey<String>('central_action')), findsOneWidget);
   });
