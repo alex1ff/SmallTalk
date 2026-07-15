@@ -986,6 +986,101 @@ void main() {
     expect(_conversationRow('direct-auth-delete'), findsOneWidget);
   });
 
+  testWidgets(
+      'optimistic hide rollback returns empty only after confirmed empty',
+      (tester) async {
+    final sources = _FavoriteSources();
+    final writes = <Completer<void>>[];
+    final friend = UsersRecord.collection.doc('friend-rollback-empty');
+    final conversation = _conversation(
+      id: 'rollback-empty',
+      ownerUid: 'user-a',
+      partnerUid: friend.id,
+    );
+    await _mount(
+      tester,
+      sources,
+      hiddenChatWriter: (_, __) {
+        final write = Completer<void>();
+        writes.add(write);
+        return write.future;
+      },
+    );
+    await _emitFriends(
+      tester,
+      sources,
+      'user-a',
+      _friendsState(
+        ownerUid: 'user-a',
+        friends: <DocumentReference>[friend],
+        authoritative: true,
+      ),
+    );
+    await _emitConversations(
+      tester,
+      sources,
+      'user-a',
+      <ConversationsRecord>[conversation],
+    );
+    await _emitEventChats(tester, sources, 'user-a');
+    await _selectFriendsTab(tester);
+
+    final row = _conversationRow('rollback-empty');
+    final deleteButton = find.byKey(
+      favoriteChatDeleteButtonKey('conversation:rollback-empty'),
+    );
+    expect(row, findsOneWidget);
+    expect(find.byKey(favoriteFriendsEmptyKey), findsNothing);
+
+    await tester.tap(deleteButton);
+    await tester.pump();
+    expect(writes, hasLength(1));
+    expect(row, findsNothing);
+    expect(find.byKey(favoriteFriendsEmptyKey), findsOneWidget);
+
+    await _emitConversations(
+      tester,
+      sources,
+      'user-a',
+      const <ConversationsRecord>[],
+      authoritative: false,
+    );
+    writes.first.completeError(StateError('cached refresh failed'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(row, findsOneWidget);
+    expect(find.byKey(favoriteFriendsEmptyKey), findsNothing);
+    expect(find.text('Не удалось удалить чат'), findsOneWidget);
+    expect(find.byKey(favoriteFriendsLoadErrorKey), findsNothing);
+    expect(find.byKey(favoriteFriendsInlineErrorKey), findsNothing);
+
+    ScaffoldMessenger.of(tester.element(find.byType(FavoriteWidget)))
+        .removeCurrentSnackBar();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(deleteButton);
+    await tester.pump();
+    expect(writes, hasLength(2));
+    expect(row, findsNothing);
+
+    await _emitConversations(
+      tester,
+      sources,
+      'user-a',
+      const <ConversationsRecord>[],
+    );
+    writes.last.completeError(StateError('server-confirmed empty'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(row, findsNothing);
+    expect(find.byKey(favoriteFriendsEmptyKey), findsOneWidget);
+    expect(find.text('Не удалось удалить чат'), findsOneWidget);
+    expect(find.byKey(favoriteFriendsLoadErrorKey), findsNothing);
+    expect(find.byKey(favoriteFriendsInlineErrorKey), findsNothing);
+  });
+
   testWidgets('raw A B A before one frame recreates A sources and drops A1',
       (tester) async {
     final auth = StreamController<String>.broadcast(sync: true);

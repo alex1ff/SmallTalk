@@ -413,7 +413,7 @@ Retry behavior:
 - [x] Добавить widget-тесты на сохранение previous data при refresh.
 - [x] Добавить widget-тесты на optimistic send message.
 - [x] Добавить widget-тесты на optimistic join/leave event.
-- [ ] Добавить widget-тест: optimistic rollback возвращает empty только если последняя успешная server/cache загрузка была пустой.
+- [x] Добавить widget-тест: optimistic rollback возвращает empty только если последняя успешная server/cache загрузка была пустой.
 - [ ] Проверить вручную вкладки `Чаты`, `События`, `Словарь`, `Профиль`.
 - [ ] Проверить повторный заход на экран после навигации назад/вперед.
 - [ ] Запустить `flutter analyze`.
