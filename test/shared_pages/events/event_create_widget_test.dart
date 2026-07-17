@@ -21,6 +21,7 @@ import 'package:small_talk/services/event_city_catalog.dart';
 import 'package:small_talk/services/event_city_selection_source.dart';
 import 'package:small_talk/services/event_selected_city_state.dart';
 import 'package:small_talk/services/event_language_catalog.dart';
+import 'package:small_talk/services/event_list_cache_invalidation.dart';
 import 'package:small_talk/services/event_list_date_bounds.dart';
 import 'package:small_talk/services/events_analytics_service.dart';
 
@@ -1910,6 +1911,12 @@ void main() {
 
   testWidgets('successful create opens created event detail', (tester) async {
     var submitCount = 0;
+    var cacheInvalidations = 0;
+    void recordCacheInvalidation() => cacheInvalidations += 1;
+    EventListCacheInvalidation.register(recordCacheInvalidation);
+    addTearDown(
+      () => EventListCacheInvalidation.unregister(recordCacheInvalidation),
+    );
     final analyticsTracker = _RecordingEventsAnalyticsTracker();
     final router = _buildEventCreateRouter(
       initialSelectedCity: const EventSelectedCity(
@@ -1934,6 +1941,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(submitCount, 1);
+    expect(cacheInvalidations, 1);
     expect(
       analyticsTracker
           .payloadsFor(EventsAnalyticsService.eventCreatedEventName),

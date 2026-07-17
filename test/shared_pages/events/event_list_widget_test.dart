@@ -31,6 +31,7 @@ import 'package:small_talk/services/event_list_date_bounds.dart';
 import 'package:small_talk/services/event_list_repository.dart';
 import 'package:small_talk/services/event_level_helper.dart';
 import 'package:small_talk/services/event_language_catalog.dart';
+import 'package:small_talk/services/event_list_cache_invalidation.dart';
 import 'package:small_talk/services/events_analytics_service.dart';
 import 'package:small_talk/services/user_public_profile_preload_repository.dart';
 
@@ -3653,9 +3654,10 @@ void main() {
     expect(find.byKey(eventListLoadingStateKey), findsNothing);
   });
 
-  testWidgets('does not cache empty event list for default filters',
+  testWidgets('reuses cached confirmed empty when the page is reopened',
       (tester) async {
     var calls = 0;
+    currentUser = _TestAuthUser('profile-city-empty-cache-user');
     currentUserDocument = _userFixture(
       uid: 'profile-city-empty-cache-user',
       data: {
@@ -3676,21 +3678,10 @@ void main() {
       required isStream,
     }) async {
       calls += 1;
-      if (calls == 1) {
-        return FFFirestorePage<EventsRecord>(const [], null, null);
+      if (calls > 1) {
+        throw StateError('confirmed empty cache must avoid a reload');
       }
-
-      return FFFirestorePage<EventsRecord>(
-        [
-          _eventsRecordFixture(
-            'fresh-event',
-            title: 'Fresh loaded event',
-            startsAt: DateTime.utc(2035, 6, 14, 15),
-          ),
-        ],
-        null,
-        null,
-      );
+      return FFFirestorePage<EventsRecord>(const [], null, null);
     };
 
     Widget buildList() => _buildTestApp(
@@ -3712,12 +3703,308 @@ void main() {
     await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
     await tester.pumpAndSettle();
     await tester.pumpWidget(buildList());
+
+    expect(calls, 1);
+    expect(find.byKey(eventListEmptyStateKey), findsOneWidget);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+    expect(find.byKey(eventListRefreshingIndicatorKey), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('reloads a confirmed-empty cache entry after its ttl',
+      (tester) async {
+    var calls = 0;
+    var nowUtc = DateTime.utc(2035, 6, 14, 9);
+    final refreshCompleter = Completer<FFFirestorePage<EventsRecord>>();
+    addTearDown(() {
+      if (!refreshCompleter.isCompleted) {
+        refreshCompleter.complete(
+          FFFirestorePage<EventsRecord>(const [], null, null),
+        );
+      }
+    });
+    currentUser = _TestAuthUser('profile-city-empty-cache-ttl-user');
+    currentUserDocument = _userFixture(
+      uid: 'profile-city-empty-cache-ttl-user',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) {
+      calls += 1;
+      return calls == 1
+          ? Future.value(
+              FFFirestorePage<EventsRecord>(const [], null, null),
+            )
+          : refreshCompleter.future;
+    };
+
+    Widget buildList() => _buildTestApp(
+          home: EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            nowUtcProvider: () => nowUtc,
+            eventPageLoader: pageLoader,
+          ),
+        );
+
+    await tester.pumpWidget(buildList());
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+    expect(find.byKey(eventListEmptyStateKey), findsOneWidget);
+
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    await tester.pumpAndSettle();
+    nowUtc = nowUtc.add(const Duration(minutes: 4, seconds: 59));
+    await tester.pumpWidget(buildList());
+
+    expect(calls, 1);
+    expect(find.byKey(eventListEmptyStateKey), findsOneWidget);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    await tester.pumpAndSettle();
+    nowUtc = nowUtc.add(const Duration(seconds: 1));
+    await tester.pumpWidget(buildList());
     await tester.pump();
+
+    expect(calls, 2);
+    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+
+    refreshCompleter.complete(
+      FFFirestorePage<EventsRecord>(
+        [
+          _eventsRecordFixture(
+            'fresh-event-after-empty-cache-ttl',
+            title: 'Fresh event after empty cache ttl',
+            startsAt: DateTime.utc(2035, 6, 14, 15),
+          ),
+        ],
+        null,
+        null,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+    expect(find.text('Fresh event after empty cache ttl'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('event mutation invalidation evicts confirmed empty',
+      (tester) async {
+    var calls = 0;
+    currentUser = _TestAuthUser('event-empty-cache-invalidation-user');
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) async {
+      calls += 1;
+      return calls == 1
+          ? FFFirestorePage<EventsRecord>(const [], null, null)
+          : FFFirestorePage<EventsRecord>(
+              [
+                _eventsRecordFixture(
+                  'event-after-cache-invalidation',
+                  title: 'Event after cache invalidation',
+                ),
+              ],
+              null,
+              null,
+            );
+    };
+
+    Widget buildList() => _buildTestApp(
+          home: EventListWidget(
+            initialSelectedCity: _selectedCityFixture(),
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+            eventPageLoader: pageLoader,
+          ),
+        );
+
+    await tester.pumpWidget(buildList());
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+    expect(find.byKey(eventListEmptyStateKey), findsOneWidget);
+
+    EventListCacheInvalidation.invalidate();
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(buildList());
     await tester.pumpAndSettle();
 
     expect(calls, 2);
     expect(find.byKey(eventListEmptyStateKey), findsNothing);
-    expect(find.text('Fresh loaded event'), findsOneWidget);
+    expect(find.text('Event after cache invalidation'), findsOneWidget);
+  });
+
+  testWidgets('does not negative-cache an empty page with a next cursor',
+      (tester) async {
+    final marker = _FakeQueryDocumentSnapshot('empty-first-page-cursor');
+    final pendingNextPage = Completer<FFFirestorePage<EventsRecord>>();
+    final receivedMarkers = <DocumentSnapshot?>[];
+    addTearDown(() {
+      if (!pendingNextPage.isCompleted) {
+        pendingNextPage.complete(
+          FFFirestorePage<EventsRecord>(const [], null, null),
+        );
+      }
+    });
+    currentUser = _TestAuthUser('event-empty-cursor-cache-user');
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) {
+      receivedMarkers.add(nextPageMarker);
+      if (nextPageMarker != null) {
+        return pendingNextPage.future;
+      }
+      return Future.value(
+        FFFirestorePage<EventsRecord>(const [], null, marker),
+      );
+    };
+
+    Widget buildList() => _buildTestApp(
+          home: EventListWidget(
+            initialSelectedCity: _selectedCityFixture(),
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+            eventPageLoader: pageLoader,
+          ),
+        );
+
+    await tester.pumpWidget(buildList());
+    await tester.pumpAndSettle();
+
+    expect(receivedMarkers, <DocumentSnapshot?>[null, marker]);
+
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(buildList());
+
+    expect(receivedMarkers, <DocumentSnapshot?>[null, marker, null]);
+    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
+  });
+
+  testWidgets('does not negative-cache raw events that produce no cards',
+      (tester) async {
+    var calls = 0;
+    currentUser = _TestAuthUser('event-invalid-raw-cache-user');
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) async {
+      calls += 1;
+      return FFFirestorePage<EventsRecord>(
+        [
+          _eventsRecordFixture(
+            calls == 1 ? 'raw-event-without-start' : 'fresh-valid-event',
+            title: calls == 1 ? 'Invalid raw event' : 'Fresh valid event',
+            includeStartsAt: calls != 1,
+          ),
+        ],
+        null,
+        null,
+      );
+    };
+
+    Widget buildList() => _buildTestApp(
+          home: EventListWidget(
+            initialSelectedCity: _selectedCityFixture(),
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+            eventPageLoader: pageLoader,
+          ),
+        );
+
+    await tester.pumpWidget(buildList());
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+    expect(find.byKey(eventListEmptyStateKey), findsOneWidget);
+
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(buildList());
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(find.text('Fresh valid event'), findsOneWidget);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+  });
+
+  testWidgets('does not negative-cache a failed first page', (tester) async {
+    var calls = 0;
+    currentUser = _TestAuthUser('event-error-cache-user');
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) async {
+      calls += 1;
+      if (calls == 1) {
+        throw StateError('first page failed');
+      }
+      return FFFirestorePage<EventsRecord>(const [], null, null);
+    };
+
+    Widget buildList() => _buildTestApp(
+          home: EventListWidget(
+            initialSelectedCity: _selectedCityFixture(),
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+            eventPageLoader: pageLoader,
+          ),
+        );
+
+    await tester.pumpWidget(buildList());
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+    expect(find.byKey(eventListErrorStateKey), findsOneWidget);
+
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(buildList());
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(find.byKey(eventListErrorStateKey), findsNothing);
+    expect(find.byKey(eventListEmptyStateKey), findsOneWidget);
   });
 
   testWidgets('does not show loading state before city is selected',
@@ -13104,6 +13391,7 @@ EventsRecord _eventsRecordFixture(
   String id, {
   String title = 'Разговорный клуб',
   DateTime? startsAt,
+  bool includeStartsAt = true,
   bool includeCapacity = true,
   bool includeParticipantsCount = true,
   int capacity = 10,
@@ -13123,7 +13411,8 @@ EventsRecord _eventsRecordFixture(
       'countryCode': 'RU',
       'cityKey': 'moscow',
       'locationName': 'Starbucks, ул. Арбат, 5',
-      'startsAt': startsAt ?? DateTime.utc(2035, 6, 14, 15),
+      if (includeStartsAt)
+        'startsAt': startsAt ?? DateTime.utc(2035, 6, 14, 15),
       'timeZoneId': 'Europe/Moscow',
       if (includeCapacity) 'capacity': capacity,
       if (includeParticipantsCount) 'participantsCount': participantsCount,

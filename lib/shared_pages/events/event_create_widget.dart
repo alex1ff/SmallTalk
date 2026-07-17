@@ -21,6 +21,7 @@ import '/services/event_selected_city_state.dart';
 import '/services/event_start_time_validation.dart';
 import '/services/event_temporary_city_selection.dart';
 import '/services/event_language_catalog.dart';
+import '/services/event_list_cache_invalidation.dart';
 import '/services/event_level_helper.dart';
 import '/services/events_analytics_service.dart';
 
@@ -1527,6 +1528,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
           tracker: analyticsTracker,
         );
       }
+      EventListCacheInvalidation.invalidate();
     } catch (error) {
       if (!mounted) {
         return;

@@ -31,7 +31,9 @@ import '/services/event_list_date_bounds.dart';
 import '/services/event_list_repository.dart';
 import '/services/event_level_helper.dart';
 import '/services/event_language_catalog.dart';
+import '/services/event_list_cache_invalidation.dart';
 import '/services/events_analytics_service.dart';
+import '/services/ux_session_cache_lifecycle.dart';
 import '/services/user_public_profile_preload_repository.dart';
 
 const ValueKey<String> eventListCreateButtonKey =
@@ -190,8 +192,12 @@ final _eventListPublicProfilePreloadRepository =
 final _eventListParticipantActionCoordinator =
     _EventListParticipantActionCoordinator();
 
-void debugClearEventListCache() {
+void _clearEventListCardsCache() {
   _eventListCardsCache.clear();
+}
+
+void debugClearEventListCache() {
+  _clearEventListCardsCache();
   _eventListPublicProfilePreloadRepository.clear();
   _eventListParticipantActionCoordinator.clear();
 }
@@ -498,6 +504,8 @@ class _EventListWidgetState extends State<EventListWidget> {
   @override
   void initState() {
     super.initState();
+    EventListCacheInvalidation.register(_clearEventListCardsCache);
+    UxSessionCacheLifecycle.register(_clearEventListCardsCache);
     _selectedCity = widget.initialSelectedCity;
     _eventCardsOverrideSourceRevision =
         _eventListParticipantActionCoordinator.sourceRevisionForOverride(
@@ -1156,6 +1164,17 @@ class _EventListWidgetState extends State<EventListWidget> {
                 _eventListPaginationSession = paginationSession;
                 _scheduleEventListPaginationCheck(paginationSession);
                 _rememberLoadedCards(key, baseLoad.cards);
+                if (baseLoad.cards.isEmpty &&
+                    baseLoad.events.isEmpty &&
+                    baseLoad.nextPageMarker == null) {
+                  _writeEventListCardsCacheIfOwner(
+                    key: key,
+                    cacheOwnerToken: cacheOwnerToken,
+                    cards: const <EventListCardViewModel>[],
+                    fetchedAtUtc: normalizedNowUtc,
+                    hydratedProfileCardCount: 0,
+                  );
+                }
                 if (baseLoad.cards.isNotEmpty) {
                   paginationSession.pendingEnrichmentEventIds.addAll(
                     baseLoad.cards.map((card) => card.eventId),
