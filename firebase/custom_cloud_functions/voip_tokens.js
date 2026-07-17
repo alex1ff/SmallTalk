@@ -1,18 +1,19 @@
 const admin = require("firebase-admin");
+const {FieldValue} = require("firebase-admin/firestore");
 
 const TOKEN_COLLECTION = "userPrivateTokens";
 const DEFAULT_MIGRATION_LIMIT = 250;
 const LEGACY_USER_TOKEN_DELETE_FIELDS = {
-  voipToken: admin.firestore.FieldValue.delete(),
-  voipTokenUpdatedAt: admin.firestore.FieldValue.delete(),
-  voipPushToken: admin.firestore.FieldValue.delete(),
-  voipPushTokenUpdatedAt: admin.firestore.FieldValue.delete(),
+  voipToken: FieldValue.delete(),
+  voipTokenUpdatedAt: FieldValue.delete(),
+  voipPushToken: FieldValue.delete(),
+  voipPushTokenUpdatedAt: FieldValue.delete(),
 };
 const PRIVATE_TOKEN_CLEAR_FIELDS = {
-  voipToken: admin.firestore.FieldValue.delete(),
-  voipTokenUpdatedAt: admin.firestore.FieldValue.delete(),
-  voipPushToken: admin.firestore.FieldValue.delete(),
-  voipPushTokenUpdatedAt: admin.firestore.FieldValue.delete(),
+  voipToken: FieldValue.delete(),
+  voipTokenUpdatedAt: FieldValue.delete(),
+  voipPushToken: FieldValue.delete(),
+  voipPushTokenUpdatedAt: FieldValue.delete(),
 };
 
 function normalizeVoipToken(value) {
