@@ -1,5 +1,6 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+const { isSessionParticipant } = require("./session_participants");
 
 // ─── Pricing ────────────────────────────────────────────────────────────────
 // Student pays ~45-50 RUB/min (10 SmallTalks = 4990₽, 20 SmallTalks = 8900₽)
@@ -70,7 +71,7 @@ exports.endSession = functions.https.onCall(async (data, context) => {
       const sessionData = sessionDoc.data() || {};
       console.log("📋 Current session status:", sessionData.status);
 
-      if (sessionData.studentId !== userId && sessionData.tutorId !== userId) {
+      if (!isSessionParticipant(sessionData, userId)) {
         console.log("❌ Permission denied - user is not a participant");
         throw new functions.https.HttpsError(
           "permission-denied",

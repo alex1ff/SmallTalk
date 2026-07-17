@@ -17,12 +17,36 @@ service cloud.firestore {
       return isSignedIn() && userRef == currentUserRef();
     }
 
+    function hasParticipantIds(data) {
+      return data.keys().hasAny(['participantIds']) &&
+        data.participantIds is list;
+    }
+
     function isSessionParticipant(data) {
       return isSignedIn() && (
+        (hasParticipantIds(data) && request.auth.uid in data.participantIds) ||
         data.studentId == request.auth.uid ||
         data.tutorId == request.auth.uid ||
         data.currentTutorId == request.auth.uid
       );
+    }
+
+    function optionalSessionFieldUnchanged(fieldName) {
+      return (
+        !resource.data.keys().hasAny([fieldName]) &&
+        !request.resource.data.keys().hasAny([fieldName])
+      ) || (
+        resource.data.keys().hasAny([fieldName]) &&
+        request.resource.data.keys().hasAny([fieldName]) &&
+        request.resource.data[fieldName] == resource.data[fieldName]
+      );
+    }
+
+    function sessionAccessFieldsUnchanged() {
+      return optionalSessionFieldUnchanged('studentId') &&
+        optionalSessionFieldUnchanged('tutorId') &&
+        optionalSessionFieldUnchanged('currentTutorId') &&
+        optionalSessionFieldUnchanged('participantIds');
     }
 
     function isPromoCodeRedeemUpdate() {
@@ -52,9 +76,25 @@ service cloud.firestore {
 
     match /videoSessions/{sessionId} {
       allow create: if isSignedIn() &&
-        request.resource.data.studentId == request.auth.uid;
+        request.resource.data.studentId == request.auth.uid &&
+        (
+          !request.resource.data.keys().hasAny(['tutorId']) ||
+          request.resource.data.tutorId == null
+        ) &&
+        (
+          !request.resource.data.keys().hasAny(['currentTutorId']) ||
+          request.resource.data.currentTutorId == null
+        ) &&
+        (
+          !hasParticipantIds(request.resource.data) ||
+          (
+            request.resource.data.participantIds.size() == 1 &&
+            request.auth.uid in request.resource.data.participantIds
+          )
+        );
       allow read: if isSessionParticipant(resource.data);
-      allow update: if isSessionParticipant(resource.data);
+      allow update: if isSessionParticipant(resource.data) &&
+        sessionAccessFieldsUnchanged();
       allow delete: if false;
     }
 

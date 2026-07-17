@@ -6,6 +6,7 @@ const {
   getDailyRoom,
   getRoomNameFromUrl,
 } = require("./daily_room");
+const { isSessionParticipant } = require("./session_participants");
 
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 
@@ -42,7 +43,7 @@ exports.getSessionTokens = functions
   const isStudent = sessionData.studentId === userId;
   const isTutor = sessionData.tutorId === userId;
 
-  if (!isStudent && !isTutor) {
+  if (!isSessionParticipant(sessionData, userId)) {
     throw new functions.https.HttpsError(
       "permission-denied",
       "Not allowed to access this session",

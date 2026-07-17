@@ -1,5 +1,6 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+const { isSessionParticipant } = require("./session_participants");
 
 const MAX_COMMENT_LENGTH = 1000;
 
@@ -87,14 +88,15 @@ exports.submitReview = functions.https.onCall(async (data, context) => {
       }
 
       const sessionData = sessionSnap.data() || {};
-      const isStudent = sessionData.studentId === userId;
-      const isTutor = sessionData.tutorId === userId;
-      if (!isStudent && !isTutor) {
+      if (!isSessionParticipant(sessionData, userId)) {
         throw new functions.https.HttpsError(
           "permission-denied",
           "You are not a participant of this session",
         );
       }
+
+      const isStudent = sessionData.studentId === userId;
+      const isTutor = sessionData.tutorId === userId;
 
       const targetUserId = isStudent ? sessionData.tutorId : sessionData.studentId;
       if (!targetUserId || typeof targetUserId !== "string") {

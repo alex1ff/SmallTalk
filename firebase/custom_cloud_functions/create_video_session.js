@@ -6,6 +6,7 @@ const {
   createMeetingToken,
 } = require("./daily_room");
 const { evaluateTutorAvailabilityWindow } = require("./availability");
+const { buildSessionParticipantIds } = require("./session_participants");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -567,6 +568,7 @@ exports.createVideoSession = functions
       const sessionData = {
         studentId,
         tutorId: null,
+        participantIds: buildSessionParticipantIds(studentId),
         language,
         status: "searching",
         createdAt: admin.firestore.FieldValue.serverTimestamp(),

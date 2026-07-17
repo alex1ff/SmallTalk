@@ -8,6 +8,7 @@ const {
   getRoomNameFromUrl,
 } = require("./daily_room");
 const { evaluateTutorAvailabilityWindow } = require("./availability");
+const { buildSessionParticipantIds } = require("./session_participants");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -467,6 +468,10 @@ exports.acceptCall = functions
           const sessionUpdate = {
             // Обновляем основные поля
             tutorId: tutorId,
+            participantIds: buildSessionParticipantIds(
+              sessionData.studentId,
+              tutorId,
+            ),
             status: "active",
             acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
             startedAt: admin.firestore.FieldValue.serverTimestamp(),

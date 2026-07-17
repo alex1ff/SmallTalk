@@ -1,6 +1,7 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const axios = require("axios");
+const { isSessionParticipant } = require("./session_participants");
 
 const deepgramSecrets = ["DEEPGRAM_API_KEY"];
 const DEEPGRAM_GRANT_URL = "https://api.deepgram.com/v1/auth/grant";
@@ -47,9 +48,7 @@ exports.getDeepgramToken = functions
     }
 
     const sessionData = sessionSnap.data() || {};
-    const isStudent = sessionData.studentId === userId;
-    const isTutor = sessionData.tutorId === userId;
-    if (!isStudent && !isTutor) {
+    if (!isSessionParticipant(sessionData, userId)) {
       throw new functions.https.HttpsError(
         "permission-denied",
         "Not allowed to access this session",
