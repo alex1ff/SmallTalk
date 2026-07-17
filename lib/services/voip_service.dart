@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -201,6 +202,20 @@ bool voipIncomingCallPayloadHasExpired(
   }
 
   return !parsedExpiresAt.isAfter(now ?? DateTime.now());
+}
+
+@visibleForTesting
+bool voipIncomingCallShouldUseInAppNavigation(
+  Map<String, dynamic> data, {
+  AppLifecycleState? lifecycleState,
+}) {
+  final isForeground = lifecycleState == AppLifecycleState.resumed ||
+      lifecycleState == AppLifecycleState.inactive;
+  if (!isForeground) {
+    return false;
+  }
+
+  return _voipStringFromPayload(data, 'scenario') == 'student_student';
 }
 
 Iterable<dynamic> _voipActiveCallEntries(dynamic activeCalls) {
@@ -1101,6 +1116,7 @@ class VoIPService {
             callerId: message.data['callerId'] ?? '',
             callerPhoto: message.data['callerPhoto'],
             extraData: voipIncomingCallExtraDataFromPayload(message.data),
+            lifecycleState: WidgetsBinding.instance.lifecycleState,
           );
         } catch (e) {
           debugPrint('❌ VoIPService: Failed to show CallKit in foreground: $e');
@@ -1289,6 +1305,7 @@ class VoIPService {
         if (callerPhoto != null) 'studentPhoto': callerPhoto,
         if (payloadExpiresAt != null) 'expiresAt': payloadExpiresAt,
       }),
+      lifecycleState: WidgetsBinding.instance.lifecycleState,
     );
   }
 
@@ -1538,10 +1555,21 @@ class VoIPService {
     required String callerId,
     String? callerPhoto,
     Map<String, dynamic>? extraData,
+    AppLifecycleState? lifecycleState,
   }) async {
     try {
       if (extraData != null && voipIncomingCallPayloadHasExpired(extraData)) {
         debugPrint('ℹ️ VoIPService: Ignoring expired incoming call payload');
+        return;
+      }
+      if (extraData != null &&
+          voipIncomingCallShouldUseInAppNavigation(
+            extraData,
+            lifecycleState: lifecycleState,
+          )) {
+        debugPrint(
+          'ℹ️ VoIPService: Foreground student match uses in-app navigation',
+        );
         return;
       }
 

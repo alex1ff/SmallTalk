@@ -2592,7 +2592,6 @@ test("background responder stale-before-push flow cancels notification", async (
       currentSessionId: "session-ab",
     }],
   ]);
-  let transactionCount = 0;
   const fakeDb = {
     collection: (collectionName) => ({
       doc: (docId) => ({
@@ -2604,32 +2603,21 @@ test("background responder stale-before-push flow cancels notification", async (
         }),
       }),
     }),
-    runTransaction: async (callback) => {
-      transactionCount += 1;
-      const result = await callback({
-        get: async (ref) => ({
-          exists: store.has(ref.path),
-          data: () => store.get(ref.path),
-        }),
-        set: (ref, value) => {
-          store.set(ref.path, value);
-        },
-        update: (ref, update) => {
-          store.set(ref.path, {
-            ...store.get(ref.path),
-            ...update,
-          });
-        },
-      });
-      if (transactionCount === 1) {
-        store.set("searchRequests/student-b", {
-          ...store.get("searchRequests/student-b"),
-          appState: SEARCH_REQUEST_APP_STATE.FOREGROUND,
-          backgroundExpiresAt: null,
+    runTransaction: async (callback) => callback({
+      get: async (ref) => ({
+        exists: store.has(ref.path),
+        data: () => store.get(ref.path),
+      }),
+      set: (ref, value) => {
+        store.set(ref.path, value);
+      },
+      update: (ref, update) => {
+        store.set(ref.path, {
+          ...store.get(ref.path),
+          ...update,
         });
-      }
-      return result;
-    },
+      },
+    }),
   };
 
   const result = await maybeNotifyBackgroundStudentResponder({
@@ -2640,6 +2628,13 @@ test("background responder stale-before-push flow cancels notification", async (
     requesterData: {
       displayName: "Joining Student",
       photoUrl: "joining-photo",
+    },
+    prePushWait: async () => {
+      store.set("searchRequests/student-b", {
+        ...store.get("searchRequests/student-b"),
+        appState: SEARCH_REQUEST_APP_STATE.FOREGROUND,
+        backgroundExpiresAt: null,
+      });
     },
   });
 
@@ -5074,11 +5069,14 @@ if (!hasFirestoreEmulator) {
     await seedStudent(studentUid, {
       display_name: "Student",
       photo_url: "student-photo",
+      Country_NS: {code: "FR"},
       profileCity: {key: cityKey},
     });
     await seedTeacher(teacherUid, {
       display_name: "Teacher",
       photo_url: "teacher-photo",
+      level: null,
+      Country_NS: {code: "FR"},
       profileCity: {key: cityKey},
     });
     await db.collection("userPrivateTokens").doc(teacherUid).set({
@@ -5088,7 +5086,8 @@ if (!hasFirestoreEmulator) {
     let teacherPushSendCount = 0;
     let teacherPushCallData = null;
     const response = await startSearchCallable({
-      preferredPartnerLevel: "B1",
+      preferredPartnerLevel: "C1",
+      countryCode: "FR",
     }, authContext(studentUid), {
       teacherResponderPushSender: async (responderId, callData) => {
         teacherPushSendCount += 1;
@@ -6457,7 +6456,7 @@ if (!hasFirestoreEmulator) {
     });
   });
 
-  test("startSearch callable chooses exact level before adjacent", async () => {
+  test("startSearch callable prefers matching student before teacher fallback", async () => {
     const requesterUid = uniqueId("exact-level-requester");
     const adjacentStudentUid = uniqueId("adjacent-level-student");
     const exactTeacherUid = uniqueId("exact-level-teacher");
@@ -6534,28 +6533,31 @@ if (!hasFirestoreEmulator) {
 
       assert.equal(adjacentStudentResponse.status, "active");
       assert.equal(response.status, "matched");
-      assert.equal(response.matchedUserId, exactTeacherUid);
-      assert.equal(response.matchedRole, "native_speaker");
-      assert.equal(response.scenario, "student_teacher");
+      assert.equal(response.matchedUserId, adjacentStudentUid);
+      assert.equal(response.matchedRole, "student");
+      assert.equal(response.scenario, "student_student");
       assert.equal(sessionSnapshot.exists, true);
       assert.deepEqual(sessionData.availableTutors, [
-        exactTeacherUid,
         adjacentStudentUid,
+        exactTeacherUid,
       ]);
       assert.deepEqual(
         sessionData.matchContext.candidateIds,
         sessionData.availableTutors,
       );
-      assert.equal(sessionData.matchContext.selectedResponderId, exactTeacherUid);
+      assert.equal(
+        sessionData.matchContext.selectedResponderId,
+        adjacentStudentUid,
+      );
       assert.equal(
         sessionData.matchContext.selectedResponderRole,
-        "native_speaker",
+        "student",
       );
-      assert.equal(sessionData.currentResponderId, exactTeacherUid);
-      assert.equal(sessionData.currentResponderRole, "native_speaker");
-      assert.equal(teacherPushSendCount, 1);
-      assert.equal(adjacentStudentRequest.status, SEARCH_REQUEST_STATUS.ACTIVE);
-      assert.equal(adjacentStudentRequest.currentSessionId, null);
+      assert.equal(sessionData.currentResponderId, adjacentStudentUid);
+      assert.equal(sessionData.currentResponderRole, "student");
+      assert.equal(teacherPushSendCount, 0);
+      assert.equal(adjacentStudentRequest.status, SEARCH_REQUEST_STATUS.MATCHED);
+      assert.equal(adjacentStudentRequest.currentSessionId, response.sessionId);
     } finally {
       if (sessionId) {
         await deleteDoc(db.collection("videoSessions").doc(sessionId));

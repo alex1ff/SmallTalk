@@ -1154,6 +1154,42 @@ void main() {
         ['first-user', 'second-user'],
       );
     });
+
+    test('active participants query satisfies Firestore read rules', () {
+      final query = EventDetailRepository.activeParticipantsQuery(
+        eventObjectRef('event-1'),
+      );
+      final where = query.parameters['where'] as List<dynamic>;
+
+      expect(where, hasLength(1));
+      expect(where.single, [
+        FieldPath.fromString('status'),
+        '==',
+        'active',
+      ]);
+      expect(query.parameters['limit'], eventActiveParticipantsReadLimit);
+      expect(query.parameters['orderBy'], isEmpty);
+    });
+
+    test('active participants preview uses a bounded index-free query', () {
+      final query = EventDetailRepository.activeParticipantsQuery(
+        eventObjectRef('event-1'),
+        limit: 6,
+      );
+
+      expect(query.parameters['limit'], 6);
+      expect(query.parameters['orderBy'], isEmpty);
+    });
+
+    test('active participants query rejects limits forbidden by rules', () {
+      expect(
+        () => EventDetailRepository.activeParticipantsQuery(
+          eventObjectRef('event-1'),
+          limit: eventActiveParticipantsReadLimit + 1,
+        ),
+        throwsRangeError,
+      );
+    });
   });
 }
 

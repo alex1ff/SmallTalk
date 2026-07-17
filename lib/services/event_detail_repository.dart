@@ -1,6 +1,8 @@
 import 'dart:collection';
 import 'dart:convert';
 
+import 'package:rxdart/rxdart.dart';
+
 import '/backend/backend.dart';
 import '/services/ux_loading_state.dart';
 import '/services/ux_session_cache_lifecycle.dart';
@@ -20,6 +22,12 @@ typedef EventDetailSnapshotFlagReader = bool Function(
   DocumentSnapshot snapshot,
 );
 typedef _EventDetailCacheKey = ({String eventId, String userId});
+typedef EventParticipantPublicProfilesStream
+    = Stream<Map<String, UserPublicProfilesRecord?>> Function(
+  List<String> userIds,
+);
+
+const int eventActiveParticipantsReadLimit = 50;
 
 class EventDetailRepository {
   const EventDetailRepository._();
@@ -261,6 +269,55 @@ class EventDetailRepository {
 
     return loader(eventRef).map(_normalizedActiveParticipants);
   }
+
+  static Query activeParticipantsQuery(
+    DocumentReference eventRef, {
+    int limit = eventActiveParticipantsReadLimit,
+  }) {
+    if (limit <= 0 || limit > eventActiveParticipantsReadLimit) {
+      throw RangeError.range(
+        limit,
+        1,
+        eventActiveParticipantsReadLimit,
+        'limit',
+      );
+    }
+
+    return EventParticipantsRecord.collection(eventRef)
+        .where('status', isEqualTo: 'active')
+        .limit(limit);
+  }
+
+  static Future<List<EventParticipantsRecord>> loadActiveParticipants({
+    required DocumentReference eventRef,
+    int limit = eventActiveParticipantsReadLimit,
+  }) async {
+    final snapshot = await activeParticipantsQuery(
+      eventRef,
+      limit: limit,
+    ).get();
+    return _normalizedActiveParticipants(
+      snapshot.docs
+          .map(EventParticipantsRecord.fromSnapshot)
+          .toList(growable: false),
+    );
+  }
+
+  static Stream<Map<String, UserPublicProfilesRecord?>>
+      watchParticipantPublicProfiles({
+    required Iterable<String> userIds,
+    EventParticipantPublicProfilesStream? profilesStream,
+  }) {
+    final normalizedUserIds = _normalizedProfileUserIds(userIds);
+    if (normalizedUserIds.isEmpty) {
+      return Stream<Map<String, UserPublicProfilesRecord?>>.value(
+        const <String, UserPublicProfilesRecord?>{},
+      );
+    }
+
+    final loader = profilesStream ?? _watchPublicProfileRecords;
+    return loader(normalizedUserIds);
+  }
 }
 
 _EventDetailCacheKey? _eventDetailCacheKey({
@@ -335,13 +392,11 @@ Stream<DocumentSnapshot> _watchParticipantSnapshot(
 Stream<List<EventParticipantsRecord>> _watchActiveParticipantRecords(
   DocumentReference eventRef,
 ) =>
-    queryEventParticipantsRecord(
-      parent: eventRef,
-      limit: 50,
-      queryBuilder: (participantsQuery) => participantsQuery
-          .where('status', isEqualTo: 'active')
-          .orderBy('joinedAt'),
-    );
+    EventDetailRepository.activeParticipantsQuery(eventRef).snapshots().map(
+          (snapshot) => snapshot.docs
+              .map(EventParticipantsRecord.fromSnapshot)
+              .toList(growable: false),
+        );
 
 List<EventParticipantsRecord> _normalizedActiveParticipants(
   List<EventParticipantsRecord> participants,
@@ -383,4 +438,38 @@ class _EventDetailSnapshotEnvelope {
   final DocumentSnapshot snapshot;
   final bool isFromCache;
   final bool hasPendingWrites;
+}
+
+List<String> _normalizedProfileUserIds(Iterable<String> userIds) {
+  final seenUserIds = <String>{};
+  final normalizedUserIds = <String>[];
+  for (final rawUserId in userIds) {
+    final userId = rawUserId.trim();
+    if (userId.isEmpty || seenUserIds.contains(userId)) {
+      continue;
+    }
+    seenUserIds.add(userId);
+    normalizedUserIds.add(userId);
+  }
+  return List.unmodifiable(normalizedUserIds);
+}
+
+Stream<Map<String, UserPublicProfilesRecord?>> _watchPublicProfileRecords(
+  List<String> userIds,
+) {
+  final profileStreams = userIds.map((userId) {
+    return UserPublicProfilesRecord.maybeGetDocument(
+      UserPublicProfilesRecord.collection.doc(userId),
+    ).map((profile) => MapEntry(userId, profile));
+  }).toList(growable: false);
+
+  return Rx.combineLatestList<MapEntry<String, UserPublicProfilesRecord?>>(
+    profileStreams,
+  ).map(
+    (entries) => Map.unmodifiable(
+      <String, UserPublicProfilesRecord?>{
+        for (final entry in entries) entry.key: entry.value,
+      },
+    ),
+  );
 }

@@ -846,9 +846,16 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
   }
 
   String _searchAppStateForLifecycle(AppLifecycleState? state) {
-    return state == null || state == AppLifecycleState.resumed
-        ? 'foreground'
-        : 'background';
+    switch (state) {
+      case null:
+      case AppLifecycleState.resumed:
+      case AppLifecycleState.inactive:
+        return 'foreground';
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+        return 'background';
+    }
   }
 
   void _sendLifecycleSearchHeartbeat() {

@@ -829,7 +829,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
 
       final result = await sendCustomEmailVerification(
         locale: FFLocalizations.of(context).languageCode,
-        fallbackToFirebaseDefault: false,
+        fallbackToFirebaseDefault: true,
       );
       if (!mounted) {
         return;

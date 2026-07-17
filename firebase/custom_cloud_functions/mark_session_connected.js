@@ -45,6 +45,16 @@ function normalizeSessionId(value) {
   return normalized;
 }
 
+function buildServerTimedResponse(response = {}, nowMillis = Date.now()) {
+  const parsedNowMillis = Number(nowMillis);
+  return {
+    ...response,
+    serverNowMillis: Number.isFinite(parsedNowMillis) ?
+      Math.floor(parsedNowMillis) :
+      Date.now(),
+  };
+}
+
 function readSessionMetadata(sessionData = {}) {
   const metadata = sessionData.sessionMetadata;
   if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
@@ -386,7 +396,7 @@ exports.markSessionConnected = functions
     ) {
       const {shouldVerifyDailyPresence, dailyRoomName, ...response} =
         signalResult;
-      return response;
+      return buildServerTimedResponse(response);
     }
 
     let presenceData = null;
@@ -399,10 +409,10 @@ exports.markSessionConnected = functions
       });
       const {shouldVerifyDailyPresence, dailyRoomName, ...response} =
         signalResult;
-      return {
+      return buildServerTimedResponse({
         ...response,
         dailyPresenceVerificationStatus: "presence_unavailable",
-      };
+      });
     }
 
     const verifiedResult = await db.runTransaction(async (transaction) => {
@@ -439,13 +449,14 @@ exports.markSessionConnected = functions
       };
     });
 
-    return verifiedResult;
+    return buildServerTimedResponse(verifiedResult);
   });
 
 exports.__private__ = {
   applyVerifiedConnectedSessionWritesInTransaction,
   buildDailyPresenceConnectedDecision,
   buildMarkSessionConnectedDecision,
+  buildServerTimedResponse,
   dailyPresenceHasAcceptedParticipants,
   hasRoomJoinSignalForParticipant,
   normalizeSessionId,

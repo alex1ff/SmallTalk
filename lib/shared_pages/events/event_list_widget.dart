@@ -25,6 +25,7 @@ import '/services/event_city_catalog.dart';
 import '/services/event_city_chip_source.dart';
 import '/services/event_city_resolution.dart';
 import '/services/event_city_selection_source.dart';
+import '/services/event_detail_repository.dart';
 import '/services/event_selected_city_state.dart';
 import '/services/event_temporary_city_selection.dart';
 import '/services/event_list_date_bounds.dart';
@@ -3784,11 +3785,8 @@ Future<EventParticipantsRecord?> _loadEventListParticipant(
 Future<List<EventParticipantsRecord>> _loadEventListActiveParticipantPreview(
   DocumentReference eventRef,
 ) {
-  return queryEventParticipantsRecordOnce(
-    parent: eventRef,
-    queryBuilder: (participantsQuery) => participantsQuery
-        .where('status', isEqualTo: eventStatusActive)
-        .orderBy('joinedAt'),
+  return EventDetailRepository.loadActiveParticipants(
+    eventRef: eventRef,
     limit: _eventListParticipantPreviewLimit,
   );
 }

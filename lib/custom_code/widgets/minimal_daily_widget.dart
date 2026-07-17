@@ -439,6 +439,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   final Set<int> _shownCallCheckpointMinutes = <int>{};
   DateTime? _sessionLimitWarningShownFor;
   DateTime? _sessionLimitAutoEndedFor;
+  Duration? _sessionClockOffset;
   final Map<ParticipantId, String> _remoteParticipantUiSignatures = {};
   int _localCaptionClearGeneration = 0;
   int _localCaptionUtteranceId = 0;
@@ -3449,6 +3450,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       _persistCallChatAttemptCount = 0;
       _sessionLimitWarningShownFor = null;
       _sessionLimitAutoEndedFor = null;
+      _sessionClockOffset = null;
       _sessionExtensionRequestInFlight = false;
       _resetCallCheckpointNotice(clearHistory: true);
       _pendingCaptionLogEntries.clear();
@@ -3575,8 +3577,30 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   int _remainingSessionLimitSeconds([DateTime? now]) {
     return session_limit_ui.resolveSessionLimitRemainingSeconds(
       widget.sessionExpiresAt,
-      now: now,
+      now: now ?? _serverAlignedNow(),
     );
+  }
+
+  DateTime _serverAlignedNow() {
+    final serverClockOffset = _sessionClockOffset;
+    if (serverClockOffset != null) {
+      return session_limit_ui.resolveServerAlignedNow(serverClockOffset);
+    }
+
+    final expiresAt = widget.sessionExpiresAt;
+    if (expiresAt == null) {
+      return DateTime.now();
+    }
+
+    final effectiveLimitSeconds =
+        session_limit_ui.resolveSessionPolicyEffectiveLimitSeconds(
+      widget.sessionPolicy,
+    );
+    final remainingSeconds = math.max(
+      0,
+      effectiveLimitSeconds - _callDurationStopwatch.elapsed.inSeconds,
+    );
+    return expiresAt.subtract(Duration(seconds: remainingSeconds));
   }
 
   bool get _currentUserRequestedSessionExtension {
@@ -3599,6 +3623,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
           sessionPolicy: widget.sessionPolicy,
           expiresAt: widget.sessionExpiresAt,
           currentUserId: currentUserUid,
+          now: _serverAlignedNow(),
         );
   }
 
@@ -3611,6 +3636,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
           sessionPolicy: widget.sessionPolicy,
           expiresAt: widget.sessionExpiresAt,
           currentUserId: currentUserUid,
+          now: _serverAlignedNow(),
         );
   }
 
@@ -3729,6 +3755,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     if (!session_limit_ui.shouldShowSessionLimitWarning(
       expiresAt: expiresAt,
       warnedForExpiresAt: _sessionLimitWarningShownFor,
+      now: _serverAlignedNow(),
       warningLeadSeconds: _sessionLimitWarningLeadSeconds,
     )) {
       return;
@@ -3746,6 +3773,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         !session_limit_ui.shouldAutoEndSession(
           expiresAt: widget.sessionExpiresAt,
           autoEndedForExpiresAt: _sessionLimitAutoEndedFor,
+          now: _serverAlignedNow(),
           graceSeconds: _sessionLimitAutoEndGraceSeconds,
         )) {
       return;
@@ -3835,14 +3863,32 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     }
 
     _roomJoinMarked = true;
+    final requestStartedAt = DateTime.now();
+    final requestStopwatch = Stopwatch()..start();
 
     try {
-      await FirebaseFunctions.instance
+      final result = await FirebaseFunctions.instance
           .httpsCallable('markSessionConnected')
           .call(<String, dynamic>{
         'sessionId': sessionId,
       });
+      requestStopwatch.stop();
+      final responseData = result.data;
+      final serverNowMillis =
+          responseData is Map ? responseData['serverNowMillis'] : null;
+      final serverClockOffset = session_limit_ui.resolveServerClockOffset(
+        serverNowMillis: serverNowMillis,
+        requestStartedAt: requestStartedAt,
+        roundTripDuration: requestStopwatch.elapsed,
+      );
+      if (serverClockOffset != null &&
+          mounted &&
+          !_disposed &&
+          widget.sessionId?.trim() == sessionId) {
+        _sessionClockOffset = serverClockOffset;
+      }
     } catch (e) {
+      requestStopwatch.stop();
       _roomJoinMarked = false;
       if (kDebugMode) print('Failed to mark room joined: $e');
     }

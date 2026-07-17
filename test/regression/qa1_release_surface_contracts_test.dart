@@ -168,6 +168,7 @@ void main() {
       expect(
           source, contains('FirebaseAuth.instance.currentUser?.emailVerified'));
       expect(source, contains('sendCustomEmailVerification('));
+      expect(source, contains('fallbackToFirebaseDefault: true'));
       expect(source, contains('_refreshEmailVerificationStatus'));
       expect(source, contains('Timer.periodic('));
       expect(source, contains('_emailVerificationPollTimer'));
@@ -175,6 +176,7 @@ void main() {
       expect(source, isNot(contains('Refresh status')));
       expect(
           registration, contains('unawaited(_sendInitialEmailVerification())'));
+      expect(registration, contains('fallbackToFirebaseDefault: true'));
       expect(emailFunction, contains('generateEmailVerificationLink'));
       expect(emailFunction, contains('https://api.resend.com/emails'));
       expect(emailService, contains('sendEmailVerification()'));

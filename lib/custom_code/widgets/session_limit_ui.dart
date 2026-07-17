@@ -1,3 +1,32 @@
+Duration? resolveServerClockOffset({
+  required Object? serverNowMillis,
+  required DateTime requestStartedAt,
+  required Duration roundTripDuration,
+}) {
+  final parsedServerNowMillis = _readPositiveInt(serverNowMillis, 0);
+  if (parsedServerNowMillis == 0 || roundTripDuration.isNegative) {
+    return null;
+  }
+
+  final requestMidpoint = requestStartedAt.add(
+    Duration(microseconds: roundTripDuration.inMicroseconds ~/ 2),
+  );
+  final serverNow = DateTime.fromMillisecondsSinceEpoch(
+    parsedServerNowMillis,
+    isUtc: true,
+  );
+  return serverNow.difference(requestMidpoint);
+}
+
+DateTime resolveServerAlignedNow(
+  Duration? serverClockOffset, {
+  DateTime? deviceNow,
+}) {
+  return (deviceNow ?? DateTime.now()).add(
+    serverClockOffset ?? Duration.zero,
+  );
+}
+
 int resolveSessionLimitRemainingSeconds(
   DateTime? expiresAt, {
   DateTime? now,
@@ -31,6 +60,16 @@ int _readPositiveInt(
     return fallback;
   }
   return number;
+}
+
+int resolveSessionPolicyEffectiveLimitSeconds(
+  Map<String, dynamic>? sessionPolicy, {
+  int fallback = 300,
+}) {
+  return _readPositiveInt(
+    sessionPolicy?['effectiveLimitSeconds'],
+    fallback,
+  );
 }
 
 Map<String, bool> readSessionExtensionRequests(

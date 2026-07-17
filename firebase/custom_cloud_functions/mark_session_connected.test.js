@@ -7,6 +7,7 @@ const {
     applyVerifiedConnectedSessionWritesInTransaction,
     buildDailyPresenceConnectedDecision,
     buildMarkSessionConnectedDecision,
+    buildServerTimedResponse,
     dailyPresenceHasAcceptedParticipants,
     normalizeSessionId,
     readSessionMetadata,
@@ -41,6 +42,16 @@ test("normalizeSessionId trims strings and rejects non-strings", () => {
   assert.equal(normalizeSessionId("__session__"), "");
   assert.equal(normalizeSessionId("."), "");
   assert.equal(normalizeSessionId(".."), "");
+});
+
+test("buildServerTimedResponse adds authoritative server time", () => {
+  assert.deepEqual(
+    buildServerTimedResponse({status: "marked"}, nowMillis),
+    {
+      status: "marked",
+      serverNowMillis: nowMillis,
+    },
+  );
 });
 
 test("readSessionMetadata only returns map-like metadata", () => {
