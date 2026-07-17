@@ -309,6 +309,20 @@ async function runRulesChecks() {
           createdAt: new Date('2026-04-13T10:01:00.000Z'),
           serverCreatedAt: new Date('2026-04-13T10:01:00.500Z'),
         });
+      await db.collection('videoSessions').doc('participantSession').set({
+        participantIds: ['userA', 'userB'],
+        status: 'active',
+      });
+      await db.collection('videoSessions').doc('pendingTutorSession').set({
+        studentId: 'userA',
+        currentTutorId: 'userC',
+        status: 'searching',
+      });
+      await db.collection('videoSessions').doc('legacyParticipantSession').set({
+        studentId: 'userA',
+        tutorId: 'userB',
+        status: 'active',
+      });
     });
 
     const unauth = testEnv.unauthenticatedContext();
@@ -515,6 +529,107 @@ async function runRulesChecks() {
         }),
       );
     });
+
+    await check('Firestore session read allowed via participantIds', async () => {
+      await assertSucceeds(
+        userA.firestore().doc('videoSessions/participantSession').get(),
+      );
+    });
+
+    await check('Firestore session update allowed via participantIds', async () => {
+      await assertSucceeds(
+        userB.firestore().doc('videoSessions/participantSession').update({
+          status: 'ended',
+        }),
+      );
+    });
+
+    await check(
+      'Firestore session participantIds escalation denied to participant',
+      async () => {
+        await assertFails(
+          userA.firestore().doc('videoSessions/participantSession').update({
+            participantIds: ['userA', 'userB', 'userC'],
+          }),
+        );
+      },
+    );
+
+    await check('Firestore session read denied for non-participant', async () => {
+      await assertFails(
+        userC.firestore().doc('videoSessions/participantSession').get(),
+      );
+    });
+
+    await check(
+      'Firestore session create denied when participantIds omit requester',
+      async () => {
+        await assertFails(
+          userB.firestore().doc('videoSessions/createDenied').set({
+            studentId: 'userB',
+            participantIds: ['userA'],
+            status: 'searching',
+          }),
+        );
+      },
+    );
+
+    await check(
+      'Firestore session create allowed with requester-only participantIds',
+      async () => {
+        await assertSucceeds(
+          userA.firestore().doc('videoSessions/createAllowed').set({
+            studentId: 'userA',
+            participantIds: ['userA'],
+            status: 'searching',
+          }),
+        );
+      },
+    );
+
+    await check(
+      'Firestore session create denied when participantIds include extra uid',
+      async () => {
+        await assertFails(
+          userA.firestore().doc('videoSessions/createEscalated').set({
+            studentId: 'userA',
+            participantIds: ['userA', 'userC'],
+            status: 'searching',
+          }),
+        );
+      },
+    );
+
+    await check(
+      'Firestore session create denied when currentTutorId is preseeded',
+      async () => {
+        await assertFails(
+          userA.firestore().doc('videoSessions/createPendingTutor').set({
+            studentId: 'userA',
+            participantIds: ['userA'],
+            currentTutorId: 'userC',
+            status: 'searching',
+          }),
+        );
+      },
+    );
+
+    await check('Firestore currentTutorId fallback still allows read', async () => {
+      await assertSucceeds(
+        userC.firestore().doc('videoSessions/pendingTutorSession').get(),
+      );
+    });
+
+    await check(
+      'Firestore legacy tutorId escalation denied to participant',
+      async () => {
+        await assertFails(
+          userA.firestore().doc('videoSessions/legacyParticipantSession').update({
+            tutorId: 'userC',
+          }),
+        );
+      },
+    );
 
     await check('Storage cross-user write denied', async () => {
       await assertFails(
@@ -1557,6 +1672,7 @@ async function runCreateVideoSessionMatrixCheck() {
     const response = await wrappedCreateVideoSession(
       {
         language: languageCode,
+        requestId: `audit-matrix-${scenarioKey}-${runId}`,
       },
       { auth: { uid: requesterId } },
     );
@@ -2127,7 +2243,10 @@ async function runSameDayRepeatPreventionCheck() {
       blockedDirectResponse?.status || null;
 
     const poolResponse = await wrappedCreateVideoSession(
-      { language: 'en' },
+      {
+        language: 'en',
+        requestId: `audit-repeat-${runId}`,
+      },
       { auth: { uid: requesterId } },
     );
     const poolSessionSnap = poolResponse?.sessionId
@@ -2317,6 +2436,7 @@ async function runPartnerLevelFilterCheck() {
       {
         language: 'en',
         preferredPartnerLevel: 'Fluent',
+        requestId: `audit-level-${runId}`,
       },
       { auth: { uid: requesterId } },
     );
@@ -2469,6 +2589,7 @@ async function runTeacherBoostRankingCheck() {
       {
         language: 'en',
         preferredPartnerLevel: 'Fluent',
+        requestId: `audit-teacher-boost-${runId}`,
       },
       { auth: { uid: requesterId } },
     );
