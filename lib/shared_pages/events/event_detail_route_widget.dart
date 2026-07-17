@@ -62,6 +62,7 @@ class EventDetailRouteWidget extends StatefulWidget {
     this.reportEventInvoker,
     this.participantSnapshotStream,
     this.participantsStream,
+    this.participantPublicProfilesStream,
     this.openOrganizerChatInvoker,
     this.chatThreadOpener,
     this.analyticsTracker,
@@ -75,6 +76,7 @@ class EventDetailRouteWidget extends StatefulWidget {
   final EventCallableInvoker? reportEventInvoker;
   final EventParticipantSnapshotStream? participantSnapshotStream;
   final EventActiveParticipantsStream? participantsStream;
+  final EventParticipantPublicProfilesStream? participantPublicProfilesStream;
   final EventCallableInvoker? openOrganizerChatInvoker;
   final EventChatThreadOpener? chatThreadOpener;
   final EventsAnalyticsTracker? analyticsTracker;
@@ -606,76 +608,96 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
                 participantsStream: widget.participantsStream,
               ),
               builder: (context, participantsSnapshot) {
-                final participantViewModels =
-                    _eventDetailParticipantViewModelsWithLocalJoin(
-                  participants: _eventDetailParticipantViewModelsForRoute(
-                    event: event,
-                    participants: participantsSnapshot.data ??
-                        const <EventParticipantsRecord>[],
-                  ),
-                  isLocallyJoined: isLocallyJoined,
+                final activeParticipants = participantsSnapshot.data ??
+                    const <EventParticipantsRecord>[];
+                final publicProfileUserIds =
+                    _eventDetailPublicProfileUserIdsForRoute(
+                  event: event,
+                  participants: activeParticipants,
                 );
 
-                return EventDetailWidget(
-                  eventId: eventId,
-                  showReportAction: canAttemptReport,
-                  onReportPressed: canAttemptReport && !_isReportingEvent
-                      ? () => _showReportEventDialog(event)
-                      : null,
-                  levelMin: event.levelMin,
-                  levelMax: event.levelMax,
-                  languageCode: event.languageCode,
-                  languageNameEn: event.languageNameEn,
-                  languageNameRu: event.languageNameRu,
-                  title: event.title,
-                  description: event.description,
-                  organizerDisplayName: event.organizerDisplayName,
-                  organizerPhotoUrl: event.organizerPhotoUrl,
-                  onOrganizerMessagePressed: canMessageOrganizer
-                      ? () => _handleOrganizerMessage(event)
-                      : null,
-                  showOrganizerControls: canManage && isActive && !isCanceled,
-                  onOrganizerEditPressed: _isCanceling
-                      ? null
-                      : () {
-                          context.pushNamed(
-                            EventEditWidget.routeName,
-                            pathParameters: <String, String>{
-                              'eventId': eventId,
+                return StreamBuilder<Map<String, UserPublicProfilesRecord?>>(
+                  stream: EventDetailRepository.watchParticipantPublicProfiles(
+                    userIds: publicProfileUserIds,
+                    profilesStream: widget.participantPublicProfilesStream,
+                  ),
+                  builder: (context, publicProfilesSnapshot) {
+                    final participantViewModels =
+                        _eventDetailParticipantViewModelsWithLocalJoin(
+                      participants: _eventDetailParticipantViewModelsForRoute(
+                        event: event,
+                        participants: activeParticipants,
+                        publicProfilesByUserId: publicProfilesSnapshot.data ??
+                            const <String, UserPublicProfilesRecord?>{},
+                      ),
+                      isLocallyJoined: isLocallyJoined,
+                    );
+
+                    return EventDetailWidget(
+                      eventId: eventId,
+                      showReportAction: canAttemptReport,
+                      onReportPressed: canAttemptReport && !_isReportingEvent
+                          ? () => _showReportEventDialog(event)
+                          : null,
+                      levelMin: event.levelMin,
+                      levelMax: event.levelMax,
+                      languageCode: event.languageCode,
+                      languageNameEn: event.languageNameEn,
+                      languageNameRu: event.languageNameRu,
+                      title: event.title,
+                      description: event.description,
+                      organizerDisplayName: event.organizerDisplayName,
+                      organizerPhotoUrl: event.organizerPhotoUrl,
+                      onOrganizerMessagePressed: canMessageOrganizer
+                          ? () => _handleOrganizerMessage(event)
+                          : null,
+                      showOrganizerControls:
+                          canManage && isActive && !isCanceled,
+                      onOrganizerEditPressed: _isCanceling
+                          ? null
+                          : () {
+                              context.pushNamed(
+                                EventEditWidget.routeName,
+                                pathParameters: <String, String>{
+                                  'eventId': eventId,
+                                },
+                              );
                             },
-                          );
-                        },
-                  onOrganizerCancelPressed: _isCanceling || isCanceled
-                      ? null
-                      : () => _handleOrganizerCancel(event),
-                  startsAt: event.startsAt,
-                  timeZoneId: event.timeZoneId,
-                  locationName: event.locationName,
-                  participants: participantViewModels,
-                  participantsCount: participantsCount,
-                  capacity: event.hasCapacity() ? event.capacity : null,
-                  joinCtaState: joinCtaState,
-                  onChatPressed: canOpenChat
-                      ? () {
-                          _trackEventChatOpened(event);
-                          context.pushNamed(
-                            EventGroupChatWidget.routeName,
-                            pathParameters: <String, String>{
-                              'eventId': eventId,
-                            },
-                          );
-                        }
-                      : null,
-                  onPrimaryCtaPressed: isActive && !_isJoining && !_isLeaving
-                      ? canJoin
-                          ? () => _handleJoin(event)
-                          : canLeave
-                              ? () => _handleLeave(
-                                    event,
-                                    isActiveParticipant: isActiveParticipant,
-                                  )
-                              : null
-                      : null,
+                      onOrganizerCancelPressed: _isCanceling || isCanceled
+                          ? null
+                          : () => _handleOrganizerCancel(event),
+                      startsAt: event.startsAt,
+                      timeZoneId: event.timeZoneId,
+                      locationName: event.locationName,
+                      participants: participantViewModels,
+                      participantsCount: participantsCount,
+                      capacity: event.hasCapacity() ? event.capacity : null,
+                      joinCtaState: joinCtaState,
+                      onChatPressed: canOpenChat
+                          ? () {
+                              _trackEventChatOpened(event);
+                              context.pushNamed(
+                                EventGroupChatWidget.routeName,
+                                pathParameters: <String, String>{
+                                  'eventId': eventId,
+                                },
+                              );
+                            }
+                          : null,
+                      onPrimaryCtaPressed:
+                          isActive && !_isJoining && !_isLeaving
+                              ? canJoin
+                                  ? () => _handleJoin(event)
+                                  : canLeave
+                                      ? () => _handleLeave(
+                                            event,
+                                            isActiveParticipant:
+                                                isActiveParticipant,
+                                          )
+                                      : null
+                              : null,
+                    );
+                  },
                 );
               },
             );
@@ -1044,6 +1066,8 @@ List<EventDetailParticipantViewModel>
     _eventDetailParticipantViewModelsForRoute({
   required EventsRecord event,
   required List<EventParticipantsRecord> participants,
+  Map<String, UserPublicProfilesRecord?> publicProfilesByUserId =
+      const <String, UserPublicProfilesRecord?>{},
 }) {
   final organizerId = event.organizerId.trim();
   final organizerDisplayName = event.organizerDisplayName.trim();
@@ -1056,21 +1080,27 @@ List<EventDetailParticipantViewModel>
   final participantViewModels = participants.map((participant) {
     final isOrganizer =
         organizerId.isNotEmpty && participant.userId.trim() == organizerId;
+    final participantUserId = participant.userId.trim();
+    final publicProfile = publicProfilesByUserId[participantUserId];
     final participantDisplayName =
         _eventDetailVisibleParticipantDisplayName(participant.displayName);
+    final publicProfileDisplayName = _eventDetailVisibleParticipantDisplayName(
+      publicProfile?.displayName ?? '',
+    );
     final displayName = participantDisplayName.isNotEmpty
         ? participantDisplayName
         : isOrganizer
             ? organizerDisplayName
-            : '';
+            : publicProfileDisplayName;
+    final publicProfilePhotoUrl = publicProfile?.photoUrl.trim() ?? '';
     final photoUrl = participant.photoUrl.trim().isNotEmpty
         ? participant.photoUrl.trim()
         : isOrganizer
             ? organizerPhotoUrl
-            : '';
+            : publicProfilePhotoUrl;
 
     return EventDetailParticipantViewModel(
-      userId: participant.userId.trim(),
+      userId: participantUserId,
       displayName: displayName,
       photoUrl: photoUrl.isEmpty ? null : photoUrl,
     );
@@ -1088,6 +1118,35 @@ List<EventDetailParticipantViewModel>
     ),
     ...participantViewModels,
   ];
+}
+
+List<String> _eventDetailPublicProfileUserIdsForRoute({
+  required EventsRecord event,
+  required List<EventParticipantsRecord> participants,
+}) {
+  final organizerId = event.organizerId.trim();
+  final userIds = <String>[];
+  final seenUserIds = <String>{};
+  for (final participant in participants) {
+    final userId = participant.userId.trim();
+    if (userId.isEmpty ||
+        userId == organizerId ||
+        seenUserIds.contains(userId)) {
+      continue;
+    }
+
+    final hasVisibleDisplayName =
+        _eventDetailVisibleParticipantDisplayName(participant.displayName)
+            .isNotEmpty;
+    final hasPhotoUrl = participant.photoUrl.trim().isNotEmpty;
+    if (hasVisibleDisplayName && hasPhotoUrl) {
+      continue;
+    }
+
+    seenUserIds.add(userId);
+    userIds.add(userId);
+  }
+  return List.unmodifiable(userIds);
 }
 
 List<EventDetailParticipantViewModel>

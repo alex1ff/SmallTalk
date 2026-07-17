@@ -1659,7 +1659,7 @@ test("collectMatchCandidatePool excludes wrong-language candidates", async () =>
   );
 });
 
-test("collectMatchCandidatePool ranks exact level before older adjacent", async () => {
+test("collectMatchCandidatePool ranks exact student before teacher fallback", async () => {
   const db = fakeDb({
     studentRequestDocs: [
       doc("student-exact", activeRequest({
@@ -1700,7 +1700,7 @@ test("collectMatchCandidatePool ranks exact level before older adjacent", async 
   );
   assert.deepEqual(
     result.candidates.map((candidate) => candidate.matchQuality.levelTier),
-    ["exact", "adjacent"],
+    ["exact", null],
   );
 });
 
@@ -1905,28 +1905,33 @@ test("collectMatchCandidatePool scans beyond limit for exact student level", asy
   assert.equal(result.stats.studentCandidates, 1);
 });
 
-test("collectMatchCandidatePool scans beyond limit for exact teacher level", async () => {
+test("collectMatchCandidatePool ignores student level for teacher fallback", async () => {
   const db = fakeDb({
     teacherDocs: [
-      doc("teacher-adjacent", teacherData({
-        level: {value: "A2"},
+      doc("teacher-fr", teacherData({
+        level: null,
+        Country_NS: {code: "FR"},
         availableSince: timestampFromMillis(fixedNowMillis - 120 * 1000),
       })),
-      doc("teacher-exact", teacherData({
-        level: {value: "B1"},
+      doc("teacher-us", teacherData({
+        level: {value: "C1"},
+        Country_NS: {code: "US"},
         availableSince: timestampFromMillis(fixedNowMillis - 60 * 1000),
       })),
     ],
     privateTokenDocsById: {
-      "teacher-adjacent": doc("teacher-adjacent", privateTokenData()),
-      "teacher-exact": doc("teacher-exact", privateTokenData()),
+      "teacher-fr": doc("teacher-fr", privateTokenData()),
+      "teacher-us": doc("teacher-us", privateTokenData()),
     },
   });
 
   const result = await collectMatchCandidatePool({
     db,
     language: "en",
-    requesterFilters: {preferredLevel: "B1"},
+    requesterFilters: {
+      preferredLevel: "C1",
+      countryCode: "FR",
+    },
     now: new Date(fixedNowMillis),
     nowMillis: fixedNowMillis,
     teacherLimit: 1,
@@ -1936,10 +1941,12 @@ test("collectMatchCandidatePool scans beyond limit for exact teacher level", asy
 
   assert.deepEqual(
     result.candidates.map((candidate) => candidate.userId),
-    ["teacher-exact"],
+    ["teacher-fr"],
   );
   assert.equal(result.stats.teacherUsersScanned, 2);
   assert.equal(result.stats.teacherCandidates, 1);
+  assert.equal(result.candidates[0].matchQuality.levelApplied, false);
+  assert.equal(result.candidates[0].matchQuality.locationTier, "country_exact");
 });
 
 test("collectMatchCandidatePool reads requester level for mutual student filter", async () => {

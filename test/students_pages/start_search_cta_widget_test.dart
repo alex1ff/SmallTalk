@@ -1517,6 +1517,11 @@ void main() {
     );
     await tester.pump();
 
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pump();
+
+    expect(heartbeatPayloads, isEmpty);
+
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
     await tester.pump();
 

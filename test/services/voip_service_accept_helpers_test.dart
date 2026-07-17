@@ -89,6 +89,38 @@ void main() {
       );
     });
 
+    test('foreground student match uses in-app navigation instead of CallKit',
+        () {
+      expect(
+        voipIncomingCallShouldUseInAppNavigation(
+          const {'scenario': 'student_student'},
+          lifecycleState: AppLifecycleState.resumed,
+        ),
+        isTrue,
+      );
+      expect(
+        voipIncomingCallShouldUseInAppNavigation(
+          const {'scenario': 'student_student'},
+          lifecycleState: AppLifecycleState.inactive,
+        ),
+        isTrue,
+      );
+      expect(
+        voipIncomingCallShouldUseInAppNavigation(
+          const {'scenario': 'student_student'},
+          lifecycleState: AppLifecycleState.paused,
+        ),
+        isFalse,
+      );
+      expect(
+        voipIncomingCallShouldUseInAppNavigation(
+          const {'scenario': 'student_teacher'},
+          lifecycleState: AppLifecycleState.resumed,
+        ),
+        isFalse,
+      );
+    });
+
     test('incoming call extra data preserves backend payload metadata', () {
       final extra = voipIncomingCallExtraDataFromPayload({
         'type': 'incoming_call',
@@ -2359,8 +2391,7 @@ void main() {
     test('runtime closed app incoming payload before 90 seconds tracks CallKit',
         () async {
       const sessionId = 'session-closed-before-stale';
-      final expiresAt =
-          DateTime.now().toUtc().add(const Duration(seconds: 89));
+      final expiresAt = DateTime.now().toUtc().add(const Duration(seconds: 89));
 
       expect(
         voipIncomingCallPayloadHasExpired({

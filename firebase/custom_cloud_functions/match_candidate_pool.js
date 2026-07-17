@@ -860,7 +860,6 @@ function buildTeacherAvailabilityCandidateFromDoc({
   language = "",
   now = new Date(),
   nowMillis = null,
-  preferredLevelRank = null,
   preferredLocation = {},
   requesterId = "",
   requesterBlockedIds = [],
@@ -905,9 +904,9 @@ function buildTeacherAvailabilityCandidateFromDoc({
   }
 
   const profile = buildMatchProfile(userId, userData, normalizedLanguage);
+  // CEFR is a peer-student filter; native-speaker fallback has no learner level.
   const matchQuality = buildCandidateMatchQuality({
     userData,
-    preferredLevelRank,
     preferredLocation,
   });
   if (!matchQuality.valid) {
@@ -1300,7 +1299,6 @@ async function collectTeacherAvailabilityCandidates({
   pageSize = DEFAULT_SCAN_PAGE_SIZE,
   maxPages = DEFAULT_SCAN_MAX_PAGES,
   tokenReader = getReadOnlyUserVoipTokenState,
-  preferredLevelRank = null,
   preferredLocation = {},
   requesterId = "",
   requesterBlockedIds = [],
@@ -1321,7 +1319,7 @@ async function collectTeacherAvailabilityCandidates({
   let scannedCount = 0;
   let lastDoc = null;
   const qualityRankingEnabled =
-    preferredLevelRank !== null || hasLocationFilter(preferredLocation);
+    hasLocationFilter(preferredLocation);
 
   for (
     let page = 0;
@@ -1345,7 +1343,6 @@ async function collectTeacherAvailabilityCandidates({
         language,
         now,
         nowMillis,
-        preferredLevelRank,
         preferredLocation,
         requesterId,
         requesterBlockedIds,
@@ -1543,7 +1540,6 @@ async function collectMatchCandidatePool({
       candidateLimit: teacherLimit,
       pageSize: teacherScanPageSize,
       maxPages: teacherMaxScanPages,
-      preferredLevelRank,
       preferredLocation,
       requesterId: normalizedRequesterId,
       requesterBlockedIds: requesterProfile.blockedIds,

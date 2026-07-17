@@ -222,6 +222,72 @@ void main() {
     );
   });
 
+  testWidgets('fills incomplete participant snapshot from public profile',
+      (tester) async {
+    var requestedProfileIds = const <String>[];
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailRouteWidget(
+          eventId: 'event-1',
+          snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+            _FakeEventDocumentSnapshot(
+              reference: eventRef,
+              data: _eventData(
+                organizerId: 'organizer-1',
+                participantsCount: 2,
+              ),
+            ),
+          ),
+          participantsStream: (eventRef) =>
+              Stream<List<EventParticipantsRecord>>.value([
+            EventParticipantsRecord.getDocumentFromData(
+              _participantData(
+                userId: 'organizer-1',
+                status: 'active',
+                displayName: 'Anastasia Ivanova',
+              ),
+              EventParticipantsRecord.createDoc(eventRef, id: 'organizer-1'),
+            ),
+            EventParticipantsRecord.getDocumentFromData(
+              _participantData(
+                userId: 'student-cp',
+                status: 'active',
+                displayName: 'Participant',
+              ),
+              EventParticipantsRecord.createDoc(eventRef, id: 'student-cp'),
+            ),
+          ]),
+          participantPublicProfilesStream: (userIds) {
+            requestedProfileIds = userIds;
+            return Stream<Map<String, UserPublicProfilesRecord?>>.value({
+              'student-cp': UserPublicProfilesRecord.getDocumentFromData(
+                {
+                  'userId': 'student-cp',
+                  'display_name': 'cp',
+                  'photo_url': '',
+                },
+                UserPublicProfilesRecord.collection.doc('student-cp'),
+              ),
+            });
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(requestedProfileIds, ['student-cp']);
+    expect(
+      find.descendant(
+        of: find.byKey(eventDetailParticipantTileKey(1)),
+        matching: find.text('cp'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Participant'), findsNothing);
+    expect(find.text('Участник'), findsNothing);
+  });
+
   testWidgets(
       'uses event organizer as occupied participant when stream omits it',
       (tester) async {

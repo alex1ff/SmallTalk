@@ -9,6 +9,75 @@ void main() {
     'extensionApproved': false,
   };
 
+  group('server-aligned session clock', () {
+    test('corrects a device clock that is four minutes ahead', () {
+      final serverNow = DateTime.utc(2026, 7, 18, 10, 0, 0);
+      final expiresAt = serverNow.add(const Duration(minutes: 5));
+      final deviceRequestStartedAt = serverNow.add(const Duration(minutes: 4));
+      final offset = resolveServerClockOffset(
+        serverNowMillis: serverNow.millisecondsSinceEpoch,
+        requestStartedAt: deviceRequestStartedAt,
+        roundTripDuration: Duration.zero,
+      );
+
+      expect(offset, const Duration(minutes: -4));
+      expect(
+        resolveServerAlignedNow(
+          offset,
+          deviceNow: deviceRequestStartedAt,
+        ),
+        serverNow,
+      );
+      expect(
+        shouldShowSessionLimitWarning(
+          expiresAt: expiresAt,
+          warnedForExpiresAt: null,
+          now: resolveServerAlignedNow(
+            offset,
+            deviceNow: deviceRequestStartedAt,
+          ),
+        ),
+        isFalse,
+      );
+      expect(
+        shouldShowSessionLimitWarning(
+          expiresAt: expiresAt,
+          warnedForExpiresAt: null,
+          now: resolveServerAlignedNow(
+            offset,
+            deviceNow: deviceRequestStartedAt.add(const Duration(minutes: 4)),
+          ),
+        ),
+        isTrue,
+      );
+    });
+
+    test('uses the request midpoint to account for network latency', () {
+      final requestStartedAt = DateTime.utc(2026, 7, 18, 10, 0, 0);
+      final serverNow = requestStartedAt.add(const Duration(seconds: 1));
+
+      expect(
+        resolveServerClockOffset(
+          serverNowMillis: serverNow.millisecondsSinceEpoch.toString(),
+          requestStartedAt: requestStartedAt,
+          roundTripDuration: const Duration(seconds: 2),
+        ),
+        Duration.zero,
+      );
+    });
+
+    test('rejects malformed server time', () {
+      expect(
+        resolveServerClockOffset(
+          serverNowMillis: 'bad',
+          requestStartedAt: DateTime.utc(2026, 7, 18),
+          roundTripDuration: Duration.zero,
+        ),
+        isNull,
+      );
+    });
+  });
+
   group('resolveSessionLimitRemainingSeconds', () {
     test('returns zero without expiry', () {
       expect(resolveSessionLimitRemainingSeconds(null), 0);
@@ -31,6 +100,23 @@ void main() {
       expect(
         resolveSessionLimitRemainingSeconds(expiresAt, now: now),
         0,
+      );
+    });
+  });
+
+  group('resolveSessionPolicyEffectiveLimitSeconds', () {
+    test('reads the server policy and falls back for malformed values', () {
+      expect(
+        resolveSessionPolicyEffectiveLimitSeconds(
+          const <String, dynamic>{'effectiveLimitSeconds': 600},
+        ),
+        600,
+      );
+      expect(
+        resolveSessionPolicyEffectiveLimitSeconds(
+          const <String, dynamic>{'effectiveLimitSeconds': 'bad'},
+        ),
+        300,
       );
     });
   });

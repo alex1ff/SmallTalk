@@ -53,6 +53,7 @@ const TUTOR_REVIEW_FLAG_FIELD = "tutorHasReviewed";
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const BACKGROUND_STUDENT_RESPONDER_PUSH_TIMEOUT_MS = 3 * 1000;
 const BACKGROUND_STUDENT_RESPONDER_APNS_TIMEOUT_MS = 2 * 1000;
+const BACKGROUND_STUDENT_RESPONDER_FOREGROUND_GRACE_MS = 1200;
 
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -171,6 +172,12 @@ function calculateApnsFallbackTimeoutMs(totalTimeoutMs) {
       Math.floor(totalTimeoutMs * 0.7),
     ),
   );
+}
+
+function waitForForegroundStudentResponderResolution() {
+  return new Promise((resolve) => {
+    setTimeout(resolve, BACKGROUND_STUDENT_RESPONDER_FOREGROUND_GRACE_MS);
+  });
 }
 
 function readCallableData(data) {
@@ -2308,6 +2315,7 @@ async function maybeNotifyBackgroundStudentResponder({
   requesterData = {},
   pushSender = sendVoipPushToStudentResponder,
   pushTimeoutMs = BACKGROUND_STUDENT_RESPONDER_PUSH_TIMEOUT_MS,
+  prePushWait = null,
 }) {
   const nowMillis = Date.now();
   const notification = await createBackgroundStudentResponderIncomingCall({
@@ -2320,6 +2328,10 @@ async function maybeNotifyBackgroundStudentResponder({
   });
   if (!notification.shouldNotify) {
     return notification;
+  }
+
+  if (typeof prePushWait === "function") {
+    await prePushWait();
   }
 
   const prePushState = await backgroundStudentResponderPushStillCurrent({
@@ -2671,6 +2683,8 @@ async function tryCreateStudentPairForSearchRequest({
   requestData = {},
   reused = false,
   backgroundStudentResponderPushSender = sendVoipPushToStudentResponder,
+  backgroundStudentResponderPrePushWait =
+    waitForForegroundStudentResponderResolution,
   teacherResponderPushSender = sendVoipPushToStudentResponder,
   teacherResponderTokenReader = getReadOnlyUserVoipTokenState,
 }) {
@@ -2758,6 +2772,7 @@ async function tryCreateStudentPairForSearchRequest({
               responderSearchRequestDocId: candidate.searchRequestDocId,
               requesterData,
               pushSender: backgroundStudentResponderPushSender,
+              prePushWait: backgroundStudentResponderPrePushWait,
             });
         } catch (error) {
           console.error(
