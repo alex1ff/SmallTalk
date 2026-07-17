@@ -329,7 +329,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       _handleCallEvent,
       onError: (error) {
         if (kDebugMode) print('Event stream error: $error');
-        if (mounted) _handleConnectionError(error);
+        // Route through _handleEventError to filter non-fatal errors
+        if (mounted && !_disposed) {
+          _handleEventError(error.toString());
+        }
       },
       cancelOnError: false,
     );
@@ -526,13 +529,22 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         break;
 
       case CallState.left:
-        _updateState(_state.copyWith(
-          connectionState: ConnectionState.disconnected,
-        ));
         _stopDeepgramStreaming();
         if (_userRequestedEnd) {
+          _updateState(_state.copyWith(
+            connectionState: ConnectionState.disconnected,
+          ));
           unawaited(_endSystemCallUi());
+        } else if (_state.connectionState == ConnectionState.reconnecting) {
+          // Already reconnecting (e.g. from _performReconnection cleanup) -
+          // don't schedule another reconnection or override state
+          if (kDebugMode) {
+            print('CallState.left during reconnection - ignoring');
+          }
         } else {
+          _updateState(_state.copyWith(
+            connectionState: ConnectionState.disconnected,
+          ));
           _scheduleReconnection();
         }
         break;
@@ -631,8 +643,25 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     ));
   }
 
-  /// Handle event errors
+  /// Handle event errors - filter out non-fatal errors
   void _handleEventError(String error) {
+    if (kDebugMode) print('Daily event error: $error');
+
+    final lowerError = error.toLowerCase();
+
+    // Track subscription failures are transient - Daily SDK retries automatically.
+    // Do NOT treat these as fatal connection errors.
+    if (lowerError.contains('subscription') ||
+        lowerError.contains('consumer') ||
+        lowerError.contains('track') ||
+        lowerError.contains('no longer exists') ||
+        lowerError.contains('meeting_event') ||
+        lowerError.contains('send_meeting_event')) {
+      if (kDebugMode) print('Non-fatal Daily error (ignored): $error');
+      return;
+    }
+
+    // Only escalate truly fatal errors to connection error handler
     unawaited(_handleConnectionError(error));
   }
 
@@ -827,9 +856,18 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   Future<void> _handleConnectionError(dynamic error) async {
     if (!mounted || _disposed) return;
 
+    if (kDebugMode) print('Connection error: $error');
+
     final message = error.toString().toLowerCase();
     final isTokenError =
         message.contains('sigauthz') || message.contains('token');
+
+    // If we're already connected and this isn't a token error,
+    // don't tear down the connection - it's likely a transient issue
+    if (_state.connectionState == ConnectionState.connected && !isTokenError) {
+      if (kDebugMode) print('Ignoring non-fatal error while connected: $error');
+      return;
+    }
 
     final refreshed = await _tryRefreshTokenOnError(error);
     if (refreshed) {
