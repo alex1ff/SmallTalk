@@ -55,15 +55,11 @@ void main() {
 
     final headerRect = tester.getRect(find.byKey(wordsHeaderKey));
     final viewportRect = tester.getRect(find.byKey(wordsContentViewportKey));
-    final reviewBarRect = tester.getRect(find.byKey(reviewWordsBarSurfaceKey));
 
     expect(find.byKey(wordsInitialLoadingKey), findsOneWidget);
     expect(find.byKey(wordsEmptyStateKey), findsNothing);
     expect(find.byKey(wordsFullErrorStateKey), findsNothing);
-    expect(
-      tester.widget<Text>(find.byKey(reviewWordsBarCountTextKey)).data,
-      '—',
-    );
+    expect(find.byKey(reviewWordsBarSurfaceKey), findsNothing);
 
     sources.reviews.single.add(_queryResult(const [], confirmed: true));
     sources.words.single.add(_queryResult(const [], confirmed: false));
@@ -79,11 +75,7 @@ void main() {
     expect(find.byKey(wordsEmptyStateKey), findsOneWidget);
     expect(tester.getRect(find.byKey(wordsHeaderKey)), headerRect);
     expect(tester.getRect(find.byKey(wordsContentViewportKey)), viewportRect);
-    expect(tester.getRect(find.byKey(reviewWordsBarSurfaceKey)), reviewBarRect);
-    expect(
-      tester.widget<Text>(find.byKey(reviewWordsBarCountTextKey)).data,
-      '0',
-    );
+    expect(find.byKey(reviewWordsBarSurfaceKey), findsNothing);
   });
 
   testWidgets('cold error retries inside the stable content viewport',
@@ -96,7 +88,7 @@ void main() {
     );
     await tester.pump();
     final viewportRect = tester.getRect(find.byKey(wordsContentViewportKey));
-    final reviewBarRect = tester.getRect(find.byKey(reviewWordsBarSurfaceKey));
+    expect(find.byKey(reviewWordsBarSurfaceKey), findsNothing);
 
     sources.words.single.addError(StateError('words failed'));
     await tester.pump();
@@ -122,7 +114,12 @@ void main() {
     expect(find.text('fresh word'), findsOneWidget);
     expect(find.byKey(wordsFullErrorStateKey), findsNothing);
     expect(tester.getRect(find.byKey(wordsContentViewportKey)), viewportRect);
-    expect(tester.getRect(find.byKey(reviewWordsBarSurfaceKey)), reviewBarRect);
+    expect(find.byKey(reviewWordsBarSurfaceKey), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.byKey(reviewWordsBarCountTextKey)).data,
+      '0 слов',
+    );
+    expect(find.byKey(reviewWordsBarActionKey), findsNothing);
   });
 
   testWidgets('warm error and retry keep the shown word row', (tester) async {
@@ -140,6 +137,11 @@ void main() {
     final viewportRect = tester.getRect(find.byKey(wordsContentViewportKey));
     final rowRect = tester.getRect(find.byKey(wordsRowKey(_wordPath('shown'))));
     final reviewBarRect = tester.getRect(find.byKey(reviewWordsBarSurfaceKey));
+    expect(
+      tester.widget<Text>(find.byKey(reviewWordsBarCountTextKey)).data,
+      '0 слов',
+    );
+    expect(find.byKey(reviewWordsBarActionKey), findsNothing);
 
     sources.words.single.addError(StateError('refresh failed'));
     await tester.pump();
@@ -264,7 +266,7 @@ void main() {
     expect(find.byKey(wordsRefreshingIndicatorKey), findsNothing);
   });
 
-  testWidgets('cold error stays above the review bar in a compact viewport',
+  testWidgets('cold error fits a compact viewport without a review bar',
       (tester) async {
     tester.view.physicalSize = const Size(360.0, 600.0);
     tester.view.devicePixelRatio = 1.0;
@@ -291,11 +293,12 @@ void main() {
     await tester.ensureVisible(find.byKey(wordsRetryButtonKey));
     await tester.pump();
     final retryRect = tester.getRect(find.byKey(wordsRetryButtonKey));
-    final reviewBarRect = tester.getRect(find.byKey(reviewWordsBarSurfaceKey));
-    expect(retryRect.bottom, lessThanOrEqualTo(reviewBarRect.top));
+    final viewportRect = tester.getRect(find.byKey(wordsContentViewportKey));
+    expect(find.byKey(reviewWordsBarSurfaceKey), findsNothing);
+    expect(retryRect.bottom, lessThanOrEqualTo(viewportRect.bottom));
   });
 
-  testWidgets('empty state stays scrollable above the compact review bar',
+  testWidgets('empty state stays scrollable without a review bar',
       (tester) async {
     tester.view.physicalSize = const Size(360.0, 600.0);
     tester.view.devicePixelRatio = 1.0;
@@ -319,6 +322,7 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.byKey(wordsEmptyStateKey), findsOneWidget);
+    expect(find.byKey(reviewWordsBarSurfaceKey), findsNothing);
     final message = find.textContaining('Сохраните первое слово');
     expect(message, findsOneWidget);
     final emptyScrollView = find.descendant(
@@ -335,8 +339,8 @@ void main() {
     );
     await tester.pump();
     final messageRect = tester.getRect(message);
-    final reviewBarRect = tester.getRect(find.byKey(reviewWordsBarSurfaceKey));
-    expect(messageRect.bottom, lessThanOrEqualTo(reviewBarRect.top));
+    final viewportRect = tester.getRect(find.byKey(wordsContentViewportKey));
+    expect(messageRect.bottom, lessThanOrEqualTo(viewportRect.bottom));
 
     final beforeError =
         tester.state<ScrollableState>(emptyScrollable).position.pixels;
@@ -350,7 +354,7 @@ void main() {
     );
   });
 
-  testWidgets('empty and review data survive their stream errors',
+  testWidgets('empty dictionary hides the review bar even with review data',
       (tester) async {
     final sources = _WordsTestSources();
     addTearDown(sources.close);
@@ -365,11 +369,9 @@ void main() {
 
     final emptyRect = tester.getRect(find.byKey(wordsEmptyStateKey));
     expect(find.byKey(wordsEmptyStateKey), findsOneWidget);
-    expect(
-      tester.widget<Text>(find.byKey(reviewWordsBarCountTextKey)).data,
-      '1',
-    );
-    expect(find.byKey(reviewWordsBarActionKey), findsOneWidget);
+    expect(find.byKey(reviewWordsBarSurfaceKey), findsNothing);
+    expect(find.byKey(reviewWordsBarCountTextKey), findsNothing);
+    expect(find.byKey(reviewWordsBarActionKey), findsNothing);
 
     sources.words.single.addError(StateError('empty refresh failed'));
     sources.reviews.single.addError(StateError('reviews refresh failed'));
@@ -378,11 +380,9 @@ void main() {
     expect(find.byKey(wordsEmptyStateKey), findsOneWidget);
     expect(find.byKey(wordsRefreshErrorIndicatorKey), findsOneWidget);
     expect(tester.getRect(find.byKey(wordsEmptyStateKey)), emptyRect);
-    expect(
-      tester.widget<Text>(find.byKey(reviewWordsBarCountTextKey)).data,
-      '1',
-    );
-    expect(find.byKey(reviewWordsBarActionKey), findsOneWidget);
+    expect(find.byKey(reviewWordsBarSurfaceKey), findsNothing);
+    expect(find.byKey(reviewWordsBarCountTextKey), findsNothing);
+    expect(find.byKey(reviewWordsBarActionKey), findsNothing);
   });
 
   testWidgets('large review count keeps the repeat panel and CTA fixed',
@@ -407,7 +407,9 @@ void main() {
       ),
     );
     await tester.pump();
-    sources.words.single.add(_queryResult(const [], confirmed: true));
+    sources.words.single.add(
+      _queryResult([_word('large', 'large word', 'большое слово')]),
+    );
     sources.reviews.single.add(
       _queryResult(reviews.take(99).toList(), confirmed: true),
     );
@@ -421,7 +423,7 @@ void main() {
     final actionRect = tester.getRect(actionFinder);
     final countSlotRect = tester.getRect(countSlotFinder);
 
-    expect(tester.widget<Text>(countFinder).data, '99');
+    expect(tester.widget<Text>(countFinder).data, '99 слов');
     expect(surfaceRect.size, const Size(208.0, reviewWordsBarHeight));
     expect(
       actionRect.size,
@@ -447,7 +449,7 @@ void main() {
     sources.reviews.single.add(_queryResult(reviews, confirmed: true));
     await tester.pump();
 
-    expect(tester.widget<Text>(countFinder).data, '99+');
+    expect(tester.widget<Text>(countFinder).data, '99+ слов');
     expect(tester.getRect(surfaceFinder), surfaceRect);
     expect(tester.getRect(actionFinder), actionRect);
     expect(tester.getRect(countSlotFinder), countSlotRect);
@@ -488,7 +490,9 @@ void main() {
 
     await tester.pumpWidget(buildWords(keyboardOpen: false));
     await tester.pump();
-    sources.words.single.add(_queryResult(const [], confirmed: true));
+    sources.words.single.add(
+      _queryResult([_word('insets', 'insets word', 'слово')]),
+    );
     sources.reviews.single.add(
       _queryResult([_dueReview('insets')], confirmed: true),
     );

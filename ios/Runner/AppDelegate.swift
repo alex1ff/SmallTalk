@@ -66,6 +66,17 @@ private func deterministicCallKitId(for rawValue: String?) -> String {
 @objc class AppDelegate: FlutterAppDelegate, PKPushRegistryDelegate {
   private var voipRegistry: PKPushRegistry?
 
+  private func applyKeyboardBackdrop() {
+    let backdropColor = UIColor(
+      red: 250.0 / 255.0,
+      green: 250.0 / 255.0,
+      blue: 250.0 / 255.0,
+      alpha: 1.0
+    )
+    window?.backgroundColor = backdropColor
+    window?.rootViewController?.view.backgroundColor = backdropColor
+  }
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -76,7 +87,20 @@ private func deterministicCallKitId(for rawValue: String?) -> String {
     voipRegistry?.delegate = self
     voipRegistry?.desiredPushTypes = [PKPushType.voIP]
 
-    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    let didFinishLaunching = super.application(
+      application,
+      didFinishLaunchingWithOptions: launchOptions
+    )
+    applyKeyboardBackdrop()
+    DispatchQueue.main.async { [weak self] in
+      self?.applyKeyboardBackdrop()
+    }
+    return didFinishLaunching
+  }
+
+  override func applicationDidBecomeActive(_ application: UIApplication) {
+    super.applicationDidBecomeActive(application)
+    applyKeyboardBackdrop()
   }
 
   func pushRegistry(
@@ -132,6 +156,18 @@ private func deterministicCallKitId(for rawValue: String?) -> String {
       sessionId
     let callKitId = deterministicCallKitId(for: rawCallKitId)
     payloadDict["callKitId"] = callKitId
+    if payloadDict["type"] as? String == "call_cancelled" {
+      let cancelData = flutter_callkit_incoming.Data(
+        id: callKitId,
+        nameCaller: "",
+        handle: "",
+        type: 1
+      )
+      SwiftFlutterCallkitIncomingPlugin.sharedInstance?.endCall(cancelData)
+      finish()
+      return
+    }
+
     let nameCaller = (payloadDict["callerName"] as? String) ??
       (payloadDict["nameCaller"] as? String) ??
       "Incoming call"

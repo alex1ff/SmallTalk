@@ -2600,10 +2600,9 @@ void main() {
           tester.getRect(find.byKey(eventDetailBottomActionBarKey));
       final initialPrimaryCtaRect =
           tester.getRect(find.byKey(eventDetailPrimaryCtaKey));
-      final initialChatSlotRect =
-          tester.getRect(find.byKey(eventDetailChatCtaSlotKey));
+      expect(find.byKey(eventDetailChatCtaSlotKey), findsNothing);
 
-      void expectStableBottomActionGeometry() {
+      void expectStablePendingBottomActionGeometry() {
         expect(
           tester.getRect(find.byKey(eventDetailBottomActionBarKey)),
           initialBottomBarRect,
@@ -2612,10 +2611,7 @@ void main() {
           tester.getRect(find.byKey(eventDetailPrimaryCtaKey)),
           initialPrimaryCtaRect,
         );
-        expect(
-          tester.getRect(find.byKey(eventDetailChatCtaSlotKey)),
-          initialChatSlotRect,
-        );
+        expect(find.byKey(eventDetailChatCtaSlotKey), findsNothing);
       }
 
       await tester.tap(find.byKey(eventDetailPrimaryCtaKey));
@@ -2644,7 +2640,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.byKey(eventDetailChatCtaKey), findsNothing);
-      expectStableBottomActionGeometry();
+      expectStablePendingBottomActionGeometry();
       expect(profileRequests, [
         <String>['organizer-1'],
         <String>['organizer-1', 'student-1'],
@@ -2687,7 +2683,7 @@ void main() {
       expect(find.text('6/10 мест'), findsOneWidget);
       expect(find.text('Покинуть'), findsOneWidget);
       expect(find.byKey(eventDetailChatCtaKey), findsNothing);
-      expectStableBottomActionGeometry();
+      expectStablePendingBottomActionGeometry();
 
       snapshotController.add(
         _FakeEventDocumentSnapshot(
@@ -2729,7 +2725,7 @@ void main() {
       expect(find.text('Покинуть'), findsOneWidget);
       expect(find.text('6/10 мест'), findsOneWidget);
       expect(find.text('Марко Росси'), findsOneWidget);
-      expectStableBottomActionGeometry();
+      expectStablePendingBottomActionGeometry();
 
       snapshotController.addError(StateError('detail refresh failed'));
       await tester.pump();
@@ -2751,7 +2747,7 @@ void main() {
         find.byKey(eventDetailRouteRefreshErrorIndicatorKey),
         findsOneWidget,
       );
-      expectStableBottomActionGeometry();
+      expectStablePendingBottomActionGeometry();
       expect(profileRequests, hasLength(2));
       expect(participantStreamCalls, 1);
       expect(participantsStreamCalls, 1);
@@ -2791,7 +2787,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Марко Росси'), findsOneWidget);
-      expectStableBottomActionGeometry();
+      expectStablePendingBottomActionGeometry();
       expect(profileRequests, hasLength(2));
       expect(participantStreamCalls, 1);
       expect(participantsStreamCalls, 1);
@@ -2805,7 +2801,18 @@ void main() {
       expect(find.text('6/10 мест'), findsOneWidget);
       expect(find.text('Марко Росси'), findsOneWidget);
       expect(find.byKey(eventDetailChatCtaKey), findsOneWidget);
-      expectStableBottomActionGeometry();
+      expect(
+        tester.getRect(find.byKey(eventDetailBottomActionBarKey)),
+        initialBottomBarRect,
+      );
+      final joinedPrimaryCtaRect =
+          tester.getRect(find.byKey(eventDetailPrimaryCtaKey));
+      expect(joinedPrimaryCtaRect.height, initialPrimaryCtaRect.height);
+      expect(joinedPrimaryCtaRect.width, lessThan(initialPrimaryCtaRect.width));
+      expect(
+        tester.getRect(find.byKey(eventDetailChatCtaSlotKey)).height,
+        initialPrimaryCtaRect.height,
+      );
       primarySemantics =
           tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
       expect(primarySemantics.flagsCollection.isEnabled, isTrue);

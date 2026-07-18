@@ -919,7 +919,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final compactLayout =
-            constraints.maxWidth < 340.0 || textScaler.scale(13.0) > 19.0;
+            constraints.maxWidth < 280.0 || textScaler.scale(13.0) > 19.0;
         final contentHeight = compactLayout
             ? detailsHeight + ExpatlioDesign.compactSpacing + 44.0
             : math.max(detailsHeight, 44.0);

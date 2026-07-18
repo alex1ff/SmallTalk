@@ -14,7 +14,11 @@ const {
 const {
   releaseSessionPairLocksInTransaction,
 } = require("./match_pair_lock");
+const {sendApnsVoip} = require("./apns_voip");
+const {getUserVoipTokens} = require("./voip_tokens");
+const {buildCallKitIdForSession} = require("./call_notifications");
 
+const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 
 const TERMINAL_SEARCH_REQUEST_STATUSES = new Set([
@@ -508,8 +512,112 @@ async function cancelSentNotificationsForSession({
   return activeNotificationsQuery.size;
 }
 
+function buildCallCancellationPayload({
+  sessionId = "",
+  responderUserId = "",
+} = {}) {
+  const normalizedSessionId = normalizeSessionId(sessionId);
+  return {
+    type: "call_cancelled",
+    sessionId: normalizedSessionId,
+    recipientId: normalizeNonEmptyString(responderUserId),
+    callKitId: buildCallKitIdForSession(normalizedSessionId),
+  };
+}
+
+async function sendCallCancellationToResponder({
+  db = admin.firestore(),
+  sessionId = "",
+  responderUserId = "",
+  tokenReader = getUserVoipTokens,
+  apnsSender = sendApnsVoip,
+  messaging = admin.messaging(),
+} = {}) {
+  const normalizedSessionId = normalizeSessionId(sessionId);
+  const normalizedResponderId = normalizeNonEmptyString(responderUserId);
+  if (!normalizedSessionId || !normalizedResponderId) {
+    return {sent: false, reason: "missing_ids"};
+  }
+
+  const responderSnapshot = await db
+    .collection("users")
+    .doc(normalizedResponderId)
+    .get();
+  if (!responderSnapshot.exists) {
+    return {sent: false, reason: "responder_not_found"};
+  }
+
+  const responderData = responderSnapshot.data() || {};
+  const {voipPushToken, voipToken: fcmToken} = await tokenReader(
+    normalizedResponderId,
+    responderData,
+  );
+  const payload = buildCallCancellationPayload({
+    sessionId: normalizedSessionId,
+    responderUserId: normalizedResponderId,
+  });
+  const bundleId = process.env.IOS_BUNDLE_ID || "com.appwave.smalltalk";
+  const voipTopic = process.env.IOS_VOIP_TOPIC ||
+    (bundleId.endsWith(".voip") ? bundleId : `${bundleId}.voip`);
+  let apnsError = "";
+
+  if (voipPushToken) {
+    try {
+      await apnsSender({
+        deviceToken: voipPushToken,
+        topic: voipTopic,
+        payload: {
+          aps: {"content-available": 1},
+          ...payload,
+        },
+      });
+      return {sent: true, channel: "apns_voip"};
+    } catch (error) {
+      apnsError = normalizeNonEmptyString(error?.message) || "apns_failed";
+      console.error("⚠️ stopSearch CallKit cancellation APNs failed:", {
+        sessionId: normalizedSessionId,
+        responderUserId: normalizedResponderId,
+        error: apnsError,
+      });
+    }
+  }
+
+  if (!fcmToken) {
+    return {
+      sent: false,
+      reason: "missing_fcm_token",
+      error: apnsError || null,
+    };
+  }
+
+  try {
+    await messaging.send({
+      token: fcmToken,
+      data: payload,
+      android: {priority: "high"},
+      apns: {
+        headers: {
+          "apns-priority": "5",
+          "apns-push-type": "background",
+          "apns-topic": bundleId,
+        },
+        payload: {
+          aps: {"content-available": 1},
+        },
+      },
+    });
+    return {sent: true, channel: "fcm"};
+  } catch (error) {
+    return {
+      sent: false,
+      reason: "fcm_failed",
+      error: normalizeNonEmptyString(error?.message) || "fcm_failed",
+    };
+  }
+}
+
 exports.stopSearch = functions
-  .runWith({secrets: dailySecrets})
+  .runWith({secrets: [...apnsSecrets, ...dailySecrets]})
   .https.onCall(async (data, context) => {
     if (!context.auth) {
       throw new functions.https.HttpsError(
@@ -669,6 +777,35 @@ exports.stopSearch = functions
       txResult.notificationCleanupStatus = "skipped";
     }
 
+    const cancelledResponderUserId = normalizeNonEmptyString(
+      txResult.videoSession?.responderUserId,
+    );
+    if (txResult.cancelledSessionId && cancelledResponderUserId) {
+      try {
+        txResult.callCancellationDelivery =
+          await sendCallCancellationToResponder({
+            db,
+            sessionId: txResult.cancelledSessionId,
+            responderUserId: cancelledResponderUserId,
+          });
+      } catch (error) {
+        console.error("⚠️ stopSearch CallKit cancellation failed:", {
+          sessionId: txResult.cancelledSessionId,
+          responderUserId: cancelledResponderUserId,
+          error: error.message,
+        });
+        txResult.callCancellationDelivery = {
+          sent: false,
+          reason: "delivery_failed",
+        };
+      }
+    } else {
+      txResult.callCancellationDelivery = {
+        sent: false,
+        reason: "skipped",
+      };
+    }
+
     if (txResult.cancelledSessionId && txResult.dailyRoomName) {
       try {
         await deleteDailyRoomForSession({
@@ -703,6 +840,8 @@ exports.__private__ = {
   buildStopSessionDecision,
   canStopSessionAfterSearchDecision,
   cancelSentNotificationsForSession,
+  buildCallCancellationPayload,
+  sendCallCancellationToResponder,
   getAssignedResponderId,
   normalizeRequestId,
   normalizeSessionId,

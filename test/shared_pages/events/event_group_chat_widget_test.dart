@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:small_talk/auth/firebase_auth/auth_util.dart';
 import 'package:small_talk/backend/backend.dart';
+import 'package:small_talk/components/chat_composer.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/shared_pages/design/expatlio_design.dart';
 import 'package:small_talk/shared_pages/events/event_group_chat_widget.dart';
@@ -2566,7 +2567,7 @@ void main() {
     expect(input.controller?.text, isEmpty);
   });
 
-  testWidgets('keeps composer input and send button height fixed',
+  testWidgets('grows composer input to four lines with integrated send button',
       (tester) async {
     await tester.pumpWidget(
       _buildTestApp(
@@ -2596,25 +2597,30 @@ void main() {
     );
 
     expect(inputTextField.minLines, 1);
-    expect(inputTextField.maxLines, 1);
-    expect(tester.getSize(inputFinder).height, ExpatlioDesign.formFieldHeight);
+    expect(inputTextField.maxLines, 4);
+    final initialInputHeight = tester.getSize(inputFinder).height;
+    expect(initialInputHeight, 42);
     expect(
       tester.getSize(sendButtonFinder),
-      const Size.square(ExpatlioDesign.formFieldHeight),
+      const Size.square(44),
+    );
+    expect(
+      tester.getSize(find.byKey(chatComposerSendCircleKey)),
+      const Size.square(36),
     );
 
     await tester.enterText(
       inputFinder,
-      'Очень длинное сообщение, которое раньше могло раздувать composer '
-      'и менять высоту нижней панели во время набора.',
+      List<String>.filled(30, 'Очень длинное сообщение').join(' '),
     );
     await tester.pump();
 
-    expect(tester.getSize(inputFinder).height, ExpatlioDesign.formFieldHeight);
+    expect(tester.getSize(inputFinder).height, greaterThan(initialInputHeight));
     expect(
       tester.getSize(sendButtonFinder),
-      const Size.square(ExpatlioDesign.formFieldHeight),
+      const Size.square(44),
     );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('does not keep bottom safe area while keyboard is open',
@@ -2664,19 +2670,16 @@ void main() {
 
     expect(
       closedComposerRect.height,
-      ExpatlioDesign.space12 +
-          ExpatlioDesign.formFieldHeight +
-          ExpatlioDesign.space12 +
-          34,
+      ExpatlioDesign.space8 + 44 + ExpatlioDesign.space8 + 34,
     );
-    expect(closedInputRect.height, ExpatlioDesign.formFieldHeight);
+    expect(closedInputRect.height, 42);
     expect(
       closedSendButtonRect.size,
-      const Size.square(ExpatlioDesign.formFieldHeight),
+      const Size.square(44),
     );
     expect(
       closedComposerRect.bottom - closedInputRect.bottom,
-      ExpatlioDesign.space12 + 34,
+      ExpatlioDesign.space8 + 34,
     );
     expect(closedComposerRect.bottom, closedScaffoldRect.bottom);
 
@@ -2691,15 +2694,13 @@ void main() {
 
     expect(
       openComposerRect.height,
-      ExpatlioDesign.space12 +
-          ExpatlioDesign.formFieldHeight +
-          ExpatlioDesign.space12,
+      ExpatlioDesign.space8 + 44 + ExpatlioDesign.space8,
     );
     expect(openInputRect.size, closedInputRect.size);
     expect(openSendButtonRect.size, closedSendButtonRect.size);
     expect(
       openComposerRect.bottom - openInputRect.bottom,
-      ExpatlioDesign.space12,
+      ExpatlioDesign.space8,
     );
     expect(
       closedComposerRect.bottom - openComposerRect.bottom,
@@ -2717,7 +2718,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('keeps composer active while send is pending', (tester) async {
+  testWidgets('keeps composer editable while send is pending', (tester) async {
     currentUser = _TestAuthUser('uid-1', displayName: 'Марко');
     final sendCompleter = Completer<Object?>();
     addTearDown(() {
@@ -2758,7 +2759,7 @@ void main() {
       find.byKey(eventGroupChatMessageInputKey),
     );
     expect(input.controller?.text, isEmpty);
-    expect(find.byIcon(Icons.send_rounded), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
     await tester.enterText(
       find.byKey(eventGroupChatMessageInputKey),
@@ -2777,8 +2778,7 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets(
-      'two fresh sends use distinct client IDs and settle independently',
+  testWidgets('blocks a second fresh send until the active request settles',
       (tester) async {
     currentUser = _TestAuthUser('uid-1', displayName: 'Марко');
     final sendCompleters = <Completer<Object?>>[
@@ -2832,28 +2832,34 @@ void main() {
     await tester.tap(find.byKey(eventGroupChatSendButtonKey));
     await tester.pump();
 
-    expect(sendCalls, 2);
-    expect(clientMessageIds, hasLength(2));
-    expect(clientMessageIds[0], isNot(clientMessageIds[1]));
-    expect(find.byIcon(Icons.schedule_rounded), findsNWidgets(2));
-    for (final clientMessageId in clientMessageIds) {
-      expect(
-        find.byKey(eventGroupChatMessageItemKey(clientMessageId)),
-        findsOneWidget,
-      );
-    }
-
-    sendCompleters[1].complete(<String, dynamic>{
-      'messageId': 'message-2',
-      'createdAt': '2026-06-14T12:01:00.000Z',
-    });
-    await tester.pump();
+    expect(sendCalls, 1);
+    expect(clientMessageIds, hasLength(1));
     expect(find.byIcon(Icons.schedule_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.done_rounded), findsOneWidget);
+    expect(
+      tester
+          .widget<TextFormField>(find.byKey(eventGroupChatMessageInputKey))
+          .controller
+          ?.text,
+      'Второе',
+    );
 
     sendCompleters[0].complete(<String, dynamic>{
       'messageId': 'message-1',
       'createdAt': '2026-06-14T12:00:00.000Z',
+    });
+    await tester.pump();
+    await tester.tap(find.byKey(eventGroupChatSendButtonKey));
+    await tester.pump();
+
+    expect(sendCalls, 2);
+    expect(clientMessageIds, hasLength(2));
+    expect(clientMessageIds[0], isNot(clientMessageIds[1]));
+    expect(find.byIcon(Icons.schedule_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.done_rounded), findsOneWidget);
+
+    sendCompleters[1].complete(<String, dynamic>{
+      'messageId': 'message-2',
+      'createdAt': '2026-06-14T12:01:00.000Z',
     });
     await tester.pumpAndSettle();
     expect(find.byIcon(Icons.schedule_rounded), findsNothing);
@@ -3005,7 +3011,7 @@ void main() {
       'messageId': 'message-late',
       'createdAt': '2026-06-14T12:00:00.000Z',
     });
-    await tester.pumpAndSettle();
+    await tester.pump();
 
     expect(
       EventGroupChatRepository.rememberedInboxEventIdsForOwner('user-a'),
@@ -3109,7 +3115,7 @@ void main() {
       } else {
         sendCompleters[0].completeError(StateError('stale send failed'));
       }
-      await tester.pumpAndSettle();
+      await tester.pump();
 
       expect(find.byKey(eventGroupChatSendErrorSnackBarKey), findsNothing);
       expect(find.text('Новое A2'), findsOneWidget);

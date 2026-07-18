@@ -723,22 +723,16 @@ void main() {
       expect(emptyStateSource, contains('ConstrainedBox'));
     });
 
-    test('call chat composer keeps input field dark', () {
+    test('call chat composer uses the shared iMessage-style control', () {
       final source =
           _source('lib/custom_code/widgets/minimal_daily_widget.dart');
       final composerSource =
           _curlyBlockSource(source, 'Widget _buildChatComposer()');
 
-      expect(composerSource, contains('filled: true,'));
-      expect(
-        composerSource,
-        contains('fillColor: Colors.white.withValues(alpha: 0.08),'),
-      );
-      expect(
-        composerSource,
-        contains('focusedBorder: const OutlineInputBorder('),
-      );
-      expect(composerSource, contains('borderSide: BorderSide.none,'));
+      expect(composerSource, contains('ChatComposer('));
+      expect(composerSource, contains('isSending: _isSendingChatMessage'));
+      expect(composerSource, contains('enabled: composerEnabled'));
+      expect(composerSource, isNot(contains('Icons.send_rounded')));
     });
 
     test('Deepgram caption failures are visible and persisted safely', () {
@@ -816,6 +810,40 @@ void main() {
           rulesSource,
           contains(
               "data.source in ['local_deepgram_final', 'peer_legacy_final']"));
+    });
+
+    test('Deepgram stop persists a short unfinished caption before clearing',
+        () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final messageGuardSource = _curlyBlockSource(
+        source,
+        'bool _canHandleDeepgramMessage(',
+      );
+      final finalizeSource = _curlyBlockSource(
+        source,
+        'Future<void> _finalizeCurrentCaptionAndFlushLogs() async',
+      );
+      final stopSource = _curlyBlockSource(
+        source,
+        'Future<void> _stopDeepgramStreaming() async',
+      );
+
+      expect(messageGuardSource, contains('_deepgramFinalizing'));
+      expect(
+        finalizeSource,
+        contains('_emitFinalUpdateForCurrentLocalCaption();'),
+      );
+      expect(
+        finalizeSource,
+        contains('_flushPendingCaptionLogs(force: true)'),
+      );
+
+      final finalizeIndex =
+          stopSource.lastIndexOf('_finalizeCurrentCaptionAndFlushLogs()');
+      final clearIndex = stopSource.lastIndexOf('_clearLocalCaptions()');
+      expect(finalizeIndex, greaterThanOrEqualTo(0));
+      expect(clearIndex, greaterThan(finalizeIndex));
     });
 
     test('caption overlay remains available while chat is open', () {
@@ -1828,13 +1856,8 @@ void main() {
         dailyWidgetSource,
         contains("'Отправка сообщения недоступна'"),
       );
-      expect(
-        dailyWidgetSource,
-        contains("'Введите сообщение для отправки'"),
-      );
       expect(dailyWidgetSource, contains('ExcludeSemantics('));
-      expect(dailyWidgetSource, contains('width: 48,'));
-      expect(dailyWidgetSource, contains('height: 48,'));
+      expect(dailyWidgetSource, contains('ChatComposer('));
     });
 
     test('chat thread uses public profile projection for partner header', () {

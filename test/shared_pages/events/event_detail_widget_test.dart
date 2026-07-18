@@ -187,6 +187,7 @@ void main() {
 
       expect(find.byKey(eventDetailBottomActionBarKey), findsOneWidget);
       expect(find.byKey(eventDetailPrimaryCtaKey), findsOneWidget);
+      expect(find.byKey(eventDetailChatCtaSlotKey), findsNothing);
       expect(find.byKey(eventDetailChatCtaKey), findsNothing);
       expect(find.text('Присоединиться'), findsOneWidget);
 
@@ -200,7 +201,7 @@ void main() {
     }
   });
 
-  testWidgets('bottom action slots keep geometry across all data states',
+  testWidgets('bottom action uses chat space only when chat is available',
       (tester) async {
     final semanticsHandle = tester.ensureSemantics();
     try {
@@ -223,10 +224,9 @@ void main() {
 
       await pumpState(EventDetailJoinCtaState.join, showChat: false);
       final barRect = tester.getRect(find.byKey(eventDetailBottomActionBarKey));
-      final primaryRect = tester.getRect(find.byKey(eventDetailPrimaryCtaKey));
-      final chatSlotRect =
-          tester.getRect(find.byKey(eventDetailChatCtaSlotKey));
-      expect(chatSlotRect.width, 78);
+      final fullWidthPrimaryRect =
+          tester.getRect(find.byKey(eventDetailPrimaryCtaKey));
+      expect(find.byKey(eventDetailChatCtaSlotKey), findsNothing);
       expect(find.byKey(eventDetailChatCtaKey), findsNothing);
       expect(find.bySemanticsLabel('Чат'), findsNothing);
 
@@ -240,16 +240,23 @@ void main() {
           tester.getRect(find.byKey(eventDetailBottomActionBarKey)),
           barRect,
         );
-        expect(
-            tester.getRect(find.byKey(eventDetailPrimaryCtaKey)), primaryRect);
-        expect(
-          tester.getRect(find.byKey(eventDetailChatCtaSlotKey)),
-          chatSlotRect,
-        );
-        expect(
-          find.byKey(eventDetailChatCtaKey),
-          showChat ? findsOneWidget : findsNothing,
-        );
+        final primaryRect =
+            tester.getRect(find.byKey(eventDetailPrimaryCtaKey));
+        if (showChat) {
+          final chatSlotRect =
+              tester.getRect(find.byKey(eventDetailChatCtaSlotKey));
+          expect(chatSlotRect.width, 78);
+          expect(chatSlotRect.right, fullWidthPrimaryRect.right);
+          expect(
+            primaryRect.width,
+            fullWidthPrimaryRect.width - 78 - ExpatlioDesign.space12,
+          );
+          expect(find.byKey(eventDetailChatCtaKey), findsOneWidget);
+        } else {
+          expect(primaryRect, fullWidthPrimaryRect);
+          expect(find.byKey(eventDetailChatCtaSlotKey), findsNothing);
+          expect(find.byKey(eventDetailChatCtaKey), findsNothing);
+        }
       }
       expect(tester.takeException(), isNull);
     } finally {
@@ -1088,7 +1095,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('bottom action geometry stays stable on narrow large text',
+  testWidgets('narrow large-text layout adds chat row only when available',
       (tester) async {
     tester.view.physicalSize = const Size(640, 1200);
     tester.view.devicePixelRatio = 2;
@@ -1117,20 +1124,30 @@ void main() {
     }
 
     await pumpState(joined: false);
-    final barRect = tester.getRect(find.byKey(eventDetailBottomActionBarKey));
-    final primaryRect = tester.getRect(find.byKey(eventDetailPrimaryCtaKey));
-    final chatSlotRect = tester.getRect(find.byKey(eventDetailChatCtaSlotKey));
-    expect(chatSlotRect.height, greaterThan(48));
+    final compactBarRect =
+        tester.getRect(find.byKey(eventDetailBottomActionBarKey));
+    final compactPrimaryRect =
+        tester.getRect(find.byKey(eventDetailPrimaryCtaKey));
+    expect(find.byKey(eventDetailChatCtaSlotKey), findsNothing);
     expect(find.byKey(eventDetailChatCtaKey), findsNothing);
 
     await pumpState(joined: true);
 
-    expect(tester.getRect(find.byKey(eventDetailBottomActionBarKey)), barRect);
-    expect(tester.getRect(find.byKey(eventDetailPrimaryCtaKey)), primaryRect);
+    final expandedBarRect =
+        tester.getRect(find.byKey(eventDetailBottomActionBarKey));
+    final expandedPrimaryRect =
+        tester.getRect(find.byKey(eventDetailPrimaryCtaKey));
+    final chatSlotRect = tester.getRect(find.byKey(eventDetailChatCtaSlotKey));
+    expect(expandedBarRect.height, greaterThan(compactBarRect.height));
+    expect(expandedBarRect.bottom, compactBarRect.bottom);
+    expect(expandedPrimaryRect.size, compactPrimaryRect.size);
     expect(
-      tester.getRect(find.byKey(eventDetailChatCtaSlotKey)),
-      chatSlotRect,
+      expandedPrimaryRect.shift(-expandedBarRect.topLeft),
+      compactPrimaryRect.shift(-compactBarRect.topLeft),
     );
+    expect(chatSlotRect.height, greaterThan(48));
+    expect(
+        chatSlotRect.top - expandedPrimaryRect.bottom, ExpatlioDesign.space12);
     expect(find.byKey(eventDetailChatCtaKey), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

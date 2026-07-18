@@ -89,8 +89,7 @@ void main() {
       );
     });
 
-    test('foreground student match uses in-app navigation instead of CallKit',
-        () {
+    test('all foreground matches use in-app navigation instead of CallKit', () {
       expect(
         voipIncomingCallShouldUseInAppNavigation(
           const {'scenario': 'student_student'},
@@ -114,10 +113,13 @@ void main() {
       );
       expect(
         voipIncomingCallShouldUseInAppNavigation(
-          const {'scenario': 'student_teacher'},
+          const {
+            'sessionId': 'teacher-session',
+            'scenario': 'student_teacher',
+          },
           lifecycleState: AppLifecycleState.resumed,
         ),
-        isFalse,
+        isTrue,
       );
     });
 
@@ -2386,6 +2388,80 @@ void main() {
         service.debugCallKitIdForSessionForTesting('session-expired-show'),
         isNull,
       );
+    });
+
+    test('incoming cancellation ends only the deterministic session call',
+        () async {
+      String? endedSessionId;
+      String? endedCallKitId;
+      service.debugEndCallKitCallOverride = ({
+        required sessionId,
+        required callKitId,
+      }) async {
+        endedSessionId = sessionId;
+        endedCallKitId = callKitId;
+      };
+
+      await service.cancelIncomingCall(sessionId: 'session-cancelled');
+
+      expect(endedSessionId, 'session-cancelled');
+      expect(
+        endedCallKitId,
+        deterministicCallKitIdForTest('session-cancelled'),
+      );
+    });
+
+    test('foreground teacher incoming call accepts and navigates in app',
+        () async {
+      const sessionId = 'session-foreground-teacher';
+      final navigated = Completer<void>();
+      var acceptCallInvoked = false;
+
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return <String, dynamic>{
+          'status': 'connected',
+          'roomUrl': 'https://daily.test/foreground-teacher',
+          'meetingToken': 'teacher-token',
+          'roomName': 'foreground-teacher',
+        };
+      };
+      service.debugNavigateToVideoCallOverride = ({
+        required sessionId,
+        required isTutor,
+        roomUrl,
+        meetingToken,
+        roomName,
+      }) {
+        if (!navigated.isCompleted) {
+          navigated.complete();
+        }
+      };
+      service.debugPrefetchSessionTokensOverride = (_) async {};
+      service.debugMarkNavigationTriggeredOverride = ({
+        required sessionId,
+        required isTutor,
+      }) async {};
+
+      await service.showIncomingCall(
+        sessionId: sessionId,
+        callerName: 'Student',
+        callerId: 'student-a',
+        lifecycleState: AppLifecycleState.resumed,
+        extraData: const {
+          'type': 'incoming_call',
+          'sessionId': sessionId,
+          'recipientId': 'teacher-a',
+          'scenario': 'student_teacher',
+          'acceptMode': 'responder_accepts',
+          'tokenStrategy': 'accept_call',
+        },
+      );
+      await navigated.future.timeout(const Duration(seconds: 1));
+
+      expect(acceptCallInvoked, isTrue);
+      expect(service.debugAcceptedSessionForTesting(sessionId), isTrue);
     });
 
     test('runtime closed app incoming payload before 90 seconds tracks CallKit',

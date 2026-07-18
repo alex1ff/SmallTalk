@@ -5,6 +5,7 @@ const path = require("node:path");
 const {
   __private__: {
     buildManualStopPairLockReleaseOptions,
+    buildCallCancellationPayload,
     buildResponse,
     buildStopSearchDecision,
     buildStopSessionDecision,
@@ -16,6 +17,7 @@ const {
     requestMatchesSearchRequestId,
     requestMatchesSession,
     resolveStopSessionId,
+    sendCallCancellationToResponder,
   },
 } = require("./stop_search");
 
@@ -69,6 +71,53 @@ test("normalize ids trim valid ids and reject invalid paths", () => {
   assert.equal(normalizeSessionId(null), "");
   assert.equal(normalizeRequestId(" request-a "), "request-a");
   assert.equal(normalizeRequestId("requests/request-a"), "");
+});
+
+test("call cancellation payload targets the exact CallKit session", () => {
+  const payload = buildCallCancellationPayload({
+    sessionId: " session-a ",
+    responderUserId: " teacher-a ",
+  });
+
+  assert.equal(payload.type, "call_cancelled");
+  assert.equal(payload.sessionId, "session-a");
+  assert.equal(payload.recipientId, "teacher-a");
+  assert.match(
+    payload.callKitId,
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+  );
+});
+
+test("stop cancellation sends a VoIP end event to the responder", async () => {
+  let sentRequest = null;
+  const result = await sendCallCancellationToResponder({
+    db: {
+      collection: () => ({
+        doc: () => ({
+          get: async () => ({
+            exists: true,
+            data: () => ({role: "native_speaker"}),
+          }),
+        }),
+      }),
+    },
+    sessionId: "session-a",
+    responderUserId: "teacher-a",
+    tokenReader: async () => ({
+      voipPushToken: "push-token",
+      voipToken: null,
+    }),
+    apnsSender: async (request) => {
+      sentRequest = request;
+    },
+    messaging: {send: async () => assert.fail("FCM fallback not expected")},
+  });
+
+  assert.deepEqual(result, {sent: true, channel: "apns_voip"});
+  assert.equal(sentRequest.deviceToken, "push-token");
+  assert.equal(sentRequest.payload.type, "call_cancelled");
+  assert.equal(sentRequest.payload.sessionId, "session-a");
+  assert.equal(sentRequest.payload.recipientId, "teacher-a");
 });
 
 test("request owner can be stored as ids, refs, or omitted for uid doc", () => {

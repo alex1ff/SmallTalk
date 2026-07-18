@@ -7,15 +7,15 @@ Owner: Product + Engineering
 ## Summary
 
 Remove the black wedges visible around the rounded top corners of the iOS
-keyboard throughout the Flutter app. Replace the separate private-chat and
-event-group-chat input implementations with one shared composer inspired by
-iMessage while retaining the Expatlio purple brand color.
+keyboard throughout the Flutter app. Replace the separate private-chat,
+event-group-chat, and in-call-chat input implementations with one shared
+composer inspired by iMessage while retaining the Expatlio purple brand color.
 
 ## Goals
 
 - Ensure transparent areas around the rounded iOS keyboard reveal a light app
   surface instead of black pixels on every screen.
-- Give the private chat and event group chat the same message composer.
+- Give every chat surface the same message composer.
 - Use an iMessage-like capsule with an integrated circular send button.
 - Keep the existing message send, optimistic update, retry, access-control, and
   error-reporting flows intact.
@@ -40,8 +40,9 @@ iMessage while retaining the Expatlio purple brand color.
   `lib/shared_pages/chat_thread/chat_thread_widget.dart`.
 - The event group chat has a separate `_EventGroupChatComposer` in
   `lib/shared_pages/events/event_group_chat_widget.dart`.
-- Both composers currently use a fixed 48-point field and a separate rounded
-  square send button.
+- The in-call chat builds another custom composer in
+  `lib/custom_code/widgets/minimal_daily_widget.dart`.
+- The composers currently use separate field and send-button implementations.
 - Bottom safe-area padding is already removed while the keyboard is open via
   `ExpatlioDesign.bottomBarSafePadding(context)` and must remain single-counted.
 
@@ -52,9 +53,9 @@ Use one shared Flutter composer and two complementary keyboard backdrop layers:
 1. Paint a light app-level Flutter surface behind all routed content.
 2. Set the native iOS window/root Flutter view background to the same light
    surface so system transparency cannot reveal the default black backing view.
-3. Replace both chat-specific composer layouts with the shared component.
+3. Replace all three chat-specific composer layouts with the shared component.
 
-This is preferred over duplicating the new styling in both chats because a
+This is preferred over duplicating the new styling in each chat because a
 single component prevents geometry, disabled-state, and safe-area behavior from
 drifting again. A fully Cupertino chat surface is not required and would broaden
 the scope beyond the requested composer.
@@ -222,6 +223,13 @@ that no longer belongs to the active scope. The request `finally` block clears
 the token only when it is still the same operation. A stale completion therefore
 cannot enable or disable the composer for a different chat.
 
+### In-call Chat
+
+`MinimalDailyWidget` replaces its custom dark composer with `ChatComposer` and
+passes the existing controller, focus node, localized labels, participant and
+connection availability, and `_sendChatMessage` callback. A local in-flight
+flag blocks duplicate sends while leaving the next draft editable.
+
 ## Error Handling
 
 - Empty or whitespace-only drafts never call a parent send callback.
@@ -229,8 +237,9 @@ cannot enable or disable the composer for a different chat.
   retry behavior.
 - A failed event-chat send continues to mark the optimistic message failed and
   show the existing localized snackbar.
+- A failed in-call send retains its existing debug logging behavior.
 - The event composer re-enables in `finally` only when its widget state is still
-  mounted and the operation token still belongs to the current chat scope.
+  mounted and the operation token is still the identical active operation.
 - Changing owner, event, or action boundary clears the old send token before the
   new accessible content is rendered.
 - Native backdrop setup is centralized in an idempotent AppDelegate helper. It
@@ -256,9 +265,9 @@ Add tests covering:
 
 ### Integration Tests
 
-Update private-chat and event-group-chat widget tests to verify:
+Update chat integration and contract tests to verify:
 
-- both screens render the shared composer;
+- all three chat surfaces render the shared composer;
 - existing keys still locate the input and send button;
 - existing send and optimistic-message flows continue to pass;
 - keyboard opening moves the composer by exactly the view inset without keeping
@@ -274,11 +283,12 @@ keyboard.
 The primary visual acceptance criterion requires a manual iOS smoke test on a
 simulator or device:
 
-1. Open a normal form screen, the private chat, and the event group chat.
+1. Open a normal form screen, the private chat, the event group chat, and the
+   in-call chat.
 2. Show the light iOS keyboard on each screen.
 3. Confirm both rounded top corners reveal the light app surface with no black
    wedges during keyboard opening, steady state, and dismissal.
-4. In both chats, verify empty, typed, wrapped four-line, and sending composer
+4. In all three chats, verify empty, typed, wrapped four-line, and sending composer
    states.
 
 ### Validation Commands
@@ -288,6 +298,7 @@ simulator or device:
 - `flutter test test/shared_pages/chat_thread_widget_test.dart`
 - `flutter test test/shared_pages/events/event_group_chat_widget_test.dart`
 - `flutter test test/shared_pages/events/event_bottom_safe_area_contract_test.dart`
+- `flutter test test/regression/voip_call_surface_contracts_test.dart`
 - `flutter test test/platform/ios_keyboard_backdrop_contract_test.dart`
 - manual iOS smoke test described above
 
@@ -296,10 +307,11 @@ simulator or device:
 - No black pixels are visible through the rounded top corners of the iOS
   keyboard on app screens with text input, confirmed by the manual iOS smoke
   test.
-- Private and event group chats render the same iMessage-inspired composer.
+- Private, event group, and in-call chats render the same iMessage-inspired
+  composer.
 - The send control is inside the input capsule and uses the Expatlio purple
   active color.
-- Empty drafts cannot be sent, and in-flight event sends cannot be duplicated.
+- Empty drafts cannot be sent, and in-flight sends cannot be duplicated.
 - The field grows to four lines and then scrolls without layout overflow.
 - Keyboard-open and keyboard-closed layouts consume the bottom safe area exactly
   once.

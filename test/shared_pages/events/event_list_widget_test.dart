@@ -11617,7 +11617,7 @@ void main() {
     expect(find.text('Присоединиться'), findsOneWidget);
     expect(
       tester.getSize(find.byKey(eventListCardPrimaryCtaKey)).height,
-      48,
+      36,
     );
     final semantics =
         tester.getSemantics(find.byKey(eventListCardPrimaryCtaKey));
@@ -12446,7 +12446,7 @@ void main() {
     ]);
   });
 
-  testWidgets('event card uses one fixed geometry for loading and content',
+  testWidgets('event card keeps the compact legacy content geometry',
       (tester) async {
     tester.view.physicalSize = const Size(320, 900);
     tester.view.devicePixelRatio = 1;
@@ -12484,7 +12484,7 @@ void main() {
       stateKey: 'loading-card',
       isLoading: true,
     );
-    final sparse = await pumpCard(
+    await pumpCard(
       stateKey: 'sparse-card',
       card: _eventCardFixture(
         organizerDisplayName: '',
@@ -12496,7 +12496,23 @@ void main() {
     _expectEventCardActionLabelsFit(tester);
     expect(
       tester.getSize(find.byKey(eventListCardPrimaryCtaKey)).width,
-      greaterThan(tester.getSize(find.byKey(eventListCardChatCtaKey)).width),
+      greaterThanOrEqualTo(
+        tester.getSize(find.byKey(eventListCardChatCtaKey)).width,
+      ),
+    );
+    final sparseShellSize = tester.getSize(find.byKey(eventListCardShellKey));
+    final sparseMetaSize = tester.getSize(find.byKey(eventListCardMetaKey));
+    final dateChipSize = tester.getSize(find.byKey(eventListCardDateKey));
+    final timeChipSize = tester.getSize(find.byKey(eventListCardTimeKey));
+    expect(dateChipSize.width, lessThan(sparseMetaSize.width * 0.60));
+    expect(timeChipSize.width, lessThan(sparseMetaSize.width * 0.45));
+    expect(
+      dateChipSize.width + ExpatlioDesign.space8 + timeChipSize.width,
+      lessThan(sparseMetaSize.width),
+    );
+    expect(
+      tester.getSize(find.byKey(eventListCardPrimaryCtaKey)).height,
+      36,
     );
     final maximal = await pumpCard(
       stateKey: 'maximal-card',
@@ -12524,20 +12540,18 @@ void main() {
     );
     _expectEventCardActionLabelsFit(tester);
 
-    final expected = (
-      shellSize: const Size(286, 366),
-      header: const Rect.fromLTWH(17, 17, 252, 38),
-      body: const Rect.fromLTWH(17, 69, 252, 100),
-      meta: const Rect.fromLTWH(17, 177, 252, 72),
-      footer: const Rect.fromLTWH(17, 263, 252, 24),
-      actions: const Rect.fromLTWH(17, 301, 252, 48),
-    );
-    expect(loading, expected);
-    expect(sparse, loading);
-    expect(maximal, loading);
+    expect(loading.shellSize.width, 286);
+    expect(maximal.shellSize.width, 286);
+    expect(sparseShellSize.width, 286);
+    expect(sparseShellSize.height, lessThan(280));
+    expect(sparseShellSize.height, lessThan(loading.shellSize.height));
+    expect(maximal.shellSize.height, greaterThan(sparseShellSize.height));
+    expect(maximal.shellSize.height, lessThan(420));
+    expect(loading.actions.top, greaterThan(loading.footer!.bottom));
+    expect(maximal.actions.top, greaterThan(maximal.footer!.bottom));
   });
 
-  testWidgets('card slots stay stable for scaled RU and EN content',
+  testWidgets('compact card stays bounded for scaled RU and EN content',
       (tester) async {
     tester.view.physicalSize = const Size(320, 1100);
     tester.view.devicePixelRatio = 1;
@@ -12579,6 +12593,18 @@ void main() {
       final exception = tester.takeException();
       expect(exception == null ? null : exception.toStringDeep(), isNull);
       return _eventCardGeometry(tester);
+    }
+
+    void expectBoundedGeometry(_EventCardGeometry geometry) {
+      expect(geometry.shellSize.width, 286);
+      expect(geometry.body.top, greaterThan(geometry.header.top));
+      expect(geometry.meta.top, greaterThan(geometry.body.top));
+      final contentBottom = geometry.footer?.bottom ?? geometry.meta.bottom;
+      expect(geometry.actions.top, greaterThan(contentBottom));
+      expect(
+        geometry.actions.bottom,
+        lessThanOrEqualTo(geometry.shellSize.height - 16),
+      );
     }
 
     for (final configuration in <({Locale locale, double textScale})>[
@@ -12630,27 +12656,10 @@ void main() {
       );
       _expectEventCardActionLabelsFit(tester);
 
-      final _EventCardGeometry expectedGeometry =
-          configuration.locale.languageCode == 'ru'
-              ? (
-                  shellSize: const Size(286, 587),
-                  header: const Rect.fromLTWH(17, 17, 252, 56),
-                  body: const Rect.fromLTWH(17, 87, 252, 154),
-                  meta: const Rect.fromLTWH(17, 249, 252, 100),
-                  footer: const Rect.fromLTWH(17, 363, 252, 27),
-                  actions: const Rect.fromLTWH(17, 404, 252, 166),
-                )
-              : (
-                  shellSize: const Size(286, 957),
-                  header: const Rect.fromLTWH(17, 17, 252, 101),
-                  body: const Rect.fromLTWH(17, 132, 252, 280),
-                  meta: const Rect.fromLTWH(17, 420, 252, 168),
-                  footer: const Rect.fromLTWH(17, 602, 252, 50),
-                  actions: const Rect.fromLTWH(17, 666, 252, 274),
-                );
-      expect(loading, expectedGeometry);
-      expect(sparse, loading);
-      expect(maximal, loading);
+      expectBoundedGeometry(loading);
+      expectBoundedGeometry(sparse);
+      expectBoundedGeometry(maximal);
+      expect(maximal.shellSize.height, greaterThan(sparse.shellSize.height));
 
       for (final joinState in EventListJoinCtaState.values) {
         final stateGeometry = await pumpCard(
@@ -12667,7 +12676,7 @@ void main() {
             joinState == EventListJoinCtaState.past) {
           expect(find.text('Past'), findsOneWidget);
         }
-        expect(stateGeometry, loading);
+        expectBoundedGeometry(stateGeometry);
       }
 
       for (final membershipState in <EventListMembershipState>[
@@ -12683,7 +12692,7 @@ void main() {
           ),
         );
         _expectEventCardActionLabelsFit(tester);
-        expect(stateGeometry, loading);
+        expectBoundedGeometry(stateGeometry);
       }
     }
   });
@@ -13123,7 +13132,7 @@ typedef _EventCardGeometry = ({
   Rect header,
   Rect body,
   Rect meta,
-  Rect footer,
+  Rect? footer,
   Rect actions,
 });
 
@@ -13138,7 +13147,9 @@ _EventCardGeometry _eventCardGeometry(WidgetTester tester) {
     header: relativeRect(eventListCardHeaderKey),
     body: relativeRect(eventListCardBodyKey),
     meta: relativeRect(eventListCardMetaKey),
-    footer: relativeRect(eventListCardFooterKey),
+    footer: find.byKey(eventListCardFooterKey).evaluate().isEmpty
+        ? null
+        : relativeRect(eventListCardFooterKey),
     actions: relativeRect(eventListCardActionsKey),
   );
 }

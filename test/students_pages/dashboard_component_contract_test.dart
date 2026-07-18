@@ -66,12 +66,15 @@ void main() {
     expect(source, isNot(contains('size: 62.0')));
   });
 
-  test('student dashboard hides unavailable and empty partner count', () {
+  test('student dashboard keeps a stable cached partner count', () {
     final source = File(
             'lib/students_pages/students_dashboard/students_dashboard_widget.dart')
         .readAsStringSync();
 
-    expect(source, contains('count == null || count <= 0'));
+    expect(source, contains('NearbyPartnerCountCache'));
+    expect(source, contains('_refreshPartnerCount'));
+    expect(source, isNot(contains('считаем людей рядом')));
+    expect(source, isNot(contains('count == null || count <= 0')));
     expect(source, isNot(contains('количество людей недоступно')));
     expect(source, isNot(contains('people count unavailable')));
   });

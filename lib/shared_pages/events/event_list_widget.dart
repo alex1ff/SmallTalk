@@ -137,7 +137,6 @@ const double _eventListHorizontalPadding = 17.0;
 const double _eventListTopPadding = 10.0;
 const double _eventListPaginationPrefetchExtent = 240.0;
 const double _eventListCardRadius = 15.0;
-const double _eventListCardBorderWidth = 1.0;
 const double _eventListCardPadding = 16.0;
 const double _eventListCardHeaderBodyGap = 14.0;
 const double _eventListCardBodyMetaGap = 8.0;
@@ -146,12 +145,13 @@ const double _eventListCardMetaFooterGap = 14.0;
 const double _eventListCardFooterActionsGap = 14.0;
 const double _eventListDateChipHeight = 30.0;
 const double _eventListLevelChipHeight = 24.0;
-const double _eventListActionHeight = 48.0;
+const double _eventListActionHeight = 36.0;
 const double _eventListActionGap = 8.0;
 const double _eventListActionRadius = 14.0;
-const double _eventListActionStackThresholdLineHeight = 17.0;
+const double _eventListInlineActionsMinWidth = 280.0;
+const double _eventListActionStackThresholdLineHeight = 13.0;
 const double _eventListActionVerticalPadding = 16.0;
-const int _eventListActionMaxLines = 2;
+const int _eventListActionMaxLines = 1;
 const int _eventListStackedActionMaxLines = 3;
 const int _eventListPrimaryActionFlex = 5;
 const int _eventListSecondaryActionFlex = 2;
@@ -173,7 +173,6 @@ const double _eventListActionTextHeight = 1.0;
 const Color _eventListBorderColor = Color(0xFFEBEBEB);
 const Color _eventListChipBackground = ExpatlioDesign.card;
 const Color _eventListSoftPrimaryBackground = Color(0xFFF0E6FF);
-const Color _eventListDestructiveCtaBackground = Color(0xFFB42318);
 final RegExp _eventListInvisibleAvatarCharacters = RegExp(
   r'[\u0000-\u001F\u007F-\u009F\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180B-\u180F\u200B-\u200F\u202A-\u202E\u2060-\u206F\u3164\uFE00-\uFE0F\uFEFF\uFFA0]',
 );
@@ -4468,12 +4467,7 @@ class _EventListLoadingState extends StatelessWidget {
 
 class _EventCardLayoutMetrics {
   const _EventCardLayoutMetrics({
-    required this.headerHeight,
-    required this.titleHeight,
-    required this.descriptionHeight,
     required this.metaChipHeight,
-    required this.placeHeight,
-    required this.footerHeight,
     required this.levelBadgeHeight,
     required this.actionHeight,
     required this.stackActions,
@@ -4481,16 +4475,6 @@ class _EventCardLayoutMetrics {
 
   factory _EventCardLayoutMetrics.from(BuildContext context) {
     final textScaler = MediaQuery.textScalerOf(context);
-    final organizerLabelHeight = _eventCardScaledLineHeight(
-      textScaler,
-      fontSize: _eventListOrganizerLabelFontSize,
-      height: _eventListDefaultTextHeight,
-    );
-    final organizerNameHeight = _eventCardScaledLineHeight(
-      textScaler,
-      fontSize: _eventListOrganizerNameFontSize,
-      height: _eventListDefaultTextHeight,
-    );
     final levelBadgeHeight = math.max(
       _eventListLevelChipHeight,
       _eventCardScaledLineHeight(
@@ -4516,34 +4500,6 @@ class _EventCardLayoutMetrics {
     );
 
     return _EventCardLayoutMetrics(
-      headerHeight: math.max(
-        38.0,
-        math.max(
-          _eventListOrganizerAvatarSize,
-          math.max(
-            organizerLabelHeight + ExpatlioDesign.space4 + organizerNameHeight,
-            levelBadgeHeight,
-          ),
-        ),
-      ),
-      titleHeight: math.max(
-        38.0,
-        _eventCardScaledLineHeight(
-          textScaler,
-          fontSize: _eventListTitleFontSize,
-          height: _eventListTitleTextHeight,
-          maxLines: 2,
-        ),
-      ),
-      descriptionHeight: math.max(
-        54.0,
-        _eventCardScaledLineHeight(
-          textScaler,
-          fontSize: _eventListDescriptionFontSize,
-          height: _eventListDescriptionTextHeight,
-          maxLines: 3,
-        ),
-      ),
       metaChipHeight: math.max(
         24.0,
         _eventCardScaledLineHeight(
@@ -4553,63 +4509,22 @@ class _EventCardLayoutMetrics {
             ) +
             ExpatlioDesign.space8,
       ),
-      placeHeight: math.max(
-        35.0,
-        _eventCardScaledLineHeight(
-          textScaler,
-          fontSize: _eventListPlaceFontSize,
-          height: _eventListDefaultTextHeight,
-          maxLines: 2,
-        ),
-      ),
-      footerHeight: math.max(
-        24.0,
-        _eventCardScaledLineHeight(
-          textScaler,
-          fontSize: _eventListFooterFontSize,
-          height: _eventListDefaultTextHeight,
-        ),
-      ),
       levelBadgeHeight: levelBadgeHeight,
       actionHeight: actionHeight,
       stackActions: stackActions,
     );
   }
 
-  final double headerHeight;
-  final double titleHeight;
-  final double descriptionHeight;
   final double metaChipHeight;
-  final double placeHeight;
-  final double footerHeight;
   final double levelBadgeHeight;
   final double actionHeight;
   final bool stackActions;
-
-  double get bodyHeight =>
-      titleHeight + ExpatlioDesign.space8 + descriptionHeight;
-
-  double get metaHeight =>
-      metaChipHeight + _eventListCardMetaPlaceGap + placeHeight;
 
   double get actionsHeight =>
       stackActions ? (actionHeight * 2) + _eventListActionGap : actionHeight;
 
   int get actionMaxLines =>
       stackActions ? _eventListStackedActionMaxLines : _eventListActionMaxLines;
-
-  double get totalHeight =>
-      (_eventListCardBorderWidth * 2) +
-      (_eventListCardPadding * 2) +
-      headerHeight +
-      _eventListCardHeaderBodyGap +
-      bodyHeight +
-      _eventListCardBodyMetaGap +
-      metaHeight +
-      _eventListCardMetaFooterGap +
-      footerHeight +
-      _eventListCardFooterActionsGap +
-      actionsHeight;
 }
 
 double _eventCardScaledLineHeight(
@@ -4640,51 +4555,50 @@ class _EventCardShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final metrics = _EventCardLayoutMetrics.from(context);
     final borderRadius = BorderRadius.circular(_eventListCardRadius);
-    return SizedBox(
+    return Material(
       key: eventListCardShellKey,
-      height: metrics.totalHeight,
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: borderRadius,
-        clipBehavior: Clip.antiAlias,
-        child: Ink(
-          decoration: ExpatlioDesign.cardDecoration(
-            color: Colors.white,
-            radius: _eventListCardRadius,
-            borderColor: _eventListBorderColor,
-          ),
-          child: Padding(
-            padding: const EdgeInsetsDirectional.all(_eventListCardPadding),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                InkWell(
-                  onTap: onPressed,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _EventCardHeaderShell(card: card, metrics: metrics),
-                      const SizedBox(height: _eventListCardHeaderBodyGap),
-                      _EventCardBodyShell(card: card, metrics: metrics),
-                      const SizedBox(height: _eventListCardBodyMetaGap),
-                      _EventCardMetaShell(card: card, metrics: metrics),
+      color: Colors.transparent,
+      borderRadius: borderRadius,
+      clipBehavior: Clip.antiAlias,
+      child: Ink(
+        decoration: ExpatlioDesign.cardDecoration(
+          color: Colors.white,
+          radius: _eventListCardRadius,
+          borderColor: _eventListBorderColor,
+        ),
+        child: Padding(
+          padding: const EdgeInsetsDirectional.all(_eventListCardPadding),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              InkWell(
+                onTap: onPressed,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _EventCardHeaderShell(card: card, metrics: metrics),
+                    const SizedBox(height: _eventListCardHeaderBodyGap),
+                    _EventCardBodyShell(card: card),
+                    const SizedBox(height: _eventListCardBodyMetaGap),
+                    _EventCardMetaShell(card: card, metrics: metrics),
+                    if (card == null || card!.hasFooterContent) ...[
                       const SizedBox(height: _eventListCardMetaFooterGap),
-                      _EventCardFooterShell(card: card, metrics: metrics),
+                      _EventCardFooterShell(card: card),
                     ],
-                  ),
+                  ],
                 ),
-                const SizedBox(height: _eventListCardFooterActionsGap),
-                _EventCardActionsShell(
-                  card: card,
-                  metrics: metrics,
-                  onPrimaryPressed: onPrimaryPressed,
-                  onChatPressed: onChatPressed,
-                  onChatParticipantRequiredPressed:
-                      onChatParticipantRequiredPressed,
-                ),
-              ],
-            ),
+              ),
+              const SizedBox(height: _eventListCardFooterActionsGap),
+              _EventCardActionsShell(
+                card: card,
+                metrics: metrics,
+                onPrimaryPressed: onPrimaryPressed,
+                onChatPressed: onChatPressed,
+                onChatParticipantRequiredPressed:
+                    onChatParticipantRequiredPressed,
+              ),
+            ],
           ),
         ),
       ),
@@ -4704,57 +4618,50 @@ class _EventCardHeaderShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final organizer = card;
-    return SizedBox(
+    return Row(
       key: eventListCardHeaderKey,
-      height: metrics.headerHeight,
-      child: Row(
-        children: [
-          if (organizer == null)
-            const _EventCardCirclePlaceholder(
-              dimension: _eventListOrganizerAvatarSize,
-            )
-          else
-            _EventOrganizerAvatar(
-              photoUrl: organizer.organizerPhotoUrl,
-              displayName: organizer.organizerDisplayName,
+      children: [
+        if (organizer == null)
+          const _EventCardCirclePlaceholder(
+            dimension: _eventListOrganizerAvatarSize,
+          )
+        else
+          _EventOrganizerAvatar(
+            photoUrl: organizer.organizerPhotoUrl,
+            displayName: organizer.organizerDisplayName,
+          ),
+        const SizedBox(width: ExpatlioDesign.space12),
+        Expanded(
+          child: organizer == null
+              ? const Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _EventCardLinePlaceholder(widthFactor: 0.38, height: 12),
+                    SizedBox(height: ExpatlioDesign.space8),
+                    _EventCardLinePlaceholder(widthFactor: 0.58, height: 18),
+                  ],
+                )
+              : _EventOrganizerText(
+                  displayName: organizer.organizerDisplayName,
+                ),
+        ),
+        const SizedBox(width: ExpatlioDesign.space12),
+        if (organizer == null)
+          _EventCardPillPlaceholder(
+            width: 72,
+            height: metrics.levelBadgeHeight,
+          )
+        else
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 72),
+            child: _EventLevelRangeBadge(
+              levelMin: organizer.levelMin,
+              levelMax: organizer.levelMax,
+              height: metrics.levelBadgeHeight,
             ),
-          const SizedBox(width: ExpatlioDesign.space12),
-          Expanded(
-            child: organizer == null
-                ? Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _EventCardLinePlaceholder(
-                        widthFactor: 0.38,
-                        height: math.min(16.0, metrics.headerHeight),
-                      ),
-                      const SizedBox(height: ExpatlioDesign.space4),
-                      _EventCardLinePlaceholder(
-                        widthFactor: 0.58,
-                        height: math.min(18.0, metrics.headerHeight),
-                      ),
-                    ],
-                  )
-                : _EventOrganizerText(
-                    displayName: organizer.organizerDisplayName,
-                  ),
           ),
-          const SizedBox(width: ExpatlioDesign.space12),
-          SizedBox(
-            width: 72.0,
-            child: organizer == null
-                ? _EventCardPillPlaceholder(
-                    height: metrics.levelBadgeHeight,
-                  )
-                : _EventLevelRangeBadge(
-                    levelMin: organizer.levelMin,
-                    levelMax: organizer.levelMax,
-                    height: metrics.levelBadgeHeight,
-                  ),
-          ),
-        ],
-      ),
+      ],
     );
   }
 }
@@ -4876,105 +4783,68 @@ class _EventOrganizerAvatar extends StatelessWidget {
 class _EventCardBodyShell extends StatelessWidget {
   const _EventCardBodyShell({
     required this.card,
-    required this.metrics,
   });
 
   final EventListCardViewModel? card;
-  final _EventCardLayoutMetrics metrics;
 
   @override
   Widget build(BuildContext context) {
     final event = card;
     if (event == null) {
-      return SizedBox(
+      return const Column(
         key: eventListCardBodyKey,
-        height: metrics.bodyHeight,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              height: metrics.titleHeight,
-              child: const Align(
-                alignment: AlignmentDirectional.topStart,
-                child: _EventCardLinePlaceholder(
-                  widthFactor: 0.86,
-                  height: 24,
-                ),
-              ),
-            ),
-            const SizedBox(height: ExpatlioDesign.space8),
-            SizedBox(
-              height: metrics.descriptionHeight,
-              child: const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _EventCardLinePlaceholder(widthFactor: 1, height: 16),
-                  SizedBox(height: ExpatlioDesign.space8),
-                  _EventCardLinePlaceholder(widthFactor: 0.72, height: 16),
-                ],
-              ),
-            ),
-          ],
-        ),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _EventCardLinePlaceholder(widthFactor: 0.86, height: 24),
+          SizedBox(height: ExpatlioDesign.space12),
+          _EventCardLinePlaceholder(widthFactor: 1, height: 16),
+          SizedBox(height: ExpatlioDesign.space8),
+          _EventCardLinePlaceholder(widthFactor: 0.72, height: 16),
+        ],
       );
     }
 
     final title = event.title.trim();
     final description = event.description.trim();
 
-    return SizedBox(
+    return Column(
       key: eventListCardBodyKey,
-      height: metrics.bodyHeight,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            height: metrics.titleHeight,
-            child: Align(
-              alignment: AlignmentDirectional.topStart,
-              child: Text(
-                key: eventListCardTitleKey,
-                title.isEmpty
-                    ? FFLocalizations.of(context).getVariableText(
-                        ruText: 'Без названия',
-                        enText: 'Untitled',
-                      )
-                    : title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: ExpatlioDesign.textStyle(
-                  context,
-                  size: _eventListTitleFontSize,
-                  weight: FontWeight.w700,
-                  height: _eventListTitleTextHeight,
-                ),
-              ),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          key: eventListCardTitleKey,
+          title.isEmpty
+              ? FFLocalizations.of(context).getVariableText(
+                  ruText: 'Без названия',
+                  enText: 'Untitled',
+                )
+              : title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: ExpatlioDesign.textStyle(
+            context,
+            size: _eventListTitleFontSize,
+            weight: FontWeight.w700,
+            height: _eventListTitleTextHeight,
+          ),
+        ),
+        if (description.isNotEmpty) ...[
+          const SizedBox(height: ExpatlioDesign.space8),
+          Text(
+            key: eventListCardDescriptionKey,
+            description,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: ExpatlioDesign.textStyle(
+              context,
+              color: ExpatlioDesign.inactive,
+              size: _eventListDescriptionFontSize,
+              height: _eventListDescriptionTextHeight,
+              weight: FontWeight.w400,
             ),
           ),
-          const SizedBox(height: ExpatlioDesign.space8),
-          SizedBox(
-            height: metrics.descriptionHeight,
-            child: description.isEmpty
-                ? const SizedBox.shrink()
-                : Align(
-                    alignment: AlignmentDirectional.topStart,
-                    child: Text(
-                      key: eventListCardDescriptionKey,
-                      description,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: ExpatlioDesign.textStyle(
-                        context,
-                        color: ExpatlioDesign.inactive,
-                        size: _eventListDescriptionFontSize,
-                        height: _eventListDescriptionTextHeight,
-                        weight: FontWeight.w400,
-                      ),
-                    ),
-                  ),
-          ),
         ],
-      ),
+      ],
     );
   }
 }
@@ -4992,45 +4862,24 @@ class _EventCardMetaShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final event = card;
     if (event == null) {
-      return SizedBox(
+      return Wrap(
         key: eventListCardMetaKey,
-        height: metrics.metaHeight,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            SizedBox(
-              height: metrics.metaChipHeight,
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 3,
-                    child: _EventCardPillPlaceholder(
-                      height: metrics.metaChipHeight,
-                    ),
-                  ),
-                  const SizedBox(width: ExpatlioDesign.space8),
-                  Expanded(
-                    flex: 2,
-                    child: _EventCardPillPlaceholder(
-                      height: metrics.metaChipHeight,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: _eventListCardMetaPlaceGap),
-            SizedBox(
-              height: metrics.placeHeight,
-              child: const Align(
-                alignment: AlignmentDirectional.topStart,
-                child: _EventCardLinePlaceholder(
-                  widthFactor: 0.72,
-                  height: 16,
-                ),
-              ),
-            ),
-          ],
-        ),
+        spacing: ExpatlioDesign.space8,
+        runSpacing: ExpatlioDesign.space8,
+        children: [
+          _EventCardPillPlaceholder(
+            width: 104,
+            height: metrics.metaChipHeight,
+          ),
+          _EventCardPillPlaceholder(
+            width: 92,
+            height: metrics.metaChipHeight,
+          ),
+          _EventCardPillPlaceholder(
+            width: 184,
+            height: metrics.metaChipHeight,
+          ),
+        ],
       );
     }
 
@@ -5041,83 +4890,69 @@ class _EventCardMetaShell extends StatelessWidget {
     );
     final locationName = event.locationName.trim();
 
-    return SizedBox(
+    return Column(
       key: eventListCardMetaKey,
-      height: metrics.metaHeight,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(
-            height: metrics.metaChipHeight,
-            child: Row(
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: _EventInfoChip(
-                    key: eventListCardDateKey,
-                    icon: Icons.calendar_month_outlined,
-                    label: _eventDateLabel(
-                      context,
-                      eventLocalDateTime: eventLocalDateTime,
-                      timeZoneId: event.timeZoneId,
-                    ),
-                    height: metrics.metaChipHeight,
-                  ),
-                ),
-                const SizedBox(width: ExpatlioDesign.space8),
-                Expanded(
-                  flex: 2,
-                  child: _EventInfoChip(
-                    key: eventListCardTimeKey,
-                    icon: Icons.schedule,
-                    label: dateTimeFormat(
-                      'Hm',
-                      eventLocalDateTime,
-                      locale: locale,
-                    ),
-                    height: metrics.metaChipHeight,
-                  ),
-                ),
-              ],
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: ExpatlioDesign.space8,
+          runSpacing: ExpatlioDesign.space8,
+          children: [
+            _EventInfoChip(
+              key: eventListCardDateKey,
+              icon: Icons.calendar_month_outlined,
+              label: _eventDateLabel(
+                context,
+                eventLocalDateTime: eventLocalDateTime,
+                timeZoneId: event.timeZoneId,
+              ),
+              minHeight: metrics.metaChipHeight,
             ),
-          ),
-          const SizedBox(height: _eventListCardMetaPlaceGap),
-          SizedBox(
-            height: metrics.placeHeight,
-            child: Row(
-              key: eventListCardPlaceKey,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(
-                  Icons.location_on_outlined,
+            _EventInfoChip(
+              key: eventListCardTimeKey,
+              icon: Icons.schedule,
+              label: dateTimeFormat(
+                'Hm',
+                eventLocalDateTime,
+                locale: locale,
+              ),
+              minHeight: metrics.metaChipHeight,
+            ),
+          ],
+        ),
+        const SizedBox(height: _eventListCardMetaPlaceGap),
+        Row(
+          key: eventListCardPlaceKey,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(
+              Icons.location_on_outlined,
+              color: ExpatlioDesign.inactive,
+              size: 14,
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                locationName.isEmpty
+                    ? FFLocalizations.of(context).getVariableText(
+                        ruText: 'Место не указано',
+                        enText: 'Place not specified',
+                      )
+                    : locationName,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: ExpatlioDesign.textStyle(
+                  context,
                   color: ExpatlioDesign.inactive,
-                  size: 14,
+                  size: _eventListPlaceFontSize,
+                  weight: FontWeight.w400,
+                  height: _eventListDefaultTextHeight,
                 ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    locationName.isEmpty
-                        ? FFLocalizations.of(context).getVariableText(
-                            ruText: 'Место не указано',
-                            enText: 'Place not specified',
-                          )
-                        : locationName,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: ExpatlioDesign.textStyle(
-                      context,
-                      color: ExpatlioDesign.inactive,
-                      size: _eventListPlaceFontSize,
-                      weight: FontWeight.w400,
-                      height: _eventListDefaultTextHeight,
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -5167,17 +5002,22 @@ class _EventInfoChip extends StatelessWidget {
     super.key,
     required this.icon,
     required this.label,
-    required this.height,
+    required this.minHeight,
   });
 
   final IconData icon;
   final String label;
-  final double height;
+  final double minHeight;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: height,
+    final maxWidth =
+        (MediaQuery.sizeOf(context).width - 72).clamp(96.0, 220.0).toDouble();
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        minHeight: minHeight,
+        maxWidth: maxWidth,
+      ),
       child: Container(
         padding: const EdgeInsetsDirectional.symmetric(
           horizontal: 10,
@@ -5323,95 +5163,85 @@ bool _sameCalendarDate(DateTime left, DateTime right) =>
 class _EventCardFooterShell extends StatelessWidget {
   const _EventCardFooterShell({
     required this.card,
-    required this.metrics,
   });
 
   final EventListCardViewModel? card;
-  final _EventCardLayoutMetrics metrics;
 
   @override
   Widget build(BuildContext context) {
     final event = card;
     if (event == null) {
-      return SizedBox(
+      return Row(
         key: eventListCardFooterKey,
-        height: metrics.footerHeight,
-        child: Row(
-          children: const [
-            SizedBox(
-              width: 90,
-              height: 24,
-              child: Stack(
-                children: [
-                  Positioned(
-                    left: 0,
-                    child: _EventCardCirclePlaceholder(dimension: 24),
-                  ),
-                  Positioned(
-                    left: 22,
-                    child: _EventCardCirclePlaceholder(dimension: 24),
-                  ),
-                  Positioned(
-                    left: 44,
-                    child: _EventCardCirclePlaceholder(dimension: 24),
-                  ),
-                  Positioned(
-                    left: 66,
-                    child: _EventCardCirclePlaceholder(dimension: 24),
-                  ),
-                ],
-              ),
+        children: const [
+          SizedBox(
+            width: 90,
+            height: 24,
+            child: Stack(
+              children: [
+                Positioned(
+                  left: 0,
+                  child: _EventCardCirclePlaceholder(dimension: 24),
+                ),
+                Positioned(
+                  left: 22,
+                  child: _EventCardCirclePlaceholder(dimension: 24),
+                ),
+                Positioned(
+                  left: 44,
+                  child: _EventCardCirclePlaceholder(dimension: 24),
+                ),
+                Positioned(
+                  left: 66,
+                  child: _EventCardCirclePlaceholder(dimension: 24),
+                ),
+              ],
             ),
-            SizedBox(width: ExpatlioDesign.space12),
-            Expanded(
-              child: _EventCardLinePlaceholder(
-                widthFactor: 0.36,
-                height: 16,
-              ),
+          ),
+          SizedBox(width: ExpatlioDesign.space12),
+          Expanded(
+            child: _EventCardLinePlaceholder(
+              widthFactor: 0.36,
+              height: 16,
             ),
-          ],
-        ),
+          ),
+        ],
       );
     }
 
-    return SizedBox(
+    return Row(
       key: eventListCardFooterKey,
-      height: metrics.footerHeight,
-      child: event.hasFooterContent
-          ? Row(
-              children: [
-                if (event.hasParticipantPreviewRegion)
-                  _EventParticipantAvatarStack(
-                    participants: event.participants,
-                    participantsCount: event.participantsCount,
-                    capacity: event.capacity,
-                    reservePreviewSpace: event.reserveParticipantPreviewSpace,
-                  ),
-                if (event.hasParticipantPreviewRegion && event.hasOccupancy)
-                  const SizedBox(width: ExpatlioDesign.space12),
-                if (event.hasOccupancy)
-                  Flexible(
-                    child: Text(
-                      key: eventListCardOccupancyKey,
-                      _eventOccupancyLabel(
-                        context,
-                        participantsCount: event.resolvedParticipantsCount,
-                        capacity: event.capacity!,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: ExpatlioDesign.textStyle(
-                        context,
-                        color: ExpatlioDesign.inactive,
-                        size: _eventListFooterFontSize,
-                        weight: FontWeight.w400,
-                        height: _eventListDefaultTextHeight,
-                      ),
-                    ),
-                  ),
-              ],
-            )
-          : const SizedBox.shrink(),
+      children: [
+        if (event.hasParticipantPreviewRegion)
+          _EventParticipantAvatarStack(
+            participants: event.participants,
+            participantsCount: event.participantsCount,
+            capacity: event.capacity,
+            reservePreviewSpace: event.reserveParticipantPreviewSpace,
+          ),
+        if (event.hasParticipantPreviewRegion && event.hasOccupancy)
+          const SizedBox(width: ExpatlioDesign.space12),
+        if (event.hasOccupancy)
+          Flexible(
+            child: Text(
+              key: eventListCardOccupancyKey,
+              _eventOccupancyLabel(
+                context,
+                participantsCount: event.resolvedParticipantsCount,
+                capacity: event.capacity!,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: ExpatlioDesign.textStyle(
+                context,
+                color: ExpatlioDesign.inactive,
+                size: _eventListFooterFontSize,
+                weight: FontWeight.w400,
+                height: _eventListDefaultTextHeight,
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -5733,10 +5563,10 @@ class _EventCardActionsShell extends StatelessWidget {
       );
     }
 
-    if (metrics.stackActions) {
+    Widget buildStackedActions() {
       return SizedBox(
         key: eventListCardActionsKey,
-        height: metrics.actionsHeight,
+        height: (metrics.actionHeight * 2) + _eventListActionGap,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -5748,22 +5578,34 @@ class _EventCardActionsShell extends StatelessWidget {
       );
     }
 
-    return SizedBox(
-      key: eventListCardActionsKey,
-      height: metrics.actionsHeight,
-      child: Row(
-        children: [
-          Expanded(
-            flex: _eventListPrimaryActionFlex,
-            child: primaryAction,
-          ),
-          const SizedBox(width: _eventListActionGap),
-          Expanded(
-            flex: _eventListSecondaryActionFlex,
-            child: secondaryAction,
-          ),
-        ],
-      ),
+    Widget buildInlineActions() {
+      return SizedBox(
+        key: eventListCardActionsKey,
+        height: metrics.actionHeight,
+        child: Row(
+          children: [
+            Expanded(
+              flex: _eventListPrimaryActionFlex,
+              child: primaryAction,
+            ),
+            const SizedBox(width: _eventListActionGap),
+            Expanded(
+              flex: _eventListSecondaryActionFlex,
+              child: secondaryAction,
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (metrics.stackActions) {
+      return buildStackedActions();
+    }
+    return LayoutBuilder(
+      builder: (context, constraints) =>
+          constraints.maxWidth < _eventListInlineActionsMinWidth
+              ? buildStackedActions()
+              : buildInlineActions(),
     );
   }
 }
@@ -5791,12 +5633,19 @@ class _EventCardPrimaryCta extends StatelessWidget {
         onPressed != null &&
         (state == EventListJoinCtaState.join ||
             state == EventListJoinCtaState.joined);
+    final isJoinedAction = state == EventListJoinCtaState.joined;
     final backgroundColor = enabled
-        ? state == EventListJoinCtaState.joined
-            ? _eventListDestructiveCtaBackground
+        ? isJoinedAction
+            ? _eventListSoftPrimaryBackground
             : ExpatlioDesign.primary
         : ExpatlioDesign.secondarySystemBackground;
-    final textColor = enabled ? Colors.white : ExpatlioDesign.muted;
+    final textColor = enabled
+        ? isJoinedAction
+            ? ExpatlioDesign.primary
+            : Colors.white
+        : state == EventListJoinCtaState.joinedLocked
+            ? ExpatlioDesign.primary
+            : ExpatlioDesign.muted;
     final actionPending = state == EventListJoinCtaState.joining ||
         state == EventListJoinCtaState.leaving;
     final visibleLabel = switch (membershipState) {
@@ -5833,7 +5682,8 @@ class _EventCardPrimaryCta extends StatelessWidget {
           child: InkWell(
             onTap: enabled ? onPressed : null,
             overlayColor: WidgetStatePropertyAll(
-              Colors.white.withValues(alpha: 0.10),
+              (isJoinedAction ? ExpatlioDesign.primary : Colors.white)
+                  .withValues(alpha: 0.10),
             ),
             child: SizedBox(
               height: height,
@@ -6126,14 +5976,17 @@ class _EventCardLinePlaceholder extends StatelessWidget {
 
 class _EventCardPillPlaceholder extends StatelessWidget {
   const _EventCardPillPlaceholder({
+    this.width,
     required this.height,
   });
 
+  final double? width;
   final double height;
 
   @override
   Widget build(BuildContext context) {
     return Container(
+      width: width,
       height: height,
       decoration: BoxDecoration(
         color: ExpatlioDesign.secondarySystemBackground,

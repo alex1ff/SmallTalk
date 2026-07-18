@@ -7,6 +7,7 @@ import 'package:flutter_spinkit/flutter_spinkit.dart';
 
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
+import '/components/chat_composer.dart';
 import '/components/empty/empty_widget.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
@@ -2902,86 +2903,23 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
               ),
               Align(
                 alignment: AlignmentDirectional.bottomCenter,
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        ExpatlioDesign.background.withValues(alpha: 0.0),
-                        ExpatlioDesign.background.withValues(alpha: 0.84),
-                        ExpatlioDesign.background,
-                      ],
-                      stops: const [0.0, 0.2, 1.0],
-                      begin: const AlignmentDirectional(0.0, -1.0),
-                      end: const AlignmentDirectional(0.0, 1.0),
-                    ),
+                child: ChatComposer(
+                  controller: _model.messageTextController!,
+                  focusNode: _model.messageFocusNode!,
+                  onSendPressed: () => _sendMessage(resolvedConversation),
+                  hintText: FFLocalizations.of(context).getVariableText(
+                    ruText: 'Написать сообщение',
+                    enText: 'Write a message',
                   ),
-                  child: Padding(
-                    padding: EdgeInsetsDirectional.fromSTEB(
-                      ExpatlioDesign.pagePadding,
-                      ExpatlioDesign.space12,
-                      ExpatlioDesign.pagePadding,
-                      ExpatlioDesign.space12 +
-                          ExpatlioDesign.bottomBarSafePadding(context),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.max,
-                      children: [
-                        Expanded(
-                          child: SizedBox(
-                            height: ExpatlioDesign.formFieldHeight,
-                            child: TextFormField(
-                              key: chatThreadMessageInputKey,
-                              controller: _model.messageTextController,
-                              focusNode: _model.messageFocusNode,
-                              enabled: !_chatActionsBlocked,
-                              textCapitalization: TextCapitalization.sentences,
-                              textInputAction: TextInputAction.send,
-                              textAlignVertical: TextAlignVertical.center,
-                              minLines: 1,
-                              maxLines: 1,
-                              decoration: ExpatlioDesign.formFieldDecoration(
-                                context,
-                                hintText:
-                                    FFLocalizations.of(context).getVariableText(
-                                  ruText: 'Написать сообщение',
-                                  enText: 'Write a message',
-                                ),
-                              ),
-                              style: ExpatlioDesign.formTextStyle(context),
-                              onFieldSubmitted: (_) =>
-                                  _sendMessage(resolvedConversation),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: ExpatlioDesign.space8),
-                        SizedBox(
-                          width: ExpatlioDesign.formFieldHeight,
-                          height: ExpatlioDesign.formFieldHeight,
-                          child: Material(
-                            color: ExpatlioDesign.primary,
-                            borderRadius: BorderRadius.circular(
-                                ExpatlioDesign.radiusMedium),
-                            child: InkWell(
-                              key: chatThreadSendButtonKey,
-                              borderRadius: BorderRadius.circular(
-                                  ExpatlioDesign.radiusMedium),
-                              onTap: _isSending || _chatActionsBlocked
-                                  ? null
-                                  : () => _sendMessage(resolvedConversation),
-                              child: Icon(
-                                _isSending
-                                    ? Icons.hourglass_top_rounded
-                                    : Icons.send_rounded,
-                                color: FlutterFlowTheme.of(context)
-                                    .primaryBackground,
-                                size: 22.0,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                  sendButtonSemanticLabel:
+                      FFLocalizations.of(context).getVariableText(
+                    ruText: 'Отправить сообщение',
+                    enText: 'Send message',
                   ),
+                  enabled: !_chatActionsBlocked,
+                  isSending: _isSending,
+                  inputKey: chatThreadMessageInputKey,
+                  sendButtonKey: chatThreadSendButtonKey,
                 ),
               ),
               if (showConversationRefreshError)

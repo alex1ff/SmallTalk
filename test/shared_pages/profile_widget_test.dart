@@ -584,6 +584,30 @@ void main() {
     );
   });
 
+  testWidgets('email action stays on the right at standard text scale',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final harness = _ProfileHarness(
+      userId: 'alice',
+      user: _user('alice', name: 'Alice', totalCalls: 7),
+      exposeEmailStatus: true,
+    );
+    addTearDown(harness.close);
+    await tester.pumpWidget(harness.buildApp());
+    await tester.pump();
+
+    final statusRect = tester.getRect(find.byKey(profileEmailStatusSlotKey));
+    final actionRect = tester.getRect(find.byKey(profileEmailActionSlotKey));
+
+    expect(actionRect.center.dy, closeTo(statusRect.center.dy, 0.01));
+    expect(actionRect.center.dx, greaterThan(statusRect.center.dx));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('email slot geometry stays stable when address arrives',
       (tester) async {
     final harness = _ProfileHarness(

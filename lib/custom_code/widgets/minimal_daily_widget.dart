@@ -26,6 +26,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import '/services/voip_service.dart';
+import '/components/chat_composer.dart';
 import '/components/interactive_caption_text.dart';
 import '/shared_pages/chat_message_bubble_style.dart';
 import '/shared_pages/design/expatlio_design.dart';
@@ -452,6 +453,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   final FocusNode _chatFocusNode = FocusNode();
   final ScrollController _chatScrollController = ScrollController();
   final List<_ChatMessage> _ownSentChatMessages = <_ChatMessage>[];
+  bool _isSendingChatMessage = false;
   bool _persistCallChatInFlight = false;
   bool _persistCallChatCompleted = false;
   int _persistCallChatAttemptCount = 0;
@@ -475,6 +477,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   StreamController<typed_data.Uint8List>? _audioStreamController;
   bool _recorderOpen = false;
   bool _deepgramStopRequested = false;
+  bool _deepgramFinalizing = false;
   bool _deepgramStartInProgress = false;
   int _deepgramStreamGeneration = 0;
   Future<void> _lifecycleTransitionChain = Future<void>.value();
@@ -1400,9 +1403,13 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   Future<void> _sendChatMessage() async {
     final text = _chatTextController.text.trim();
-    if (!_canSendChatText(text) || _callClient == null) {
+    if (_isSendingChatMessage ||
+        !_canSendChatText(text) ||
+        _callClient == null) {
       return;
     }
+
+    _isSendingChatMessage = true;
 
     final message = _ChatMessage(
       id: _buildChatMessageId(
@@ -1428,6 +1435,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       _ownSentChatMessages.add(message);
     } catch (e) {
       if (kDebugMode) print('Failed to send chat message: $e');
+    } finally {
+      if (mounted && !_disposed) {
+        setState(() => _isSendingChatMessage = false);
+      }
     }
   }
 
@@ -1802,6 +1813,19 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         _deepgramStreamGeneration == generation &&
         widget.sessionId?.trim() == sessionId &&
         _shouldRunDeepgram();
+  }
+
+  bool _canHandleDeepgramMessage(
+    int generation,
+    String? sessionId,
+  ) {
+    return mounted &&
+        !_disposed &&
+        widget.sessionId?.trim() == sessionId &&
+        ((_deepgramFinalizing && _deepgramStopRequested) ||
+            (_deepgramStreamGeneration == generation &&
+                !_deepgramStopRequested &&
+                _shouldRunDeepgram()));
   }
 
   Future<void> _syncDeepgramWithMicrophoneState({
@@ -2299,7 +2323,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     _deepgramMessageSubscription = _trackSubscription(
       _deepgramChannel!.stream.listen(
         (message) {
-          if (!_isCurrentDeepgramStreamGeneration(generation, sessionId)) {
+          if (!_canHandleDeepgramMessage(generation, sessionId)) {
             return;
           }
           _handleDeepgramMessage(message);
@@ -2337,8 +2361,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   /// Handle Deepgram message with proper parsing
   void _handleDeepgramMessage(dynamic message) {
     if (!mounted ||
-        !_state.microphoneEnabled ||
-        !_hasRemoteParticipantPresent()) {
+        (!_deepgramFinalizing &&
+            (!_state.microphoneEnabled || !_hasRemoteParticipantPresent()))) {
       return;
     }
 
@@ -2422,7 +2446,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     required bool speechFinal,
     double? confidence,
   }) {
-    if (!_state.microphoneEnabled || !_hasRemoteParticipantPresent()) {
+    if (!_deepgramFinalizing &&
+        (!_state.microphoneEnabled || !_hasRemoteParticipantPresent())) {
       return;
     }
 
@@ -2565,6 +2590,13 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     _enqueueLocalFinalCaptionLog(update);
     _finalizeLocalUtterance(fallbackText: finalText);
     return true;
+  }
+
+  Future<void> _finalizeCurrentCaptionAndFlushLogs() async {
+    // A short utterance can still be interim when the user or peer ends the
+    // call. Promote the latest recognized text before clearing caption state.
+    _emitFinalUpdateForCurrentLocalCaption();
+    await _flushPendingCaptionLogs(force: true);
   }
 
   void _queueLocalCaptionUpdate(
@@ -3287,9 +3319,13 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         _recorder == null &&
         _deepgramChannel == null &&
         _audioStreamController == null) {
+      await _finalizeCurrentCaptionAndFlushLogs();
       return;
     }
 
+    // Keep accepting Deepgram result frames while Finalize drains buffered
+    // audio. Normal audio/start callbacks remain disabled by stopRequested.
+    _deepgramFinalizing = _deepgramChannel != null;
     _deepgramStreamGeneration++;
     _deepgramStopRequested = true;
 
@@ -3326,6 +3362,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
     await runCleanupStep('websocket', _gracefullyCloseDeepgramStream);
     _deepgramChannel = null;
+    _deepgramFinalizing = false;
 
     await runCleanupStep('message subscription', () async {
       await _cancelTrackedSubscription(_deepgramMessageSubscription);
@@ -3339,6 +3376,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
     _deepgramStartInProgress = false;
     _updateState(_state.copyWith(isStreamingToDeepgram: false));
+    await _finalizeCurrentCaptionAndFlushLogs();
     _clearLocalCaptions();
   }
 
@@ -5650,171 +5688,44 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   }
 
   Widget _buildChatComposer() {
-    return SafeArea(
-      top: false,
-      minimum: const EdgeInsets.fromLTRB(
-          ExpatlioDesign.space12,
-          ExpatlioDesign.space0,
-          ExpatlioDesign.space12,
-          ExpatlioDesign.space12),
-      child: ValueListenableBuilder<TextEditingValue>(
-        valueListenable: _chatTextController,
-        builder: (context, value, _) {
-          final canSend = _canSendChatText(value.text);
-          final hasRemoteParticipant = _hasRemoteParticipantPresent();
-          final disabledSendHint = hasRemoteParticipant
-              ? 'Введите текст сообщения'
-              : 'Дождитесь подключения собеседника';
-          final disabledSendTooltip = hasRemoteParticipant
-              ? 'Введите сообщение для отправки'
-              : 'Дождитесь собеседника';
+    final hasRemoteParticipant = _hasRemoteParticipantPresent();
+    final composerEnabled =
+        _state.connectionState == ConnectionState.connected &&
+            _callClient != null &&
+            hasRemoteParticipant;
 
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (!hasRemoteParticipant)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                      ExpatlioDesign.space4,
-                      ExpatlioDesign.space0,
-                      ExpatlioDesign.space4,
-                      ExpatlioDesign.space12),
-                  child: Text(
-                    'Собеседник еще не в звонке. Сообщение можно отправить после подключения.',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.56),
-                      fontSize: 11,
-                    ),
-                  ),
-                ),
-              Container(
-                padding: const EdgeInsets.all(ExpatlioDesign.space8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.06),
-                  borderRadius:
-                      BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.08),
-                    width: 1,
-                  ),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _chatTextController,
-                        focusNode: _chatFocusNode,
-                        minLines: 1,
-                        maxLines: 4,
-                        textInputAction: TextInputAction.send,
-                        keyboardType: TextInputType.multiline,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 15.0,
-                        ),
-                        cursorColor: Colors.white,
-                        decoration: InputDecoration(
-                          filled: true,
-                          fillColor: Colors.white.withValues(alpha: 0.08),
-                          hintText: hasRemoteParticipant
-                              ? 'Написать сообщение'
-                              : 'Ожидаем собеседника...',
-                          hintStyle: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.42),
-                            fontSize: 15.0,
-                          ),
-                          border: const OutlineInputBorder(
-                            borderRadius: BorderRadius.all(
-                              Radius.circular(ExpatlioDesign.radiusLarge),
-                            ),
-                            borderSide: BorderSide.none,
-                          ),
-                          enabledBorder: const OutlineInputBorder(
-                            borderRadius: BorderRadius.all(
-                              Radius.circular(ExpatlioDesign.radiusLarge),
-                            ),
-                            borderSide: BorderSide.none,
-                          ),
-                          focusedBorder: const OutlineInputBorder(
-                            borderRadius: BorderRadius.all(
-                              Radius.circular(ExpatlioDesign.radiusLarge),
-                            ),
-                            borderSide: BorderSide.none,
-                          ),
-                          disabledBorder: const OutlineInputBorder(
-                            borderRadius: BorderRadius.all(
-                              Radius.circular(ExpatlioDesign.radiusLarge),
-                            ),
-                            borderSide: BorderSide.none,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: ExpatlioDesign.space12,
-                            vertical: ExpatlioDesign.space12,
-                          ),
-                        ),
-                        onSubmitted: (_) {
-                          if (canSend) {
-                            unawaited(_sendChatMessage());
-                          }
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: ExpatlioDesign.space8),
-                    SizedBox(
-                      width: 48,
-                      height: 48,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: canSend
-                              ? const Color(0xFF2F80ED)
-                              : Colors.white.withValues(alpha: 0.08),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Semantics(
-                          container: true,
-                          button: true,
-                          enabled: canSend,
-                          label: canSend
-                              ? 'Отправить сообщение'
-                              : 'Отправка сообщения недоступна',
-                          hint: canSend
-                              ? 'Отправляет сообщение в чат'
-                              : disabledSendHint,
-                          onTap: canSend
-                              ? () => unawaited(_sendChatMessage())
-                              : null,
-                          child: Tooltip(
-                            message: canSend
-                                ? 'Отправить сообщение'
-                                : disabledSendTooltip,
-                            excludeFromSemantics: true,
-                            child: ExcludeSemantics(
-                              child: IconButton(
-                                onPressed: canSend
-                                    ? () => unawaited(_sendChatMessage())
-                                    : null,
-                                icon: Icon(
-                                  Icons.send_rounded,
-                                  size: 18,
-                                  color: canSend
-                                      ? Colors.white
-                                      : Colors.white.withValues(alpha: 0.32),
-                                ),
-                                padding: EdgeInsets.zero,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (!hasRemoteParticipant)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+                ExpatlioDesign.space16,
+                ExpatlioDesign.space0,
+                ExpatlioDesign.space16,
+                ExpatlioDesign.space12),
+            child: Text(
+              'Собеседник еще не в звонке. Сообщение можно отправить после подключения.',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.56),
+                fontSize: 11,
               ),
-            ],
-          );
-        },
-      ),
+            ),
+          ),
+        ChatComposer(
+          controller: _chatTextController,
+          focusNode: _chatFocusNode,
+          hintText: hasRemoteParticipant
+              ? 'Написать сообщение'
+              : 'Ожидаем собеседника...',
+          sendButtonSemanticLabel: composerEnabled
+              ? 'Отправить сообщение'
+              : 'Отправка сообщения недоступна',
+          enabled: composerEnabled,
+          isSending: _isSendingChatMessage,
+          onSendPressed: () => unawaited(_sendChatMessage()),
+        ),
+      ],
     );
   }
 

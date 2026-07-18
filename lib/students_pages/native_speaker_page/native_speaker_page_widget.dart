@@ -23,7 +23,6 @@ import '/services/user_match_profile.dart';
 import '/services/ux_session_cache_lifecycle.dart';
 // ─── SUBSCRIPTION REWORK ─ gating helper. Replaces balanceST < 0 check.
 import '/utils/subscription_utils.dart';
-import '/index.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:ui' as ui;
@@ -73,8 +72,8 @@ typedef NativeSpeakerReviewsLoader = Future<List<ReviewsRecord>> Function(
 typedef NativeSpeakerReviewsResultLoader = Future<ReviewsLoadResult> Function(
   DocumentReference targetReference,
 );
-typedef NativeSpeakerReviewsResultStreamFactory
-    = Stream<ReviewsLoadResult> Function(
+typedef NativeSpeakerReviewsResultStreamFactory = Stream<ReviewsLoadResult>
+    Function(
   DocumentReference targetReference,
 );
 typedef NativeSpeakerPublicProfileStreamFactory
@@ -244,9 +243,8 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
   void _bindNativeSpeakerRef(DocumentReference? targetRef) {
     _targetEpoch += 1;
     _boundTargetPath = targetRef?.path ?? '';
-    _publicProfileStream =
-        widget.publicProfileStreamFactory?.call(targetRef) ??
-            _nativeSpeakerPublicProfileStream(targetRef);
+    _publicProfileStream = widget.publicProfileStreamFactory?.call(targetRef) ??
+        _nativeSpeakerPublicProfileStream(targetRef);
     _statsFuture = widget.statsLoader?.call(targetRef) ??
         queryStatsRecordOnce(
           parent: targetRef,
@@ -427,8 +425,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
           return;
         }
 
-        final stableReviews =
-            List<ReviewsRecord>.unmodifiable(result.reviews);
+        final stableReviews = List<ReviewsRecord>.unmodifiable(result.reviews);
         NativeSpeakerPageModel.cacheReviews(
           targetPath,
           stableReviews,
@@ -494,8 +491,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
         }
 
         receivedAuthoritativeResult = true;
-        final stableReviews =
-            List<ReviewsRecord>.unmodifiable(result.reviews);
+        final stableReviews = List<ReviewsRecord>.unmodifiable(result.reviews);
         NativeSpeakerPageModel.cacheReviews(
           targetPath,
           stableReviews,
@@ -588,8 +584,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
     _authLifecycleSubscription?.cancel();
     final stream = widget.authUidStream ?? _defaultAuthLifecycleStream();
     _authLifecycleSubscription = stream.listen((uid) {
-      if (!mounted ||
-          subscriptionGeneration != _authSubscriptionGeneration) {
+      if (!mounted || subscriptionGeneration != _authSubscriptionGeneration) {
         return;
       }
 
@@ -773,9 +768,9 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
     super.didUpdateWidget(oldWidget);
     final bindingChanged =
         oldWidget.nsUserDocRef?.path != widget.nsUserDocRef?.path ||
-        oldWidget.publicProfileStreamFactory !=
-            widget.publicProfileStreamFactory ||
-        oldWidget.statsLoader != widget.statsLoader;
+            oldWidget.publicProfileStreamFactory !=
+                widget.publicProfileStreamFactory ||
+            oldWidget.statsLoader != widget.statsLoader;
     if (bindingChanged) {
       _bindNativeSpeakerRef(widget.nsUserDocRef);
     } else if ((oldWidget.reviewsLoader != widget.reviewsLoader ||
@@ -817,10 +812,10 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
         }
         _scrollController
             .animateTo(
-              snap,
-              duration: Duration(milliseconds: 160),
-              curve: Curves.easeOut,
-            )
+          snap,
+          duration: Duration(milliseconds: 160),
+          curve: Curves.easeOut,
+        )
             .then((_) {
           if (mounted) {
             _isSnapping = false;
@@ -842,10 +837,10 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
         }
         _scrollController
             .animateTo(
-              0.0,
-              duration: Duration(milliseconds: 160),
-              curve: Curves.easeOut,
-            )
+          0.0,
+          duration: Duration(milliseconds: 160),
+          curve: Curves.easeOut,
+        )
             .then((_) {
           if (mounted) {
             _isSnapping = false;
@@ -906,9 +901,8 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
         final actionTargetEpoch = _targetEpoch;
         final actionAuthEpoch = _authEpoch;
         final directOwnerUid = _directAuthUid();
-        final ownerUid = directOwnerUid == _latestAuthStreamUid
-            ? directOwnerUid
-            : '';
+        final ownerUid =
+            directOwnerUid == _latestAuthStreamUid ? directOwnerUid : '';
         final ownerDocument = _currentOwnerDocument(ownerUid);
         final hasInstructionLanguage = _hasLanguageData(
           nativeSpeakerPublicProfile.languageInstructionNS,
@@ -918,9 +912,8 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
         );
         final isVerifiedNativeSpeaker =
             _isVerifiedNativeSpeaker(nativeSpeakerPublicProfile);
-        final isBlockedByStudent =
-            (ownerDocument?.blockedUsers.toList() ?? [])
-                .contains(widget.nsUserDocRef);
+        final isBlockedByStudent = (ownerDocument?.blockedUsers.toList() ?? [])
+            .contains(widget.nsUserDocRef);
         final canStartDirectCall = ownerUid.isNotEmpty &&
             ownerDocument != null &&
             !widget.hideDirectCallAction &&
@@ -1019,15 +1012,15 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                                           ),
                                         );
                                       }
-                                      final containerStatsRecordList = snapshot
-                                          .data!
-                                          .where(
-                                            (stats) =>
-                                                stats.reference.parent.parent
-                                                    ?.path ==
-                                                targetPath,
-                                          )
-                                          .toList(growable: false);
+                                      final containerStatsRecordList =
+                                          snapshot.data!
+                                              .where(
+                                                (stats) =>
+                                                    stats.reference.parent
+                                                        .parent?.path ==
+                                                    targetPath,
+                                              )
+                                              .toList(growable: false);
                                       if (containerStatsRecordList.isEmpty) {
                                         return Container();
                                       }
@@ -1601,16 +1594,25 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
               if (navigator != null) {
                 await navigator(context, targetTutorId);
               } else {
-                await Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => WaitingForTeacherPageWidget(
-                      targetTutorId: targetTutorId,
-                    ),
-                    settings: RouteSettings(
-                      name: WaitingForTeacherPageWidget.routeName,
-                    ),
-                  ),
+                final activeLanguage = resolveUserActiveConversationLanguage(
+                  _currentOwnerDocument(ownerUid),
                 );
+                if (activeLanguage == null || activeLanguage.trim().isEmpty) {
+                  return;
+                }
+                try {
+                  await FirebaseFunctions.instance
+                      .httpsCallable('createVideoSession')
+                      .call(<String, dynamic>{
+                    'language': activeLanguage.trim(),
+                    'directTutorId': targetTutorId,
+                  });
+                } on FirebaseFunctionsException catch (error) {
+                  debugPrint(
+                    'NativeSpeakerPage: direct call failed: '
+                    '${error.code} ${error.message}',
+                  );
+                }
               }
             },
           ),
@@ -1720,920 +1722,895 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
       decoration: BoxDecoration(),
       child: Builder(
         builder: (context) {
-              if (containerReviewsRecordList.isNotEmpty) {
-                return Column(
-                  mainAxisSize: MainAxisSize.max,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: EdgeInsets.all(ExpatlioDesign.space16),
-                      child: Row(
+          if (containerReviewsRecordList.isNotEmpty) {
+            return Column(
+              mainAxisSize: MainAxisSize.max,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: EdgeInsets.all(ExpatlioDesign.space16),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.max,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
                         mainAxisSize: MainAxisSize.max,
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Column(
-                            mainAxisSize: MainAxisSize.max,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                formatNumber(
-                                  nativeSpeakerProfile.ratingAverage,
-                                  formatType: FormatType.custom,
-                                  format: '0.0',
-                                  locale: '',
+                          Text(
+                            formatNumber(
+                              nativeSpeakerProfile.ratingAverage,
+                              formatType: FormatType.custom,
+                              format: '0.0',
+                              locale: '',
+                            ),
+                            style: FlutterFlowTheme.of(context)
+                                .bodyMedium
+                                .override(
+                                  fontFamily: 'Cool',
+                                  fontSize: 34.0,
+                                  letterSpacing: 0.0,
+                                  fontWeight: FontWeight.normal,
                                 ),
-                                style: FlutterFlowTheme.of(context)
-                                    .bodyMedium
-                                    .override(
-                                      fontFamily: 'Cool',
-                                      fontSize: 34.0,
-                                      letterSpacing: 0.0,
-                                      fontWeight: FontWeight.normal,
-                                    ),
-                              ),
-                              Padding(
-                                padding: EdgeInsetsDirectional.fromSTEB(
-                                    ExpatlioDesign.space0,
-                                    ExpatlioDesign.space8,
-                                    ExpatlioDesign.space0,
-                                    ExpatlioDesign.space0),
-                                child: RatingBar.builder(
-                                  onRatingUpdate: (newValue) => safeSetState(
-                                      () => _model.ratingBarValue = newValue),
-                                  itemBuilder: (context, index) => Icon(
-                                    Icons.star_rounded,
-                                    color: FlutterFlowTheme.of(context).warning,
-                                  ),
-                                  direction: Axis.horizontal,
-                                  initialRating: _model.ratingBarValue ??=
-                                      nativeSpeakerProfile.ratingAverage,
-                                  unratedColor: FlutterFlowTheme.of(context)
-                                      .primaryBackground,
-                                  itemCount: 5,
-                                  itemSize: 18.0,
-                                  glowColor:
-                                      FlutterFlowTheme.of(context).warning,
-                                ),
-                              ),
-                              Padding(
-                                padding: EdgeInsetsDirectional.fromSTEB(
-                                    ExpatlioDesign.space0,
-                                    ExpatlioDesign.space4,
-                                    ExpatlioDesign.space0,
-                                    ExpatlioDesign.space0),
-                                child: Text(
-                                  functions
-                                      .getReviewString(valueOrDefault<String>(
-                                    nativeSpeakerProfile.ratingCount.toString(),
-                                    '0',
-                                  )),
-                                  style: FlutterFlowTheme.of(context)
-                                      .bodyMedium
-                                      .override(
-                                        fontFamily: 'sf pro display',
-                                        color: FlutterFlowTheme.of(context)
-                                            .secondaryText,
-                                        fontSize: 15.0,
-                                        letterSpacing: 0.0,
-                                      ),
-                                ),
-                              ),
-                            ],
                           ),
-                          Expanded(
-                            child: Padding(
-                              padding: EdgeInsetsDirectional.fromSTEB(
-                                  ExpatlioDesign.space12,
-                                  ExpatlioDesign.space0,
-                                  ExpatlioDesign.space0,
-                                  ExpatlioDesign.space0),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.max,
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Container(
-                                        width: 11.0,
-                                        decoration: BoxDecoration(),
-                                        child: Text(
-                                          FFLocalizations.of(context).getText(
-                                            'clkcguct' /* 5 */,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                color:
-                                                    FlutterFlowTheme.of(context)
-                                                        .primaryText,
-                                                fontSize: 15.0,
-                                                letterSpacing: 0.0,
-                                              ),
-                                        ),
-                                      ),
-                                      Icon(
-                                        FFIcons.kstar012,
-                                        color: Color(0xFFFFCC31),
-                                        size: 13.0,
-                                      ),
-                                      Padding(
-                                        padding: EdgeInsetsDirectional.fromSTEB(
-                                            ExpatlioDesign.space4,
-                                            ExpatlioDesign.space0,
-                                            ExpatlioDesign.space4,
-                                            ExpatlioDesign.space0),
-                                        child: AuthUserStreamWidget(
-                                          builder: (context) =>
-                                              LinearPercentIndicator(
-                                            percent: percentForRating(5),
-                                            width: 106.0,
-                                            lineHeight: 4.0,
-                                            animation: true,
-                                            animateFromLastPercent: true,
-                                            progressColor:
-                                                FlutterFlowTheme.of(context)
-                                                    .primary,
-                                            backgroundColor:
-                                                FlutterFlowTheme.of(context)
-                                                    .accent4,
-                                            barRadius: Radius.circular(
-                                                ExpatlioDesign.radiusSmall),
-                                            padding: EdgeInsets.zero,
-                                          ),
-                                        ),
-                                      ),
-                                      Container(
-                                        width: 33.0,
-                                        decoration: BoxDecoration(),
-                                        child: AutoSizeText(
-                                          countForRating(5).toString(),
-                                          maxLines: 1,
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                color:
-                                                    FlutterFlowTheme.of(context)
-                                                        .secondaryText,
-                                                fontSize: 15.0,
-                                                letterSpacing: 0.0,
-                                              ),
-                                        ),
-                                      ),
-                                    ].divide(
-                                        SizedBox(width: ExpatlioDesign.space4)),
-                                  ),
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Container(
-                                        width: 11.0,
-                                        decoration: BoxDecoration(),
-                                        child: Text(
-                                          FFLocalizations.of(context).getText(
-                                            '10vod9dp' /* 4 */,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                color:
-                                                    FlutterFlowTheme.of(context)
-                                                        .primaryText,
-                                                fontSize: 15.0,
-                                                letterSpacing: 0.0,
-                                              ),
-                                        ),
-                                      ),
-                                      Icon(
-                                        FFIcons.kstar012,
-                                        color: Color(0xFFFFCC31),
-                                        size: 13.0,
-                                      ),
-                                      Padding(
-                                        padding: EdgeInsetsDirectional.fromSTEB(
-                                            ExpatlioDesign.space4,
-                                            ExpatlioDesign.space0,
-                                            ExpatlioDesign.space4,
-                                            ExpatlioDesign.space0),
-                                        child: AuthUserStreamWidget(
-                                          builder: (context) =>
-                                              LinearPercentIndicator(
-                                            percent: percentForRating(4),
-                                            width: 106.0,
-                                            lineHeight: 4.0,
-                                            animation: true,
-                                            animateFromLastPercent: true,
-                                            progressColor:
-                                                FlutterFlowTheme.of(context)
-                                                    .primary,
-                                            backgroundColor:
-                                                FlutterFlowTheme.of(context)
-                                                    .accent4,
-                                            barRadius: Radius.circular(
-                                                ExpatlioDesign.radiusSmall),
-                                            padding: EdgeInsets.zero,
-                                          ),
-                                        ),
-                                      ),
-                                      Container(
-                                        width: 33.0,
-                                        decoration: BoxDecoration(),
-                                        child: AutoSizeText(
-                                          countForRating(4).toString(),
-                                          maxLines: 1,
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                color:
-                                                    FlutterFlowTheme.of(context)
-                                                        .secondaryText,
-                                                fontSize: 15.0,
-                                                letterSpacing: 0.0,
-                                              ),
-                                        ),
-                                      ),
-                                    ].divide(
-                                        SizedBox(width: ExpatlioDesign.space4)),
-                                  ),
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Container(
-                                        width: 11.0,
-                                        decoration: BoxDecoration(),
-                                        child: Text(
-                                          FFLocalizations.of(context).getText(
-                                            's89a9grf' /* 3 */,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                color:
-                                                    FlutterFlowTheme.of(context)
-                                                        .primaryText,
-                                                fontSize: 15.0,
-                                                letterSpacing: 0.0,
-                                              ),
-                                        ),
-                                      ),
-                                      Icon(
-                                        FFIcons.kstar012,
-                                        color: Color(0xFFFFCC31),
-                                        size: 13.0,
-                                      ),
-                                      Padding(
-                                        padding: EdgeInsetsDirectional.fromSTEB(
-                                            ExpatlioDesign.space4,
-                                            ExpatlioDesign.space0,
-                                            ExpatlioDesign.space4,
-                                            ExpatlioDesign.space0),
-                                        child: AuthUserStreamWidget(
-                                          builder: (context) =>
-                                              LinearPercentIndicator(
-                                            percent: percentForRating(3),
-                                            width: 106.0,
-                                            lineHeight: 4.0,
-                                            animation: true,
-                                            animateFromLastPercent: true,
-                                            progressColor:
-                                                FlutterFlowTheme.of(context)
-                                                    .primary,
-                                            backgroundColor:
-                                                FlutterFlowTheme.of(context)
-                                                    .accent4,
-                                            barRadius: Radius.circular(
-                                                ExpatlioDesign.radiusSmall),
-                                            padding: EdgeInsets.zero,
-                                          ),
-                                        ),
-                                      ),
-                                      Container(
-                                        width: 33.0,
-                                        decoration: BoxDecoration(),
-                                        child: AutoSizeText(
-                                          countForRating(3).toString(),
-                                          maxLines: 1,
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                color:
-                                                    FlutterFlowTheme.of(context)
-                                                        .secondaryText,
-                                                fontSize: 15.0,
-                                                letterSpacing: 0.0,
-                                              ),
-                                        ),
-                                      ),
-                                    ].divide(
-                                        SizedBox(width: ExpatlioDesign.space4)),
-                                  ),
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Container(
-                                        width: 11.0,
-                                        decoration: BoxDecoration(),
-                                        child: Text(
-                                          FFLocalizations.of(context).getText(
-                                            'n8svbjr0' /* 2 */,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                color:
-                                                    FlutterFlowTheme.of(context)
-                                                        .primaryText,
-                                                fontSize: 15.0,
-                                                letterSpacing: 0.0,
-                                              ),
-                                        ),
-                                      ),
-                                      Icon(
-                                        FFIcons.kstar012,
-                                        color: Color(0xFFFFCC31),
-                                        size: 13.0,
-                                      ),
-                                      Padding(
-                                        padding: EdgeInsetsDirectional.fromSTEB(
-                                            ExpatlioDesign.space4,
-                                            ExpatlioDesign.space0,
-                                            ExpatlioDesign.space4,
-                                            ExpatlioDesign.space0),
-                                        child: AuthUserStreamWidget(
-                                          builder: (context) =>
-                                              LinearPercentIndicator(
-                                            percent: percentForRating(2),
-                                            width: 106.0,
-                                            lineHeight: 4.0,
-                                            animation: true,
-                                            animateFromLastPercent: true,
-                                            progressColor:
-                                                FlutterFlowTheme.of(context)
-                                                    .primary,
-                                            backgroundColor:
-                                                FlutterFlowTheme.of(context)
-                                                    .accent4,
-                                            barRadius: Radius.circular(
-                                                ExpatlioDesign.radiusSmall),
-                                            padding: EdgeInsets.zero,
-                                          ),
-                                        ),
-                                      ),
-                                      Container(
-                                        width: 33.0,
-                                        decoration: BoxDecoration(),
-                                        child: AutoSizeText(
-                                          countForRating(2).toString(),
-                                          maxLines: 1,
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                color:
-                                                    FlutterFlowTheme.of(context)
-                                                        .secondaryText,
-                                                fontSize: 15.0,
-                                                letterSpacing: 0.0,
-                                              ),
-                                        ),
-                                      ),
-                                    ].divide(
-                                        SizedBox(width: ExpatlioDesign.space4)),
-                                  ),
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Container(
-                                        width: 11.0,
-                                        decoration: BoxDecoration(),
-                                        child: Text(
-                                          FFLocalizations.of(context).getText(
-                                            'g8kj6pac' /* 1 */,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                color:
-                                                    FlutterFlowTheme.of(context)
-                                                        .primaryText,
-                                                fontSize: 15.0,
-                                                letterSpacing: 0.0,
-                                              ),
-                                        ),
-                                      ),
-                                      Icon(
-                                        FFIcons.kstar012,
-                                        color: Color(0xFFFFCC31),
-                                        size: 13.0,
-                                      ),
-                                      Padding(
-                                        padding: EdgeInsetsDirectional.fromSTEB(
-                                            ExpatlioDesign.space4,
-                                            ExpatlioDesign.space0,
-                                            ExpatlioDesign.space4,
-                                            ExpatlioDesign.space0),
-                                        child: AuthUserStreamWidget(
-                                          builder: (context) =>
-                                              LinearPercentIndicator(
-                                            percent: percentForRating(1),
-                                            width: 106.0,
-                                            lineHeight: 4.0,
-                                            animation: true,
-                                            animateFromLastPercent: true,
-                                            progressColor:
-                                                FlutterFlowTheme.of(context)
-                                                    .primary,
-                                            backgroundColor:
-                                                FlutterFlowTheme.of(context)
-                                                    .accent4,
-                                            barRadius: Radius.circular(
-                                                ExpatlioDesign.radiusSmall),
-                                            padding: EdgeInsets.zero,
-                                          ),
-                                        ),
-                                      ),
-                                      Container(
-                                        width: 33.0,
-                                        decoration: BoxDecoration(),
-                                        child: AutoSizeText(
-                                          countForRating(1).toString(),
-                                          maxLines: 1,
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                color:
-                                                    FlutterFlowTheme.of(context)
-                                                        .secondaryText,
-                                                fontSize: 15.0,
-                                                letterSpacing: 0.0,
-                                              ),
-                                        ),
-                                      ),
-                                    ].divide(
-                                        SizedBox(width: ExpatlioDesign.space4)),
-                                  ),
-                                ].divide(
-                                    SizedBox(height: ExpatlioDesign.space4)),
+                          Padding(
+                            padding: EdgeInsetsDirectional.fromSTEB(
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space8,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
+                            child: RatingBar.builder(
+                              onRatingUpdate: (newValue) => safeSetState(
+                                  () => _model.ratingBarValue = newValue),
+                              itemBuilder: (context, index) => Icon(
+                                Icons.star_rounded,
+                                color: FlutterFlowTheme.of(context).warning,
                               ),
+                              direction: Axis.horizontal,
+                              initialRating: _model.ratingBarValue ??=
+                                  nativeSpeakerProfile.ratingAverage,
+                              unratedColor: FlutterFlowTheme.of(context)
+                                  .primaryBackground,
+                              itemCount: 5,
+                              itemSize: 18.0,
+                              glowColor: FlutterFlowTheme.of(context).warning,
+                            ),
+                          ),
+                          Padding(
+                            padding: EdgeInsetsDirectional.fromSTEB(
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space4,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
+                            child: Text(
+                              functions.getReviewString(valueOrDefault<String>(
+                                nativeSpeakerProfile.ratingCount.toString(),
+                                '0',
+                              )),
+                              style: FlutterFlowTheme.of(context)
+                                  .bodyMedium
+                                  .override(
+                                    fontFamily: 'sf pro display',
+                                    color: FlutterFlowTheme.of(context)
+                                        .secondaryText,
+                                    fontSize: 15.0,
+                                    letterSpacing: 0.0,
+                                  ),
                             ),
                           ),
                         ],
                       ),
-                    ),
-                    Padding(
-                      padding: EdgeInsetsDirectional.fromSTEB(
-                          ExpatlioDesign.space0,
-                          ExpatlioDesign.space12,
-                          ExpatlioDesign.space0,
-                          ExpatlioDesign.space0),
-                      child: Container(
-                        width: double.infinity,
-                        height: 45.0,
-                        decoration: BoxDecoration(),
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
+                      Expanded(
+                        child: Padding(
+                          padding: EdgeInsetsDirectional.fromSTEB(
+                              ExpatlioDesign.space12,
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space0,
+                              ExpatlioDesign.space0),
+                          child: Column(
                             mainAxisSize: MainAxisSize.max,
+                            crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
-                              InkWell(
-                                key: nativeSpeakerRatingFilterKey(0),
-                                splashColor: Colors.transparent,
-                                focusColor: Colors.transparent,
-                                hoverColor: Colors.transparent,
-                                highlightColor: Colors.transparent,
-                                onTap: () async {
-                                  _model.rate = 0;
-                                  safeSetState(() {});
-                                },
-                                child: Container(
-                                  width: 75.0,
-                                  height: 40.0,
-                                  decoration: BoxDecoration(
-                                    color: valueOrDefault<Color>(
-                                      _model.rate == 0
-                                          ? FlutterFlowTheme.of(context).primary
-                                          : FlutterFlowTheme.of(context)
-                                              .primaryBackground,
-                                      FlutterFlowTheme.of(context).primary,
-                                    ),
-                                    borderRadius: BorderRadius.circular(
-                                        ExpatlioDesign.radiusLarge),
-                                  ),
-                                  child: Align(
-                                    alignment: AlignmentDirectional(0.0, 0.0),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 11.0,
+                                    decoration: BoxDecoration(),
                                     child: Text(
                                       FFLocalizations.of(context).getText(
-                                        'ovjwud7w' /* Все */,
+                                        'clkcguct' /* 5 */,
                                       ),
+                                      textAlign: TextAlign.center,
                                       style: FlutterFlowTheme.of(context)
                                           .bodyMedium
                                           .override(
                                             fontFamily: 'sf pro display',
-                                            color: valueOrDefault<Color>(
-                                              _model.rate == 0
-                                                  ? FlutterFlowTheme.of(context)
-                                                      .primaryBackground
-                                                  : FlutterFlowTheme.of(context)
-                                                      .primaryText,
-                                              FlutterFlowTheme.of(context)
-                                                  .primaryBackground,
-                                            ),
+                                            color: FlutterFlowTheme.of(context)
+                                                .primaryText,
                                             fontSize: 15.0,
                                             letterSpacing: 0.0,
                                           ),
                                     ),
                                   ),
-                                ),
-                              ),
-                              InkWell(
-                                key: nativeSpeakerRatingFilterKey(5),
-                                splashColor: Colors.transparent,
-                                focusColor: Colors.transparent,
-                                hoverColor: Colors.transparent,
-                                highlightColor: Colors.transparent,
-                                onTap: () async {
-                                  _model.rate = 5;
-                                  safeSetState(() {});
-                                },
-                                child: Container(
-                                  width: 75.0,
-                                  height: 40.0,
-                                  decoration: BoxDecoration(
-                                    color: valueOrDefault<Color>(
-                                      _model.rate == 5
-                                          ? FlutterFlowTheme.of(context).primary
-                                          : FlutterFlowTheme.of(context)
-                                              .primaryBackground,
-                                      FlutterFlowTheme.of(context).primary,
+                                  Icon(
+                                    FFIcons.kstar012,
+                                    color: Color(0xFFFFCC31),
+                                    size: 13.0,
+                                  ),
+                                  Padding(
+                                    padding: EdgeInsetsDirectional.fromSTEB(
+                                        ExpatlioDesign.space4,
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space4,
+                                        ExpatlioDesign.space0),
+                                    child: AuthUserStreamWidget(
+                                      builder: (context) =>
+                                          LinearPercentIndicator(
+                                        percent: percentForRating(5),
+                                        width: 106.0,
+                                        lineHeight: 4.0,
+                                        animation: true,
+                                        animateFromLastPercent: true,
+                                        progressColor:
+                                            FlutterFlowTheme.of(context)
+                                                .primary,
+                                        backgroundColor:
+                                            FlutterFlowTheme.of(context)
+                                                .accent4,
+                                        barRadius: Radius.circular(
+                                            ExpatlioDesign.radiusSmall),
+                                        padding: EdgeInsets.zero,
+                                      ),
                                     ),
-                                    borderRadius: BorderRadius.circular(
-                                        ExpatlioDesign.radiusLarge),
                                   ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.max,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        FFLocalizations.of(context).getText(
-                                          'h6yocea2' /* 5 */,
-                                        ),
-                                        style: FlutterFlowTheme.of(context)
-                                            .bodyMedium
-                                            .override(
-                                              fontFamily: 'sf pro display',
-                                              color: valueOrDefault<Color>(
-                                                _model.rate == 5
-                                                    ? FlutterFlowTheme.of(
-                                                            context)
-                                                        .primaryBackground
-                                                    : FlutterFlowTheme.of(
-                                                            context)
-                                                        .primaryText,
-                                                FlutterFlowTheme.of(context)
-                                                    .primaryBackground,
-                                              ),
-                                              fontSize: 15.0,
-                                              letterSpacing: 0.0,
-                                            ),
-                                      ),
-                                      Icon(
-                                        FFIcons.kstar012,
-                                        color: Color(0xFFFFCC31),
-                                        size: 13.0,
-                                      ),
-                                    ].divide(
-                                        SizedBox(width: ExpatlioDesign.space4)),
-                                  ),
-                                ),
-                              ),
-                              InkWell(
-                                key: nativeSpeakerRatingFilterKey(4),
-                                splashColor: Colors.transparent,
-                                focusColor: Colors.transparent,
-                                hoverColor: Colors.transparent,
-                                highlightColor: Colors.transparent,
-                                onTap: () async {
-                                  _model.rate = 4;
-                                  safeSetState(() {});
-                                },
-                                child: Container(
-                                  width: 75.0,
-                                  height: 40.0,
-                                  decoration: BoxDecoration(
-                                    color: valueOrDefault<Color>(
-                                      _model.rate == 4
-                                          ? FlutterFlowTheme.of(context).primary
-                                          : FlutterFlowTheme.of(context)
-                                              .primaryBackground,
-                                      FlutterFlowTheme.of(context).primary,
+                                  Container(
+                                    width: 33.0,
+                                    decoration: BoxDecoration(),
+                                    child: AutoSizeText(
+                                      countForRating(5).toString(),
+                                      maxLines: 1,
+                                      style: FlutterFlowTheme.of(context)
+                                          .bodyMedium
+                                          .override(
+                                            fontFamily: 'sf pro display',
+                                            color: FlutterFlowTheme.of(context)
+                                                .secondaryText,
+                                            fontSize: 15.0,
+                                            letterSpacing: 0.0,
+                                          ),
                                     ),
-                                    borderRadius: BorderRadius.circular(
-                                        ExpatlioDesign.radiusLarge),
                                   ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.max,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        FFLocalizations.of(context).getText(
-                                          'm2hjxtoq' /* 4 */,
-                                        ),
-                                        style: FlutterFlowTheme.of(context)
-                                            .bodyMedium
-                                            .override(
-                                              fontFamily: 'sf pro display',
-                                              color: valueOrDefault<Color>(
-                                                _model.rate == 4
-                                                    ? FlutterFlowTheme.of(
-                                                            context)
-                                                        .primaryBackground
-                                                    : FlutterFlowTheme.of(
-                                                            context)
-                                                        .primaryText,
-                                                FlutterFlowTheme.of(context)
-                                                    .primaryBackground,
-                                              ),
-                                              fontSize: 15.0,
-                                              letterSpacing: 0.0,
-                                            ),
-                                      ),
-                                      Icon(
-                                        FFIcons.kstar012,
-                                        color: Color(0xFFFFCC31),
-                                        size: 13.0,
-                                      ),
-                                    ].divide(
-                                        SizedBox(width: ExpatlioDesign.space4)),
-                                  ),
-                                ),
+                                ].divide(
+                                    SizedBox(width: ExpatlioDesign.space4)),
                               ),
-                              InkWell(
-                                key: nativeSpeakerRatingFilterKey(3),
-                                splashColor: Colors.transparent,
-                                focusColor: Colors.transparent,
-                                hoverColor: Colors.transparent,
-                                highlightColor: Colors.transparent,
-                                onTap: () async {
-                                  _model.rate = 3;
-                                  safeSetState(() {});
-                                },
-                                child: Container(
-                                  width: 75.0,
-                                  height: 40.0,
-                                  decoration: BoxDecoration(
-                                    color: valueOrDefault<Color>(
-                                      _model.rate == 3
-                                          ? FlutterFlowTheme.of(context).primary
-                                          : FlutterFlowTheme.of(context)
-                                              .primaryBackground,
-                                      FlutterFlowTheme.of(context).primary,
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 11.0,
+                                    decoration: BoxDecoration(),
+                                    child: Text(
+                                      FFLocalizations.of(context).getText(
+                                        '10vod9dp' /* 4 */,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                      style: FlutterFlowTheme.of(context)
+                                          .bodyMedium
+                                          .override(
+                                            fontFamily: 'sf pro display',
+                                            color: FlutterFlowTheme.of(context)
+                                                .primaryText,
+                                            fontSize: 15.0,
+                                            letterSpacing: 0.0,
+                                          ),
                                     ),
-                                    borderRadius: BorderRadius.circular(
-                                        ExpatlioDesign.radiusLarge),
                                   ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.max,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        FFLocalizations.of(context).getText(
-                                          '19bs787g' /* 3 */,
-                                        ),
-                                        style: FlutterFlowTheme.of(context)
-                                            .bodyMedium
-                                            .override(
-                                              fontFamily: 'sf pro display',
-                                              color: valueOrDefault<Color>(
-                                                _model.rate == 3
-                                                    ? FlutterFlowTheme.of(
-                                                            context)
-                                                        .primaryBackground
-                                                    : FlutterFlowTheme.of(
-                                                            context)
-                                                        .primaryText,
-                                                FlutterFlowTheme.of(context)
-                                                    .primaryBackground,
-                                              ),
-                                              fontSize: 15.0,
-                                              letterSpacing: 0.0,
-                                            ),
-                                      ),
-                                      Icon(
-                                        FFIcons.kstar012,
-                                        color: Color(0xFFFFCC31),
-                                        size: 13.0,
-                                      ),
-                                    ].divide(
-                                        SizedBox(width: ExpatlioDesign.space4)),
+                                  Icon(
+                                    FFIcons.kstar012,
+                                    color: Color(0xFFFFCC31),
+                                    size: 13.0,
                                   ),
-                                ),
-                              ),
-                              InkWell(
-                                key: nativeSpeakerRatingFilterKey(2),
-                                splashColor: Colors.transparent,
-                                focusColor: Colors.transparent,
-                                hoverColor: Colors.transparent,
-                                highlightColor: Colors.transparent,
-                                onTap: () async {
-                                  _model.rate = 2;
-                                  safeSetState(() {});
-                                },
-                                child: Container(
-                                  width: 75.0,
-                                  height: 40.0,
-                                  decoration: BoxDecoration(
-                                    color: valueOrDefault<Color>(
-                                      _model.rate == 2
-                                          ? FlutterFlowTheme.of(context).primary
-                                          : FlutterFlowTheme.of(context)
-                                              .primaryBackground,
-                                      FlutterFlowTheme.of(context).primary,
+                                  Padding(
+                                    padding: EdgeInsetsDirectional.fromSTEB(
+                                        ExpatlioDesign.space4,
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space4,
+                                        ExpatlioDesign.space0),
+                                    child: AuthUserStreamWidget(
+                                      builder: (context) =>
+                                          LinearPercentIndicator(
+                                        percent: percentForRating(4),
+                                        width: 106.0,
+                                        lineHeight: 4.0,
+                                        animation: true,
+                                        animateFromLastPercent: true,
+                                        progressColor:
+                                            FlutterFlowTheme.of(context)
+                                                .primary,
+                                        backgroundColor:
+                                            FlutterFlowTheme.of(context)
+                                                .accent4,
+                                        barRadius: Radius.circular(
+                                            ExpatlioDesign.radiusSmall),
+                                        padding: EdgeInsets.zero,
+                                      ),
                                     ),
-                                    borderRadius: BorderRadius.circular(
-                                        ExpatlioDesign.radiusLarge),
                                   ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.max,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        FFLocalizations.of(context).getText(
-                                          'is2w8qlp' /* 2 */,
-                                        ),
-                                        style: FlutterFlowTheme.of(context)
-                                            .bodyMedium
-                                            .override(
-                                              fontFamily: 'sf pro display',
-                                              color: valueOrDefault<Color>(
-                                                _model.rate == 2
-                                                    ? FlutterFlowTheme.of(
-                                                            context)
-                                                        .primaryBackground
-                                                    : FlutterFlowTheme.of(
-                                                            context)
-                                                        .primaryText,
-                                                FlutterFlowTheme.of(context)
-                                                    .primaryBackground,
-                                              ),
-                                              fontSize: 15.0,
-                                              letterSpacing: 0.0,
-                                            ),
-                                      ),
-                                      Icon(
-                                        FFIcons.kstar012,
-                                        color: Color(0xFFFFCC31),
-                                        size: 13.0,
-                                      ),
-                                    ].divide(
-                                        SizedBox(width: ExpatlioDesign.space4)),
-                                  ),
-                                ),
-                              ),
-                              InkWell(
-                                key: nativeSpeakerRatingFilterKey(1),
-                                splashColor: Colors.transparent,
-                                focusColor: Colors.transparent,
-                                hoverColor: Colors.transparent,
-                                highlightColor: Colors.transparent,
-                                onTap: () async {
-                                  _model.rate = 1;
-                                  safeSetState(() {});
-                                },
-                                child: Container(
-                                  width: 75.0,
-                                  height: 40.0,
-                                  decoration: BoxDecoration(
-                                    color: valueOrDefault<Color>(
-                                      _model.rate == 1
-                                          ? FlutterFlowTheme.of(context).primary
-                                          : FlutterFlowTheme.of(context)
-                                              .primaryBackground,
-                                      FlutterFlowTheme.of(context).primary,
+                                  Container(
+                                    width: 33.0,
+                                    decoration: BoxDecoration(),
+                                    child: AutoSizeText(
+                                      countForRating(4).toString(),
+                                      maxLines: 1,
+                                      style: FlutterFlowTheme.of(context)
+                                          .bodyMedium
+                                          .override(
+                                            fontFamily: 'sf pro display',
+                                            color: FlutterFlowTheme.of(context)
+                                                .secondaryText,
+                                            fontSize: 15.0,
+                                            letterSpacing: 0.0,
+                                          ),
                                     ),
-                                    borderRadius: BorderRadius.circular(
-                                        ExpatlioDesign.radiusLarge),
                                   ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.max,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        FFLocalizations.of(context).getText(
-                                          'bk4ndath' /* 1 */,
-                                        ),
-                                        style: FlutterFlowTheme.of(context)
-                                            .bodyMedium
-                                            .override(
-                                              fontFamily: 'sf pro display',
-                                              color: valueOrDefault<Color>(
-                                                _model.rate == 1
-                                                    ? FlutterFlowTheme.of(
-                                                            context)
-                                                        .primaryBackground
-                                                    : FlutterFlowTheme.of(
-                                                            context)
-                                                        .primaryText,
-                                                FlutterFlowTheme.of(context)
-                                                    .primaryBackground,
-                                              ),
-                                              fontSize: 15.0,
-                                              letterSpacing: 0.0,
-                                            ),
-                                      ),
-                                      Icon(
-                                        FFIcons.kstar012,
-                                        color: Color(0xFFFFCC31),
-                                        size: 13.0,
-                                      ),
-                                    ].divide(
-                                        SizedBox(width: ExpatlioDesign.space4)),
-                                  ),
-                                ),
+                                ].divide(
+                                    SizedBox(width: ExpatlioDesign.space4)),
                               ),
-                            ]
-                                .divide(SizedBox(width: ExpatlioDesign.space8))
-                                .addToStart(
-                                    SizedBox(width: ExpatlioDesign.space16))
-                                .addToEnd(
-                                    SizedBox(width: ExpatlioDesign.space16)),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    width: 11.0,
+                                    decoration: BoxDecoration(),
+                                    child: Text(
+                                      FFLocalizations.of(context).getText(
+                                        's89a9grf' /* 3 */,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                      style: FlutterFlowTheme.of(context)
+                                          .bodyMedium
+                                          .override(
+                                            fontFamily: 'sf pro display',
+                                            color: FlutterFlowTheme.of(context)
+                                                .primaryText,
+                                            fontSize: 15.0,
+                                            letterSpacing: 0.0,
+                                          ),
+                                    ),
+                                  ),
+                                  Icon(
+                                    FFIcons.kstar012,
+                                    color: Color(0xFFFFCC31),
+                                    size: 13.0,
+                                  ),
+                                  Padding(
+                                    padding: EdgeInsetsDirectional.fromSTEB(
+                                        ExpatlioDesign.space4,
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space4,
+                                        ExpatlioDesign.space0),
+                                    child: AuthUserStreamWidget(
+                                      builder: (context) =>
+                                          LinearPercentIndicator(
+                                        percent: percentForRating(3),
+                                        width: 106.0,
+                                        lineHeight: 4.0,
+                                        animation: true,
+                                        animateFromLastPercent: true,
+                                        progressColor:
+                                            FlutterFlowTheme.of(context)
+                                                .primary,
+                                        backgroundColor:
+                                            FlutterFlowTheme.of(context)
+                                                .accent4,
+                                        barRadius: Radius.circular(
+                                            ExpatlioDesign.radiusSmall),
+                                        padding: EdgeInsets.zero,
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    width: 33.0,
+                                    decoration: BoxDecoration(),
+                                    child: AutoSizeText(
+                                      countForRating(3).toString(),
+                                      maxLines: 1,
+                                      style: FlutterFlowTheme.of(context)
+                                          .bodyMedium
+                                          .override(
+                                            fontFamily: 'sf pro display',
+                                            color: FlutterFlowTheme.of(context)
+                                                .secondaryText,
+                                            fontSize: 15.0,
+                                            letterSpacing: 0.0,
+                                          ),
+                                    ),
+                                  ),
+                                ].divide(
+                                    SizedBox(width: ExpatlioDesign.space4)),
+                              ),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 11.0,
+                                    decoration: BoxDecoration(),
+                                    child: Text(
+                                      FFLocalizations.of(context).getText(
+                                        'n8svbjr0' /* 2 */,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                      style: FlutterFlowTheme.of(context)
+                                          .bodyMedium
+                                          .override(
+                                            fontFamily: 'sf pro display',
+                                            color: FlutterFlowTheme.of(context)
+                                                .primaryText,
+                                            fontSize: 15.0,
+                                            letterSpacing: 0.0,
+                                          ),
+                                    ),
+                                  ),
+                                  Icon(
+                                    FFIcons.kstar012,
+                                    color: Color(0xFFFFCC31),
+                                    size: 13.0,
+                                  ),
+                                  Padding(
+                                    padding: EdgeInsetsDirectional.fromSTEB(
+                                        ExpatlioDesign.space4,
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space4,
+                                        ExpatlioDesign.space0),
+                                    child: AuthUserStreamWidget(
+                                      builder: (context) =>
+                                          LinearPercentIndicator(
+                                        percent: percentForRating(2),
+                                        width: 106.0,
+                                        lineHeight: 4.0,
+                                        animation: true,
+                                        animateFromLastPercent: true,
+                                        progressColor:
+                                            FlutterFlowTheme.of(context)
+                                                .primary,
+                                        backgroundColor:
+                                            FlutterFlowTheme.of(context)
+                                                .accent4,
+                                        barRadius: Radius.circular(
+                                            ExpatlioDesign.radiusSmall),
+                                        padding: EdgeInsets.zero,
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    width: 33.0,
+                                    decoration: BoxDecoration(),
+                                    child: AutoSizeText(
+                                      countForRating(2).toString(),
+                                      maxLines: 1,
+                                      style: FlutterFlowTheme.of(context)
+                                          .bodyMedium
+                                          .override(
+                                            fontFamily: 'sf pro display',
+                                            color: FlutterFlowTheme.of(context)
+                                                .secondaryText,
+                                            fontSize: 15.0,
+                                            letterSpacing: 0.0,
+                                          ),
+                                    ),
+                                  ),
+                                ].divide(
+                                    SizedBox(width: ExpatlioDesign.space4)),
+                              ),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 11.0,
+                                    decoration: BoxDecoration(),
+                                    child: Text(
+                                      FFLocalizations.of(context).getText(
+                                        'g8kj6pac' /* 1 */,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                      style: FlutterFlowTheme.of(context)
+                                          .bodyMedium
+                                          .override(
+                                            fontFamily: 'sf pro display',
+                                            color: FlutterFlowTheme.of(context)
+                                                .primaryText,
+                                            fontSize: 15.0,
+                                            letterSpacing: 0.0,
+                                          ),
+                                    ),
+                                  ),
+                                  Icon(
+                                    FFIcons.kstar012,
+                                    color: Color(0xFFFFCC31),
+                                    size: 13.0,
+                                  ),
+                                  Padding(
+                                    padding: EdgeInsetsDirectional.fromSTEB(
+                                        ExpatlioDesign.space4,
+                                        ExpatlioDesign.space0,
+                                        ExpatlioDesign.space4,
+                                        ExpatlioDesign.space0),
+                                    child: AuthUserStreamWidget(
+                                      builder: (context) =>
+                                          LinearPercentIndicator(
+                                        percent: percentForRating(1),
+                                        width: 106.0,
+                                        lineHeight: 4.0,
+                                        animation: true,
+                                        animateFromLastPercent: true,
+                                        progressColor:
+                                            FlutterFlowTheme.of(context)
+                                                .primary,
+                                        backgroundColor:
+                                            FlutterFlowTheme.of(context)
+                                                .accent4,
+                                        barRadius: Radius.circular(
+                                            ExpatlioDesign.radiusSmall),
+                                        padding: EdgeInsets.zero,
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    width: 33.0,
+                                    decoration: BoxDecoration(),
+                                    child: AutoSizeText(
+                                      countForRating(1).toString(),
+                                      maxLines: 1,
+                                      style: FlutterFlowTheme.of(context)
+                                          .bodyMedium
+                                          .override(
+                                            fontFamily: 'sf pro display',
+                                            color: FlutterFlowTheme.of(context)
+                                                .secondaryText,
+                                            fontSize: 15.0,
+                                            letterSpacing: 0.0,
+                                          ),
+                                    ),
+                                  ),
+                                ].divide(
+                                    SizedBox(width: ExpatlioDesign.space4)),
+                              ),
+                            ].divide(SizedBox(height: ExpatlioDesign.space4)),
                           ),
                         ),
                       ),
-                    ),
-                    Padding(
-                      padding: EdgeInsetsDirectional.fromSTEB(
-                          ExpatlioDesign.space0,
-                          ExpatlioDesign.space12,
-                          ExpatlioDesign.space0,
-                          ExpatlioDesign.space0),
-                      child: Builder(
-                        builder: (context) {
-                          final rew = containerReviewsRecordList
-                              .where((e) => _model.rate == 0
-                                  ? true
-                                  : (e.rating == _model.rate))
-                              .toList();
-
-                          if (rew.isEmpty) {
-                            return Center(
-                              child: EmptyWidget(
-                                txt:
-                                    'По выбранному рейтингу пока ничего нет. Попробуйте другую оценку.',
-                              ),
-                            );
-                          }
-
-                          return ListView.separated(
-                            key: nativeSpeakerReviewsListKey,
-                            padding: EdgeInsets.zero,
-                            primary: false,
-                            shrinkWrap: true,
-                            scrollDirection: Axis.vertical,
-                            itemCount: rew.length,
-                            separatorBuilder: (_, __) =>
-                                SizedBox(height: ExpatlioDesign.space8),
-                            itemBuilder: (context, rewIndex) {
-                              final rewItem = rew[rewIndex];
-                              return Padding(
-                                padding: EdgeInsetsDirectional.fromSTEB(
-                                    ExpatlioDesign.space16,
-                                    ExpatlioDesign.space0,
-                                    ExpatlioDesign.space16,
-                                    ExpatlioDesign.space0),
-                                child: ReviewCardWidget(
-                                  key: nativeSpeakerReviewKey(rewItem),
-                                  rewDoc: rewItem,
-                                ),
-                              );
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: EdgeInsetsDirectional.fromSTEB(
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space12,
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space0),
+                  child: Container(
+                    width: double.infinity,
+                    height: 45.0,
+                    decoration: BoxDecoration(),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.max,
+                        children: [
+                          InkWell(
+                            key: nativeSpeakerRatingFilterKey(0),
+                            splashColor: Colors.transparent,
+                            focusColor: Colors.transparent,
+                            hoverColor: Colors.transparent,
+                            highlightColor: Colors.transparent,
+                            onTap: () async {
+                              _model.rate = 0;
+                              safeSetState(() {});
                             },
-                          );
-                        },
+                            child: Container(
+                              width: 75.0,
+                              height: 40.0,
+                              decoration: BoxDecoration(
+                                color: valueOrDefault<Color>(
+                                  _model.rate == 0
+                                      ? FlutterFlowTheme.of(context).primary
+                                      : FlutterFlowTheme.of(context)
+                                          .primaryBackground,
+                                  FlutterFlowTheme.of(context).primary,
+                                ),
+                                borderRadius: BorderRadius.circular(
+                                    ExpatlioDesign.radiusLarge),
+                              ),
+                              child: Align(
+                                alignment: AlignmentDirectional(0.0, 0.0),
+                                child: Text(
+                                  FFLocalizations.of(context).getText(
+                                    'ovjwud7w' /* Все */,
+                                  ),
+                                  style: FlutterFlowTheme.of(context)
+                                      .bodyMedium
+                                      .override(
+                                        fontFamily: 'sf pro display',
+                                        color: valueOrDefault<Color>(
+                                          _model.rate == 0
+                                              ? FlutterFlowTheme.of(context)
+                                                  .primaryBackground
+                                              : FlutterFlowTheme.of(context)
+                                                  .primaryText,
+                                          FlutterFlowTheme.of(context)
+                                              .primaryBackground,
+                                        ),
+                                        fontSize: 15.0,
+                                        letterSpacing: 0.0,
+                                      ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          InkWell(
+                            key: nativeSpeakerRatingFilterKey(5),
+                            splashColor: Colors.transparent,
+                            focusColor: Colors.transparent,
+                            hoverColor: Colors.transparent,
+                            highlightColor: Colors.transparent,
+                            onTap: () async {
+                              _model.rate = 5;
+                              safeSetState(() {});
+                            },
+                            child: Container(
+                              width: 75.0,
+                              height: 40.0,
+                              decoration: BoxDecoration(
+                                color: valueOrDefault<Color>(
+                                  _model.rate == 5
+                                      ? FlutterFlowTheme.of(context).primary
+                                      : FlutterFlowTheme.of(context)
+                                          .primaryBackground,
+                                  FlutterFlowTheme.of(context).primary,
+                                ),
+                                borderRadius: BorderRadius.circular(
+                                    ExpatlioDesign.radiusLarge),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.max,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    FFLocalizations.of(context).getText(
+                                      'h6yocea2' /* 5 */,
+                                    ),
+                                    style: FlutterFlowTheme.of(context)
+                                        .bodyMedium
+                                        .override(
+                                          fontFamily: 'sf pro display',
+                                          color: valueOrDefault<Color>(
+                                            _model.rate == 5
+                                                ? FlutterFlowTheme.of(context)
+                                                    .primaryBackground
+                                                : FlutterFlowTheme.of(context)
+                                                    .primaryText,
+                                            FlutterFlowTheme.of(context)
+                                                .primaryBackground,
+                                          ),
+                                          fontSize: 15.0,
+                                          letterSpacing: 0.0,
+                                        ),
+                                  ),
+                                  Icon(
+                                    FFIcons.kstar012,
+                                    color: Color(0xFFFFCC31),
+                                    size: 13.0,
+                                  ),
+                                ].divide(
+                                    SizedBox(width: ExpatlioDesign.space4)),
+                              ),
+                            ),
+                          ),
+                          InkWell(
+                            key: nativeSpeakerRatingFilterKey(4),
+                            splashColor: Colors.transparent,
+                            focusColor: Colors.transparent,
+                            hoverColor: Colors.transparent,
+                            highlightColor: Colors.transparent,
+                            onTap: () async {
+                              _model.rate = 4;
+                              safeSetState(() {});
+                            },
+                            child: Container(
+                              width: 75.0,
+                              height: 40.0,
+                              decoration: BoxDecoration(
+                                color: valueOrDefault<Color>(
+                                  _model.rate == 4
+                                      ? FlutterFlowTheme.of(context).primary
+                                      : FlutterFlowTheme.of(context)
+                                          .primaryBackground,
+                                  FlutterFlowTheme.of(context).primary,
+                                ),
+                                borderRadius: BorderRadius.circular(
+                                    ExpatlioDesign.radiusLarge),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.max,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    FFLocalizations.of(context).getText(
+                                      'm2hjxtoq' /* 4 */,
+                                    ),
+                                    style: FlutterFlowTheme.of(context)
+                                        .bodyMedium
+                                        .override(
+                                          fontFamily: 'sf pro display',
+                                          color: valueOrDefault<Color>(
+                                            _model.rate == 4
+                                                ? FlutterFlowTheme.of(context)
+                                                    .primaryBackground
+                                                : FlutterFlowTheme.of(context)
+                                                    .primaryText,
+                                            FlutterFlowTheme.of(context)
+                                                .primaryBackground,
+                                          ),
+                                          fontSize: 15.0,
+                                          letterSpacing: 0.0,
+                                        ),
+                                  ),
+                                  Icon(
+                                    FFIcons.kstar012,
+                                    color: Color(0xFFFFCC31),
+                                    size: 13.0,
+                                  ),
+                                ].divide(
+                                    SizedBox(width: ExpatlioDesign.space4)),
+                              ),
+                            ),
+                          ),
+                          InkWell(
+                            key: nativeSpeakerRatingFilterKey(3),
+                            splashColor: Colors.transparent,
+                            focusColor: Colors.transparent,
+                            hoverColor: Colors.transparent,
+                            highlightColor: Colors.transparent,
+                            onTap: () async {
+                              _model.rate = 3;
+                              safeSetState(() {});
+                            },
+                            child: Container(
+                              width: 75.0,
+                              height: 40.0,
+                              decoration: BoxDecoration(
+                                color: valueOrDefault<Color>(
+                                  _model.rate == 3
+                                      ? FlutterFlowTheme.of(context).primary
+                                      : FlutterFlowTheme.of(context)
+                                          .primaryBackground,
+                                  FlutterFlowTheme.of(context).primary,
+                                ),
+                                borderRadius: BorderRadius.circular(
+                                    ExpatlioDesign.radiusLarge),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.max,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    FFLocalizations.of(context).getText(
+                                      '19bs787g' /* 3 */,
+                                    ),
+                                    style: FlutterFlowTheme.of(context)
+                                        .bodyMedium
+                                        .override(
+                                          fontFamily: 'sf pro display',
+                                          color: valueOrDefault<Color>(
+                                            _model.rate == 3
+                                                ? FlutterFlowTheme.of(context)
+                                                    .primaryBackground
+                                                : FlutterFlowTheme.of(context)
+                                                    .primaryText,
+                                            FlutterFlowTheme.of(context)
+                                                .primaryBackground,
+                                          ),
+                                          fontSize: 15.0,
+                                          letterSpacing: 0.0,
+                                        ),
+                                  ),
+                                  Icon(
+                                    FFIcons.kstar012,
+                                    color: Color(0xFFFFCC31),
+                                    size: 13.0,
+                                  ),
+                                ].divide(
+                                    SizedBox(width: ExpatlioDesign.space4)),
+                              ),
+                            ),
+                          ),
+                          InkWell(
+                            key: nativeSpeakerRatingFilterKey(2),
+                            splashColor: Colors.transparent,
+                            focusColor: Colors.transparent,
+                            hoverColor: Colors.transparent,
+                            highlightColor: Colors.transparent,
+                            onTap: () async {
+                              _model.rate = 2;
+                              safeSetState(() {});
+                            },
+                            child: Container(
+                              width: 75.0,
+                              height: 40.0,
+                              decoration: BoxDecoration(
+                                color: valueOrDefault<Color>(
+                                  _model.rate == 2
+                                      ? FlutterFlowTheme.of(context).primary
+                                      : FlutterFlowTheme.of(context)
+                                          .primaryBackground,
+                                  FlutterFlowTheme.of(context).primary,
+                                ),
+                                borderRadius: BorderRadius.circular(
+                                    ExpatlioDesign.radiusLarge),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.max,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    FFLocalizations.of(context).getText(
+                                      'is2w8qlp' /* 2 */,
+                                    ),
+                                    style: FlutterFlowTheme.of(context)
+                                        .bodyMedium
+                                        .override(
+                                          fontFamily: 'sf pro display',
+                                          color: valueOrDefault<Color>(
+                                            _model.rate == 2
+                                                ? FlutterFlowTheme.of(context)
+                                                    .primaryBackground
+                                                : FlutterFlowTheme.of(context)
+                                                    .primaryText,
+                                            FlutterFlowTheme.of(context)
+                                                .primaryBackground,
+                                          ),
+                                          fontSize: 15.0,
+                                          letterSpacing: 0.0,
+                                        ),
+                                  ),
+                                  Icon(
+                                    FFIcons.kstar012,
+                                    color: Color(0xFFFFCC31),
+                                    size: 13.0,
+                                  ),
+                                ].divide(
+                                    SizedBox(width: ExpatlioDesign.space4)),
+                              ),
+                            ),
+                          ),
+                          InkWell(
+                            key: nativeSpeakerRatingFilterKey(1),
+                            splashColor: Colors.transparent,
+                            focusColor: Colors.transparent,
+                            hoverColor: Colors.transparent,
+                            highlightColor: Colors.transparent,
+                            onTap: () async {
+                              _model.rate = 1;
+                              safeSetState(() {});
+                            },
+                            child: Container(
+                              width: 75.0,
+                              height: 40.0,
+                              decoration: BoxDecoration(
+                                color: valueOrDefault<Color>(
+                                  _model.rate == 1
+                                      ? FlutterFlowTheme.of(context).primary
+                                      : FlutterFlowTheme.of(context)
+                                          .primaryBackground,
+                                  FlutterFlowTheme.of(context).primary,
+                                ),
+                                borderRadius: BorderRadius.circular(
+                                    ExpatlioDesign.radiusLarge),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.max,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    FFLocalizations.of(context).getText(
+                                      'bk4ndath' /* 1 */,
+                                    ),
+                                    style: FlutterFlowTheme.of(context)
+                                        .bodyMedium
+                                        .override(
+                                          fontFamily: 'sf pro display',
+                                          color: valueOrDefault<Color>(
+                                            _model.rate == 1
+                                                ? FlutterFlowTheme.of(context)
+                                                    .primaryBackground
+                                                : FlutterFlowTheme.of(context)
+                                                    .primaryText,
+                                            FlutterFlowTheme.of(context)
+                                                .primaryBackground,
+                                          ),
+                                          fontSize: 15.0,
+                                          letterSpacing: 0.0,
+                                        ),
+                                  ),
+                                  Icon(
+                                    FFIcons.kstar012,
+                                    color: Color(0xFFFFCC31),
+                                    size: 13.0,
+                                  ),
+                                ].divide(
+                                    SizedBox(width: ExpatlioDesign.space4)),
+                              ),
+                            ),
+                          ),
+                        ]
+                            .divide(SizedBox(width: ExpatlioDesign.space8))
+                            .addToStart(SizedBox(width: ExpatlioDesign.space16))
+                            .addToEnd(SizedBox(width: ExpatlioDesign.space16)),
                       ),
                     ),
-                  ].addToEnd(SizedBox(height: ExpatlioDesign.space24)),
-                );
-              } else {
-                return EmptyWidget(
-                  key: nativeSpeakerReviewsEmptyKey,
-                  txt:
-                      'У этого преподавателя пока нет оценок и отзывов. После первых занятий студенты смогут поделиться впечатлениями, и отзывы появятся здесь.',
-                );
-              }
+                  ),
+                ),
+                Padding(
+                  padding: EdgeInsetsDirectional.fromSTEB(
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space12,
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space0),
+                  child: Builder(
+                    builder: (context) {
+                      final rew = containerReviewsRecordList
+                          .where((e) => _model.rate == 0
+                              ? true
+                              : (e.rating == _model.rate))
+                          .toList();
+
+                      if (rew.isEmpty) {
+                        return Center(
+                          child: EmptyWidget(
+                            txt:
+                                'По выбранному рейтингу пока ничего нет. Попробуйте другую оценку.',
+                          ),
+                        );
+                      }
+
+                      return ListView.separated(
+                        key: nativeSpeakerReviewsListKey,
+                        padding: EdgeInsets.zero,
+                        primary: false,
+                        shrinkWrap: true,
+                        scrollDirection: Axis.vertical,
+                        itemCount: rew.length,
+                        separatorBuilder: (_, __) =>
+                            SizedBox(height: ExpatlioDesign.space8),
+                        itemBuilder: (context, rewIndex) {
+                          final rewItem = rew[rewIndex];
+                          return Padding(
+                            padding: EdgeInsetsDirectional.fromSTEB(
+                                ExpatlioDesign.space16,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space16,
+                                ExpatlioDesign.space0),
+                            child: ReviewCardWidget(
+                              key: nativeSpeakerReviewKey(rewItem),
+                              rewDoc: rewItem,
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ].addToEnd(SizedBox(height: ExpatlioDesign.space24)),
+            );
+          } else {
+            return EmptyWidget(
+              key: nativeSpeakerReviewsEmptyKey,
+              txt:
+                  'У этого преподавателя пока нет оценок и отзывов. После первых занятий студенты смогут поделиться впечатлениями, и отзывы появятся здесь.',
+            );
+          }
         },
       ),
     );

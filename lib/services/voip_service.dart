@@ -215,7 +215,7 @@ bool voipIncomingCallShouldUseInAppNavigation(
     return false;
   }
 
-  return _voipStringFromPayload(data, 'scenario') == 'student_student';
+  return true;
 }
 
 Iterable<dynamic> _voipActiveCallEntries(dynamic activeCalls) {
@@ -1105,6 +1105,13 @@ class VoIPService {
       await _foregroundMessageSub?.cancel();
       _foregroundMessageSub =
           FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
+        if (message.data['type'] == 'call_cancelled') {
+          final sessionId = _voipNonEmptyString(message.data['sessionId']);
+          if (sessionId != null) {
+            await cancelIncomingCall(sessionId: sessionId);
+          }
+          return;
+        }
         if (message.data['type'] != 'incoming_call') return;
         if (kIsWeb) return;
 
@@ -1220,6 +1227,19 @@ class VoIPService {
     return _nonEmptyString(data['sessionId']) != null;
   }
 
+  bool _incomingNotificationCancellationIsFresh(
+    Map<String, dynamic> data,
+  ) {
+    final cancelledAt = _dateTimeFromFirestoreValue(data['cancelledAt']) ??
+        _dateTimeFromFirestoreValue(data['expiredAt']) ??
+        _dateTimeFromFirestoreValue(data['expiresAt']);
+    if (cancelledAt == null) {
+      return false;
+    }
+    final age = DateTime.now().difference(cancelledAt);
+    return !age.isNegative && age < const Duration(minutes: 2);
+  }
+
   Future<Map<String, dynamic>?> _loadCurrentIncomingSessionData({
     required String sessionId,
     required String userId,
@@ -1256,12 +1276,32 @@ class VoIPService {
     String userId,
   ) async {
     final notificationData = notificationDoc.data();
-    if (notificationData == null ||
-        !_incomingNotificationIsCurrent(notificationData)) {
+    if (notificationData == null) {
       return;
     }
 
     final sessionId = _nonEmptyString(notificationData['sessionId']);
+    final notificationType = _nonEmptyString(notificationData['type']);
+    final notificationStatus = _nonEmptyString(notificationData['status']);
+    if (notificationType == NotificationType.incoming_call.name &&
+        sessionId != null &&
+        (notificationStatus == 'cancelled' ||
+            notificationStatus == 'expired') &&
+        _incomingNotificationCancellationIsFresh(notificationData)) {
+      final terminalEventKey = '${notificationDoc.id}:$notificationStatus';
+      if (_handledNotificationIds.add(terminalEventKey)) {
+        debugPrint(
+          '📴 VoIPService: Incoming call cancelled for session $sessionId',
+        );
+        await cancelIncomingCall(sessionId: sessionId);
+      }
+      return;
+    }
+
+    if (!_incomingNotificationIsCurrent(notificationData)) {
+      return;
+    }
+
     if (sessionId == null ||
         _handledNotificationIds.contains(notificationDoc.id) ||
         _sessionCallKitIds.containsKey(sessionId) ||
@@ -1562,22 +1602,31 @@ class VoIPService {
         debugPrint('ℹ️ VoIPService: Ignoring expired incoming call payload');
         return;
       }
+      final callKitId = sessionId.isNotEmpty
+          ? (_sessionCallKitIds[sessionId] ?? _callKitIdForSession(sessionId))
+          : const Uuid().v4();
       if (extraData != null &&
           voipIncomingCallShouldUseInAppNavigation(
             extraData,
             lifecycleState: lifecycleState,
           )) {
         debugPrint(
-          'ℹ️ VoIPService: Foreground student match uses in-app navigation',
+          'ℹ️ VoIPService: Foreground incoming call uses in-app navigation',
         );
+        await _handleCallAccept(<String, dynamic>{
+          'id': callKitId,
+          'extra': voipBuildCallKitExtraData(
+            sessionId: sessionId,
+            callerId: callerId,
+            callKitId: callKitId,
+            extraData: extraData,
+          ),
+        });
         return;
       }
 
       debugPrint('📞 VoIPService: Showing incoming call from $callerName');
 
-      final callKitId = sessionId.isNotEmpty
-          ? (_sessionCallKitIds[sessionId] ?? _callKitIdForSession(sessionId))
-          : const Uuid().v4();
       if (sessionId.isNotEmpty) {
         _sessionCallKitIds[sessionId] = callKitId;
         _touchSessionState(sessionId);
@@ -2617,6 +2666,31 @@ class VoIPService {
       return calls.trim().isNotEmpty && calls.trim() != '[]';
     }
     return false;
+  }
+
+  /// Закрыть конкретный входящий системный звонок без затрагивания других.
+  Future<void> cancelIncomingCall({required String sessionId}) async {
+    final normalizedSessionId = sessionId.trim();
+    if (normalizedSessionId.isEmpty) {
+      return;
+    }
+    final callKitId = _sessionCallKitIds[normalizedSessionId] ??
+        _callKitIdForSession(normalizedSessionId);
+    try {
+      final override = debugEndCallKitCallOverride;
+      if (override != null) {
+        await override(
+          sessionId: normalizedSessionId,
+          callKitId: callKitId,
+        );
+      } else {
+        await FlutterCallkitIncoming.endCall(callKitId);
+      }
+      _clearSessionState(normalizedSessionId);
+      debugPrint('✅ VoIPService: Incoming system call cleared');
+    } catch (e) {
+      debugPrint('❌ VoIPService: Error clearing incoming call: $e');
+    }
   }
 
   /// Завершить текущий активный звонок (программно)

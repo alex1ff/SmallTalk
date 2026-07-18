@@ -21,6 +21,33 @@ String reviewWordsVisibleCount(int count) {
   return normalizedCount > 99 ? '99+' : normalizedCount.toString();
 }
 
+String _russianWordsForm(int count) {
+  final mod100 = count % 100;
+  final mod10 = count % 10;
+  return mod100 >= 11 && mod100 <= 14
+      ? 'слов'
+      : mod10 == 1
+          ? 'слово'
+          : mod10 >= 2 && mod10 <= 4
+              ? 'слова'
+              : 'слов';
+}
+
+String reviewWordsVisibleLabel({
+  required int count,
+  required String languageCode,
+}) {
+  final normalizedCount = count < 0 ? 0 : count;
+  final visibleCount = reviewWordsVisibleCount(normalizedCount);
+  if (languageCode.startsWith('en')) {
+    return '$visibleCount ${normalizedCount == 1 ? 'word' : 'words'}';
+  }
+
+  final wordForm =
+      normalizedCount > 99 ? 'слов' : _russianWordsForm(normalizedCount);
+  return '$visibleCount $wordForm';
+}
+
 String reviewWordsCountSemanticsLabel({
   required int count,
   required String languageCode,
@@ -31,16 +58,8 @@ String reviewWordsCountSemanticsLabel({
         '${normalizedCount == 1 ? 'word' : 'words'} to review';
   }
 
-  final mod100 = normalizedCount % 100;
-  final mod10 = normalizedCount % 10;
-  final wordForm = mod100 >= 11 && mod100 <= 14
-      ? 'слов'
-      : mod10 == 1
-          ? 'слово'
-          : mod10 >= 2 && mod10 <= 4
-              ? 'слова'
-              : 'слов';
-  return '$normalizedCount $wordForm к повторению';
+  return '$normalizedCount ${_russianWordsForm(normalizedCount)} '
+      'к повторению';
 }
 
 class ReviewWordsBar extends StatelessWidget {

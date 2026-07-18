@@ -14,10 +14,35 @@ void main() {
     await FFLocalizations.initialize();
   });
 
-  test('review count stays numeric and caps only the visible value', () {
+  test('review count uses localized word forms and caps the visible value', () {
     expect(
       <int>[-1, 0, 1, 9, 10, 99, 100, 1000].map(reviewWordsVisibleCount),
       <String>['0', '0', '1', '9', '10', '99', '99+', '99+'],
+    );
+    expect(
+      <int>[0, 1, 2, 5, 11, 21, 100].map(
+        (count) => reviewWordsVisibleLabel(
+          count: count,
+          languageCode: 'ru',
+        ),
+      ),
+      <String>[
+        '0 слов',
+        '1 слово',
+        '2 слова',
+        '5 слов',
+        '11 слов',
+        '21 слово',
+        '99+ слов',
+      ],
+    );
+    expect(
+      reviewWordsVisibleLabel(count: 1, languageCode: 'en'),
+      '1 word',
+    );
+    expect(
+      reviewWordsVisibleLabel(count: 2, languageCode: 'en'),
+      '2 words',
     );
     expect(
       reviewWordsCountSemanticsLabel(count: 1, languageCode: 'ru'),
@@ -74,7 +99,13 @@ void main() {
 
               expect(surfaceRect.size, Size(width, reviewWordsBarHeight));
               expect(tester.getRect(inkWellFinder), surfaceRect);
-              expect(count.data, '99+');
+              expect(
+                count.data,
+                reviewWordsVisibleLabel(
+                  count: _dueCount,
+                  languageCode: locale.languageCode,
+                ),
+              );
               expect(count.maxLines, 1);
               expect(count.overflow, TextOverflow.ellipsis);
               expect(
@@ -223,7 +254,10 @@ void main() {
 
       expect(
         tester.widget<Text>(find.byKey(reviewWordsBarCountTextKey)).data,
-        reviewWordsVisibleCount(dueCount),
+        reviewWordsVisibleLabel(
+          count: dueCount,
+          languageCode: 'ru',
+        ),
       );
       expect(surfaceRect.size, const Size(208.0, reviewWordsBarHeight));
       expect(
@@ -313,7 +347,10 @@ Widget _buildReviewBarApp({
           child: SizedBox(
             width: width,
             child: ReviewWordsBar(
-              text: reviewWordsVisibleCount(dueCount),
+              text: reviewWordsVisibleLabel(
+                count: dueCount,
+                languageCode: locale.languageCode,
+              ),
               semanticsLabel: reviewWordsCountSemanticsLabel(
                 count: dueCount,
                 languageCode: locale.languageCode,

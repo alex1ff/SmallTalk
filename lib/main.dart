@@ -37,6 +37,15 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     'hasSessionId: ${message.data['sessionId'] != null}',
   );
 
+  if (message.data['type'] == 'call_cancelled') {
+    final sessionId = message.data['sessionId']?.trim();
+    if (sessionId != null && sessionId.isNotEmpty) {
+      await VoIPService().cancelIncomingCall(sessionId: sessionId);
+      debugPrint('✅ Cancelled CallKit UI for session $sessionId');
+    }
+    return;
+  }
+
   if (message.data['type'] == 'incoming_call') {
     debugPrint('📞 Incoming VoIP call detected in background');
 
@@ -300,20 +309,23 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       theme: ExpatlioDesign.lightTheme(),
       themeMode: _themeMode,
       routerConfig: _router,
-      builder: (_, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(
-          textScaler:
-              _textScaleFactor == FlutterFlowTheme.defaultTextScaleFactor
-                  ? MediaQuery.of(context).textScaler.clamp(
+      builder: (_, child) => ColoredBox(
+        color: ExpatlioDesign.background,
+        child: MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler:
+                _textScaleFactor == FlutterFlowTheme.defaultTextScaleFactor
+                    ? MediaQuery.of(context).textScaler.clamp(
+                          minScaleFactor: FlutterFlowTheme.minTextScaleFactor,
+                          maxScaleFactor: FlutterFlowTheme.maxTextScaleFactor,
+                        )
+                    : TextScaler.linear(_textScaleFactor).clamp(
                         minScaleFactor: FlutterFlowTheme.minTextScaleFactor,
                         maxScaleFactor: FlutterFlowTheme.maxTextScaleFactor,
-                      )
-                  : TextScaler.linear(_textScaleFactor).clamp(
-                      minScaleFactor: FlutterFlowTheme.minTextScaleFactor,
-                      maxScaleFactor: FlutterFlowTheme.maxTextScaleFactor,
-                    ),
+                      ),
+          ),
+          child: child!,
         ),
-        child: child!,
       ),
     );
   }

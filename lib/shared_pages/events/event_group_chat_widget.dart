@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
+import '/components/chat_composer.dart';
 import '/components/ux_empty_state.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_util.dart';
@@ -181,8 +182,10 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
   EventChatMessagesLoadState? _lastDisplayedMessagesState;
   (String, String, int)? _lastDisplayedMessagesScope;
   Object? _reportOperationToken;
+  Object? _sendOperationToken;
 
   bool get _isReportingMessage => _reportOperationToken != null;
+  bool get _isSendingMessage => _sendOperationToken != null;
 
   @override
   void initState() {
@@ -247,6 +250,7 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
       _resetMessagesBoundary();
       _pendingMessages.clear();
       _reportOperationToken = null;
+      _sendOperationToken = null;
     } else if (messagesChanged) {
       _resetMessagesBoundary();
     }
@@ -433,6 +437,7 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
       _pendingMessages.clear();
       _messageTextController.clear();
       _reportOperationToken = null;
+      _sendOperationToken = null;
     }
 
     if (rebuild && mounted) {
@@ -650,6 +655,9 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
   }
 
   Future<void> _sendMessage() async {
+    if (_isSendingMessage) {
+      return;
+    }
     final text = _messageTextController.text.trim();
     if (text.isEmpty) {
       return;
@@ -664,7 +672,9 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
       text,
       senderId: scope.ownerUid,
     );
+    final operationToken = Object();
     setState(() {
+      _sendOperationToken = operationToken;
       _pendingMessages.add(pendingMessage);
     });
     _messageTextController.clear();
@@ -717,6 +727,12 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
           'EventGroupChatWidget: failed to send message: '
           '${error.runtimeType}',
         );
+      }
+    } finally {
+      if (mounted && identical(_sendOperationToken, operationToken)) {
+        setState(() {
+          _sendOperationToken = null;
+        });
       }
     }
   }
@@ -1208,10 +1224,23 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
             },
           ),
         ),
-        _EventGroupChatComposer(
+        ChatComposer(
+          key: eventGroupChatComposerKey,
           controller: _messageTextController,
           focusNode: _messageFocusNode,
           onSendPressed: _sendMessage,
+          hintText: FFLocalizations.of(context).getVariableText(
+            ruText: 'Написать сообщение',
+            enText: 'Write a message',
+          ),
+          sendButtonSemanticLabel: FFLocalizations.of(context).getVariableText(
+            ruText: 'Отправить сообщение',
+            enText: 'Send message',
+          ),
+          enabled: true,
+          isSending: _isSendingMessage,
+          inputKey: eventGroupChatMessageInputKey,
+          sendButtonKey: eventGroupChatSendButtonKey,
         ),
       ],
     );
@@ -1822,93 +1851,6 @@ List<_EventChatMessageReportReasonOption> _eventChatMessageReportReasonOptions(
       ),
     ),
   ];
-}
-
-class _EventGroupChatComposer extends StatelessWidget {
-  const _EventGroupChatComposer({
-    required this.controller,
-    required this.focusNode,
-    required this.onSendPressed,
-  });
-
-  final TextEditingController controller;
-  final FocusNode focusNode;
-  final VoidCallback onSendPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      key: eventGroupChatComposerKey,
-      decoration: const BoxDecoration(
-        color: ExpatlioDesign.background,
-        border: Border(
-          top: BorderSide(color: ExpatlioDesign.separator),
-        ),
-      ),
-      child: SafeArea(
-        top: false,
-        bottom: false,
-        child: Padding(
-          padding: EdgeInsetsDirectional.fromSTEB(
-            ExpatlioDesign.space16,
-            ExpatlioDesign.space12,
-            ExpatlioDesign.space16,
-            ExpatlioDesign.space12 +
-                ExpatlioDesign.bottomBarSafePadding(context),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: SizedBox(
-                  height: ExpatlioDesign.formFieldHeight,
-                  child: TextFormField(
-                    key: eventGroupChatMessageInputKey,
-                    controller: controller,
-                    focusNode: focusNode,
-                    textCapitalization: TextCapitalization.sentences,
-                    textInputAction: TextInputAction.send,
-                    textAlignVertical: TextAlignVertical.center,
-                    minLines: 1,
-                    maxLines: 1,
-                    decoration: ExpatlioDesign.formFieldDecoration(
-                      context,
-                      hintText: FFLocalizations.of(context).getVariableText(
-                        ruText: 'Написать сообщение',
-                        enText: 'Write a message',
-                      ),
-                    ),
-                    style: ExpatlioDesign.formTextStyle(context),
-                    onFieldSubmitted: (_) => onSendPressed(),
-                  ),
-                ),
-              ),
-              const SizedBox(width: ExpatlioDesign.space8),
-              SizedBox.square(
-                dimension: ExpatlioDesign.formFieldHeight,
-                child: Material(
-                  color: ExpatlioDesign.primary,
-                  borderRadius:
-                      BorderRadius.circular(ExpatlioDesign.radiusMedium),
-                  child: InkWell(
-                    key: eventGroupChatSendButtonKey,
-                    borderRadius:
-                        BorderRadius.circular(ExpatlioDesign.radiusMedium),
-                    onTap: onSendPressed,
-                    child: const Icon(
-                      Icons.send_rounded,
-                      color: Colors.white,
-                      size: 22,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _EventGroupChatStateMessage extends StatelessWidget {

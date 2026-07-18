@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:firebase_auth_platform_interface/firebase_auth_platform_interface.dart';
 import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter/material.dart';
@@ -199,6 +202,9 @@ void main() {
     );
     await tester.pump();
 
+    expect(tester.widget<AdaptiveSwitch>(find.byType(AdaptiveSwitch)).onChanged,
+        isNotNull);
+
     await tester.tap(find.byType(AvailabilitySwitchControl));
     await tester.pump();
 
@@ -301,6 +307,8 @@ void main() {
           statsStreamOverride: Stream<List<StatsRecord>>.value(
             const <StatsRecord>[],
           ),
+          userDocumentStreamOverride:
+              Stream<UsersRecord?>.value(currentUserDocument),
         ),
       ),
     );
@@ -348,6 +356,8 @@ void main() {
           statsStreamOverride: Stream<List<StatsRecord>>.value(
             const <StatsRecord>[],
           ),
+          userDocumentStreamOverride:
+              Stream<UsersRecord?>.value(currentUserDocument),
         ),
       ),
     );
@@ -381,5 +391,58 @@ void main() {
           .value,
       isFalse,
     );
+  });
+
+  testWidgets('dashboard reacts to teacher approval without an app restart',
+      (tester) async {
+    final userDocumentController = StreamController<UsersRecord?>();
+    addTearDown(userDocumentController.close);
+    const userId = 'live-approval-dashboard-test';
+    currentUser = _TestAuthUser(isLoggedIn: true, userId: userId);
+    currentUserDocument = UsersRecord.getDocumentFromData(
+      {
+        'role': 'native_speaker',
+        'teacherAccreditationStatus': 'pending',
+        'availabilityToday': {
+          'enabled': false,
+          'intervals': <dynamic>[],
+        },
+        'isInCall': false,
+      },
+      UsersRecord.collection.doc(userId),
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        DashboardNSWidget(
+          statsStreamOverride: Stream<List<StatsRecord>>.value(
+            const <StatsRecord>[],
+          ),
+          userDocumentStreamOverride: userDocumentController.stream,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Заявка на проверке'), findsOneWidget);
+
+    userDocumentController.add(
+      UsersRecord.getDocumentFromData(
+        {
+          'role': 'native_speaker',
+          'teacherAccreditationStatus': 'approved',
+          'availabilityToday': {
+            'enabled': false,
+            'intervals': <dynamic>[],
+          },
+          'isInCall': false,
+        },
+        UsersRecord.collection.doc(userId),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Заявка на проверке'), findsNothing);
+    expect(find.byType(AvailabilitySwitchControl), findsOneWidget);
   });
 }

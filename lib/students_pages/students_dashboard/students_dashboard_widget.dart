@@ -13,6 +13,7 @@ import '/flutter_flow/flutter_flow_util.dart';
 import '/flutter_flow/permissions_util.dart';
 import '/services/user_match_profile.dart';
 import '/services/active_search_recovery.dart';
+import '/services/nearby_partner_count_cache.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/components/no_balance_widget.dart';
 import '/components/promo_redeem_widget.dart';
@@ -52,6 +53,10 @@ enum StudentDashboardSearchErrorReason {
 typedef SearchRequestInvoker = Future<dynamic> Function(
   Map<String, dynamic> payload,
 );
+typedef PartnerCountLoader = Future<int?> Function({
+  required CountryStruct? preferredLocation,
+  required Level? preferredPartnerLevel,
+});
 typedef StudentCallNavigator = FutureOr<void> Function(
   BuildContext context,
   DocumentReference videoDocRef, {
@@ -73,6 +78,7 @@ class StudentsDashboardWidget extends StatefulWidget {
     this.heartbeatSearchRequest,
     this.stopSearchRequest,
     this.activeSearchRecoveryReader,
+    this.partnerCountLoader,
   })  : this.zn = zn ?? false,
         this.topUpSuccess = topUpSuccess ?? false;
 
@@ -87,6 +93,7 @@ class StudentsDashboardWidget extends StatefulWidget {
   final Future<dynamic> Function(String? activeSessionId)? stopSearchRequest;
   final Future<ActiveSearchRecoveryState> Function(String userId)?
       activeSearchRecoveryReader;
+  final PartnerCountLoader? partnerCountLoader;
 
   static Future<bool> Function(UsersRecord user)? debugUsageLimitReachedChecker;
   static Future<VideoSessionsRecord?> Function(DocumentReference sessionRef)?
@@ -125,8 +132,10 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
   late StudentsDashboardModel _model;
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
-  String? _partnerCountCacheKey;
-  Future<int?>? _partnerCountFuture;
+  late final NearbyPartnerCountCache _partnerCountCache;
+  final Map<String, int> _partnerCountMemoryCache = <String, int>{};
+  final Set<String> _partnerCountRefreshesStarted = <String>{};
+  String? _activePartnerCountCacheKey;
   String? _partnerPreviewCacheKey;
   Future<List<OrbitingAvatarData>>? _partnerPreviewFuture;
   bool _isLocationMenuOpen = false;
@@ -1589,6 +1598,14 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     required Level? preferredPartnerLevel,
   }) async {
     try {
+      final loader = widget.partnerCountLoader;
+      if (loader != null) {
+        return loader(
+          preferredLocation: preferredLocation,
+          preferredPartnerLevel: preferredPartnerLevel,
+        );
+      }
+
       final query = _filteredPartnerProfilesQuery(
         preferredLocation: preferredLocation,
         preferredPartnerLevel: preferredPartnerLevel,
@@ -1622,27 +1639,88 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     }
   }
 
-  Future<int?> _partnerCountFutureFor({
+  String _partnerCountCacheKeyFor({
     required CountryStruct? preferredLocation,
     required Level? preferredPartnerLevel,
   }) {
     final activeLanguage =
         resolveUserActiveConversationLanguage(currentUserDocument) ?? '';
-    final cacheKey = [
-      activeLanguage,
-      preferredLocation?.code ?? '',
-      preferredPartnerLevel?.name ?? '',
-    ].join('|');
+    return nearbyPartnerCountCacheKey(
+      languageCode: activeLanguage,
+      countryCode: preferredLocation?.code ?? '',
+      partnerLevel: preferredPartnerLevel?.name ?? '',
+    );
+  }
 
-    if (_partnerCountCacheKey != cacheKey || _partnerCountFuture == null) {
-      _partnerCountCacheKey = cacheKey;
-      _partnerCountFuture = _loadFilteredPartnerCount(
-        preferredLocation: preferredLocation,
-        preferredPartnerLevel: preferredPartnerLevel,
-      );
+  int _partnerCountFor({
+    required CountryStruct? preferredLocation,
+    required Level? preferredPartnerLevel,
+  }) {
+    final cacheKey = _partnerCountCacheKeyFor(
+      preferredLocation: preferredLocation,
+      preferredPartnerLevel: preferredPartnerLevel,
+    );
+    _activePartnerCountCacheKey = cacheKey;
+    final cachedCount = _partnerCountCache.read(cacheKey);
+    if (cachedCount != null) {
+      _partnerCountMemoryCache.putIfAbsent(cacheKey, () => cachedCount);
+    }
+    _startPartnerCountRefresh(
+      cacheKey: cacheKey,
+      preferredLocation: preferredLocation,
+      preferredPartnerLevel: preferredPartnerLevel,
+    );
+    return _partnerCountMemoryCache[cacheKey] ?? 0;
+  }
+
+  void _startPartnerCountRefresh({
+    required String cacheKey,
+    required CountryStruct? preferredLocation,
+    required Level? preferredPartnerLevel,
+  }) {
+    if (!_partnerCountRefreshesStarted.add(cacheKey)) {
+      return;
     }
 
-    return _partnerCountFuture!;
+    unawaited(
+      _refreshPartnerCount(
+        cacheKey: cacheKey,
+        preferredLocation: preferredLocation,
+        preferredPartnerLevel: preferredPartnerLevel,
+      ),
+    );
+  }
+
+  Future<void> _refreshPartnerCount({
+    required String cacheKey,
+    required CountryStruct? preferredLocation,
+    required Level? preferredPartnerLevel,
+  }) async {
+    final freshCount = await _loadFilteredPartnerCount(
+      preferredLocation: preferredLocation,
+      preferredPartnerLevel: preferredPartnerLevel,
+    );
+    if (freshCount == null || freshCount < 0) {
+      return;
+    }
+
+    _publishPartnerCount(cacheKey, freshCount);
+    try {
+      await _partnerCountCache.write(cacheKey, freshCount);
+    } catch (error) {
+      debugPrint('StudentsDashboard: failed to cache partner count: $error');
+    }
+  }
+
+  void _publishPartnerCount(String cacheKey, int count) {
+    if (_partnerCountMemoryCache[cacheKey] == count) {
+      return;
+    }
+    _partnerCountMemoryCache[cacheKey] = count;
+
+    if (mounted && _activePartnerCountCacheKey == cacheKey) {
+      safeSetState(() {});
+    }
   }
 
   Future<List<OrbitingAvatarData>> _partnerPreviewFutureFor({
@@ -1860,25 +1938,6 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     return _sessionRequesterId(session) != userId;
   }
 
-  bool _isCurrentUserTeacherRequester(VideoSessionsRecord session) {
-    final userId = _normalizedNonEmptyString(currentUserUid);
-    if (userId == null || _sessionRequesterId(session) != userId) {
-      return false;
-    }
-
-    final scenario =
-        _normalizedNonEmptyString(session.snapshotData['scenario']);
-    if (scenario == 'student_teacher') {
-      return true;
-    }
-
-    final responderRole = _normalizedNonEmptyString(
-            session.snapshotData['currentResponderRole']) ??
-        _normalizedNonEmptyString(session.snapshotData['responderRole']) ??
-        _sessionMatchContextString(session, 'selectedResponderRole');
-    return responderRole == 'native_speaker' || responderRole == 'teacher';
-  }
-
   void _handleForegroundActiveSession(VideoSessionsRecord? session) {
     if (session == null ||
         StudentsDashboardWidget.debugDisableAutoOpenSessionNavigation) {
@@ -1893,13 +1952,6 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     }
 
     if (session.status.trim() == 'pending_confirmation') {
-      if (_isCurrentUserTeacherRequester(session)) {
-        _scheduleStudentTeacherWaitingPage(
-          sessionId,
-          requireMatchedSearchSession: false,
-        );
-        return;
-      }
       _maybeAcceptForegroundStudentSession(session);
       return;
     }
@@ -2256,58 +2308,6 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     }
   }
 
-  bool _isStudentTeacherMatchedSearchResponse(
-    Map<String, dynamic> data, {
-    required String? status,
-    required String? sessionId,
-  }) {
-    if (sessionId == null || status != 'matched') {
-      return false;
-    }
-
-    final scenario = _normalizedResponseString(data, 'scenario');
-    if (scenario == 'student_teacher') {
-      return true;
-    }
-
-    final matchedRole = _normalizedResponseString(data, 'matchedRole');
-    return matchedRole == 'native_speaker' || matchedRole == 'teacher';
-  }
-
-  void _scheduleStudentTeacherWaitingPage(
-    String sessionId, {
-    bool requireMatchedSearchSession = true,
-  }) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted ||
-          (requireMatchedSearchSession &&
-              _normalizedSessionId(_matchedSearchSessionId) != sessionId)) {
-        return;
-      }
-
-      try {
-        final router = GoRouter.of(context);
-        if (router
-            .getCurrentLocation()
-            .startsWith(WaitingForTeacherPageWidget.routePath)) {
-          return;
-        }
-
-        context.goNamed(
-          WaitingForTeacherPageWidget.routeName,
-          queryParameters: {
-            'sessionId': serializeParam(sessionId, ParamType.String),
-          }.withoutNulls,
-        );
-      } catch (error) {
-        debugPrint(
-          'StudentsDashboard: failed to open waiting page for teacher match: '
-          '$error',
-        );
-      }
-    });
-  }
-
   void _logStartSearchFailure(Object error, StackTrace stackTrace) {
     if (error is FirebaseFunctionsException) {
       debugPrint(
@@ -2424,12 +2424,6 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       final sessionId = _normalizedResponseString(startSearchData, 'sessionId');
       final status = _normalizedResponseString(startSearchData, 'status');
       final reusedSearchRequest = _responseBool(startSearchData, 'reused');
-      final shouldOpenTeacherWaitingPage =
-          _isStudentTeacherMatchedSearchResponse(
-        startSearchData,
-        status: status,
-        sessionId: sessionId,
-      );
       final nextSearchState = sessionId != null || status == 'matched'
           ? StudentDashboardSearchState.connecting
           : StudentDashboardSearchState.searching;
@@ -2463,9 +2457,6 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       } else {
         _clearSearchTimeoutTimer();
         _clearSearchHeartbeatTimer();
-      }
-      if (shouldOpenTeacherWaitingPage && sessionId != null) {
-        _scheduleStudentTeacherWaitingPage(sessionId);
       }
     } on Exception catch (error, stackTrace) {
       if (_stopSearchWhenStartCompletes) {
@@ -2693,20 +2684,21 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     required CountryStruct? preferredLocation,
     required Level? selectedPartnerLevel,
   }) {
-    return FutureBuilder<int?>(
-      future: _partnerCountFutureFor(
-        preferredLocation: preferredLocation,
-        preferredPartnerLevel: selectedPartnerLevel,
-      ),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done &&
-            !snapshot.hasData) {
-          return Padding(
-            padding: const EdgeInsets.only(top: ExpatlioDesign.itemSpacing),
-            child: Text(
-              FFLocalizations.of(context).getVariableText(
-                ruText: 'считаем людей рядом',
-                enText: 'counting nearby people',
+    final count = _partnerCountFor(
+      preferredLocation: preferredLocation,
+      preferredPartnerLevel: selectedPartnerLevel,
+    );
+
+    return Padding(
+      padding: const EdgeInsets.only(top: ExpatlioDesign.itemSpacing),
+      child: RichText(
+        textScaler: MediaQuery.of(context).textScaler,
+        text: TextSpan(
+          children: [
+            TextSpan(
+              text: FFLocalizations.of(context).getVariableText(
+                ruText: 'рядом с вами ',
+                enText: 'near you ',
               ),
               style: ExpatlioDesign.textStyle(
                 context,
@@ -2715,55 +2707,27 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
                 weight: FontWeight.w400,
               ),
             ),
-          );
-        }
-
-        final count = snapshot.data;
-        if (count == null || count <= 0) {
-          return const SizedBox.shrink();
-        }
-
-        return Padding(
-          padding: const EdgeInsets.only(top: ExpatlioDesign.itemSpacing),
-          child: RichText(
-            textScaler: MediaQuery.of(context).textScaler,
-            text: TextSpan(
-              children: [
-                TextSpan(
-                  text: FFLocalizations.of(context).getVariableText(
-                    ruText: 'рядом с вами ',
-                    enText: 'near you ',
-                  ),
-                  style: ExpatlioDesign.textStyle(
-                    context,
-                    color: ExpatlioDesign.muted,
-                    size: 13.0,
-                    weight: FontWeight.w400,
-                  ),
-                ),
-                TextSpan(
-                  text: count.toString(),
-                  style: ExpatlioDesign.textStyle(
-                    context,
-                    color: ExpatlioDesign.success,
-                    size: 13.0,
-                    weight: FontWeight.w700,
-                  ),
-                ),
-                TextSpan(
-                  text: ' ${_partnerCountNoun(context, count)}',
-                  style: ExpatlioDesign.textStyle(
-                    context,
-                    color: ExpatlioDesign.muted,
-                    size: 13.0,
-                    weight: FontWeight.w400,
-                  ),
-                ),
-              ],
+            TextSpan(
+              text: count.toString(),
+              style: ExpatlioDesign.textStyle(
+                context,
+                color: ExpatlioDesign.success,
+                size: 13.0,
+                weight: FontWeight.w700,
+              ),
             ),
-          ),
-        );
-      },
+            TextSpan(
+              text: ' ${_partnerCountNoun(context, count)}',
+              style: ExpatlioDesign.textStyle(
+                context,
+                color: ExpatlioDesign.muted,
+                size: 13.0,
+                weight: FontWeight.w400,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -2884,6 +2848,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
   @override
   void initState() {
     super.initState();
+    _partnerCountCache = NearbyPartnerCountCache(FFAppState().prefs);
     _searchAppState = _searchAppStateForLifecycle(
       WidgetsBinding.instance.lifecycleState,
     );
@@ -3760,9 +3725,11 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
                                           if (!mounted) {
                                             return;
                                           }
-                                          context.pushNamed(
-                                              WaitingForTeacherPageWidget
-                                                  .routeName);
+                                          await _handleStartConversation(
+                                            _searchState,
+                                            _matchedSearchSessionId,
+                                            false,
+                                          );
                                         },
                                         child: Container(
                                           width: 233.9,

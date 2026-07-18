@@ -1841,6 +1841,14 @@ class _EventDetailBottomActionBar extends StatelessWidget {
                       : _EventDetailChatCta(
                           onPressed: onChatPressed,
                         );
+
+                  if (chatCta == null) {
+                    return SizedBox(
+                      width: constraints.maxWidth,
+                      height: metrics.bottomActionHeight,
+                      child: primaryCta,
+                    );
+                  }
                   final primarySlot = SizedBox(
                     height: metrics.bottomActionHeight,
                     child: primaryCta,

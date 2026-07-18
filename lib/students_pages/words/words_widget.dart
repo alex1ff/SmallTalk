@@ -375,7 +375,13 @@ class _WordsWidgetState extends State<WordsWidget> {
     return MediaQuery.paddingOf(context).bottom + navClearance;
   }
 
-  double _contentBottomPadding(BuildContext context) {
+  double _contentBottomPadding(
+    BuildContext context, {
+    required bool showReviewBar,
+  }) {
+    if (!showReviewBar) {
+      return MediaQuery.paddingOf(context).bottom + ExpatlioDesign.space16;
+    }
     return _reviewBarBottomOffset(context) +
         reviewWordsBarHeight +
         ExpatlioDesign.space16;
@@ -405,6 +411,7 @@ class _WordsWidgetState extends State<WordsWidget> {
   Widget _buildWordsViewport({
     required UxLoadingState<List<UserWordsRecord>> wordsState,
     required UxLoadingState<List<WordReviewsRecord>> reviewsState,
+    required bool showReviewBar,
   }) {
     final localizations = FFLocalizations.of(context);
     final displayedResult = wordsState.displayedResult;
@@ -435,7 +442,10 @@ class _WordsWidgetState extends State<WordsWidget> {
     } else if (wordsState.isErrorWithoutData) {
       content = Padding(
         padding: EdgeInsetsDirectional.only(
-          bottom: _contentBottomPadding(context),
+          bottom: _contentBottomPadding(
+            context,
+            showReviewBar: showReviewBar,
+          ),
         ),
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -471,7 +481,10 @@ class _WordsWidgetState extends State<WordsWidget> {
         key: wordsEmptyStateKey,
         child: Padding(
           padding: EdgeInsetsDirectional.only(
-            bottom: _contentBottomPadding(context),
+            bottom: _contentBottomPadding(
+              context,
+              showReviewBar: showReviewBar,
+            ),
           ),
           child: LayoutBuilder(
             builder: (context, constraints) {
@@ -509,7 +522,10 @@ class _WordsWidgetState extends State<WordsWidget> {
           ExpatlioDesign.pagePadding,
           ExpatlioDesign.compactSpacing,
           ExpatlioDesign.pagePadding,
-          _contentBottomPadding(context),
+          _contentBottomPadding(
+            context,
+            showReviewBar: showReviewBar,
+          ),
         ),
         itemCount: words.length,
         separatorBuilder: (context, index) => const Divider(
@@ -594,9 +610,15 @@ class _WordsWidgetState extends State<WordsWidget> {
               builder: (context, wordsState) {
                 final dueCount = _reviewCountForState(reviewsState);
                 final hasDueWords = (dueCount ?? 0) > 0;
+                final showReviewBar =
+                    wordsState.displayedResult?.data?.isNotEmpty ?? false;
                 final localizations = FFLocalizations.of(context);
-                final countText =
-                    dueCount == null ? '—' : reviewWordsVisibleCount(dueCount);
+                final countText = dueCount == null
+                    ? '—'
+                    : reviewWordsVisibleLabel(
+                        count: dueCount,
+                        languageCode: localizations.languageCode,
+                      );
                 final countSemanticsLabel = dueCount == null
                     ? localizations.getVariableText(
                         ruText: reviewsState.hasError
@@ -638,50 +660,53 @@ class _WordsWidgetState extends State<WordsWidget> {
                           child: _buildWordsViewport(
                             wordsState: wordsState,
                             reviewsState: reviewsState,
+                            showReviewBar: showReviewBar,
                           ),
                         ),
                       ],
                     ),
-                    PositionedDirectional(
-                      start: 0.0,
-                      end: 0.0,
-                      bottom: 0.0,
-                      child: IgnorePointer(
-                        child: Container(
-                          height: _reviewBarBottomOffset(context) +
-                              reviewWordsBarHeight +
-                              _reviewBarFadeExtraHeight,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                ExpatlioDesign.background
-                                    .withValues(alpha: 0.0),
-                                ExpatlioDesign.background
-                                    .withValues(alpha: 0.92),
-                                ExpatlioDesign.background,
-                              ],
-                              stops: const [0.0, 0.42, 1.0],
+                    if (showReviewBar) ...[
+                      PositionedDirectional(
+                        start: 0.0,
+                        end: 0.0,
+                        bottom: 0.0,
+                        child: IgnorePointer(
+                          child: Container(
+                            height: _reviewBarBottomOffset(context) +
+                                reviewWordsBarHeight +
+                                _reviewBarFadeExtraHeight,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  ExpatlioDesign.background
+                                      .withValues(alpha: 0.0),
+                                  ExpatlioDesign.background
+                                      .withValues(alpha: 0.92),
+                                  ExpatlioDesign.background,
+                                ],
+                                stops: const [0.0, 0.42, 1.0],
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                    PositionedDirectional(
-                      start: ExpatlioDesign.pagePadding,
-                      end: ExpatlioDesign.pagePadding,
-                      bottom: _reviewBarBottomOffset(context),
-                      child: ReviewWordsBar(
-                        text: countText,
-                        semanticsLabel: countSemanticsLabel,
-                        onTap: hasDueWords
-                            ? () {
-                                context.pushNamed(FlashcardWidget.routeName);
-                              }
-                            : null,
+                      PositionedDirectional(
+                        start: ExpatlioDesign.pagePadding,
+                        end: ExpatlioDesign.pagePadding,
+                        bottom: _reviewBarBottomOffset(context),
+                        child: ReviewWordsBar(
+                          text: countText,
+                          semanticsLabel: countSemanticsLabel,
+                          onTap: hasDueWords
+                              ? () {
+                                  context.pushNamed(FlashcardWidget.routeName);
+                                }
+                              : null,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 );
               },

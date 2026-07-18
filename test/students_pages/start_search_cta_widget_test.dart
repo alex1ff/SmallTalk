@@ -8,6 +8,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:small_talk/app_state.dart';
 import 'package:small_talk/auth/firebase_auth/auth_util.dart';
 import 'package:small_talk/backend/backend.dart';
 import 'package:small_talk/components/no_balance_widget.dart';
@@ -17,6 +18,7 @@ import 'package:small_talk/custom_code/actions/start_student_session_listener.da
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/flutter_flow/nav/nav.dart';
 import 'package:small_talk/shared_pages/video_call_page/video_call_page_widget.dart';
+import 'package:small_talk/services/nearby_partner_count_cache.dart';
 import 'package:small_talk/students_pages/students_dashboard/students_dashboard_widget.dart';
 import 'package:small_talk/students_pages/waiting_for_teacher_page/waiting_for_teacher_page_widget.dart';
 
@@ -167,6 +169,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     setupFirebaseCoreMocks();
     await FFLocalizations.initialize();
+    FFAppState().prefs = await SharedPreferences.getInstance();
     await Firebase.initializeApp();
     FirebaseAuthPlatform.instance = _TestFirebaseAuthPlatform();
   });
@@ -820,6 +823,80 @@ void main() {
     expect(find.text('Ищем собеседника'), findsNothing);
     expect(find.text('Соединяем'), findsNothing);
     expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard always renders a numeric nearby count',
+      (tester) async {
+    setActiveStudent('student-partner-count-placeholder-test');
+    final freshCount = Completer<int?>();
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          partnerCountLoader: ({
+            required preferredLocation,
+            required preferredPartnerLevel,
+          }) =>
+              freshCount.future,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('считаем людей рядом'), findsNothing);
+    expect(
+      find.text('рядом с вами 0 человек', findRichText: true),
+      findsOneWidget,
+    );
+
+    freshCount.complete(null);
+    await tester.pump();
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard shows cached count while refreshing it',
+      (tester) async {
+    setActiveStudent('student-partner-count-cache-test');
+    final cacheKey = nearbyPartnerCountCacheKey(
+      languageCode: 'en',
+      countryCode: '',
+      partnerLevel: '',
+    );
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setInt(cacheKey, 4);
+    addTearDown(() => preferences.remove(cacheKey));
+    final freshCount = Completer<int?>();
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          partnerCountLoader: ({
+            required preferredLocation,
+            required preferredPartnerLevel,
+          }) =>
+              freshCount.future,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.text('рядом с вами 4 человека', findRichText: true),
+      findsOneWidget,
+    );
+    expect(find.text('считаем людей рядом'), findsNothing);
+
+    freshCount.complete(7);
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      find.text('рядом с вами 7 человек', findRichText: true),
+      findsOneWidget,
+    );
+    expect(preferences.getInt(cacheKey), 7);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
@@ -2678,22 +2755,9 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('matched teacher search opens waiting page instead of video call',
+  testWidgets('matched teacher search stays on dashboard while connecting',
       (tester) async {
     const sessionId = 'session-teacher-waiting-route-test';
-    final waitingSessionController =
-        StreamController<DocumentSnapshot<Map<String, dynamic>>>.broadcast();
-    addTearDown(waitingSessionController.close);
-    var createSessionCalls = 0;
-    final listenedSessionIds = <String>[];
-    WaitingForTeacherPageWidget.debugCreateVideoSessionRequest = (_) async {
-      createSessionCalls += 1;
-      return <String, dynamic>{};
-    };
-    WaitingForTeacherPageWidget.debugSessionSnapshots = (sessionId) {
-      listenedSessionIds.add(sessionId);
-      return waitingSessionController.stream;
-    };
     setActiveStudent('student-teacher-waiting-route-test');
     final router = GoRouter(
       initialLocation: StudentsDashboardWidget.routePath,
@@ -2709,14 +2773,6 @@ void main() {
               'scenario': 'student_teacher',
               'matchedRole': 'native_speaker',
             },
-          ),
-        ),
-        GoRoute(
-          name: WaitingForTeacherPageWidget.routeName,
-          path: WaitingForTeacherPageWidget.routePath,
-          builder: (context, state) => WaitingForTeacherPageWidget(
-            key: const Key('teacher-waiting-route'),
-            sessionId: state.uri.queryParameters['sessionId'],
           ),
         ),
         GoRoute(
@@ -2742,38 +2798,22 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(
-      router.getCurrentLocation(),
-      startsWith(WaitingForTeacherPageWidget.routePath),
-    );
-    expect(router.getCurrentLocation(), contains('sessionId=$sessionId'));
-    expect(createSessionCalls, 0);
-    expect(listenedSessionIds, contains(sessionId));
-    expect(find.byType(WaitingForTeacherPageWidget), findsOneWidget);
-    expect(find.byKey(const Key('teacher-waiting-route')), findsOneWidget);
+    expect(router.getCurrentLocation(), StudentsDashboardWidget.routePath);
+    expect(find.text('Соединяем'), findsOneWidget);
+    expect(find.byType(WaitingForTeacherPageWidget), findsNothing);
     expect(find.byKey(const Key('video-call-route')), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('pending teacher session restores waiting page after restart',
+  testWidgets('pending teacher session restores dashboard connecting state',
       (tester) async {
     StudentsDashboardWidget.debugDisableAutoOpenSessionNavigation = false;
     const sessionId = 'session-teacher-waiting-restore-test';
     const requesterId = 'student-teacher-waiting-restore-test';
     const teacherId = 'teacher-teacher-waiting-restore-test';
     final activeSessionController = StreamController<VideoSessionsRecord?>();
-    final waitingSessionController =
-        StreamController<DocumentSnapshot<Map<String, dynamic>>>.broadcast();
     addTearDown(activeSessionController.close);
-    addTearDown(waitingSessionController.close);
-    var createSessionCalls = 0;
-    WaitingForTeacherPageWidget.debugCreateVideoSessionRequest = (_) async {
-      createSessionCalls += 1;
-      return <String, dynamic>{};
-    };
-    WaitingForTeacherPageWidget.debugSessionSnapshots =
-        (_) => waitingSessionController.stream;
     setActiveStudent(requesterId, currentSessionId: sessionId);
     final router = GoRouter(
       initialLocation: StudentsDashboardWidget.routePath,
@@ -2783,13 +2823,6 @@ void main() {
           path: StudentsDashboardWidget.routePath,
           builder: (context, state) => StudentsDashboardWidget(
             activeSessionStream: activeSessionController.stream,
-          ),
-        ),
-        GoRoute(
-          name: WaitingForTeacherPageWidget.routeName,
-          path: WaitingForTeacherPageWidget.routePath,
-          builder: (context, state) => WaitingForTeacherPageWidget(
-            sessionId: state.uri.queryParameters['sessionId'],
           ),
         ),
       ],
@@ -2812,13 +2845,9 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(
-      router.getCurrentLocation(),
-      startsWith(WaitingForTeacherPageWidget.routePath),
-    );
-    expect(router.getCurrentLocation(), contains('sessionId=$sessionId'));
-    expect(createSessionCalls, 0);
-    expect(find.byType(WaitingForTeacherPageWidget), findsOneWidget);
+    expect(router.getCurrentLocation(), StudentsDashboardWidget.routePath);
+    expect(find.text('Соединяем'), findsOneWidget);
+    expect(find.byType(WaitingForTeacherPageWidget), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });

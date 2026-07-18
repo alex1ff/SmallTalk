@@ -21,10 +21,12 @@ class DashboardNSWidget extends StatefulWidget {
     super.key,
     this.zn,
     this.statsStreamOverride,
+    this.userDocumentStreamOverride,
   });
 
   final bool? zn;
   final Stream<List<StatsRecord>>? statsStreamOverride;
+  final Stream<UsersRecord?>? userDocumentStreamOverride;
 
   static String routeName = 'Dashboard_NS';
   static String routePath = '/dashboardNS';
@@ -38,6 +40,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
   static const double _statTileStackedBreakpoint = 92.0;
 
   late DashboardNSModel _model;
+  StreamSubscription<UsersRecord?>? _userDocumentSubscription;
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
   bool _redirectingToStudentDashboard = false;
@@ -344,6 +347,23 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
     super.initState();
     _model = createModel(context, () => DashboardNSModel());
 
+    final userReference = currentUserReference;
+    final userDocumentStream = widget.userDocumentStreamOverride ??
+        (userReference == null
+            ? authenticatedUserStream
+            : UsersRecord.getDocument(userReference));
+    _userDocumentSubscription = userDocumentStream.listen(
+      (userDocument) {
+        currentUserDocument = userDocument;
+        if (mounted) {
+          safeSetState(() {});
+        }
+      },
+      onError: (Object error) {
+        debugPrint('DashboardNS: user document stream failed: $error');
+      },
+    );
+
     // On page load action.
     SchedulerBinding.instance.addPostFrameCallback((_) async {
       unawaited(_syncTimezoneMetadata());
@@ -388,6 +408,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
 
   @override
   void dispose() {
+    _userDocumentSubscription?.cancel();
     _model.dispose();
 
     super.dispose();

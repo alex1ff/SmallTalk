@@ -6,6 +6,8 @@ void main() {
   test('bottom bars use a keyboard-aware safe area padding helper', () {
     final designSource =
         File('lib/shared_pages/design/expatlio_design.dart').readAsStringSync();
+    final chatComposerSource =
+        File('lib/components/chat_composer.dart').readAsStringSync();
     final privateChatSource =
         File('lib/shared_pages/chat_thread/chat_thread_widget.dart')
             .readAsStringSync();
@@ -22,11 +24,11 @@ void main() {
     expect(designSource, contains('bottomBarSafePadding'));
     expect(designSource, contains('mediaQuery.viewInsets.bottom > 0'));
     expect(designSource, contains('mediaQuery.viewPadding.bottom'));
-    expect(privateChatSource, contains('bottomBarSafePadding(context)'));
-    expect(eventChatSource, contains('bottomBarSafePadding(context)'));
+    expect(chatComposerSource, contains('bottomBarSafePadding(context)'));
+    expect(privateChatSource, contains('ChatComposer('));
+    expect(eventChatSource, contains('ChatComposer('));
     expect(eventCreateSource, contains('bottomBarSafePadding(context)'));
     expect(eventDetailSource, contains('bottomBarSafePadding(context)'));
-    expect(eventChatSource, contains('bottom: false'));
     expect(eventCreateSource, contains('bottom: false'));
     expect(eventDetailSource, contains('bottom: false'));
   });

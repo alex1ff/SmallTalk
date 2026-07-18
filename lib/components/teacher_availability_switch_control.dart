@@ -24,7 +24,7 @@ class AvailabilitySwitchControl extends StatelessWidget {
         IgnorePointer(
           child: AdaptiveSwitch(
             value: value,
-            onChanged: null,
+            onChanged: (_) {},
             activeColor: FlutterFlowTheme.of(context).success,
           ),
         ),
