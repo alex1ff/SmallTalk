@@ -9,7 +9,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:small_talk/backend/backend.dart';
 import 'package:small_talk/components/empty/empty_widget.dart';
 import 'package:small_talk/components/ux_error_state.dart';
-import 'package:small_talk/components/ux_refreshing_indicator_overlay.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/services/event_group_chat_repository.dart';
 import 'package:small_talk/services/ux_session_cache_lifecycle.dart';
@@ -470,12 +469,6 @@ Future<void> _emitRequiredSourceError(
   await tester.pump();
 }
 
-UxRefreshingIndicatorOverlay _refreshOverlay(
-  WidgetTester tester,
-  Key key,
-) =>
-    tester.widget<UxRefreshingIndicatorOverlay>(find.byKey(key));
-
 Future<void> _runRequiredSourceRefreshCase(
   WidgetTester tester, {
   required _FavoriteRequiredSource source,
@@ -519,12 +512,6 @@ Future<void> _runRequiredSourceRefreshCase(
       await tester.pump();
     }
 
-    final overlayKey = friendsTab
-        ? favoriteFriendsRefreshingIndicatorKey
-        : favoriteMessagesRefreshingIndicatorKey;
-    final otherOverlayKey = friendsTab
-        ? favoriteMessagesRefreshingIndicatorKey
-        : favoriteFriendsRefreshingIndicatorKey;
     final inlineErrorKey = friendsTab
         ? favoriteFriendsInlineErrorKey
         : favoriteMessagesInlineErrorKey;
@@ -533,15 +520,12 @@ Future<void> _runRequiredSourceRefreshCase(
         : favoriteMessagesRetryButtonKey;
     final refreshLabel =
         friendsTab ? 'Refreshing chats with friends' : 'Обновление сообщений';
-    final refreshIndicator = find.descendant(
-      of: find.byKey(overlayKey),
-      matching: find.byType(UxRefreshingIndicatorPill),
-    );
+    final initialLoadingKey = friendsTab
+        ? favoriteFriendsInitialLoadingKey
+        : favoriteMessagesInitialLoadingKey;
 
-    expect(find.byKey(overlayKey), findsOneWidget);
-    expect(find.byKey(otherOverlayKey), findsNothing);
-    expect(_refreshOverlay(tester, overlayKey).isRefreshing, isFalse);
-    expect(refreshIndicator, findsNothing);
+    expect(find.byKey(initialLoadingKey), findsNothing);
+    expect(find.bySemanticsLabel(refreshLabel), findsNothing);
 
     late final Finder geometryTarget;
     Finder? scrollable;
@@ -589,19 +573,15 @@ Future<void> _runRequiredSourceRefreshCase(
       conversations: conversations,
     );
 
-    expect(_refreshOverlay(tester, overlayKey).isRefreshing, isTrue);
     await tester.pump(const Duration(milliseconds: 200));
-    expect(refreshIndicator, findsOneWidget);
-    final refreshSemantics = tester.getSemantics(refreshIndicator);
-    expect(refreshSemantics.label, contains(refreshLabel));
-    expect(refreshSemantics.flagsCollection.isLiveRegion, isTrue);
+    expect(find.byKey(initialLoadingKey), findsNothing);
+    expect(find.bySemanticsLabel(refreshLabel), findsNothing);
     expect(find.byKey(inlineErrorKey), findsNothing);
     expectDisplayUnchanged();
 
     await _emitRequiredSourceError(tester, sources, source);
 
-    expect(_refreshOverlay(tester, overlayKey).isRefreshing, isFalse);
-    expect(refreshIndicator, findsNothing);
+    expect(find.bySemanticsLabel(refreshLabel), findsNothing);
     expect(find.byKey(inlineErrorKey), findsOneWidget);
     expectDisplayUnchanged();
 
@@ -609,17 +589,9 @@ Future<void> _runRequiredSourceRefreshCase(
     await tester.pump();
 
     expect(find.byKey(inlineErrorKey), findsNothing);
-    expect(_refreshOverlay(tester, overlayKey).isRefreshing, isTrue);
     await tester.pump(const Duration(milliseconds: 200));
-    expect(refreshIndicator, findsOneWidget);
-    expect(
-      tester.getSemantics(refreshIndicator).label,
-      contains(refreshLabel),
-    );
-    expect(
-      tester.getSemantics(refreshIndicator).flagsCollection.isLiveRegion,
-      isTrue,
-    );
+    expect(find.byKey(initialLoadingKey), findsNothing);
+    expect(find.bySemanticsLabel(refreshLabel), findsNothing);
     expectDisplayUnchanged();
 
     await _emitFriends(
@@ -642,8 +614,7 @@ Future<void> _runRequiredSourceRefreshCase(
       await _emitEventChats(tester, sources, 'user-a');
     }
 
-    expect(_refreshOverlay(tester, overlayKey).isRefreshing, isFalse);
-    expect(refreshIndicator, findsNothing);
+    expect(find.bySemanticsLabel(refreshLabel), findsNothing);
     expect(find.byKey(inlineErrorKey), findsNothing);
     expectDisplayUnchanged();
   } finally {
@@ -702,16 +673,16 @@ void main() {
       final sources = _FavoriteSources();
       await _mount(tester, sources);
 
-      expect(find.byKey(favoriteMessagesRefreshingIndicatorKey), findsNothing);
+      expect(find.byKey(favoriteMessagesInitialLoadingKey), findsOneWidget);
+      expect(find.bySemanticsLabel('Загрузка сообщений'), findsOneWidget);
       expect(find.bySemanticsLabel('Обновление сообщений'), findsNothing);
 
       await _selectFriendsTab(tester);
 
       expect(find.byKey(favoriteFriendsInitialLoadingKey), findsOneWidget);
       expect(
-        _refreshOverlay(tester, favoriteFriendsRefreshingIndicatorKey)
-            .isRefreshing,
-        isFalse,
+        find.bySemanticsLabel('Загрузка чатов с друзьями'),
+        findsOneWidget,
       );
       expect(
         find.bySemanticsLabel('Обновление чатов с друзьями'),
@@ -745,6 +716,7 @@ void main() {
       expect(find.text('У вас пока нет сообщений.'), findsNothing);
       expect(find.byKey(favoriteMessagesListKey), findsNothing);
       expect(find.byKey(favoriteMessagesLoadErrorKey), findsNothing);
+      expect(find.byKey(favoriteMessagesInitialLoadingKey), findsOneWidget);
 
       if (pendingConversations) {
         await _emitConversations(tester, sources, 'user-a', const []);
@@ -756,6 +728,7 @@ void main() {
       expect(find.text('У вас пока нет сообщений.'), findsOneWidget);
       expect(find.byKey(favoriteMessagesListKey), findsNothing);
       expect(find.byKey(favoriteMessagesLoadErrorKey), findsNothing);
+      expect(find.byKey(favoriteMessagesInitialLoadingKey), findsNothing);
     });
   }
 
@@ -791,17 +764,12 @@ void main() {
     await tester.pump();
 
     expect(_conversationRow(conversation.reference.id), findsOneWidget);
-    expect(
-      _refreshOverlay(tester, favoriteMessagesRefreshingIndicatorKey)
-          .isRefreshing,
-      isFalse,
-    );
+    expect(find.bySemanticsLabel('Обновление сообщений'), findsNothing);
 
     await _selectFriendsTab(tester);
     expect(
-      _refreshOverlay(tester, favoriteFriendsRefreshingIndicatorKey)
-          .isRefreshing,
-      isFalse,
+      find.bySemanticsLabel('Обновление чатов с друзьями'),
+      findsNothing,
     );
 
     await _emitEventChats(
@@ -813,9 +781,8 @@ void main() {
     );
 
     expect(
-      _refreshOverlay(tester, favoriteFriendsRefreshingIndicatorKey)
-          .isRefreshing,
-      isFalse,
+      find.bySemanticsLabel('Обновление чатов с друзьями'),
+      findsNothing,
     );
   });
 
@@ -2771,9 +2738,8 @@ void main() {
       expect(find.byKey(favoriteFriendsInlineErrorKey), findsNothing);
       expect(find.byKey(favoriteFriendsEmptyKey), findsOneWidget);
       expect(
-        _refreshOverlay(tester, favoriteFriendsRefreshingIndicatorKey)
-            .isRefreshing,
-        isTrue,
+        find.bySemanticsLabel('Обновление чатов с друзьями'),
+        findsNothing,
       );
 
       final friend = UsersRecord.collection.doc('friend-retry');
@@ -2819,9 +2785,8 @@ void main() {
       await tester.pump();
       expect(find.byKey(favoriteFriendsInlineErrorKey), findsNothing);
       expect(
-        _refreshOverlay(tester, favoriteFriendsRefreshingIndicatorKey)
-            .isRefreshing,
-        isTrue,
+        find.bySemanticsLabel('Обновление чатов с друзьями'),
+        findsNothing,
       );
       expect(tester.getTopLeft(_conversationRow('retry-row')), rowTopLeft);
       expect(tester.getSize(_conversationRow('retry-row')), rowSize);

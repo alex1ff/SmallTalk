@@ -128,7 +128,7 @@ void main() {
     );
   });
 
-  test('favorite inbox does not show empty before chat sources load', () {
+  test('favorite inbox shows cold loader before chat sources load', () {
     final source = File('lib/students_pages/favorite/favorite_widget.dart')
         .readAsStringSync();
 
@@ -147,7 +147,7 @@ void main() {
         RegExp(
           r'if \(!ownerMetadataCanDisplay\) \{\s*'
           r'if \(!ownerMetadataLoadFailed\) \{\s*'
-          r'return const SizedBox\.shrink\(\);',
+          r'return _buildMessagesInitialLoadingState\(context\);',
         ),
       ),
     );
@@ -156,10 +156,11 @@ void main() {
       matches(
         RegExp(
           r'if \(messagesInitialLoading && inboxItems\.isEmpty\) \{\s*'
-          r'return const SizedBox\.shrink\(\);',
+          r'return _buildMessagesInitialLoadingState\(context\);',
         ),
       ),
     );
+    expect(source, contains('key: favoriteMessagesInitialLoadingKey'));
 
     final ownerGuardIndex = source.indexOf('if (!ownerMetadataCanDisplay)');
     final loadingGuardIndex =

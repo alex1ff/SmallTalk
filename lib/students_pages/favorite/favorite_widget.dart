@@ -9,7 +9,6 @@ import '/backend/backend.dart';
 import '/components/empty/empty_widget.dart';
 import '/components/segmented_tab_bar.dart';
 import '/components/ux_error_state.dart';
-import '/components/ux_refreshing_indicator_overlay.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/chat_call_event_presentation.dart';
@@ -44,10 +43,8 @@ const ValueKey<String> favoriteMessagesListKey =
     ValueKey<String>('favorite_messages_list');
 const ValueKey<String> favoriteMessagesRetryButtonKey =
     ValueKey<String>('favorite_messages_retry_button');
-const ValueKey<String> favoriteMessagesRefreshingIndicatorKey =
-    ValueKey<String>('favorite_messages_refreshing_indicator');
-const ValueKey<String> favoriteFriendsRefreshingIndicatorKey =
-    ValueKey<String>('favorite_friends_refreshing_indicator');
+const ValueKey<String> favoriteMessagesInitialLoadingKey =
+    ValueKey<String>('favorite_messages_initial_loading');
 
 ValueKey<String> favoriteChatDismissActionKey(String hiddenChatKey) =>
     ValueKey<String>('favorite_chat_dismiss_$hiddenChatKey');
@@ -2303,6 +2300,31 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     );
   }
 
+  Widget _buildMessagesInitialLoadingState(BuildContext context) {
+    final loadingLabel = FFLocalizations.of(context).getVariableText(
+      ruText: 'Загрузка сообщений',
+      enText: 'Loading messages',
+    );
+    return Center(
+      key: favoriteMessagesInitialLoadingKey,
+      child: Semantics(
+        container: true,
+        liveRegion: true,
+        label: loadingLabel,
+        child: const ExcludeSemantics(
+          child: SizedBox(
+            width: 28.0,
+            height: 28.0,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.5,
+              color: ExpatlioDesign.primary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildMessagesTabContent(
     BuildContext context, {
     required String currentUid,
@@ -2312,18 +2334,15 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     required bool ownerMetadataAccessDenied,
     required bool ownerMetadataCanDisplay,
     required bool ownerMetadataHasLoaded,
-    required bool ownerMetadataRefreshing,
     required bool conversationsLoading,
     required bool conversationsLoadFailed,
     required bool conversationsAccessDenied,
     required bool conversationsHasLoaded,
-    required bool conversationsRefreshing,
     required List<ConversationsRecord> conversations,
     required bool eventChatsLoading,
     required bool eventChatsLoadFailed,
     required bool eventChatsAccessDenied,
     required bool eventChatsHasLoaded,
-    required bool eventChatsRefreshing,
     required List<EventChatsRecord> eventChats,
     required List<DocumentReference> friends,
     required Set<String> hiddenChatKeys,
@@ -2350,15 +2369,10 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     final accessDenied = ownerMetadataAccessDenied ||
         conversationsAccessDenied ||
         eventChatsAccessDenied;
-    final hasDisplayableResult = inboxItems.isNotEmpty || messagesHaveLoaded;
-    final isRefreshing = hasDisplayableResult &&
-        (ownerMetadataRefreshing ||
-            conversationsRefreshing ||
-            eventChatsRefreshing);
 
     if (!ownerMetadataCanDisplay) {
       if (!ownerMetadataLoadFailed) {
-        return const SizedBox.shrink();
+        return _buildMessagesInitialLoadingState(context);
       }
       return _buildMessagesLoadError(
         context,
@@ -2374,7 +2388,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     }
 
     if (messagesInitialLoading && inboxItems.isEmpty) {
-      return const SizedBox.shrink();
+      return _buildMessagesInitialLoadingState(context);
     }
 
     final content = inboxItems.isEmpty
@@ -2432,20 +2446,10 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
               );
             },
           );
-    final refreshingContent = UxRefreshingIndicatorOverlay(
-      key: favoriteMessagesRefreshingIndicatorKey,
-      isRefreshing: isRefreshing,
-      semanticsLabel: FFLocalizations.of(context).getVariableText(
-        ruText: 'Обновление сообщений',
-        enText: 'Refreshing messages',
-      ),
-      child: content,
-    );
-
     return Stack(
       fit: StackFit.expand,
       children: [
-        refreshingContent,
+        content,
         if (messagesLoadFailed)
           PositionedDirectional(
             start: ExpatlioDesign.pagePadding,
@@ -2548,12 +2552,10 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     required bool conversationsLoadFailed,
     required bool conversationsAccessDenied,
     required bool conversationsHasLoaded,
-    required bool conversationsRefreshing,
     required bool friendsLoading,
     required bool friendsLoadFailed,
     required bool friendsAccessDenied,
     required bool friendsHasLoaded,
-    required bool friendsRefreshing,
     required List<DocumentReference> friends,
     required List<ConversationsRecord> conversations,
     required Set<String> hiddenChatKeys,
@@ -2606,9 +2608,6 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
       enText: 'Retry loading chats with friends',
     );
     final hasVisiblePartialData = friendConversations.isNotEmpty;
-    final isRefreshing = (hasVisiblePartialData ||
-            viewState == FavoriteFriendsTabViewState.empty) &&
-        (conversationsRefreshing || friendsRefreshing);
     final hasPreviousDataError = (conversationsLoadFailed &&
             (conversationsHasLoaded || hasVisiblePartialData)) ||
         (friendsLoadFailed && (friendsHasLoaded || hasVisiblePartialData));
@@ -2691,24 +2690,14 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
         ),
       ),
     );
-    final refreshingStateSlot = UxRefreshingIndicatorOverlay(
-      key: favoriteFriendsRefreshingIndicatorKey,
-      isRefreshing: isRefreshing,
-      semanticsLabel: FFLocalizations.of(context).getVariableText(
-        ruText: 'Обновление чатов с друзьями',
-        enText: 'Refreshing chats with friends',
-      ),
-      child: stateSlot,
-    );
-
     if (viewState == FavoriteFriendsTabViewState.errorWithoutData) {
-      return refreshingStateSlot;
+      return stateSlot;
     }
 
     return Stack(
       fit: StackFit.expand,
       children: [
-        refreshingStateSlot,
+        stateSlot,
         if (hasPreviousDataError)
           PositionedDirectional(
             start: ExpatlioDesign.pagePadding,
@@ -3110,16 +3099,6 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                     final hiddenChatKeysLoading = !hiddenChatKeysHaveLoaded;
                     final hiddenChatKeysAreAuthoritative =
                         friendsState?.hiddenChatKeysAreAuthoritative ?? false;
-                    final friendsMetadataIsAuthoritative =
-                        friendsState?.friendsAreAuthoritative == true &&
-                            hiddenChatKeysAreAuthoritative;
-                    final friendsRefreshing =
-                        favoriteRequiredSourceIsRefreshing(
-                      connectionState: friendsSnapshot.connectionState,
-                      hasError: friendsSnapshot.hasError,
-                      isAuthoritative: friendsMetadataIsAuthoritative,
-                    );
-
                     return FavoriteChatSourceBuilder<
                         FavoriteConversationsLoadState>(
                       sourceId: 'conversations',
@@ -3158,15 +3137,6 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                             conversationsSnapshot.hasError;
                         final conversationsAccessDenied =
                             _isPermissionDenied(conversationsError);
-                        final conversationsRefreshing =
-                            favoriteRequiredSourceIsRefreshing(
-                          connectionState:
-                              conversationsSnapshot.connectionState,
-                          hasError: conversationsSnapshot.hasError,
-                          isAuthoritative:
-                              conversationsState?.isAuthoritative == true,
-                        );
-
                         final conversations =
                             conversationsState?.conversations ??
                                 <ConversationsRecord>[];
@@ -3209,14 +3179,6 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                                 eventChatsSnapshot.hasError;
                             final eventChatsAccessDenied =
                                 _isPermissionDenied(eventChatsSnapshot.error);
-                            final eventChatsRefreshing =
-                                favoriteRequiredSourceIsRefreshing(
-                              connectionState:
-                                  eventChatsSnapshot.connectionState,
-                              hasError: eventChatsSnapshot.hasError,
-                              isAuthoritative:
-                                  eventChatsState?.isAuthoritative == true,
-                            );
                             final eventChats = eventChatsState?.eventChats ??
                                 <EventChatsRecord>[];
                             final hiddenChatKeys =
@@ -3254,8 +3216,6 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                                                   conversationsAccessDenied,
                                               conversationsHasLoaded:
                                                   conversationsHasLoaded,
-                                              conversationsRefreshing:
-                                                  conversationsRefreshing,
                                               friendsLoading: friendsLoading ||
                                                   hiddenChatKeysLoading,
                                               friendsLoadFailed:
@@ -3265,8 +3225,6 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                                               friendsHasLoaded:
                                                   friendsHasLoaded &&
                                                       hiddenChatKeysHaveLoaded,
-                                              friendsRefreshing:
-                                                  friendsRefreshing,
                                               friends: hiddenChatKeysHaveLoaded
                                                   ? friends
                                                   : const <DocumentReference>[],
@@ -3289,8 +3247,6 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                                               ownerMetadataHasLoaded:
                                                   friendsHasLoaded &&
                                                       hiddenChatKeysHaveLoaded,
-                                              ownerMetadataRefreshing:
-                                                  friendsRefreshing,
                                               conversationsLoading:
                                                   conversationsLoading,
                                               conversationsLoadFailed:
@@ -3299,8 +3255,6 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                                                   conversationsAccessDenied,
                                               conversationsHasLoaded:
                                                   conversationsHasLoaded,
-                                              conversationsRefreshing:
-                                                  conversationsRefreshing,
                                               conversations: conversations,
                                               eventChatsLoading:
                                                   eventChatsLoading,
@@ -3310,8 +3264,6 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                                                   eventChatsAccessDenied,
                                               eventChatsHasLoaded:
                                                   eventChatsHasLoaded,
-                                              eventChatsRefreshing:
-                                                  eventChatsRefreshing,
                                               eventChats: eventChats,
                                               friends: friends,
                                               hiddenChatKeys: hiddenChatKeys,
