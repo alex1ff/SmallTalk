@@ -36,7 +36,7 @@ After such an authoritative result is cached for the current owner, it remains d
 ### Errors
 
 - If any required source fails and the tab has no displayable result, show the existing full error state and retry action.
-- If any required source fails while rows or a previously confirmed empty state are displayable, preserve that content and show the existing unobtrusive retry message.
+- If any required source fails while rows or a previously confirmed empty state are displayable, preserve that content and show the existing inline retry message.
 - Preserve current access-denied handling and user-bound cache isolation.
 
 ## State Decision Table
