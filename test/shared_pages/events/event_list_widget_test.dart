@@ -219,7 +219,7 @@ void main() {
         tester,
         _dateFilterFinder(EventListDateFilter.today),
       ),
-      ExpatlioDesign.card,
+      ExpatlioDesign.segmentedControlBackground,
     );
   });
 
@@ -321,7 +321,46 @@ void main() {
     }
     expect(
       _filterChipBackgroundColor(tester, _levelFilterFinder('A1')),
-      ExpatlioDesign.card,
+      ExpatlioDesign.segmentedControlBackground,
+    );
+  });
+
+  testWidgets('uses compact spacing for event filter chips', (tester) async {
+    await tester.pumpWidget(_buildTestApp());
+    await tester.pumpAndSettle();
+
+    final firstDateChip = _filterChipContainerFinder(
+      _dateFilterFinder(EventListDateFilter.today),
+    );
+    final secondDateChip = _filterChipContainerFinder(
+      _dateFilterFinder(EventListDateFilter.tomorrow),
+    );
+    final firstLevelChip = _filterChipContainerFinder(
+      _levelFilterFinder('A1'),
+    );
+    final secondLevelChip = _filterChipContainerFinder(
+      _levelFilterFinder('A2'),
+    );
+
+    expect(
+      tester.getTopLeft(secondDateChip).dx -
+          tester.getTopRight(firstDateChip).dx,
+      ExpatlioDesign.space4,
+    );
+    expect(
+      tester.getSize(firstDateChip).width -
+          tester.getSize(find.text('Сегодня')).width,
+      16,
+    );
+    expect(
+      tester.getTopLeft(secondLevelChip).dx -
+          tester.getTopRight(firstLevelChip).dx,
+      ExpatlioDesign.space4,
+    );
+    expect(
+      tester.getSize(firstLevelChip).width -
+          tester.getSize(find.text('A1')).width,
+      16,
     );
   });
 
@@ -13016,14 +13055,16 @@ Color? _filterChipTextColor(WidgetTester tester, Finder chipFinder) {
 
 Color? _filterChipBackgroundColor(WidgetTester tester, Finder chipFinder) {
   final container = tester.widget<Container>(
-    find.descendant(
-      of: chipFinder,
-      matching: find.byType(Container),
-    ),
+    _filterChipContainerFinder(chipFinder),
   );
   final decoration = container.decoration;
   return decoration is BoxDecoration ? decoration.color : null;
 }
+
+Finder _filterChipContainerFinder(Finder chipFinder) => find.descendant(
+      of: chipFinder,
+      matching: find.byType(Container),
+    );
 
 void _expectWhereCondition(
   List<dynamic> conditions,

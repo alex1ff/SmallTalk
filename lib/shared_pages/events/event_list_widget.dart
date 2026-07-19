@@ -171,7 +171,8 @@ const double _eventListTitleTextHeight = 1.22;
 const double _eventListDescriptionTextHeight = 1.38;
 const double _eventListActionTextHeight = 1.0;
 const Color _eventListBorderColor = Color(0xFFEBEBEB);
-const Color _eventListChipBackground = ExpatlioDesign.card;
+const Color _eventListChipBackground =
+    ExpatlioDesign.segmentedControlBackground;
 const Color _eventListSoftPrimaryBackground = Color(0xFFF0E6FF);
 final RegExp _eventListInvisibleAvatarCharacters = RegExp(
   r'[\u0000-\u001F\u007F-\u009F\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180B-\u180F\u200B-\u200F\u202A-\u202E\u2060-\u206F\u3164\uFE00-\uFE0F\uFEFF\uFFA0]',
@@ -6048,7 +6049,7 @@ class _EventLevelChips extends StatelessWidget {
               label: level,
               selected: selectedLevel == level,
               height: _eventListLevelChipHeight,
-              horizontalPadding: 13,
+              horizontalPadding: 8,
               fontSize: 13,
               fontWeight: FontWeight.w700,
               selectedBackgroundColor: ExpatlioDesign.primary,
@@ -6058,7 +6059,7 @@ class _EventLevelChips extends StatelessWidget {
               onSelected: (selected) => onChanged(selected ? level : null),
             ),
             if (level != eventLevelRanks.keys.last)
-              const SizedBox(width: ExpatlioDesign.space8),
+              const SizedBox(width: ExpatlioDesign.space4),
           ],
         ],
       ),
@@ -6099,7 +6100,7 @@ class _EventDateChips extends StatelessWidget {
               label: _eventDateFilterLabel(context, filter),
               selected: selectedFilter == filter,
               height: _eventListDateChipHeight,
-              horizontalPadding: 14,
+              horizontalPadding: 8,
               fontSize: 14,
               fontWeight: FontWeight.w600,
               selectedBackgroundColor: ExpatlioDesign.primary,
@@ -6107,7 +6108,7 @@ class _EventDateChips extends StatelessWidget {
               onSelected: (selected) => onChanged(selected ? filter : null),
             ),
             if (filter != _filters.last)
-              const SizedBox(width: ExpatlioDesign.space8),
+              const SizedBox(width: ExpatlioDesign.space4),
           ],
         ],
       ),
