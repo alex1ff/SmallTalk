@@ -578,9 +578,8 @@ void main() {
       locale: const Locale('ru'),
       width: 360,
       idleTitle: 'Подтвердите email',
-      idleAction: 'Отправить письмо',
+      idleAction: 'Отправить',
       sendingAction: 'Отправляем...',
-      verifiedTitle: 'Email подтверждён',
     );
   });
 
@@ -650,9 +649,8 @@ void main() {
       locale: const Locale('en'),
       width: 375,
       idleTitle: 'Verify your email',
-      idleAction: 'Send email',
+      idleAction: 'Send',
       sendingAction: 'Sending...',
-      verifiedTitle: 'Email verified',
     );
   });
 
@@ -708,7 +706,6 @@ void main() {
         expiresAt: DateTime.now().add(const Duration(days: 30)),
       ),
     );
-    harness.emailVerified = true;
     await tester.pumpWidget(harness.buildApp());
     await tester.pump();
 
@@ -717,8 +714,13 @@ void main() {
     expect(_text(tester, profileMinutesValueKey), '987654321');
     expect(find.byKey(profileProgressLoadingKey), findsNothing);
     expect(find.text('Изменить тариф'), findsOneWidget);
-    expect(find.text('Email подтверждён'), findsOneWidget);
     _expectSameRects(tester, initialGeometry);
+
+    harness.emailVerified = true;
+    await tester.pumpWidget(harness.buildApp());
+    await tester.pump();
+    expect(find.byKey(profileEmailStatusSlotKey), findsNothing);
+    expect(find.byKey(profileEmailActionButtonKey), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -1041,7 +1043,6 @@ Future<void> _verifyEmailGeometryScenario(
   required String idleTitle,
   required String idleAction,
   required String sendingAction,
-  required String verifiedTitle,
 }) async {
   tester.view.physicalSize = Size(width, 1000);
   tester.view.devicePixelRatio = 1;
@@ -1146,20 +1147,9 @@ Future<void> _verifyEmailGeometryScenario(
   harness.emailVerified = true;
   await tester.pumpWidget(harness.buildApp());
   await tester.pump();
-  expect(find.text(verifiedTitle), findsOneWidget);
+  expect(find.byKey(profileEmailStatusSlotKey), findsNothing);
+  expect(find.byKey(profileEmailStatusSemanticsKey), findsNothing);
   expect(find.byKey(profileEmailActionButtonKey), findsNothing);
-  expect(
-    tester
-        .widget<Semantics>(find.byKey(profileEmailStatusSemanticsKey))
-        .properties
-        .label,
-    '$verifiedTitle, alice@example.com',
-  );
-  _expectEmailSemantics(
-    tester,
-    statusLabel: '$verifiedTitle, alice@example.com',
-  );
-  _expectSameRects(tester, initialGeometry);
 
   await tester.pump(const Duration(seconds: 4));
   await tester.pump(const Duration(seconds: 4));

@@ -909,8 +909,8 @@ class _ProfileWidgetState extends State<ProfileWidget> {
             enText: 'Sending...',
           )
         : localizations.getVariableText(
-            ruText: 'Отправить письмо',
-            enText: 'Send email',
+            ruText: 'Отправить',
+            enText: 'Send',
           );
     final semanticsLabel = hasEmail
         ? '$title, $email${_emailVerificationBusy ? ', $actionLabel' : ''}'
@@ -1494,8 +1494,10 @@ class _ProfileWidgetState extends State<ProfileWidget> {
       }
     });
 
+    final isCurrentEmailVerified = _isCurrentEmailVerified;
     final showEmailStatusSlot =
-        !_usesInjectedPrimarySource || widget.emailVerifiedProvider != null;
+        (!_usesInjectedPrimarySource || widget.emailVerifiedProvider != null) &&
+            !isCurrentEmailVerified;
 
     return Container(
       key: profileHeaderCardKey,
@@ -1586,7 +1588,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
             _buildEmailVerificationStatus(
               context,
               user.email,
-              verified: _isCurrentEmailVerified,
+              verified: isCurrentEmailVerified,
             ),
           ],
           const SizedBox(height: ExpatlioDesign.sectionSpacing),
