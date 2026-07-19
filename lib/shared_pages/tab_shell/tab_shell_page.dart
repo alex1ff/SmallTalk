@@ -107,10 +107,10 @@ class _TabShellPageState extends State<TabShellPage> {
         ]
       : [
           StudentsDashboardWidget.routePath,
+          EventListWidget.routePath,
           WordsWidget.routePath,
           FavoriteWidget.routePath,
           ProfileWidget.routePath,
-          EventListWidget.routePath,
         ];
 
   List<String> get _pathsWithNavBar => _tabPathsOrdered;

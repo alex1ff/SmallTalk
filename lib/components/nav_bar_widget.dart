@@ -100,6 +100,13 @@ class _NavBarWidgetState extends State<NavBarWidget> {
         ),
       ),
       _NavBarDestination(
+        icon: FFIcons.kcalendar,
+        label: FFLocalizations.of(context).getVariableText(
+          ruText: 'События',
+          enText: 'Events',
+        ),
+      ),
+      _NavBarDestination(
         icon: FFIcons.kbookOpen01,
         label: FFLocalizations.of(context).getVariableText(
           ruText: 'Словарь',
@@ -118,13 +125,6 @@ class _NavBarWidgetState extends State<NavBarWidget> {
         label: FFLocalizations.of(context).getVariableText(
           ruText: 'Профиль',
           enText: 'Profile',
-        ),
-      ),
-      _NavBarDestination(
-        icon: FFIcons.kusers02,
-        label: FFLocalizations.of(context).getVariableText(
-          ruText: 'События',
-          enText: 'Events',
         ),
       ),
     ];
@@ -182,25 +182,25 @@ class _NavBarWidgetState extends State<NavBarWidget> {
       case 1:
         if (_isCurrentTab(1)) return;
         context.goNamed(
-          WordsWidget.routeName,
+          EventListWidget.routeName,
         );
         return;
       case 2:
         if (_isCurrentTab(2)) return;
         context.goNamed(
-          FavoriteWidget.routeName,
+          WordsWidget.routeName,
         );
         return;
       case 3:
         if (_isCurrentTab(3)) return;
         context.goNamed(
-          ProfileWidget.routeName,
+          FavoriteWidget.routeName,
         );
         return;
       case 4:
         if (_isCurrentTab(4)) return;
         context.goNamed(
-          EventListWidget.routeName,
+          ProfileWidget.routeName,
         );
         return;
     }

@@ -91,8 +91,8 @@ void main() {
 
     expect(navBar, contains("ruText: 'События'"));
     expect(navBar, contains("enText: 'Events'"));
-    expect(navBar, contains('FFIcons.kcalendar'));
-    expect(navBar, contains('FFIcons.kusers02'));
+    expect('FFIcons.kcalendar'.allMatches(navBar), hasLength(2));
+    expect(navBar, isNot(contains('FFIcons.kusers02')));
     expect(
       navBar,
       contains(
@@ -105,7 +105,7 @@ void main() {
       navBar,
       contains(
         RegExp(
-          r'void _handleStudentTap[\s\S]*case 1:[\s\S]*WordsWidget\.routeName[\s\S]*case 2:[\s\S]*FavoriteWidget\.routeName[\s\S]*case 3:[\s\S]*ProfileWidget\.routeName[\s\S]*case 4:[\s\S]*EventListWidget\.routeName',
+          r'void _handleStudentTap[\s\S]*case 1:[\s\S]*EventListWidget\.routeName[\s\S]*case 2:[\s\S]*WordsWidget\.routeName[\s\S]*case 3:[\s\S]*FavoriteWidget\.routeName[\s\S]*case 4:[\s\S]*ProfileWidget\.routeName',
         ),
       ),
     );
@@ -122,7 +122,7 @@ void main() {
       tabShell,
       contains(
         RegExp(
-          r'StudentsDashboardWidget\.routePath,[\s\S]*WordsWidget\.routePath,[\s\S]*FavoriteWidget\.routePath,[\s\S]*ProfileWidget\.routePath,[\s\S]*EventListWidget\.routePath',
+          r'StudentsDashboardWidget\.routePath,[\s\S]*EventListWidget\.routePath,[\s\S]*WordsWidget\.routePath,[\s\S]*FavoriteWidget\.routePath,[\s\S]*ProfileWidget\.routePath',
         ),
       ),
     );
@@ -207,7 +207,7 @@ void main() {
       studentTap,
       contains(
         RegExp(
-          r'case 1:[\s\S]*_isCurrentTab\(1\)[\s\S]*WordsWidget\.routeName',
+          r'case 1:[\s\S]*_isCurrentTab\(1\)[\s\S]*EventListWidget\.routeName',
         ),
       ),
     );
@@ -215,7 +215,7 @@ void main() {
       studentTap,
       contains(
         RegExp(
-          r'case 2:[\s\S]*_isCurrentTab\(2\)[\s\S]*FavoriteWidget\.routeName',
+          r'case 2:[\s\S]*_isCurrentTab\(2\)[\s\S]*WordsWidget\.routeName',
         ),
       ),
     );
@@ -223,7 +223,7 @@ void main() {
       studentTap,
       contains(
         RegExp(
-          r'case 3:[\s\S]*_isCurrentTab\(3\)[\s\S]*ProfileWidget\.routeName',
+          r'case 3:[\s\S]*_isCurrentTab\(3\)[\s\S]*FavoriteWidget\.routeName',
         ),
       ),
     );
@@ -231,7 +231,7 @@ void main() {
       studentTap,
       contains(
         RegExp(
-          r'case 4:[\s\S]*_isCurrentTab\(4\)[\s\S]*EventListWidget\.routeName',
+          r'case 4:[\s\S]*_isCurrentTab\(4\)[\s\S]*ProfileWidget\.routeName',
         ),
       ),
     );
@@ -245,7 +245,7 @@ void main() {
       tabShell,
       contains(
         RegExp(
-          r'\? \[\s*DashboardNSWidget\.routePath,\s*EventListWidget\.routePath,\s*FavoriteWidget\.routePath,\s*ProfileWidget\.routePath,\s*\]\s*: \[\s*StudentsDashboardWidget\.routePath,\s*WordsWidget\.routePath,\s*FavoriteWidget\.routePath,\s*ProfileWidget\.routePath,\s*EventListWidget\.routePath,\s*\]',
+          r'\? \[\s*DashboardNSWidget\.routePath,\s*EventListWidget\.routePath,\s*FavoriteWidget\.routePath,\s*ProfileWidget\.routePath,\s*\]\s*: \[\s*StudentsDashboardWidget\.routePath,\s*EventListWidget\.routePath,\s*WordsWidget\.routePath,\s*FavoriteWidget\.routePath,\s*ProfileWidget\.routePath,\s*\]',
         ),
       ),
     );
@@ -529,10 +529,10 @@ void main() {
     expect(find.text('Профиль'), findsOneWidget);
     _expectNavLabelOrder([
       'Главная',
+      'События',
       'Словарь',
       'Чаты',
       'Профиль',
-      'События',
     ]);
     _expectSelectedNavLabel(tester, 'События');
     _expectInactiveNavLabel(tester, 'Главная');
@@ -783,10 +783,10 @@ int _navBarIndexForPath(String path) {
   ];
   final studentPaths = [
     StudentsDashboardWidget.routePath,
+    EventListWidget.routePath,
     WordsWidget.routePath,
     FavoriteWidget.routePath,
     ProfileWidget.routePath,
-    EventListWidget.routePath,
   ];
   final paths = canUseNativeSpeakerShell(currentUserDocument)
       ? teacherPaths
