@@ -269,6 +269,18 @@ Finder _conversationRow(String conversationId) => find.byKey(
       ValueKey<String>('favorite_chat_conversation:$conversationId'),
     );
 
+void _invokeConversationDismiss(
+  WidgetTester tester,
+  String conversationId,
+) {
+  final semantics = tester.widget<Semantics>(
+    find.byKey(
+      favoriteChatDismissActionKey('conversation:$conversationId'),
+    ),
+  );
+  semantics.properties.onDismiss!.call();
+}
+
 Future<void> _mount(
   WidgetTester tester,
   _FavoriteSources sources, {
@@ -939,7 +951,7 @@ void main() {
     expect(openedEvents, isEmpty);
   });
 
-  testWidgets('delete tap cannot write after direct UID changes first',
+  testWidgets('delete action cannot write after direct UID changes first',
       (tester) async {
     final sources = _FavoriteSources();
     final writes = <String>[];
@@ -976,11 +988,7 @@ void main() {
     await _selectFriendsTab(tester);
 
     sources.authenticatedUid = 'user-b';
-    await tester.tap(
-      find.byKey(
-        favoriteChatDeleteButtonKey('conversation:direct-auth-delete'),
-      ),
-    );
+    _invokeConversationDismiss(tester, 'direct-auth-delete');
 
     expect(writes, isEmpty);
     expect(_conversationRow('direct-auth-delete'), findsOneWidget);
@@ -1026,13 +1034,10 @@ void main() {
     await _selectFriendsTab(tester);
 
     final row = _conversationRow('rollback-empty');
-    final deleteButton = find.byKey(
-      favoriteChatDeleteButtonKey('conversation:rollback-empty'),
-    );
     expect(row, findsOneWidget);
     expect(find.byKey(favoriteFriendsEmptyKey), findsNothing);
 
-    await tester.tap(deleteButton);
+    _invokeConversationDismiss(tester, 'rollback-empty');
     await tester.pump();
     expect(writes, hasLength(1));
     expect(row, findsNothing);
@@ -1059,7 +1064,7 @@ void main() {
         .removeCurrentSnackBar();
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
-    await tester.tap(deleteButton);
+    _invokeConversationDismiss(tester, 'rollback-empty');
     await tester.pump();
     expect(writes, hasLength(2));
     expect(row, findsNothing);
@@ -1185,9 +1190,7 @@ void main() {
     auth.add('user-a');
 
     await tester.tap(_conversationRow('epoch-a1'));
-    await tester.tap(
-      find.byKey(favoriteChatDeleteButtonKey('conversation:epoch-a1')),
-    );
+    _invokeConversationDismiss(tester, 'epoch-a1');
     expect(opened, isEmpty);
     expect(hiddenWrites, isEmpty);
 
@@ -1355,9 +1358,7 @@ void main() {
     await _emitEventChats(tester, sources, 'user-a');
     await _selectFriendsTab(tester);
 
-    await tester.tap(
-      find.byKey(favoriteChatDeleteButtonKey('conversation:hide-aba')),
-    );
+    _invokeConversationDismiss(tester, 'hide-aba');
     await tester.pump();
     expect(writes, hasLength(1));
     expect(_conversationRow('hide-aba'), findsNothing);
@@ -1386,9 +1387,7 @@ void main() {
     await _selectFriendsTab(tester);
     expect(_conversationRow('hide-aba'), findsOneWidget);
 
-    await tester.tap(
-      find.byKey(favoriteChatDeleteButtonKey('conversation:hide-aba')),
-    );
+    _invokeConversationDismiss(tester, 'hide-aba');
     await tester.pump();
     expect(writes, hasLength(2));
     expect(_conversationRow('hide-aba'), findsNothing);
@@ -1444,11 +1443,7 @@ void main() {
     await _emitEventChats(tester, sources, 'user-a');
     await _selectFriendsTab(tester);
 
-    await tester.tap(
-      find.byKey(
-        favoriteChatDeleteButtonKey('conversation:hide-success-aba'),
-      ),
-    );
+    _invokeConversationDismiss(tester, 'hide-success-aba');
     await tester.pump();
     expect(writes, hasLength(1));
 
@@ -1474,11 +1469,7 @@ void main() {
     );
     await _emitEventChats(tester, sources, 'user-a');
     await _selectFriendsTab(tester);
-    await tester.tap(
-      find.byKey(
-        favoriteChatDeleteButtonKey('conversation:hide-success-aba'),
-      ),
-    );
+    _invokeConversationDismiss(tester, 'hide-success-aba');
     await tester.pump();
     expect(writes, hasLength(2));
     expect(_conversationRow('hide-success-aba'), findsNothing);
@@ -2206,21 +2197,18 @@ void main() {
     await _emitEventChats(tester, sources, 'user-a');
 
     final row = _conversationRow('all-stable');
-    final actionSlot = find.byKey(
-      favoriteChatActionSlotKey('conversation:all-stable'),
+    final timestamp = find.byKey(
+      favoriteChatTimestampKey('conversation:all-stable'),
     );
     final initialRowRect = tester.getRect(row);
-    final initialActionRect = tester.getRect(actionSlot);
-    expect(
-      find.byKey(favoriteChatDeleteButtonKey('conversation:all-stable')),
-      findsNothing,
-    );
+    final initialTimestampRect = tester.getRect(timestamp);
+    expect(find.byIcon(Icons.delete_outline_rounded), findsNothing);
 
     sources.eventChatsFor('user-a').addError(StateError('event chats failed'));
     await tester.pump();
     expect(find.byKey(favoriteMessagesInlineErrorKey), findsOneWidget);
     expect(tester.getRect(row), initialRowRect);
-    expect(tester.getRect(actionSlot), initialActionRect);
+    expect(tester.getRect(timestamp), initialTimestampRect);
 
     final conversationSubscriptions =
         sources.conversationsListenCounts['user-a'] ?? 0;
@@ -2248,11 +2236,8 @@ void main() {
       ),
     );
     expect(tester.getRect(row), initialRowRect);
-    expect(tester.getRect(actionSlot), initialActionRect);
-    expect(
-      find.byKey(favoriteChatDeleteButtonKey('conversation:all-stable')),
-      findsOneWidget,
-    );
+    expect(tester.getRect(timestamp), initialTimestampRect);
+    expect(find.byIcon(Icons.delete_outline_rounded), findsNothing);
   });
 
   testWidgets('All-tab keeps available rows when another source fails cold',
@@ -2318,7 +2303,9 @@ void main() {
     await tester.pump();
 
     expect(
-      find.byKey(favoriteChatActionSlotKey('event:partial-event-row')),
+      find.byKey(
+        const ValueKey<String>('favorite_chat_event:partial-event-row'),
+      ),
       findsOneWidget,
     );
     expect(find.byKey(favoriteMessagesInlineErrorKey), findsOneWidget);
@@ -2990,22 +2977,13 @@ void main() {
     expect(find.byType(UxErrorState), findsNothing);
   });
 
-  testWidgets('friend chat exposes a localized named delete action',
+  testWidgets('friend chat hides delete icon and exposes dismiss semantics',
       (tester) async {
     final semantics = tester.ensureSemantics();
     try {
-      for (final (locale, tabLabel, expectedDeleteLabel)
-          in <(Locale, String, String)>[
-        (
-          const Locale('ru'),
-          'Друзья',
-          'Удалить чат с Анна',
-        ),
-        (
-          const Locale('en'),
-          'Friends',
-          'Delete chat with Анна',
-        ),
+      for (final (locale, tabLabel) in <(Locale, String)>[
+        (const Locale('ru'), 'Друзья'),
+        (const Locale('en'), 'Friends'),
       ]) {
         final sources = _FavoriteSources();
         final friend = UsersRecord.collection.doc('friend-delete');
@@ -3044,22 +3022,17 @@ void main() {
         await tester.pump();
         await tester.pump();
 
-        final deleteAction = find.byKey(
-          favoriteChatDeleteButtonKey('conversation:delete-row'),
+        final dismissAction = find.byKey(
+          favoriteChatDismissActionKey('conversation:delete-row'),
         );
-        final deleteSemantics = tester.getSemantics(deleteAction);
-        final tooltip = tester.widget<Tooltip>(
-          find.descendant(
-            of: deleteAction,
-            matching: find.byType(Tooltip),
-          ),
-        );
+        final dismissSemantics = tester.getSemantics(dismissAction);
 
-        expect(deleteAction, findsOneWidget);
-        expect(tooltip.message, expectedDeleteLabel);
-        expect(deleteSemantics.label, expectedDeleteLabel);
+        expect(dismissAction, findsOneWidget);
+        expect(find.byIcon(Icons.delete_outline_rounded), findsNothing);
         expect(
-          deleteSemantics.getSemanticsData().hasAction(SemanticsAction.tap),
+          dismissSemantics
+              .getSemanticsData()
+              .hasAction(SemanticsAction.dismiss),
           isTrue,
         );
       }
@@ -3540,6 +3513,7 @@ void main() {
           Size.square(favoriteChatAvatarSize()),
         );
         expect(timestampRect.width, favoriteChatTimestampWidth());
+        expect(timestampRect.center.dy, avatarRect.center.dy);
         expect(unreadSlotRect.height, favoriteChatUnreadBadgeSize());
         expect(dividerRect.height, favoriteChatDividerThickness());
 

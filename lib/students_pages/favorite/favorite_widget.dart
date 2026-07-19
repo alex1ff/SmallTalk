@@ -29,6 +29,7 @@ const double _favoriteChatAvatarSize = 52.0;
 const double _favoriteChatTimestampWidth = 74.0;
 const double _favoriteChatRowContentHeight = 76.0;
 const double _favoriteChatRowHeight = _favoriteChatRowContentHeight + 1.0;
+const double _favoriteChatTrailingHeight = 48.0;
 const double _favoriteChatUnreadSlotHeight = 30.0;
 const double _favoriteChatUnreadBadgeSize = 30.0;
 const double _favoriteChatDividerThickness = 1.0;
@@ -48,10 +49,8 @@ const ValueKey<String> favoriteMessagesRefreshingIndicatorKey =
 const ValueKey<String> favoriteFriendsRefreshingIndicatorKey =
     ValueKey<String>('favorite_friends_refreshing_indicator');
 
-ValueKey<String> favoriteChatDeleteButtonKey(String hiddenChatKey) =>
-    ValueKey<String>('favorite_chat_delete_$hiddenChatKey');
-ValueKey<String> favoriteChatActionSlotKey(String hiddenChatKey) =>
-    ValueKey<String>('favorite_chat_action_slot_$hiddenChatKey');
+ValueKey<String> favoriteChatDismissActionKey(String hiddenChatKey) =>
+    ValueKey<String>('favorite_chat_dismiss_$hiddenChatKey');
 ValueKey<String> favoriteChatAvatarKey(String hiddenChatKey) =>
     ValueKey<String>('favorite_chat_avatar_$hiddenChatKey');
 ValueKey<String> favoriteChatTimestampKey(String hiddenChatKey) =>
@@ -2000,18 +1999,6 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                             )
                           : null,
                     ),
-                    _chatActionSlot(
-                      hiddenChatKey: _conversationHiddenKey(conversation),
-                      child: isFriend
-                          ? _chatDeleteButton(
-                              context,
-                              hiddenChatKey:
-                                  _conversationHiddenKey(conversation),
-                              partnerDisplayName: visiblePartnerDisplayName,
-                              onDelete: onDelete,
-                            )
-                          : null,
-                    ),
                   ],
                 ),
               ),
@@ -2027,76 +2014,32 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     required VoidCallback onDelete,
     required Widget child,
   }) {
-    return Dismissible(
-      key: ValueKey<String>('favorite_chat_$keyValue'),
-      direction: DismissDirection.endToStart,
-      dismissThresholds: const {
-        DismissDirection.endToStart: 0.34,
-      },
-      background: const SizedBox.shrink(),
-      secondaryBackground: Container(
-        color: _favoriteChatDeleteBackground,
-        alignment: AlignmentDirectional.centerEnd,
-        padding: const EdgeInsetsDirectional.only(
-          end: ExpatlioDesign.pagePadding,
-        ),
-        child: const Icon(
-          Icons.delete_outline_rounded,
-          color: Colors.white,
-          size: 24.0,
-        ),
-      ),
-      onDismissed: (_) => onDelete(),
-      child: child,
-    );
-  }
-
-  Widget _chatDeleteButton(
-    BuildContext context, {
-    required String hiddenChatKey,
-    required String partnerDisplayName,
-    required VoidCallback onDelete,
-  }) {
-    final label = FFLocalizations.of(context).getVariableText(
-      ruText: 'Удалить чат с $partnerDisplayName',
-      enText: 'Delete chat with $partnerDisplayName',
-    );
-
     return Semantics(
-      key: favoriteChatDeleteButtonKey(hiddenChatKey),
+      key: favoriteChatDismissActionKey(keyValue),
       container: true,
-      button: true,
-      label: label,
-      onTap: onDelete,
-      excludeSemantics: true,
-      child: Tooltip(
-        message: label,
-        child: IconButton(
-          constraints: const BoxConstraints.tightFor(
-            width: 48.0,
-            height: 48.0,
+      onDismiss: onDelete,
+      child: Dismissible(
+        key: ValueKey<String>('favorite_chat_$keyValue'),
+        direction: DismissDirection.endToStart,
+        dismissThresholds: const {
+          DismissDirection.endToStart: 0.34,
+        },
+        background: const SizedBox.shrink(),
+        secondaryBackground: Container(
+          color: _favoriteChatDeleteBackground,
+          alignment: AlignmentDirectional.centerEnd,
+          padding: const EdgeInsetsDirectional.only(
+            end: ExpatlioDesign.pagePadding,
           ),
-          padding: EdgeInsets.zero,
-          onPressed: onDelete,
-          icon: const Icon(
+          child: const Icon(
             Icons.delete_outline_rounded,
-            color: ExpatlioDesign.danger,
-            size: 20.0,
+            color: Colors.white,
+            size: 24.0,
           ),
         ),
+        onDismissed: (_) => onDelete(),
+        child: child,
       ),
-    );
-  }
-
-  Widget _chatActionSlot({
-    required String hiddenChatKey,
-    Widget? child,
-  }) {
-    return SizedBox(
-      key: favoriteChatActionSlotKey(hiddenChatKey),
-      width: 48.0,
-      height: 48.0,
-      child: child,
     );
   }
 
@@ -2133,7 +2076,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     return SizedBox(
       key: key,
       width: _favoriteChatTimestampWidth,
-      height: _favoriteChatRowContentHeight,
+      height: _favoriteChatTrailingHeight,
       child: Padding(
         padding: const EdgeInsetsDirectional.only(
           start: ExpatlioDesign.space12,
@@ -2333,15 +2276,6 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                         ),
                         _chatTimestampColumn(
                           timestampText: _formatInboxTimestamp(timestamp),
-                        ),
-                        _chatActionSlot(
-                          hiddenChatKey: _eventChatHiddenKey(chat),
-                          child: _chatDeleteButton(
-                            context,
-                            hiddenChatKey: _eventChatHiddenKey(chat),
-                            partnerDisplayName: title,
-                            onDelete: onDelete,
-                          ),
                         ),
                       ],
                     ),
