@@ -3288,6 +3288,58 @@ void main() {
     expect(generatedRequestIds, isEmpty);
   });
 
+  testWidgets('clean create form supports the iOS back swipe', (tester) async {
+    late BuildContext homeContext;
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('ru'),
+        supportedLocales: _supportedLocales,
+        localizationsDelegates: _localizationsDelegates,
+        theme: ThemeData(platform: TargetPlatform.iOS),
+        home: Builder(
+          builder: (context) {
+            homeContext = context;
+            return const Scaffold(body: Text('Events home'));
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final routeCompletion = Navigator.of(homeContext).push<void>(
+      MaterialPageRoute<void>(
+        builder: (context) => EventCreateWidget(
+          languageCatalogOverride: _languageCatalog,
+          cityCatalogOverride: _cityCatalog,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final route = ModalRoute.of(
+      tester.element(find.byType(EventCreateWidget)),
+    )!;
+    expect(route.popGestureEnabled, isTrue);
+
+    await tester.enterText(find.byKey(eventCreateTitleFieldKey), 'Draft');
+    await tester.pump();
+    expect(route.popGestureEnabled, isFalse);
+
+    await tester.enterText(find.byKey(eventCreateTitleFieldKey), '');
+    await tester.pump();
+    expect(route.popGestureEnabled, isTrue);
+
+    await tester.dragFrom(
+      const Offset(5, 300),
+      const Offset(700, 0),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(EventCreateWidget), findsNothing);
+    expect(find.text('Events home'), findsOneWidget);
+    await expectLater(routeCompletion, completes);
+  });
+
   testWidgets('dirty create form confirms discard before leaving',
       (tester) async {
     var submitCount = 0;
@@ -3486,6 +3538,7 @@ void main() {
       find.byKey(eventCreateTitleFieldKey),
       'Системный back',
     );
+    await tester.pump();
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
 

@@ -307,6 +307,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   final _descriptionFocusNode = FocusNode();
   final _locationFocusNode = FocusNode();
   final _capacityFocusNode = FocusNode();
+  late final Listenable _textControllersListenable;
   Future<EventLanguageCatalog>? _languageCatalogFuture;
   AssetBundle? _languageCatalogBundle;
   Future<EventCityCatalog>? _cityCatalogFuture;
@@ -366,6 +367,12 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
   @override
   void initState() {
     super.initState();
+    _textControllersListenable = Listenable.merge([
+      _titleTextController,
+      _descriptionTextController,
+      _locationTextController,
+      _capacityTextController,
+    ]);
     _titleTextController.text = widget.initialTitle ?? '';
     _titleTextController.addListener(_handleTitleTextChanged);
     _descriptionTextController.text = widget.initialDescription ?? '';
@@ -1621,14 +1628,8 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
     _queueCapacityDraft(
       _eventCreateCapacityFromText(_capacityTextController.text),
     );
-    return PopScope<Object?>(
-      canPop: _allowEventFormExit,
-      onPopInvokedWithResult: (didPop, _) {
-        if (didPop) {
-          return;
-        }
-        unawaited(_handleLeavePressed());
-      },
+    return ListenableBuilder(
+      listenable: _textControllersListenable,
       child: AuthUserStreamWidget(
         builder: (context) => Scaffold(
           backgroundColor: ExpatlioDesign.background,
@@ -1944,6 +1945,16 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
             ),
           ),
         ),
+      ),
+      builder: (context, child) => PopScope<Object?>(
+        canPop: _allowEventFormExit || !_isEventFormDirty,
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop) {
+            return;
+          }
+          unawaited(_handleLeavePressed());
+        },
+        child: child!,
       ),
     );
   }
