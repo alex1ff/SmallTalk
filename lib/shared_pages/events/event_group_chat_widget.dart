@@ -15,6 +15,7 @@ import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/chat_local_message_status.dart';
 import '/shared_pages/chat_local_message_status_icon.dart';
 import '/shared_pages/chat_message_bubble_style.dart';
+import '/shared_pages/chat_thread/chat_thread_formatters.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/services/event_action_error_mapper.dart';
 import '/services/event_actions_repository.dart';
@@ -88,6 +89,12 @@ ValueKey<String> eventGroupChatMessageLocalStatusKey(String messageId) =>
 
 ValueKey<String> eventGroupChatMessageRetryButtonKey(String messageId) =>
     ValueKey<String>('event_group_chat_message_retry_button_$messageId');
+
+ValueKey<String> eventGroupChatMessageTimestampKey(String messageId) =>
+    ValueKey<String>('event_group_chat_message_timestamp_$messageId');
+
+ValueKey<String> eventGroupChatDateDividerKey(String messageId) =>
+    ValueKey<String>('event_group_chat_date_divider_$messageId');
 
 ValueKey<String> eventGroupChatReportReasonKey(String reasonCode) =>
     ValueKey<String>('event_group_chat_report_reason_$reasonCode');
@@ -182,10 +189,8 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
   EventChatMessagesLoadState? _lastDisplayedMessagesState;
   (String, String, int)? _lastDisplayedMessagesScope;
   Object? _reportOperationToken;
-  Object? _sendOperationToken;
 
   bool get _isReportingMessage => _reportOperationToken != null;
-  bool get _isSendingMessage => _sendOperationToken != null;
 
   @override
   void initState() {
@@ -250,7 +255,6 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
       _resetMessagesBoundary();
       _pendingMessages.clear();
       _reportOperationToken = null;
-      _sendOperationToken = null;
     } else if (messagesChanged) {
       _resetMessagesBoundary();
     }
@@ -437,7 +441,6 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
       _pendingMessages.clear();
       _messageTextController.clear();
       _reportOperationToken = null;
-      _sendOperationToken = null;
     }
 
     if (rebuild && mounted) {
@@ -655,9 +658,6 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
   }
 
   Future<void> _sendMessage() async {
-    if (_isSendingMessage) {
-      return;
-    }
     final text = _messageTextController.text.trim();
     if (text.isEmpty) {
       return;
@@ -672,9 +672,7 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
       text,
       senderId: scope.ownerUid,
     );
-    final operationToken = Object();
     setState(() {
-      _sendOperationToken = operationToken;
       _pendingMessages.add(pendingMessage);
     });
     _messageTextController.clear();
@@ -727,12 +725,6 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
           'EventGroupChatWidget: failed to send message: '
           '${error.runtimeType}',
         );
-      }
-    } finally {
-      if (mounted && identical(_sendOperationToken, operationToken)) {
-        setState(() {
-          _sendOperationToken = null;
-        });
       }
     }
   }
@@ -1187,7 +1179,7 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
                     PositionedDirectional(
                       start: ExpatlioDesign.pagePadding,
                       end: ExpatlioDesign.pagePadding,
-                      bottom: ExpatlioDesign.space16,
+                      top: ExpatlioDesign.space16,
                       child: _buildMessagesInlineError(context),
                     ),
                   ],
@@ -1238,7 +1230,7 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
             enText: 'Send message',
           ),
           enabled: true,
-          isSending: _isSendingMessage,
+          isSending: false,
           inputKey: eventGroupChatMessageInputKey,
           sendButtonKey: eventGroupChatSendButtonKey,
         ),
@@ -1292,23 +1284,58 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
         ExpatlioDesign.space24,
         ExpatlioDesign.space12,
         ExpatlioDesign.space24,
-        ExpatlioDesign.space112,
+        ExpatlioDesign.space24,
       ),
       itemCount: messages.length,
       itemBuilder: (context, index) {
-        final message = messages[messages.length - 1 - index];
-        return _EventGroupChatMessageBubble(
+        final messageIndex = messages.length - 1 - index;
+        final message = messages[messageIndex];
+        return Column(
           key: eventGroupChatMessageItemKey(message.itemKey),
-          message: message,
-          onReportPressed: message.record == null
-              ? null
-              : () => _showReportMessageDialog(message.record!),
-          onRetryPressed: message.localStatus == ChatLocalMessageStatus.failed
-              ? () => _retryPendingMessage(message.id)
-              : null,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_shouldShowDateDivider(messages, messageIndex))
+              _EventGroupChatDateDivider(
+                key: eventGroupChatDateDividerKey(message.itemKey),
+                timestamp: message.createdAt!,
+              ),
+            _EventGroupChatMessageBubble(
+              message: message,
+              onReportPressed: message.record == null
+                  ? null
+                  : () => _showReportMessageDialog(message.record!),
+              onRetryPressed:
+                  message.localStatus == ChatLocalMessageStatus.failed
+                      ? () => _retryPendingMessage(message.id)
+                      : null,
+            ),
+          ],
         );
       },
     );
+  }
+
+  bool _shouldShowDateDivider(
+    List<_EventGroupChatDisplayMessage> messages,
+    int messageIndex,
+  ) {
+    final timestamp = messages[messageIndex].createdAt;
+    if (timestamp == null) {
+      return false;
+    }
+    if (messageIndex == 0) {
+      return true;
+    }
+
+    final previousTimestamp = messages[messageIndex - 1].createdAt;
+    if (previousTimestamp == null) {
+      return true;
+    }
+    final localTimestamp = timestamp.toLocal();
+    final localPreviousTimestamp = previousTimestamp.toLocal();
+    return localTimestamp.year != localPreviousTimestamp.year ||
+        localTimestamp.month != localPreviousTimestamp.month ||
+        localTimestamp.day != localPreviousTimestamp.day;
   }
 
   Widget _buildMessagesErrorState(BuildContext context) {
@@ -1904,9 +1931,46 @@ class _EventGroupChatStateMessage extends StatelessWidget {
   }
 }
 
+class _EventGroupChatDateDivider extends StatelessWidget {
+  const _EventGroupChatDateDivider({
+    super.key,
+    required this.timestamp,
+  });
+
+  final DateTime timestamp;
+
+  @override
+  Widget build(BuildContext context) {
+    final locale = FFLocalizations.of(context).languageCode;
+    return Center(
+      child: Container(
+        margin: const EdgeInsetsDirectional.only(
+          bottom: ExpatlioDesign.space12,
+        ),
+        padding: const EdgeInsetsDirectional.symmetric(
+          horizontal: ExpatlioDesign.space12,
+          vertical: ExpatlioDesign.space8,
+        ),
+        decoration: BoxDecoration(
+          color: ExpatlioDesign.card.withValues(alpha: 0.86),
+          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
+        ),
+        child: Text(
+          formatChatDateDividerLabel(timestamp, locale: locale),
+          style: ExpatlioDesign.textStyle(
+            context,
+            color: ExpatlioDesign.muted,
+            size: 12,
+            weight: FontWeight.w500,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _EventGroupChatMessageBubble extends StatelessWidget {
   const _EventGroupChatMessageBubble({
-    super.key,
     required this.message,
     required this.onReportPressed,
     required this.onRetryPressed,
@@ -1933,6 +1997,12 @@ class _EventGroupChatMessageBubble extends StatelessWidget {
     );
     final textColor = chatMessageTextColor(isDeleted: isDeleted);
     final senderNameColor = chatMessageSenderNameColor();
+    final timestampText = message.createdAt == null
+        ? ''
+        : MaterialLocalizations.of(context).formatTimeOfDay(
+            TimeOfDay.fromDateTime(message.createdAt!.toLocal()),
+            alwaysUse24HourFormat: MediaQuery.alwaysUse24HourFormatOf(context),
+          );
     final text = message.text.trim();
     final messageText = isDeleted
         ? FFLocalizations.of(context).getVariableText(
@@ -1980,41 +2050,68 @@ class _EventGroupChatMessageBubble extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 2),
-          Text(
-            messageText,
-            key:
-                isDeleted ? eventGroupChatMessageTombstoneKey(messageId) : null,
-            style: ExpatlioDesign.textStyle(
-              context,
-              color: textColor,
-              size: 16,
-              height: 1.3,
-              weight: FontWeight.w500,
-            ),
-          ),
-          if (message.localStatus != null) ...[
-            const SizedBox(height: 4),
-            Align(
-              alignment: AlignmentDirectional.centerEnd,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ChatLocalMessageStatusIcon(
-                    key: eventGroupChatMessageLocalStatusKey(messageId),
-                    status: message.localStatus!,
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Flexible(
+                child: Text(
+                  messageText,
+                  key: isDeleted
+                      ? eventGroupChatMessageTombstoneKey(messageId)
+                      : null,
+                  style: ExpatlioDesign.textStyle(
+                    context,
+                    color: textColor,
+                    size: 16,
+                    height: 1.3,
+                    weight: FontWeight.w500,
                   ),
-                  if (message.localStatus == ChatLocalMessageStatus.failed &&
-                      onRetryPressed != null) ...[
-                    const SizedBox(width: ExpatlioDesign.space4),
-                    _EventGroupChatRetryButton(
-                      key: eventGroupChatMessageRetryButtonKey(messageId),
-                      onPressed: onRetryPressed!,
-                    ),
-                  ],
-                ],
+                ),
               ),
-            ),
-          ],
+              if (timestampText.isNotEmpty || message.localStatus != null) ...[
+                const SizedBox(width: ExpatlioDesign.space8),
+                Padding(
+                  padding: const EdgeInsetsDirectional.only(bottom: 1),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (timestampText.isNotEmpty)
+                        Text(
+                          timestampText,
+                          key: eventGroupChatMessageTimestampKey(messageId),
+                          maxLines: 1,
+                          textScaler: TextScaler.noScaling,
+                          style: ExpatlioDesign.textStyle(
+                            context,
+                            color: ExpatlioDesign.muted,
+                            size: 11,
+                            height: 1,
+                            weight: FontWeight.w500,
+                          ),
+                        ),
+                      if (message.localStatus != null) ...[
+                        const SizedBox(width: ExpatlioDesign.space4),
+                        ChatLocalMessageStatusIcon(
+                          key: eventGroupChatMessageLocalStatusKey(messageId),
+                          status: message.localStatus!,
+                        ),
+                      ],
+                      if (message.localStatus ==
+                              ChatLocalMessageStatus.failed &&
+                          onRetryPressed != null) ...[
+                        const SizedBox(width: ExpatlioDesign.space4),
+                        _EventGroupChatRetryButton(
+                          key: eventGroupChatMessageRetryButtonKey(messageId),
+                          onPressed: onRetryPressed!,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
         ],
       ),
     );

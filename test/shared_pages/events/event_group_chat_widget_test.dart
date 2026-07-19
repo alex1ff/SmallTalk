@@ -1716,6 +1716,103 @@ void main() {
     expect(find.text('Same timestamp B'), findsOneWidget);
   });
 
+  testWidgets('shows the message date and time without a large composer gap',
+      (tester) async {
+    final chatRef = EventChatsRecord.collection.doc('event-123');
+    final message = _messageFixture(
+      chatRef: chatRef,
+      messageId: 'dated-message',
+      text: 'До встречи!',
+      createdAt: DateTime(2026, 6, 14, 18, 29),
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-123',
+          chatStream: _allowedChatStream(),
+          messagesStream: (_) => Stream.value(<EventChatMessagesRecord>[
+            message,
+          ]),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(eventGroupChatDateDividerKey('dated-message')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(eventGroupChatMessageTimestampKey('dated-message')),
+      findsOneWidget,
+    );
+
+    final messageBottom = tester
+        .getRect(find.byKey(eventGroupChatMessageItemKey('dated-message')))
+        .bottom;
+    final composerTop =
+        tester.getRect(find.byKey(eventGroupChatComposerKey)).top;
+    expect(
+      composerTop - messageBottom,
+      inInclusiveRange(0, ExpatlioDesign.space24),
+    );
+  });
+
+  testWidgets('keeps a short optimistic message bubble compact',
+      (tester) async {
+    currentUser = _TestAuthUser('uid-1', displayName: 'Haha');
+    final sendCompleter = Completer<Object?>();
+    String? clientMessageId;
+    addTearDown(() {
+      if (!sendCompleter.isCompleted) {
+        sendCompleter.complete(<String, dynamic>{
+          'messageId': 'message-cleanup',
+          'createdAt': '2026-06-14T12:00:00.000Z',
+        });
+      }
+    });
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-123',
+          chatStream: _allowedChatStream(),
+          messagesStream: (_) =>
+              Stream.value(const <EventChatMessagesRecord>[]),
+          debugAuthenticatedUserIdProvider: _testAuthenticatedUserId,
+          debugInboxPersistenceInvoker: _ignoreInboxPersistence,
+          sendMessageInvoker: (_, payload) {
+            clientMessageId = payload['clientMessageId'] as String;
+            return sendCompleter.future;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(eventGroupChatMessageInputKey), 'По');
+    await tester.tap(find.byKey(eventGroupChatSendButtonKey));
+    await tester.pump();
+
+    expect(clientMessageId, isNotNull);
+    expect(
+      tester
+          .getSize(
+            find.byKey(eventGroupChatMessageBubbleKey(clientMessageId!)),
+          )
+          .width,
+      lessThan(180),
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(eventGroupChatComposerKey),
+        matching: find.byType(CircularProgressIndicator),
+      ),
+      findsNothing,
+    );
+  });
+
   testWidgets('keeps composer available for an accessible event chat',
       (tester) async {
     final chatRef = EventChatsRecord.collection.doc('event-123');
@@ -2759,7 +2856,13 @@ void main() {
       find.byKey(eventGroupChatMessageInputKey),
     );
     expect(input.controller?.text, isEmpty);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(eventGroupChatComposerKey),
+        matching: find.byType(CircularProgressIndicator),
+      ),
+      findsNothing,
+    );
 
     await tester.enterText(
       find.byKey(eventGroupChatMessageInputKey),
@@ -2778,7 +2881,7 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('blocks a second fresh send until the active request settles',
+  testWidgets('allows the next optimistic send while a request is pending',
       (tester) async {
     currentUser = _TestAuthUser('uid-1', displayName: 'Марко');
     final sendCompleters = <Completer<Object?>>[
@@ -2832,15 +2935,23 @@ void main() {
     await tester.tap(find.byKey(eventGroupChatSendButtonKey));
     await tester.pump();
 
-    expect(sendCalls, 1);
-    expect(clientMessageIds, hasLength(1));
-    expect(find.byIcon(Icons.schedule_rounded), findsOneWidget);
+    expect(sendCalls, 2);
+    expect(clientMessageIds, hasLength(2));
+    expect(clientMessageIds[0], isNot(clientMessageIds[1]));
+    expect(find.byIcon(Icons.schedule_rounded), findsNWidgets(2));
     expect(
       tester
           .widget<TextFormField>(find.byKey(eventGroupChatMessageInputKey))
           .controller
           ?.text,
-      'Второе',
+      isEmpty,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(eventGroupChatComposerKey),
+        matching: find.byType(CircularProgressIndicator),
+      ),
+      findsNothing,
     );
 
     sendCompleters[0].complete(<String, dynamic>{
@@ -2848,12 +2959,9 @@ void main() {
       'createdAt': '2026-06-14T12:00:00.000Z',
     });
     await tester.pump();
-    await tester.tap(find.byKey(eventGroupChatSendButtonKey));
-    await tester.pump();
 
     expect(sendCalls, 2);
     expect(clientMessageIds, hasLength(2));
-    expect(clientMessageIds[0], isNot(clientMessageIds[1]));
     expect(find.byIcon(Icons.schedule_rounded), findsOneWidget);
     expect(find.byIcon(Icons.done_rounded), findsOneWidget);
 
