@@ -43,6 +43,10 @@ const ValueKey<String> eventListCitySelectorKey =
     ValueKey<String>('event_list_city_selector');
 const ValueKey<String> eventListScrollViewKey =
     ValueKey<String>('event_list_scroll_view');
+const ValueKey<String> eventListDateFiltersScrollKey =
+    ValueKey<String>('event_list_date_filters_scroll');
+const ValueKey<String> eventListLevelFiltersScrollKey =
+    ValueKey<String>('event_list_level_filters_scroll');
 const ValueKey<String> eventManualCitySearchFieldKey =
     ValueKey<String>('event_manual_city_search_field');
 const ValueKey<String> eventListLoadingStateKey =
@@ -818,6 +822,7 @@ class _EventListWidgetState extends State<EventListWidget> {
                         child: SingleChildScrollView(
                           key: eventListScrollViewKey,
                           controller: _scrollController,
+                          clipBehavior: Clip.none,
                           padding: const EdgeInsetsDirectional.only(
                             bottom: ExpatlioDesign.pageBottomSpacing,
                           ),
@@ -6008,9 +6013,9 @@ class _EventLevelChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      clipBehavior: Clip.none,
+    return _eventListHorizontalFilterScroller(
+      scrollViewKey: eventListLevelFiltersScrollKey,
+      height: _eventListLevelChipHeight,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -6046,12 +6051,15 @@ class _EventLevelChips extends StatelessWidget {
           for (final level in eventLevelRanks.keys) ...[
             _EventListFilterChip(
               chipKey: _eventLevelFilterChipKey(level),
-              label: level,
+              label: FFLocalizations.of(context).getVariableText(
+                ruText: 'От $level',
+                enText: 'From $level',
+              ),
               selected: selectedLevel == level,
               height: _eventListLevelChipHeight,
               horizontalPadding: 8,
               fontSize: 13,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w400,
               selectedBackgroundColor: ExpatlioDesign.primary,
               selectedTextColor: Colors.white,
               selectedBorderColor: _eventListBorderColor,
@@ -6088,9 +6096,9 @@ class _EventDateChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      clipBehavior: Clip.none,
+    return _eventListHorizontalFilterScroller(
+      scrollViewKey: eventListDateFiltersScrollKey,
+      height: _eventListDateChipHeight,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -6102,7 +6110,7 @@ class _EventDateChips extends StatelessWidget {
               height: _eventListDateChipHeight,
               horizontalPadding: 8,
               fontSize: 14,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w400,
               selectedBackgroundColor: ExpatlioDesign.primary,
               selectedTextColor: Colors.white,
               onSelected: (selected) => onChanged(selected ? filter : null),
@@ -6114,6 +6122,36 @@ class _EventDateChips extends StatelessWidget {
       ),
     );
   }
+}
+
+Widget _eventListHorizontalFilterScroller({
+  required Key scrollViewKey,
+  required double height,
+  required Widget child,
+}) {
+  return SizedBox(
+    height: height,
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        final viewportWidth =
+            constraints.maxWidth + (_eventListHorizontalPadding * 2);
+        return OverflowBox(
+          alignment: Alignment.center,
+          minWidth: viewportWidth,
+          maxWidth: viewportWidth,
+          child: SingleChildScrollView(
+            key: scrollViewKey,
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsetsDirectional.symmetric(
+              horizontal: _eventListHorizontalPadding,
+            ),
+            clipBehavior: Clip.none,
+            child: child,
+          ),
+        );
+      },
+    ),
+  );
 }
 
 class _EventListFilterChip extends StatelessWidget {

@@ -39,6 +39,7 @@ const _supportedLocales = [
   Locale('ru'),
   Locale('en'),
 ];
+const double _testEventListHorizontalPadding = 17.0;
 
 const List<LocalizationsDelegate<dynamic>> _localizationsDelegates = [
   FFLocalizationsDelegate(),
@@ -316,7 +317,7 @@ void main() {
       ),
     );
     for (final level in eventLevelRanks.keys) {
-      expect(find.text(level), findsOneWidget);
+      expect(find.text('От $level'), findsOneWidget);
       expect(_isLevelFilterSelected(tester, level), isFalse);
     }
     expect(
@@ -359,8 +360,79 @@ void main() {
     );
     expect(
       tester.getSize(firstLevelChip).width -
-          tester.getSize(find.text('A1')).width,
+          tester.getSize(find.text('От A1')).width,
       16,
+    );
+  });
+
+  testWidgets('uses regular text weight for event filter chips',
+      (tester) async {
+    await tester.pumpWidget(_buildTestApp());
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<Text>(find.text('Сегодня')).style?.fontWeight,
+      FontWeight.w400,
+    );
+    expect(
+      tester.widget<Text>(find.text('От A1')).style?.fontWeight,
+      FontWeight.w400,
+    );
+  });
+
+  testWidgets('filter chip scrollers extend to the page edges', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(_buildTestApp());
+    await tester.pumpAndSettle();
+
+    final scaffoldRect = tester.getRect(find.byType(Scaffold));
+    final expectedLeadingEdge =
+        scaffoldRect.left + _testEventListHorizontalPadding;
+    final expectedTrailingEdge =
+        scaffoldRect.right - _testEventListHorizontalPadding;
+
+    for (final scrollKey in [
+      eventListDateFiltersScrollKey,
+      eventListLevelFiltersScrollKey,
+    ]) {
+      final scrollRect = tester.getRect(find.byKey(scrollKey));
+      expect(scrollRect.left, scaffoldRect.left);
+      expect(scrollRect.right, scaffoldRect.right);
+    }
+    expect(
+      tester
+          .widget<SingleChildScrollView>(find.byKey(eventListScrollViewKey))
+          .clipBehavior,
+      Clip.none,
+    );
+    expect(
+      tester.getRect(_dateFilterFinder(EventListDateFilter.today)).left,
+      expectedLeadingEdge,
+    );
+    expect(
+      tester.getRect(_levelFilterFinder(eventLevelRanks.keys.first)).left,
+      greaterThan(expectedLeadingEdge),
+    );
+
+    await tester.drag(
+      find.byKey(eventListDateFiltersScrollKey),
+      const Offset(-500, 0),
+    );
+    await tester.drag(
+      find.byKey(eventListLevelFiltersScrollKey),
+      const Offset(-500, 0),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getRect(_dateFilterFinder(EventListDateFilter.currentMonth)).right,
+      closeTo(expectedTrailingEdge, 0.01),
+    );
+    expect(
+      tester.getRect(_levelFilterFinder(eventLevelRanks.keys.last)).right,
+      closeTo(expectedTrailingEdge, 0.01),
     );
   });
 
