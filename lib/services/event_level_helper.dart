@@ -7,6 +7,13 @@ const eventLevelRanks = <String, int>{
   'C2': 5,
 };
 
+const eventLevelFilterMinimums = <String>[
+  'A1',
+  'A2',
+  'B1',
+  'C1',
+];
+
 class EventLevelRange {
   const EventLevelRange._({
     required this.levelMin,
@@ -54,7 +61,7 @@ EventLevelRange? selectedEventLevelRange(String? selectedLevel) {
   }
   return eventLevelRange(
     levelMin: normalizedLevel,
-    levelMax: normalizedLevel,
+    levelMax: eventLevelRanks.keys.last,
   );
 }
 

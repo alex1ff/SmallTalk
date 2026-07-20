@@ -1606,7 +1606,9 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     if (preferredPartnerLevel != null) {
       query = query.where(
         'level',
-        isEqualTo: preferredPartnerLevel.serialize(),
+        whereIn: partnerLevelsAtOrAbove(preferredPartnerLevel)
+            .map((level) => level.serialize())
+            .toList(growable: false),
       );
     }
 

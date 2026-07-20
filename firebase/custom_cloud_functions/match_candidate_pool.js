@@ -247,13 +247,13 @@ function buildLevelMatch({
     };
   }
 
-  const distance = Math.abs(candidateLevelRank - preferredLevelRank);
-  if (distance > 1) {
+  const distance = candidateLevelRank - preferredLevelRank;
+  if (distance < 0) {
     return {
       valid: false,
       applied: true,
       distance,
-      tier: "out_of_range",
+      tier: "below_minimum",
     };
   }
 
@@ -261,7 +261,7 @@ function buildLevelMatch({
     valid: true,
     applied: true,
     distance,
-    tier: distance === 0 ? "exact" : "adjacent",
+    tier: distance === 0 ? "exact" : "above_minimum",
   };
 }
 

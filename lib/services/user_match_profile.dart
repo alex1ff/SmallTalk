@@ -1,6 +1,21 @@
 import '/backend/schema/enums/enums.dart';
 import '/backend/schema/users_record.dart';
 
+const partnerLevelRanks = <Level, int>{
+  Level.Beginner: 0,
+  Level.Basic: 1,
+  Level.Intermediate: 2,
+  Level.Fluent: 3,
+};
+
+List<Level> partnerLevelsAtOrAbove(Level minimumLevel) {
+  final minimumRank = partnerLevelRanks[minimumLevel]!;
+  return partnerLevelRanks.entries
+      .where((entry) => entry.value >= minimumRank)
+      .map((entry) => entry.key)
+      .toList(growable: false);
+}
+
 enum TeacherTrackProfileAction {
   apply,
   reapply,

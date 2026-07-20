@@ -543,7 +543,7 @@ void main() {
         FFFirestorePage<EventsRecord>(
           [
             eventFixture('visible-second', levelMin: 'B2', levelMax: 'C1'),
-            eventFixture('hidden-trailing', levelMin: 'C2', levelMax: 'C2'),
+            eventFixture('hidden-trailing', levelMin: 'A1', levelMax: 'A2'),
           ],
           null,
           marker3,
@@ -633,7 +633,7 @@ void main() {
         FFFirestorePage<EventsRecord>(
           [
             eventFixture('visible-second', levelMin: 'B2', levelMax: 'C1'),
-            eventFixture('hidden-trailing', levelMin: 'C2', levelMax: 'C2'),
+            eventFixture('hidden-trailing', levelMin: 'A1', levelMax: 'A2'),
           ],
           null,
           hiddenTrailingCursor,
@@ -798,7 +798,7 @@ void main() {
           return FFFirestorePage<EventsRecord>(
             [
               eventFixture('visible', levelMin: 'B1', levelMax: 'C1'),
-              eventFixture('hidden', levelMin: 'C2', levelMax: 'C2'),
+              eventFixture('hidden', levelMin: 'A1', levelMax: 'A2'),
             ],
             null,
             null,

@@ -382,7 +382,7 @@ test("student queue candidate carries neutral pool shape", () => {
   assert.equal(candidate.profile.role, "student");
 });
 
-test("candidate level filter accepts exact and adjacent levels", () => {
+test("candidate level filter accepts the selected minimum and higher levels", () => {
   const buildCandidate = (userId, level, preferredLevelRank) =>
     buildStudentQueueCandidateFromDocs({
       requestDoc: doc(userId, activeRequest({
@@ -398,15 +398,17 @@ test("candidate level filter accepts exact and adjacent levels", () => {
     });
 
   const exact = buildCandidate("student-exact", {value: "B1"}, 3);
-  const lowerAdjacent = buildCandidate("student-lower", {value: "A2"}, 3);
-  const upperAdjacent = buildCandidate("student-upper", {value: "B2"}, 3);
+  const higher = buildCandidate("student-higher", {value: "B2"}, 3);
+  const highest = buildCandidate("student-highest", {value: "C2"}, 3);
 
   assert.equal(exact.matchQuality.levelTier, "exact");
   assert.equal(exact.matchQuality.levelDistance, 0);
-  assert.equal(lowerAdjacent.matchQuality.levelTier, "adjacent");
-  assert.equal(upperAdjacent.matchQuality.levelTier, "adjacent");
+  assert.equal(higher.matchQuality.levelTier, "above_minimum");
+  assert.equal(higher.matchQuality.levelDistance, 1);
+  assert.equal(highest.matchQuality.levelTier, "above_minimum");
+  assert.equal(highest.matchQuality.levelDistance, 3);
   assert.equal(buildCandidate("student-low", {value: "A1"}, 3), null);
-  assert.equal(buildCandidate("student-high", {value: "C1"}, 3), null);
+  assert.equal(buildCandidate("student-lower", {value: "A2"}, 3), null);
   assert.equal(buildCandidate("student-missing", null, 3), null);
 
   assert.equal(
@@ -414,10 +416,10 @@ test("candidate level filter accepts exact and adjacent levels", () => {
     "student-c2-exact",
   );
   assert.equal(
-    buildCandidate("student-c2-adjacent", {value: "C1"}, 6).userId,
-    "student-c2-adjacent",
+    buildCandidate("student-c2-lower", {value: "C1"}, 6),
+    null,
   );
-  assert.equal(buildCandidate("student-c2-far", {value: "B2"}, 6), null);
+  assert.equal(buildCandidate("student-c2-far-lower", {value: "B2"}, 6), null);
 });
 
 test("candidate level filter normalizes legacy level shapes", () => {
@@ -469,7 +471,7 @@ test("student queue candidate honors candidate preferred level filter", () => {
     language: "en",
     nowMillis: fixedNowMillis,
     preferredLevelRank: 3,
-    requesterLevelRank: 5,
+    requesterLevelRank: 2,
   });
   const acceptedByCandidateFilter = buildStudentQueueCandidateFromDocs({
     requestDoc: doc("student-flexible", activeRequest({
@@ -489,7 +491,7 @@ test("student queue candidate honors candidate preferred level filter", () => {
   assert.equal(acceptedByCandidateFilter.userId, "student-flexible");
   assert.equal(
     acceptedByCandidateFilter.matchQuality.requesterLevelTier,
-    "adjacent",
+    "above_minimum",
   );
 });
 
@@ -1707,11 +1709,11 @@ test("collectMatchCandidatePool ranks exact student before teacher fallback", as
 test("collectMatchCandidatePool ranks mutual student filter quality", async () => {
   const db = fakeDb({
     studentRequestDocs: [
-      doc("student-mutual-adjacent", activeRequest({
-        requestId: "request-student-mutual-adjacent",
-        userId: "student-mutual-adjacent",
-        userRef: {id: "student-mutual-adjacent"},
-        filters: {preferredLevel: "B2", levelRank: 4},
+      doc("student-mutual-above-minimum", activeRequest({
+        requestId: "request-student-mutual-above-minimum",
+        userId: "student-mutual-above-minimum",
+        userRef: {id: "student-mutual-above-minimum"},
+        filters: {preferredLevel: "A2", levelRank: 2},
         createdAt: timestampFromMillis(fixedNowMillis - 120 * 1000),
       })),
       doc("student-mutual-exact", activeRequest({
@@ -1726,8 +1728,8 @@ test("collectMatchCandidatePool ranks mutual student filter quality", async () =
       "requester-a": doc("requester-a", studentData({
         level: {value: "B1"},
       })),
-      "student-mutual-adjacent": doc(
-        "student-mutual-adjacent",
+      "student-mutual-above-minimum": doc(
+        "student-mutual-above-minimum",
         studentData({level: {value: "B1"}}),
       ),
       "student-mutual-exact": doc(
@@ -1748,12 +1750,12 @@ test("collectMatchCandidatePool ranks mutual student filter quality", async () =
 
   assert.deepEqual(
     result.candidates.map((candidate) => candidate.userId),
-    ["student-mutual-exact", "student-mutual-adjacent"],
+    ["student-mutual-exact", "student-mutual-above-minimum"],
   );
   assert.deepEqual(
     result.candidates.map((candidate) =>
       candidate.matchQuality.requesterLevelTier),
-    ["exact", "adjacent"],
+    ["exact", "above_minimum"],
   );
 });
 
@@ -1989,7 +1991,7 @@ test("collectMatchCandidatePool reads requester level for mutual student filter"
 
   assert.deepEqual(
     result.candidates.map((candidate) => candidate.userId),
-    ["student-flexible"],
+    ["student-flexible", "student-strict"],
   );
 });
 

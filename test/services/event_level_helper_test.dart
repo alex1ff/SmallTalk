@@ -12,6 +12,7 @@ void main() {
         'C1',
         'C2',
       ]);
+      expect(eventLevelFilterMinimums, ['A1', 'A2', 'B1', 'C1']);
 
       for (final entry in eventLevelRanks.entries) {
         final range = eventLevelRange(
@@ -43,8 +44,7 @@ void main() {
       );
     });
 
-    test('matches each selected level against event ranges by rank overlap',
-        () {
+    test('treats a selected level as an inclusive minimum threshold', () {
       const cases = <({
         String selectedLevel,
         String eventMin,
@@ -52,17 +52,18 @@ void main() {
         bool overlaps,
       })>[
         (selectedLevel: 'A1', eventMin: 'A1', eventMax: 'A1', overlaps: true),
-        (selectedLevel: 'A1', eventMin: 'A2', eventMax: 'C2', overlaps: false),
+        (selectedLevel: 'A1', eventMin: 'A2', eventMax: 'C2', overlaps: true),
+        (selectedLevel: 'A2', eventMin: 'A1', eventMax: 'A1', overlaps: false),
         (selectedLevel: 'A2', eventMin: 'A1', eventMax: 'A2', overlaps: true),
-        (selectedLevel: 'A2', eventMin: 'B1', eventMax: 'C2', overlaps: false),
+        (selectedLevel: 'A2', eventMin: 'B1', eventMax: 'C2', overlaps: true),
+        (selectedLevel: 'B1', eventMin: 'A1', eventMax: 'A2', overlaps: false),
         (selectedLevel: 'B1', eventMin: 'A2', eventMax: 'B1', overlaps: true),
-        (selectedLevel: 'B1', eventMin: 'B2', eventMax: 'C2', overlaps: false),
-        (selectedLevel: 'B2', eventMin: 'B2', eventMax: 'B2', overlaps: true),
+        (selectedLevel: 'B1', eventMin: 'B2', eventMax: 'C2', overlaps: true),
         (selectedLevel: 'B2', eventMin: 'A1', eventMax: 'B1', overlaps: false),
+        (selectedLevel: 'B2', eventMin: 'C2', eventMax: 'C2', overlaps: true),
+        (selectedLevel: 'C1', eventMin: 'B2', eventMax: 'B2', overlaps: false),
         (selectedLevel: 'C1', eventMin: 'B2', eventMax: 'C1', overlaps: true),
-        (selectedLevel: 'C1', eventMin: 'A1', eventMax: 'B2', overlaps: false),
-        (selectedLevel: 'C2', eventMin: 'C2', eventMax: 'C2', overlaps: true),
-        (selectedLevel: 'C2', eventMin: 'A1', eventMax: 'C1', overlaps: false),
+        (selectedLevel: 'C1', eventMin: 'C2', eventMax: 'C2', overlaps: true),
       ];
 
       for (final currentCase in cases) {
@@ -87,7 +88,7 @@ void main() {
       expect(selectedEventLevelRange(null), isNull);
       expect(selectedEventLevelRange(' '), isNull);
       expect(selectedEventLevelRange('b2')?.levelMin, 'B2');
-      expect(selectedEventLevelRange('b2')?.levelMax, 'B2');
+      expect(selectedEventLevelRange('b2')?.levelMax, 'C2');
     });
 
     test('rejects invalid and reversed ranges', () {

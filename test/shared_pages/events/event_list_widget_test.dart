@@ -316,10 +316,12 @@ void main() {
         ),
       ),
     );
-    for (final level in eventLevelRanks.keys) {
+    for (final level in eventLevelFilterMinimums) {
       expect(find.text('От $level'), findsOneWidget);
       expect(_isLevelFilterSelected(tester, level), isFalse);
     }
+    expect(find.text('От B2'), findsNothing);
+    expect(find.text('От C2'), findsNothing);
     expect(
       _filterChipBackgroundColor(tester, _levelFilterFinder('A1')),
       ExpatlioDesign.segmentedControlBackground,
@@ -412,7 +414,7 @@ void main() {
       expectedLeadingEdge,
     );
     expect(
-      tester.getRect(_levelFilterFinder(eventLevelRanks.keys.first)).left,
+      tester.getRect(_levelFilterFinder(eventLevelFilterMinimums.first)).left,
       greaterThan(expectedLeadingEdge),
     );
 
@@ -431,7 +433,7 @@ void main() {
       closeTo(expectedTrailingEdge, 0.01),
     );
     expect(
-      tester.getRect(_levelFilterFinder(eventLevelRanks.keys.last)).right,
+      tester.getRect(_levelFilterFinder(eventLevelFilterMinimums.last)).right,
       closeTo(expectedTrailingEdge, 0.01),
     );
   });
@@ -441,23 +443,23 @@ void main() {
     await tester.pumpWidget(_buildTestApp());
     await tester.pumpAndSettle();
 
-    await tester.tap(_levelFilterFinder('B2'));
+    await tester.tap(_levelFilterFinder('B1'));
     await tester.pumpAndSettle();
 
-    expect(_isLevelFilterSelected(tester, 'B2'), isTrue);
-    expect(_isLevelFilterSelected(tester, 'B1'), isFalse);
+    expect(_isLevelFilterSelected(tester, 'B1'), isTrue);
+    expect(_isLevelFilterSelected(tester, 'A2'), isFalse);
     expect(_isLevelFilterSelected(tester, 'C1'), isFalse);
 
     await tester.tap(_levelFilterFinder('C1'));
     await tester.pumpAndSettle();
 
-    expect(_isLevelFilterSelected(tester, 'B2'), isFalse);
+    expect(_isLevelFilterSelected(tester, 'B1'), isFalse);
     expect(_isLevelFilterSelected(tester, 'C1'), isTrue);
 
     await tester.tap(_levelFilterFinder('C1'));
     await tester.pumpAndSettle();
 
-    for (final level in eventLevelRanks.keys) {
+    for (final level in eventLevelFilterMinimums) {
       expect(_isLevelFilterSelected(tester, level), isFalse);
     }
   });
@@ -478,7 +480,7 @@ void main() {
 
     expect(analyticsTracker.payloadsFor('level_filter_selected'), isEmpty);
 
-    await tester.tap(_levelFilterFinder('B2'));
+    await tester.tap(_levelFilterFinder('B1'));
     await tester.pumpAndSettle();
     await tester.tap(_levelFilterFinder('C1'));
     await tester.pumpAndSettle();
@@ -486,7 +488,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(analyticsTracker.payloadsFor('level_filter_selected'), [
-      <String, String>{'levelFilter': 'B2'},
+      <String, String>{'levelFilter': 'B1'},
       <String, String>{'levelFilter': 'C1'},
       <String, String>{'levelFilter': 'none'},
     ]);
@@ -2697,7 +2699,7 @@ void main() {
     expect(find.byKey(eventListCardShellKey), findsOneWidget);
     final beforeRefreshGeometry = _eventCardGeometry(tester);
 
-    await tester.tap(_levelFilterFinder('B2'));
+    await tester.tap(_levelFilterFinder('B1'));
     await tester.pump();
 
     expect(calls, 2);
@@ -2961,7 +2963,7 @@ void main() {
     expect(calls, 1);
     expect(find.byKey(eventListEmptyStateKey), findsOneWidget);
 
-    await tester.tap(_levelFilterFinder('B2'));
+    await tester.tap(_levelFilterFinder('B1'));
     await tester.pump();
 
     expect(calls, 2);
@@ -3644,7 +3646,7 @@ void main() {
             'level-cache-event-$calls',
             title: calls == 1
                 ? 'Default level cache event'
-                : 'B2 level cache event',
+                : 'B1 level cache event',
             startsAt: DateTime.utc(2035, 6, 14, 15),
           ),
         ],
@@ -3675,18 +3677,18 @@ void main() {
     expect(calls, 1);
     expect(find.text('Default level cache event'), findsOneWidget);
 
-    await tester.tap(_levelFilterFinder('B2'));
+    await tester.tap(_levelFilterFinder('B1'));
     await tester.pumpAndSettle();
 
     expect(calls, 2);
-    expect(find.text('B2 level cache event'), findsOneWidget);
+    expect(find.text('B1 level cache event'), findsOneWidget);
 
-    await tester.tap(_levelFilterFinder('B2'));
+    await tester.tap(_levelFilterFinder('B1'));
     await tester.pump();
 
     expect(calls, 2);
     expect(find.text('Default level cache event'), findsOneWidget);
-    expect(find.text('B2 level cache event'), findsNothing);
+    expect(find.text('B1 level cache event'), findsNothing);
     expect(find.byKey(eventListLoadingStateKey), findsNothing);
   });
 

@@ -6048,7 +6048,7 @@ class _EventLevelChips extends StatelessWidget {
             ),
           ),
           const SizedBox(width: ExpatlioDesign.space8),
-          for (final level in eventLevelRanks.keys) ...[
+          for (final level in eventLevelFilterMinimums) ...[
             _EventListFilterChip(
               chipKey: _eventLevelFilterChipKey(level),
               label: FFLocalizations.of(context).getVariableText(
@@ -6066,7 +6066,7 @@ class _EventLevelChips extends StatelessWidget {
               selectedBorderWidth: 1,
               onSelected: (selected) => onChanged(selected ? level : null),
             ),
-            if (level != eventLevelRanks.keys.last)
+            if (level != eventLevelFilterMinimums.last)
               const SizedBox(width: ExpatlioDesign.space4),
           ],
         ],
