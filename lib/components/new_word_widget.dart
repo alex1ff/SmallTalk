@@ -40,11 +40,24 @@ class NewWordWidget extends StatefulWidget {
 class _NewWordWidgetState extends State<NewWordWidget> {
   late NewWordModel _model;
   WordLookupResult? _lookupResult;
+  DocumentReference? _userWordsStreamParent;
+  Stream<List<UserWordsRecord>>? _userWordsStream;
 
   bool get _canManageDictionary =>
       currentUserDocument != null &&
       !canAccessTeacherSurfaces(currentUserDocument);
   bool get _lookupLoaded => _lookupResult != null;
+
+  Stream<List<UserWordsRecord>> _cachedUserWordsStream() {
+    final parent = currentUserReference;
+    final cachedStream = _userWordsStream;
+    if (cachedStream != null && _userWordsStreamParent == parent) {
+      return cachedStream;
+    }
+
+    _userWordsStreamParent = parent;
+    return _userWordsStream = queryUserWordsRecord(parent: parent);
+  }
 
   @override
   void setState(VoidCallback callback) {
@@ -1076,9 +1089,7 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                             ),
                             if (_canManageDictionary)
                               StreamBuilder<List<UserWordsRecord>>(
-                                stream: queryUserWordsRecord(
-                                  parent: currentUserReference,
-                                ),
+                                stream: _cachedUserWordsStream(),
                                 builder: (context, snapshot) {
                                   // Customize what your widget looks like when it's loading.
                                   if (!snapshot.hasData) {
@@ -1112,12 +1123,13 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                       builder: (context) {
                                         final primaryEntryText =
                                             _primaryEntry()?.text;
-                                        if (containerUserWordsRecordList
-                                            .where((e) =>
-                                                e.entry.firstOrNull?.text ==
-                                                primaryEntryText)
-                                            .toList()
-                                            .isNotEmpty) {
+                                        final existingWord =
+                                            containerUserWordsRecordList
+                                                .where((e) =>
+                                                    e.entry.firstOrNull?.text ==
+                                                    primaryEntryText)
+                                                .firstOrNull;
+                                        if (existingWord != null) {
                                           return InkWell(
                                             splashColor: Colors.transparent,
                                             focusColor: Colors.transparent,
@@ -1126,19 +1138,6 @@ class _NewWordWidgetState extends State<NewWordWidget> {
                                             onTap: () async {
                                               unawaited(
                                                 () async {
-                                                  final existingWord =
-                                                      containerUserWordsRecordList
-                                                          .where((e) =>
-                                                              e
-                                                                  .entry
-                                                                  .firstOrNull
-                                                                  ?.text ==
-                                                              primaryEntryText)
-                                                          .toList()
-                                                          .firstOrNull;
-                                                  if (existingWord == null) {
-                                                    return;
-                                                  }
                                                   await FlashcardReviewRepository
                                                       .deleteReviewForWord(
                                                     existingWord.reference,

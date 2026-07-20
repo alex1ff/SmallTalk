@@ -829,6 +829,39 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('student dashboard prefixes partner levels with From',
+      (tester) async {
+    setActiveStudent('student-level-filter-label-test');
+    final student = currentUserDocument!;
+    currentUserDocument = UsersRecord.getDocumentFromData(
+      {
+        ...student.snapshotData,
+        'preferences': {
+          'preferredPartnerLevel': 'Beginner',
+        },
+      },
+      student.reference,
+    );
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(const StudentsDashboardWidget()),
+    );
+    await tester.pump();
+
+    final selectedLevelLabel = find.textContaining('От A1', findRichText: true);
+    expect(selectedLevelLabel, findsOneWidget);
+
+    await tester.tap(selectedLevelLabel);
+    await tester.pump();
+
+    expect(find.text('От A1 — Beginner'), findsOneWidget);
+    expect(find.text('От A2 — Basic'), findsOneWidget);
+    expect(find.text('От B1 — Intermediate'), findsOneWidget);
+    expect(find.text('От C1 — Fluent'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('student dashboard always renders a numeric nearby count',
       (tester) async {
     setActiveStudent('student-partner-count-placeholder-test');

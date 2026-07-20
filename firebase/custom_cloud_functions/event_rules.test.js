@@ -121,6 +121,17 @@ function eventChatMessageData(overrides = {}) {
   };
 }
 
+function directEventChatMessageData(overrides = {}) {
+  return eventChatMessageData({
+    createdAt: firebaseCompat.firestore.FieldValue.serverTimestamp(),
+    ...overrides,
+  });
+}
+
+function directEventChatMessageId(index) {
+  return `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
+}
+
 function boundedEventChatMessagesQuery(db, chatId = "editable-event") {
   return db.collection(`eventChats/${chatId}/messages`)
     .orderBy("createdAt", "desc")
@@ -1371,77 +1382,483 @@ test("canceled event chat message reads fail closed for invalid parent state", a
   }
 });
 
-test("clients cannot directly write active or canceled event chat message documents",
+test("active participants and organizers can directly create canonical messages",
   async () => {
-    const actors = eventChatWriteActors();
-    const chatIds = [
-      "editable-event",
-      "canceled-editable-event",
+    const allowedCreates = [
+      {
+        context: testEnv.authenticatedContext("user-a"),
+        messageId: directEventChatMessageId(1),
+        data: directEventChatMessageData(),
+      },
+      {
+        context: testEnv.authenticatedContext("organizer"),
+        messageId: directEventChatMessageId(2),
+        data: directEventChatMessageData({
+          senderId: "organizer",
+          senderDisplayName: "Organizer",
+          senderPhotoUrl: "https://cdn.example.com/organizer.jpg",
+        }),
+      },
+    ];
+
+    for (const {context, messageId, data} of allowedCreates) {
+      await assertSucceeds(
+        context.firestore()
+          .doc(`eventChats/editable-event/messages/${messageId}`)
+          .set(data),
+      );
+    }
+  });
+
+test("direct creates preserve nullable participant photo semantics", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    const missingPhoto = participantData({
+      userId: "missing-photo",
+      displayName: "Missing Photo",
+    });
+    delete missingPhoto.photoUrl;
+    await db.doc("events/editable-event/participants/missing-photo")
+      .set(missingPhoto);
+    await db.doc("events/editable-event/participants/null-photo")
+      .set(participantData({
+        userId: "null-photo",
+        displayName: "Null Photo",
+        photoUrl: null,
+      }));
+  });
+
+  const allowedCreates = [
+    {
+      uid: "missing-photo",
+      displayName: "Missing Photo",
+      messageId: directEventChatMessageId(3),
+    },
+    {
+      uid: "null-photo",
+      displayName: "Null Photo",
+      messageId: directEventChatMessageId(4),
+    },
+  ];
+
+  for (const {uid, displayName, messageId} of allowedCreates) {
+    await assertSucceeds(
+      testEnv.authenticatedContext(uid).firestore()
+        .doc(`eventChats/editable-event/messages/${messageId}`)
+        .set(directEventChatMessageData({
+          senderId: uid,
+          senderDisplayName: displayName,
+          senderPhotoUrl: null,
+        })),
+    );
+  }
+});
+
+test("legacy noncanonical participant profiles cannot use direct creates",
+  async () => {
+    const legacyParticipants = [
+      {
+        uid: "legacy-name",
+        participant: participantData({
+          userId: "legacy-name",
+          displayName: " Legacy Name ",
+        }),
+        displayName: " Legacy Name ",
+        photoUrl: "https://cdn.example.com/user-a.jpg",
+      },
+      {
+        uid: "legacy-photo",
+        participant: participantData({
+          userId: "legacy-photo",
+          displayName: "Legacy Photo",
+          photoUrl: " https://cdn.example.com/legacy.jpg ",
+        }),
+        displayName: "Legacy Photo",
+        photoUrl: " https://cdn.example.com/legacy.jpg ",
+      },
+      {
+        uid: "empty-photo",
+        participant: participantData({
+          userId: "empty-photo",
+          displayName: "Empty Photo",
+          photoUrl: "",
+        }),
+        displayName: "Empty Photo",
+        photoUrl: "",
+      },
     ];
 
     await testEnv.withSecurityRulesDisabled(async (context) => {
       const db = context.firestore();
-      await seedLeftBeforeCancelParticipant(db, "canceled-editable-event");
-      for (const chatId of chatIds) {
-        await db.doc(`eventChats/${chatId}/messages/existing`)
-          .set(eventChatMessageData());
+      for (const {uid, participant} of legacyParticipants) {
+        await db.doc(`events/editable-event/participants/${uid}`)
+          .set(participant);
       }
     });
 
-    for (const [index, {context}] of actors.entries()) {
-      const db = context.firestore();
-      for (const chatId of chatIds) {
-        const existingMessagePath = `eventChats/${chatId}/messages/existing`;
-        await assertFails(
-          db.doc(`eventChats/${chatId}/messages/direct-create-${index}`)
-            .set(eventChatMessageData()),
-        );
-        await assertFails(
-          db.doc(existingMessagePath).set(eventChatMessageData({
-            text: "Replaced",
+    for (const [index, legacy] of legacyParticipants.entries()) {
+      await assertFails(
+        testEnv.authenticatedContext(legacy.uid).firestore()
+          .doc(
+            `eventChats/editable-event/messages/${
+              directEventChatMessageId(10 + index)}`,
+          )
+          .set(directEventChatMessageData({
+            senderId: legacy.uid,
+            senderDisplayName: legacy.displayName,
+            senderPhotoUrl: legacy.photoUrl,
           })),
-        );
-        await assertFails(
-          db.doc(existingMessagePath).set({
-            text: "Merged",
-          }, {merge: true}),
-        );
-        await assertFails(db.doc(existingMessagePath).update({
-          text: "Edited",
-        }));
-        await assertFails(db.doc(existingMessagePath).delete());
-      }
+      );
     }
   });
 
-test("event chat message writes fail inside otherwise allowed batches", async () => {
-  const organizer = testEnv.authenticatedContext("organizer");
-  const db = organizer.firestore();
-  const existingMessagePath = "eventChats/editable-event/messages/existing";
-  const deniedBatchWrites = [
-    (batch) => batch.set(
-      db.doc("eventChats/editable-event/messages/batched-create"),
-      eventChatMessageData(),
-    ),
-    (batch) => batch.update(db.doc(existingMessagePath), {
-      text: "Edited",
-    }),
-    (batch) => batch.delete(db.doc(existingMessagePath)),
-  ];
+test("direct creates deny guests and users without active event membership",
+  async () => {
+    const deniedCreates = [
+      {
+        context: testEnv.unauthenticatedContext(),
+        chatId: "editable-event",
+        data: directEventChatMessageData(),
+      },
+      {
+        context: testEnv.authenticatedContext("other-user"),
+        chatId: "editable-event",
+        data: directEventChatMessageData({
+          senderId: "other-user",
+          senderDisplayName: "Other User",
+          senderPhotoUrl: null,
+        }),
+      },
+      {
+        context: testEnv.authenticatedContext("user-left"),
+        chatId: "editable-event",
+        data: directEventChatMessageData({
+          senderId: "user-left",
+          senderDisplayName: "Left User",
+        }),
+      },
+      {
+        context: testEnv.authenticatedContext("admin-user", {admin: true}),
+        chatId: "editable-event",
+        data: directEventChatMessageData({
+          senderId: "admin-user",
+          senderDisplayName: "Admin User",
+          senderPhotoUrl: null,
+        }),
+      },
+      {
+        context: testEnv.authenticatedContext("user-a"),
+        chatId: "canceled-editable-event",
+        data: directEventChatMessageData(),
+      },
+    ];
 
-  await testEnv.withSecurityRulesDisabled(async (context) => {
-    await context.firestore()
-      .doc(existingMessagePath)
-      .set(eventChatMessageData());
+    for (const [index, {context, chatId, data}] of deniedCreates.entries()) {
+      await assertFails(
+        context.firestore()
+          .doc(
+            `eventChats/${chatId}/messages/${
+              directEventChatMessageId(20 + index)}`,
+          )
+          .set(data),
+      );
+    }
   });
 
-  for (const applyDeniedWrite of deniedBatchWrites) {
-    const batch = db.batch();
-    batch.update(db.doc("events/editable-event"), directEditPatch());
-    applyDeniedWrite(batch);
-    await assertFails(batch.commit());
+test("direct creates fail closed for missing or mismatched parent state",
+  async () => {
+    const chatIds = [
+      "write-missing-chat",
+      "write-orphan-chat",
+      "write-mismatched-chat-metadata",
+      "write-mismatched-event-chat-id",
+      "write-invalid-chat-metadata",
+      "write-missing-participant",
+      "write-malformed-participant",
+      "write-active-with-canceled-at",
+    ];
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+
+      await db.doc("events/write-missing-chat").set(eventData({
+        chatId: "write-missing-chat",
+      }));
+      await db.doc("events/write-missing-chat/participants/user-a")
+        .set(participantData());
+
+      await db.doc("eventChats/write-orphan-chat").set(eventChatData({
+        eventId: "write-orphan-chat",
+      }));
+      await db.doc("events/write-orphan-chat/participants/user-a")
+        .set(participantData());
+
+      await db.doc("events/write-mismatched-chat-metadata").set(eventData({
+        chatId: "write-mismatched-chat-metadata",
+      }));
+      await db.doc(
+        "events/write-mismatched-chat-metadata/participants/user-a",
+      ).set(participantData());
+      await db.doc("eventChats/write-mismatched-chat-metadata")
+        .set(eventChatData({eventId: "other-event"}));
+
+      await db.doc("events/write-mismatched-event-chat-id").set(eventData({
+        chatId: "other-chat",
+      }));
+      await db.doc(
+        "events/write-mismatched-event-chat-id/participants/user-a",
+      ).set(participantData());
+      await db.doc("eventChats/write-mismatched-event-chat-id")
+        .set(eventChatData({eventId: "write-mismatched-event-chat-id"}));
+
+      await db.doc("events/write-invalid-chat-metadata").set(eventData({
+        chatId: "write-invalid-chat-metadata",
+      }));
+      await db.doc(
+        "events/write-invalid-chat-metadata/participants/user-a",
+      ).set(participantData());
+      await db.doc("eventChats/write-invalid-chat-metadata")
+        .set(eventChatData({
+          eventId: "write-invalid-chat-metadata",
+          unexpected: true,
+        }));
+
+      await db.doc("events/write-missing-participant").set(eventData({
+        chatId: "write-missing-participant",
+      }));
+      await db.doc("eventChats/write-missing-participant")
+        .set(eventChatData({eventId: "write-missing-participant"}));
+
+      await db.doc("events/write-malformed-participant").set(eventData({
+        chatId: "write-malformed-participant",
+      }));
+      await db.doc("eventChats/write-malformed-participant")
+        .set(eventChatData({eventId: "write-malformed-participant"}));
+      await db.doc(
+        "events/write-malformed-participant/participants/user-a",
+      ).set(participantData({privateEmail: "user-a@example.com"}));
+
+      await db.doc("events/write-active-with-canceled-at").set(eventData({
+        chatId: "write-active-with-canceled-at",
+        canceledAt: new Date("2099-06-01T10:00:00.000Z"),
+      }));
+      await db.doc("eventChats/write-active-with-canceled-at")
+        .set(eventChatData({eventId: "write-active-with-canceled-at"}));
+      await db.doc(
+        "events/write-active-with-canceled-at/participants/user-a",
+      ).set(participantData());
+    });
+
+    const db = testEnv.authenticatedContext("user-a").firestore();
+    for (const [index, chatId] of chatIds.entries()) {
+      await assertFails(
+        db.doc(
+          `eventChats/${chatId}/messages/${
+            directEventChatMessageId(30 + index)}`,
+        ).set(directEventChatMessageData()),
+      );
+    }
+  });
+
+test("direct creates require trusted sender identity and the exact schema",
+  async () => {
+    const missingSenderId = directEventChatMessageData();
+    delete missingSenderId.senderId;
+    const missingDisplayName = directEventChatMessageData();
+    delete missingDisplayName.senderDisplayName;
+    const missingPhoto = directEventChatMessageData();
+    delete missingPhoto.senderPhotoUrl;
+    const missingText = directEventChatMessageData();
+    delete missingText.text;
+    const missingCreatedAt = directEventChatMessageData();
+    delete missingCreatedAt.createdAt;
+    const missingDeletedAt = directEventChatMessageData();
+    delete missingDeletedAt.deletedAt;
+
+    const invalidMessages = [
+      directEventChatMessageData({senderId: "other-user"}),
+      directEventChatMessageData({senderDisplayName: "Spoofed"}),
+      directEventChatMessageData({senderPhotoUrl: "https://evil.example/a"}),
+      directEventChatMessageData({senderPhotoUrl: null}),
+      directEventChatMessageData({senderId: 1}),
+      directEventChatMessageData({senderDisplayName: 1}),
+      directEventChatMessageData({senderPhotoUrl: 1}),
+      directEventChatMessageData({text: 1}),
+      directEventChatMessageData({createdAt: null}),
+      directEventChatMessageData({
+        createdAt: new Date("2026-06-14T10:00:00.000Z"),
+      }),
+      directEventChatMessageData({deletedAt: new Date()}),
+      directEventChatMessageData({deletedAt: false}),
+      directEventChatMessageData({unexpected: "schema pollution"}),
+      missingSenderId,
+      missingDisplayName,
+      missingPhoto,
+      missingText,
+      missingCreatedAt,
+      missingDeletedAt,
+    ];
+
+    const db = testEnv.authenticatedContext("user-a").firestore();
+    for (const [index, data] of invalidMessages.entries()) {
+      await assertFails(
+        db.doc(
+          `eventChats/editable-event/messages/${
+            directEventChatMessageId(50 + index)}`,
+        ).set(data),
+      );
+    }
+  });
+
+test("direct message IDs must be lowercase UUID v4 values", async () => {
+  const invalidMessageIds = [
+    "message-1",
+    "550E8400-E29B-41D4-A716-446655440000",
+    "550e8400-e29b-31d4-a716-446655440000",
+    "550e8400-e29b-41d4-7716-446655440000",
+    "550e8400-e29b-41d4-a716-44665544000",
+  ];
+  const db = testEnv.authenticatedContext("user-a").firestore();
+
+  for (const messageId of invalidMessageIds) {
+    await assertFails(
+      db.doc(`eventChats/editable-event/messages/${messageId}`)
+        .set(directEventChatMessageData()),
+    );
   }
 });
+
+test("direct message text must satisfy the canonical Rules subset", async () => {
+  const db = testEnv.authenticatedContext("user-a").firestore();
+  const validTexts = [
+    "Hello",
+    "Line one\n\nLine two",
+    "x".repeat(1000),
+    "é".repeat(1000),
+    "😀".repeat(500),
+  ];
+  const invalidTexts = [
+    "",
+    "   ",
+    " leading",
+    "trailing ",
+    "line one\rline two",
+    "line one\n\n\nline two",
+    "x".repeat(1001),
+    "é".repeat(1001),
+    "😀".repeat(501),
+  ];
+
+  for (const [index, text] of validTexts.entries()) {
+    await assertSucceeds(
+      db.doc(
+        `eventChats/editable-event/messages/${
+          directEventChatMessageId(80 + index)}`,
+      ).set(directEventChatMessageData({text})),
+    );
+  }
+  for (const [index, text] of invalidTexts.entries()) {
+    await assertFails(
+      db.doc(
+        `eventChats/editable-event/messages/${
+          directEventChatMessageId(90 + index)}`,
+      ).set(directEventChatMessageData({text})),
+    );
+  }
+});
+
+test("clients cannot overwrite, merge, update, or delete event chat messages",
+  async () => {
+    const existingMessagePath =
+      "eventChats/editable-event/messages/550e8400-e29b-41d4-a716-446655440000";
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context.firestore().doc(existingMessagePath)
+        .set(eventChatMessageData());
+    });
+
+    for (const context of [
+      testEnv.authenticatedContext("user-a"),
+      testEnv.authenticatedContext("organizer"),
+    ]) {
+      const ref = context.firestore().doc(existingMessagePath);
+      await assertFails(ref.set(directEventChatMessageData()));
+      await assertFails(ref.set({text: "Merged"}, {merge: true}));
+      await assertFails(ref.update({text: "Edited"}));
+      await assertFails(ref.delete());
+    }
+  });
+
+test("batches allow valid creates but cannot bypass message validation",
+  async () => {
+    const participantDb = testEnv.authenticatedContext("user-a").firestore();
+    const validBatch = participantDb.batch();
+    validBatch.set(
+      participantDb.doc(
+        `eventChats/editable-event/messages/${directEventChatMessageId(110)}`,
+      ),
+      directEventChatMessageData({text: "First batched message"}),
+    );
+    validBatch.set(
+      participantDb.doc(
+        `eventChats/editable-event/messages/${directEventChatMessageId(111)}`,
+      ),
+      directEventChatMessageData({text: "Second batched message"}),
+    );
+    await assertSucceeds(validBatch.commit());
+
+    const organizerDb = testEnv.authenticatedContext("organizer").firestore();
+    const existingMessagePath =
+      "eventChats/editable-event/messages/550e8400-e29b-41d4-a716-446655440000";
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context.firestore().doc(existingMessagePath)
+        .set(eventChatMessageData());
+    });
+
+    const deniedBatchWrites = [
+      (batch) => batch.set(
+        organizerDb.doc(
+          `eventChats/editable-event/messages/${
+            directEventChatMessageId(112)}`,
+        ),
+        directEventChatMessageData({
+          senderId: "user-a",
+          senderDisplayName: "User A",
+          senderPhotoUrl: "https://cdn.example.com/user-a.jpg",
+        }),
+      ),
+      (batch) => batch.set(
+        organizerDb.doc("eventChats/editable-event/messages/not-a-uuid"),
+        directEventChatMessageData({
+          senderId: "organizer",
+          senderDisplayName: "Organizer",
+          senderPhotoUrl: "https://cdn.example.com/organizer.jpg",
+        }),
+      ),
+      (batch) => batch.set(
+        organizerDb.doc(existingMessagePath),
+        directEventChatMessageData({
+          senderId: "organizer",
+          senderDisplayName: "Organizer",
+          senderPhotoUrl: "https://cdn.example.com/organizer.jpg",
+        }),
+      ),
+      (batch) => batch.update(organizerDb.doc(existingMessagePath), {
+        text: "Edited",
+      }),
+      (batch) => batch.delete(organizerDb.doc(existingMessagePath)),
+    ];
+
+    for (const applyDeniedWrite of deniedBatchWrites) {
+      const batch = organizerDb.batch();
+      batch.update(
+        organizerDb.doc("events/editable-event"),
+        directEditPatch(),
+      );
+      applyDeniedWrite(batch);
+      await assertFails(batch.commit());
+    }
+  });
 
 test("active event chat metadata reads fail closed for invalid state", async () => {
   const user = testEnv.authenticatedContext("user-a");

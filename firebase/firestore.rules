@@ -1186,6 +1186,102 @@ service cloud.firestore {
         canGetCanceledEventChat(chatId, eventChatDocumentData(chatId));
     }
 
+    // Direct event chat message data model:
+    // - senderId: string, authenticated participant UID
+    // - senderDisplayName: string, exact trusted participant snapshot
+    // - senderPhotoUrl: string or null, exact trusted participant snapshot
+    // - text: canonical string, 1-1000 Rules characters
+    // - createdAt: server timestamp equal to request.time
+    // - deletedAt: null on create
+    function directEventChatMessageFields() {
+      return [
+        'senderId',
+        'senderDisplayName',
+        'senderPhotoUrl',
+        'text',
+        'createdAt',
+        'deletedAt'
+      ];
+    }
+
+    function isLowercaseUuidV4(value) {
+      return value is string &&
+        value.matches(
+          '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+        );
+    }
+
+    function isValidDirectEventChatMessageText(value) {
+      return value is string &&
+        value.size() > 0 &&
+        value.size() <= 1000 &&
+        value == value.trim() &&
+        value == value.replace('\\r', '') &&
+        value == value.replace('\\n{3,}', '\\n\\n');
+    }
+
+    function hasValidDirectEventChatSenderPhoto(participantData, messageData) {
+      return (
+          (
+            !participantData.keys().hasAny(['photoUrl']) ||
+            participantData.photoUrl == null
+          ) &&
+          messageData.senderPhotoUrl == null
+        ) ||
+        (
+          participantData.keys().hasAny(['photoUrl']) &&
+          participantData.photoUrl is string &&
+          participantData.photoUrl.size() > 0 &&
+          participantData.photoUrl.size() <= 2048 &&
+          participantData.photoUrl == participantData.photoUrl.trim() &&
+          messageData.senderPhotoUrl is string &&
+          messageData.senderPhotoUrl == participantData.photoUrl
+        );
+    }
+
+    function hasValidDirectEventChatSenderSnapshot(chatId, data) {
+      let participantData = eventParticipantDocumentData(
+        chatId,
+        request.auth.uid
+      );
+      return participantData.displayName is string &&
+        participantData.displayName.size() > 0 &&
+        participantData.displayName.size() <= 70 &&
+        participantData.displayName == participantData.displayName.trim() &&
+        data.senderDisplayName is string &&
+        data.senderDisplayName == participantData.displayName &&
+        hasValidDirectEventChatSenderPhoto(participantData, data);
+    }
+
+    function isValidDirectEventChatMessageData(chatId, data) {
+      return data.keys().hasOnly(directEventChatMessageFields()) &&
+        data.keys().hasAll(directEventChatMessageFields()) &&
+        data.senderId is string &&
+        data.senderId == request.auth.uid &&
+        (data.senderPhotoUrl == null || data.senderPhotoUrl is string) &&
+        hasValidDirectEventChatSenderSnapshot(chatId, data) &&
+        isValidDirectEventChatMessageText(data.text) &&
+        data.createdAt is timestamp &&
+        data.createdAt == request.time &&
+        data.deletedAt == null;
+    }
+
+    function canCreateDirectEventChatMessage(chatId, messageId) {
+      return isSignedIn() &&
+        isLowercaseUuidV4(messageId) &&
+        eventChatDocumentExists(chatId) &&
+        hasValidEventChatMetadata(
+          chatId,
+          eventChatDocumentData(chatId)
+        ) &&
+        eventHasMatchingActiveChat(chatId) &&
+        isActiveEventParticipant(chatId, request.auth.uid) &&
+        isValidDirectEventChatMessageData(
+          chatId,
+          request.resource.data
+        );
+    }
+
     function hasBoundedEventChatMessagesQuery() {
       return request.query.limit is int &&
         request.query.limit > 0 &&
@@ -1317,7 +1413,8 @@ service cloud.firestore {
             canGetActiveEventChatMessage(chatId) ||
             canGetCanceledEventChatMessage(chatId)
           );
-        allow create, update, delete: if false;
+        allow create: if canCreateDirectEventChatMessage(chatId, messageId);
+        allow update, delete: if false;
       }
     }
 

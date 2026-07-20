@@ -19,7 +19,6 @@ import 'shared_pages/design/expatlio_design.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'services/voip_service.dart';
 import 'services/user_presence_service.dart';
-import 'services/event_list_date_bounds.dart';
 import 'custom_code/actions/check_active_session_and_navigate.dart' as actions;
 import 'shared_pages/video_call_page/video_call_page_widget.dart';
 
@@ -66,7 +65,6 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  initializeEventListTimeZones();
   GoRouter.optionURLReflectsImperativeAPIs = true;
   usePathUrlStrategy();
 

@@ -23,6 +23,10 @@ import '/services/event_group_chat_repository.dart';
 import '/services/ux_session_cache_lifecycle.dart';
 import '/services/ux_session_loaded_result_cache.dart';
 
+final RegExp _eventChatClientMessageIdPattern = RegExp(
+  r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+);
+
 const ValueKey<String> eventGroupChatMessagesLoadingKey =
     ValueKey<String>('event_group_chat_messages_loading');
 const ValueKey<String> eventGroupChatMessagesErrorKey =
@@ -45,6 +49,10 @@ const ValueKey<String> eventGroupChatAccessInlineErrorKey =
     ValueKey<String>('event_group_chat_access_inline_error');
 const ValueKey<String> eventGroupChatAccessRetryButtonKey =
     ValueKey<String>('event_group_chat_access_retry_button');
+const ValueKey<String> eventGroupChatParticipantInlineErrorKey =
+    ValueKey<String>('event_group_chat_participant_inline_error');
+const ValueKey<String> eventGroupChatParticipantRetryButtonKey =
+    ValueKey<String>('event_group_chat_participant_retry_button');
 const ValueKey<String> eventGroupChatMessageInputKey =
     ValueKey<String>('event_group_chat_message_input');
 const ValueKey<String> eventGroupChatSendButtonKey =
@@ -110,7 +118,7 @@ typedef EventGroupChatInboxPersistenceInvoker = Future<void> Function({
 ///
 /// The existing one-to-one chat UI is backed by conversation documents and
 /// direct message writes, while event chat is backed by event chat documents,
-/// participant access rules, and a trusted send callable.
+/// participant access rules, direct creates, and a trusted callable fallback.
 class EventGroupChatWidget extends StatefulWidget {
   const EventGroupChatWidget({
     super.key,
@@ -119,6 +127,9 @@ class EventGroupChatWidget extends StatefulWidget {
     this.debugChatAccessStateStream,
     this.messagesStream,
     this.debugMessagesStateStream,
+    this.debugParticipantStateStream,
+    this.debugDirectMessageWriter,
+    this.debugMessageServerLookup,
     this.sendMessageInvoker,
     this.reportMessageInvoker,
     this.debugAuthenticatedUserIdProvider,
@@ -136,6 +147,12 @@ class EventGroupChatWidget extends StatefulWidget {
   final EventChatMessagesStream? messagesStream;
   @visibleForTesting
   final EventChatMessagesStateStream? debugMessagesStateStream;
+  @visibleForTesting
+  final EventChatParticipantStateStream? debugParticipantStateStream;
+  @visibleForTesting
+  final EventChatDirectMessageWriter? debugDirectMessageWriter;
+  @visibleForTesting
+  final EventChatMessageServerLookup? debugMessageServerLookup;
   final EventCallableInvoker? sendMessageInvoker;
   final EventCallableInvoker? reportMessageInvoker;
 
@@ -177,6 +194,7 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
   final FocusNode _messageFocusNode = FocusNode();
   late Stream<EventChatAccessLoadState> _chatAccessStream;
   Stream<EventChatMessagesLoadState>? _messagesStream;
+  Stream<EventChatParticipantLoadState>? _participantStream;
   StreamSubscription<String?>? _authenticatedOwnerSubscription;
   final List<_PendingEventChatMessage> _pendingMessages =
       <_PendingEventChatMessage>[];
@@ -219,6 +237,8 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
     final messagesChanged = oldWidget.messagesStream != widget.messagesStream ||
         oldWidget.debugMessagesStateStream != widget.debugMessagesStateStream ||
         oldWidget.messageLimit != widget.messageLimit;
+    final participantChanged = oldWidget.debugParticipantStateStream !=
+        widget.debugParticipantStateStream;
     final authenticatedOwnerSourceChanged =
         oldWidget.debugAuthenticatedUserIdProvider !=
                 widget.debugAuthenticatedUserIdProvider ||
@@ -253,10 +273,14 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
       );
       _clearLastDisplayedMessages();
       _resetMessagesBoundary();
+      _resetParticipantBoundary();
       _pendingMessages.clear();
       _reportOperationToken = null;
     } else if (messagesChanged) {
       _resetMessagesBoundary();
+    }
+    if (participantChanged) {
+      _resetParticipantBoundary();
     }
   }
 
@@ -295,6 +319,26 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
           widget.eventId == eventId,
     );
   }
+
+  Stream<EventChatParticipantLoadState> _watchParticipant({
+    required String ownerUid,
+    required String eventId,
+    required int actionBoundaryRevision,
+  }) =>
+      EventGroupChatRepository.watchOwnParticipantState(
+        eventId: eventId,
+        ownerUid: ownerUid,
+        participantStateStream: widget.debugParticipantStateStream,
+      ).where(
+        (state) =>
+            mounted &&
+            state.ownerUid == ownerUid &&
+            state.eventId == eventId &&
+            _activeOwnerUid == ownerUid &&
+            _authenticatedOwnerUid() == ownerUid &&
+            _actionBoundaryRevision == actionBoundaryRevision &&
+            _normalizeEventId(widget.eventId) == eventId,
+      );
 
   Object _messagesCacheKey(String ownerUid, String eventId) => [
         'eventGroupChatMessages',
@@ -438,6 +482,7 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
       );
       _clearLastDisplayedMessages();
       _resetMessagesBoundary();
+      _resetParticipantBoundary();
       _pendingMessages.clear();
       _messageTextController.clear();
       _reportOperationToken = null;
@@ -453,6 +498,10 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
   void _resetMessagesBoundary() {
     _messagesBoundaryRevision += 1;
     _messagesStream = null;
+  }
+
+  void _resetParticipantBoundary() {
+    _participantStream = null;
   }
 
   void _clearLastDisplayedMessages() {
@@ -490,6 +539,10 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
               ),
               isFromCache: incomingState.isFromCache,
               hasPendingWrites: incomingState.hasPendingWrites,
+              pendingWriteMessagePaths: _mergePendingWriteMessagePaths(
+                previousState,
+                incomingState,
+              ),
             )
           : incomingState;
       _lastDisplayedMessagesScope = scope;
@@ -534,6 +587,19 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
       mergedMessages.add(incomingByPath[path]!);
     }
     return mergedMessages;
+  }
+
+  Set<String> _mergePendingWriteMessagePaths(
+    EventChatMessagesLoadState previousState,
+    EventChatMessagesLoadState incomingState,
+  ) {
+    final incomingPaths =
+        incomingState.messages.map((message) => message.reference.path).toSet();
+    return <String>{
+      for (final path in previousState.pendingWriteMessagePaths)
+        if (!incomingPaths.contains(path)) path,
+      ...incomingState.pendingWriteMessagePaths,
+    };
   }
 
   String _authenticatedOwnerUid() {
@@ -657,20 +723,25 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
     }
   }
 
-  Future<void> _sendMessage() async {
-    final text = _messageTextController.text.trim();
-    if (text.isEmpty) {
+  Future<void> _sendMessage(_EventGroupChatSendContext sendContext) async {
+    late final String text;
+    try {
+      text = canonicalizeEventChatMessageText(_messageTextController.text);
+    } on EventChatMessageTextValidationException {
       return;
     }
 
     final scope = _captureActionScope();
-    if (scope == null || scope.ownerUid.isEmpty) {
+    if (scope == null ||
+        scope.ownerUid.isEmpty ||
+        !sendContext.canSendAs(scope.ownerUid)) {
       return;
     }
-    final eventId = scope.eventId;
     final pendingMessage = _createPendingMessage(
       text,
       senderId: scope.ownerUid,
+      directSender: sendContext.directSender,
+      attemptSerial: 1,
     );
     setState(() {
       _pendingMessages.add(pendingMessage);
@@ -678,58 +749,36 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
     _messageTextController.clear();
 
     try {
-      final result = await EventActionsRepository.sendEventChatMessage(
-        eventId: eventId,
-        text: text,
-        clientMessageId: pendingMessage.localId,
-        invoker: widget.sendMessageInvoker,
+      final serverMessageId = await _sendPendingMessage(
+        scope: scope,
+        sendContext: sendContext,
+        pendingMessage: pendingMessage,
+        attemptSerial: pendingMessage.attemptSerial,
       );
-      if (!_isActionScopeCurrent(scope)) {
+      if (serverMessageId == null) {
         return;
       }
-      setState(() {
-        final pendingIndex = _pendingMessages.indexWhere(
-          (message) => message.localId == pendingMessage.localId,
-        );
-        if (pendingIndex == -1) {
-          return;
-        }
-        _pendingMessages[pendingIndex] = pendingMessage.copyWith(
-          serverMessageId: result.messageId,
-          status: ChatLocalMessageStatus.sent,
-        );
-      });
+      _completePendingAttempt(
+        scope: scope,
+        localId: pendingMessage.localId,
+        attemptSerial: pendingMessage.attemptSerial,
+        serverMessageId: serverMessageId,
+      );
     } catch (error) {
-      if (!_isActionScopeCurrent(scope)) {
-        return;
-      }
-      setState(() {
-        final pendingIndex = _pendingMessages.indexWhere(
-          (message) => message.localId == pendingMessage.localId,
-        );
-        if (pendingIndex == -1) {
-          return;
-        }
-        _pendingMessages[pendingIndex] = pendingMessage.copyWith(
-          status: ChatLocalMessageStatus.failed,
-        );
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          key: eventGroupChatSendErrorSnackBarKey,
-          content: Text(eventActionFailureMessage(context, error)),
-        ),
+      _failPendingAttempt(
+        scope: scope,
+        localId: pendingMessage.localId,
+        attemptSerial: pendingMessage.attemptSerial,
+        error: error,
+        operation: 'send',
       );
-      if (kDebugMode) {
-        debugPrint(
-          'EventGroupChatWidget: failed to send message: '
-          '${error.runtimeType}',
-        );
-      }
     }
   }
 
-  Future<void> _retryPendingMessage(String localId) async {
+  Future<void> _retryPendingMessage(
+    String localId,
+    _EventGroupChatSendContext sendContext,
+  ) async {
     final pendingIndex = _pendingMessages.indexWhere(
       (message) => message.localId == localId,
     );
@@ -737,75 +786,222 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
       return;
     }
     final pendingMessage = _pendingMessages[pendingIndex];
-    if (pendingMessage.status != ChatLocalMessageStatus.failed) {
+    if (pendingMessage.phase != _PendingEventChatMessagePhase.failed) {
       return;
     }
 
     final scope = _captureActionScope();
     if (scope == null ||
         scope.ownerUid.isEmpty ||
-        pendingMessage.senderId != scope.ownerUid) {
+        pendingMessage.senderId != scope.ownerUid ||
+        !sendContext.canSendAs(scope.ownerUid)) {
       return;
     }
-    final eventId = scope.eventId;
+    final attemptSerial = pendingMessage.attemptSerial + 1;
     setState(() {
-      _updatePendingMessageStatus(localId, ChatLocalMessageStatus.sending);
+      final currentIndex = _pendingMessages.indexWhere(
+        (message) => message.localId == localId,
+      );
+      if (currentIndex == -1 ||
+          _pendingMessages[currentIndex].phase !=
+              _PendingEventChatMessagePhase.failed) {
+        return;
+      }
+      _pendingMessages[currentIndex] = _pendingMessages[currentIndex].copyWith(
+        phase: _PendingEventChatMessagePhase.sending,
+        attemptSerial: attemptSerial,
+      );
     });
 
     try {
-      final result = await EventActionsRepository.sendEventChatMessage(
-        eventId: eventId,
-        text: pendingMessage.text,
-        clientMessageId: pendingMessage.localId,
-        invoker: widget.sendMessageInvoker,
-      );
-      if (!_isActionScopeCurrent(scope)) {
+      if (!_isPendingAttemptCurrent(scope, localId, attemptSerial)) {
         return;
       }
-      setState(() {
-        _updatePendingMessageStatus(
-          localId,
-          ChatLocalMessageStatus.sent,
-          serverMessageId: result.messageId,
+      String? serverMessageId;
+      if (sendContext.skipRetryLookup) {
+        serverMessageId = await _sendPendingMessage(
+          scope: scope,
+          sendContext: sendContext,
+          pendingMessage: pendingMessage,
+          attemptSerial: attemptSerial,
         );
-      });
+      } else {
+        final lookup =
+            await EventGroupChatRepository.lookupDirectMessageForRetry(
+          eventId: scope.eventId,
+          clientMessageId: localId,
+          senderId: pendingMessage.senderId,
+          text: pendingMessage.text,
+          lookup: widget.debugMessageServerLookup,
+        );
+        if (!_isPendingAttemptCurrent(scope, localId, attemptSerial)) {
+          return;
+        }
+        if (lookup.isConflict) {
+          throw StateError('The event chat message ID is already in use.');
+        }
+        serverMessageId = lookup.isMatching
+            ? localId
+            : await _sendPendingMessage(
+                scope: scope,
+                sendContext: sendContext,
+                pendingMessage: pendingMessage,
+                attemptSerial: attemptSerial,
+              );
+      }
+      if (serverMessageId == null) {
+        return;
+      }
+      _completePendingAttempt(
+        scope: scope,
+        localId: localId,
+        attemptSerial: attemptSerial,
+        serverMessageId: serverMessageId,
+      );
     } catch (error) {
-      if (!_isActionScopeCurrent(scope)) {
-        return;
-      }
-      setState(() {
-        _updatePendingMessageStatus(localId, ChatLocalMessageStatus.failed);
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          key: eventGroupChatSendErrorSnackBarKey,
-          content: Text(eventActionFailureMessage(context, error)),
-        ),
+      _failPendingAttempt(
+        scope: scope,
+        localId: localId,
+        attemptSerial: attemptSerial,
+        error: error,
+        operation: 'retry',
       );
-      if (kDebugMode) {
-        debugPrint(
-          'EventGroupChatWidget: failed to retry message: '
-          '${error.runtimeType}',
-        );
-      }
     }
   }
 
-  void _updatePendingMessageStatus(
+  Future<String?> _sendPendingMessage({
+    required _EventGroupChatActionScope scope,
+    required _EventGroupChatSendContext sendContext,
+    required _PendingEventChatMessage pendingMessage,
+    required int attemptSerial,
+  }) async {
+    if (!_isPendingAttemptCurrent(
+      scope,
+      pendingMessage.localId,
+      attemptSerial,
+    )) {
+      return null;
+    }
+
+    if (sendContext.mode == _EventGroupChatSendMode.direct) {
+      final sender = sendContext.directSender;
+      if (sender == null || sender.senderId != scope.ownerUid) {
+        return null;
+      }
+      try {
+        await EventGroupChatRepository.createDirectMessage(
+          eventId: scope.eventId,
+          clientMessageId: pendingMessage.localId,
+          sender: sender,
+          text: pendingMessage.text,
+          writer: widget.debugDirectMessageWriter,
+        );
+        return pendingMessage.localId;
+      } catch (error) {
+        if (!_isDirectWritePermissionDenied(error)) {
+          rethrow;
+        }
+        if (!_isPendingAttemptCurrent(
+          scope,
+          pendingMessage.localId,
+          attemptSerial,
+        )) {
+          return null;
+        }
+      }
+    }
+
+    final result = await EventActionsRepository.sendEventChatMessage(
+      eventId: scope.eventId,
+      text: pendingMessage.text,
+      clientMessageId: pendingMessage.localId,
+      invoker: widget.sendMessageInvoker,
+    );
+    return result.messageId.trim().isEmpty
+        ? pendingMessage.localId
+        : result.messageId;
+  }
+
+  bool _isDirectWritePermissionDenied(Object error) =>
+      error is FirebaseException && error.code == 'permission-denied';
+
+  bool _isPendingAttemptCurrent(
+    _EventGroupChatActionScope scope,
     String localId,
-    ChatLocalMessageStatus status, {
-    String? serverMessageId,
-  }) {
+    int attemptSerial,
+  ) {
+    if (!_isActionScopeCurrent(scope)) {
+      return false;
+    }
     final pendingIndex = _pendingMessages.indexWhere(
       (message) => message.localId == localId,
     );
-    if (pendingIndex == -1) {
+    return pendingIndex != -1 &&
+        _pendingMessages[pendingIndex].attemptSerial == attemptSerial &&
+        _pendingMessages[pendingIndex].phase ==
+            _PendingEventChatMessagePhase.sending;
+  }
+
+  void _completePendingAttempt({
+    required _EventGroupChatActionScope scope,
+    required String localId,
+    required int attemptSerial,
+    required String serverMessageId,
+  }) {
+    if (!_isPendingAttemptCurrent(scope, localId, attemptSerial)) {
       return;
     }
-    _pendingMessages[pendingIndex] = _pendingMessages[pendingIndex].copyWith(
-      serverMessageId: serverMessageId,
-      status: status,
+    setState(() {
+      final pendingIndex = _pendingMessages.indexWhere(
+        (message) =>
+            message.localId == localId &&
+            message.attemptSerial == attemptSerial,
+      );
+      if (pendingIndex == -1) {
+        return;
+      }
+      _pendingMessages[pendingIndex] = _pendingMessages[pendingIndex].copyWith(
+        serverMessageId: serverMessageId,
+        phase: _PendingEventChatMessagePhase.sentAwaitingAuthoritativeRecord,
+      );
+    });
+  }
+
+  void _failPendingAttempt({
+    required _EventGroupChatActionScope scope,
+    required String localId,
+    required int attemptSerial,
+    required Object error,
+    required String operation,
+  }) {
+    if (!_isPendingAttemptCurrent(scope, localId, attemptSerial)) {
+      return;
+    }
+    setState(() {
+      final pendingIndex = _pendingMessages.indexWhere(
+        (message) =>
+            message.localId == localId &&
+            message.attemptSerial == attemptSerial,
+      );
+      if (pendingIndex == -1) {
+        return;
+      }
+      _pendingMessages[pendingIndex] = _pendingMessages[pendingIndex].copyWith(
+        phase: _PendingEventChatMessagePhase.failed,
+      );
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        key: eventGroupChatSendErrorSnackBarKey,
+        content: Text(eventActionFailureMessage(context, error)),
+      ),
     );
+    if (kDebugMode) {
+      debugPrint(
+        'EventGroupChatWidget: failed to $operation message: '
+        '${error.runtimeType}',
+      );
+    }
   }
 
   String _pendingSenderDisplayName(String ownerUid) {
@@ -855,16 +1051,22 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
   _PendingEventChatMessage _createPendingMessage(
     String text, {
     required String senderId,
+    required EventChatDirectSenderSnapshot? directSender,
+    required int attemptSerial,
   }) {
     final createdAt = DateTime.now();
     return _PendingEventChatMessage(
       localId: _createClientMessageId(),
       senderId: senderId,
-      senderDisplayName: _pendingSenderDisplayName(senderId),
-      senderPhotoUrl: _pendingSenderPhotoUrl(senderId),
+      senderDisplayName:
+          directSender?.displayName ?? _pendingSenderDisplayName(senderId),
+      senderPhotoUrl: directSender == null
+          ? _pendingSenderPhotoUrl(senderId)
+          : directSender.photoUrl ?? '',
       text: text,
       createdAt: createdAt,
-      status: ChatLocalMessageStatus.sending,
+      phase: _PendingEventChatMessagePhase.sending,
+      attemptSerial: attemptSerial,
     );
   }
 
@@ -1103,11 +1305,89 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
     required int actionBoundaryRevision,
     bool showAccessRefreshError = false,
   }) {
+    final ownerUid = _activeOwnerUid;
+    final eventId = _normalizeEventId(widget.eventId);
+    if (_usesCallableOnlyParticipantCompatibility) {
+      return _buildAccessibleChatForSendContext(
+        actionBoundaryRevision: actionBoundaryRevision,
+        sendContext: const _EventGroupChatSendContext.callableOnly(
+          skipRetryLookup: true,
+        ),
+        showAccessRefreshError: showAccessRefreshError,
+      );
+    }
+
+    final participantStream = _participantStream ??= _watchParticipant(
+      ownerUid: ownerUid,
+      eventId: eventId,
+      actionBoundaryRevision: actionBoundaryRevision,
+    );
+    return StreamBuilder<EventChatParticipantLoadState>(
+      key: ValueKey<(String, String, int, String)>((
+        ownerUid,
+        eventId,
+        actionBoundaryRevision,
+        'participant',
+      )),
+      stream: participantStream,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          if (kDebugMode) {
+            debugPrint(
+              'EventGroupChatWidget: participant stream failed: '
+              '${snapshot.error.runtimeType}',
+            );
+          }
+          return _buildAccessibleChatForSendContext(
+            actionBoundaryRevision: actionBoundaryRevision,
+            sendContext: const _EventGroupChatSendContext.callableOnly(),
+            showAccessRefreshError: showAccessRefreshError,
+            showParticipantRefreshError: true,
+          );
+        }
+
+        final participantState = snapshot.data;
+        if (participantState == null || !participantState.isAuthoritative) {
+          return _buildAccessibleChatForSendContext(
+            actionBoundaryRevision: actionBoundaryRevision,
+            sendContext: const _EventGroupChatSendContext.callableOnly(),
+            showAccessRefreshError: showAccessRefreshError,
+          );
+        }
+        if (participantState.ownerUid != ownerUid ||
+            participantState.eventId != eventId ||
+            !participantState.isActive) {
+          return _accessDeniedState();
+        }
+
+        final directSender = participantState.directSenderSnapshot;
+        return _buildAccessibleChatForSendContext(
+          actionBoundaryRevision: actionBoundaryRevision,
+          sendContext: directSender == null
+              ? const _EventGroupChatSendContext.callableOnly()
+              : _EventGroupChatSendContext.direct(directSender),
+          showAccessRefreshError: showAccessRefreshError,
+        );
+      },
+    );
+  }
+
+  bool get _usesCallableOnlyParticipantCompatibility =>
+      widget.debugParticipantStateStream == null &&
+      (widget.chatStream != null || widget.debugChatAccessStateStream != null);
+
+  Widget _buildAccessibleChatForSendContext({
+    required int actionBoundaryRevision,
+    required _EventGroupChatSendContext sendContext,
+    required bool showAccessRefreshError,
+    bool showParticipantRefreshError = false,
+  }) {
     return Stack(
       fit: StackFit.expand,
       children: [
         _buildMessagesContent(
           actionBoundaryRevision: actionBoundaryRevision,
+          sendContext: sendContext,
         ),
         if (showAccessRefreshError)
           PositionedDirectional(
@@ -1116,12 +1396,20 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
             bottom: ExpatlioDesign.space112,
             child: _buildAccessInlineError(context),
           ),
+        if (showParticipantRefreshError)
+          PositionedDirectional(
+            start: ExpatlioDesign.pagePadding,
+            end: ExpatlioDesign.pagePadding,
+            bottom: ExpatlioDesign.space112,
+            child: _buildParticipantInlineError(context),
+          ),
       ],
     );
   }
 
   Widget _buildMessagesContent({
     required int actionBoundaryRevision,
+    required _EventGroupChatSendContext sendContext,
   }) {
     final ownerUid = _activeOwnerUid;
     final eventId = widget.eventId;
@@ -1152,10 +1440,8 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
                 incomingState: snapshot.data,
                 cachedState: cachedState,
               );
-              final messageRecords =
-                  messageState?.messages ?? const <EventChatMessagesRecord>[];
               final displayMessages = _displayMessages(
-                messageRecords,
+                messageState,
                 ownerUid: ownerUid,
               );
 
@@ -1175,6 +1461,7 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
                     _buildMessagesState(
                       messageState: messageState,
                       messages: displayMessages,
+                      sendContext: sendContext,
                     ),
                     PositionedDirectional(
                       start: ExpatlioDesign.pagePadding,
@@ -1196,15 +1483,17 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
                 );
               }
 
-              if (snapshot.hasData && messageState!.isAuthoritative) {
-                _rememberMessages(
-                  ownerUid,
-                  eventId,
-                  messageState.messages,
-                  actionBoundaryRevision,
-                );
+              if (snapshot.hasData) {
+                if (messageState!.isAuthoritative) {
+                  _rememberMessages(
+                    ownerUid,
+                    eventId,
+                    messageState.messages,
+                    actionBoundaryRevision,
+                  );
+                }
                 _schedulePruneConfirmedPendingMessages(
-                  messageRecords,
+                  snapshot.data!,
                   ownerUid: ownerUid,
                   actionBoundaryRevision: actionBoundaryRevision,
                 );
@@ -1212,6 +1501,7 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
               return _buildMessagesState(
                 messageState: messageState,
                 messages: displayMessages,
+                sendContext: sendContext,
               );
             },
           ),
@@ -1220,7 +1510,7 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
           key: eventGroupChatComposerKey,
           controller: _messageTextController,
           focusNode: _messageFocusNode,
-          onSendPressed: _sendMessage,
+          onSendPressed: () => _sendMessage(sendContext),
           hintText: FFLocalizations.of(context).getVariableText(
             ruText: 'Написать сообщение',
             enText: 'Write a message',
@@ -1257,6 +1547,7 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
   Widget _buildMessagesState({
     required EventChatMessagesLoadState? messageState,
     required List<_EventGroupChatDisplayMessage> messages,
+    required _EventGroupChatSendContext sendContext,
   }) {
     if (messages.isEmpty) {
       if (messageState == null || !messageState.isAuthoritative) {
@@ -1306,7 +1597,7 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
                   : () => _showReportMessageDialog(message.record!),
               onRetryPressed:
                   message.localStatus == ChatLocalMessageStatus.failed
-                      ? () => _retryPendingMessage(message.id)
+                      ? () => _retryPendingMessage(message.id, sendContext)
                       : null,
             ),
           ],
@@ -1435,7 +1726,53 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
         ownerUid: ownerUid,
         eventId: widget.eventId,
       );
+      _resetParticipantBoundary();
     });
+  }
+
+  Widget _buildParticipantInlineError(BuildContext context) {
+    final message = FFLocalizations.of(context).getVariableText(
+      ruText: 'Не удалось обновить данные участника.',
+      enText: 'Could not refresh participant details.',
+    );
+    return Material(
+      elevation: 4,
+      borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
+      child: Semantics(
+        key: eventGroupChatParticipantInlineErrorKey,
+        container: true,
+        liveRegion: true,
+        label: message,
+        child: Container(
+          padding: const EdgeInsetsDirectional.fromSTEB(
+            ExpatlioDesign.space12,
+            ExpatlioDesign.space8,
+            ExpatlioDesign.space8,
+            ExpatlioDesign.space8,
+          ),
+          decoration: BoxDecoration(
+            color: ExpatlioDesign.card,
+            borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
+            border: Border.all(color: ExpatlioDesign.danger),
+          ),
+          child: Row(
+            children: [
+              Expanded(child: Text(message)),
+              TextButton(
+                key: eventGroupChatParticipantRetryButtonKey,
+                onPressed: _retryChatAccess,
+                child: Text(
+                  FFLocalizations.of(context).getVariableText(
+                    ruText: 'Повторить',
+                    enText: 'Retry',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildAccessErrorState(BuildContext context) {
@@ -1519,25 +1856,59 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
   }
 
   List<_EventGroupChatDisplayMessage> _displayMessages(
-    List<EventChatMessagesRecord> records, {
+    EventChatMessagesLoadState? state, {
     required String ownerUid,
   }) {
-    final recordIds = records
-        .map((record) => record.reference.id)
-        .where((id) => id.trim().isNotEmpty)
-        .toSet();
-    final visiblePendingMessages = _pendingMessages.where((message) {
-      if (message.senderId != ownerUid ||
-          _activeOwnerUid != ownerUid ||
-          _authenticatedOwnerUid() != ownerUid) {
-        return false;
+    final records = state?.messages ?? const <EventChatMessagesRecord>[];
+    final authoritativePendingIds = <String>{};
+    final recoveredPending = <String, _PendingEventChatMessage>{};
+    final visibleRecords = <EventChatMessagesRecord>[];
+
+    for (final record in records) {
+      final pending = _pendingMessageMatchingRecord(record);
+      final isLocalWrite = state?.hasPendingWriteFor(record) ?? false;
+      if (pending != null) {
+        if (_isAuthoritativePendingMatch(
+          state,
+          record,
+          pending,
+          ownerUid: ownerUid,
+        )) {
+          authoritativePendingIds.add(pending.localId);
+          visibleRecords.add(record);
+        }
+        // A local echo or malformed same-ID record never replaces the bubble.
+        continue;
       }
-      final confirmedMessageId = message.serverMessageId ?? message.localId;
-      return !recordIds.contains(confirmedMessageId);
-    });
+      if (isLocalWrite) {
+        final recovered = _recoverLocalPendingMessage(
+          record,
+          ownerUid: ownerUid,
+        );
+        if (recovered != null) {
+          recoveredPending[recovered.localId] = recovered;
+          continue;
+        }
+      }
+      visibleRecords.add(record);
+    }
+
+    final visiblePendingMessages = <_PendingEventChatMessage>[
+      for (final message in _pendingMessages)
+        if (message.senderId == ownerUid &&
+            _activeOwnerUid == ownerUid &&
+            _authenticatedOwnerUid() == ownerUid &&
+            !authoritativePendingIds.contains(message.localId))
+          message,
+      for (final entry in recoveredPending.entries)
+        if (!_pendingMessages.any(
+          (message) => message.localId == entry.key,
+        ))
+          entry.value,
+    ];
 
     return <_EventGroupChatDisplayMessage>[
-      for (final record in records)
+      for (final record in visibleRecords)
         _EventGroupChatDisplayMessage.record(record),
       for (final message in visiblePendingMessages)
         _EventGroupChatDisplayMessage.pending(message),
@@ -1545,27 +1916,11 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
   }
 
   void _schedulePruneConfirmedPendingMessages(
-    List<EventChatMessagesRecord> records, {
+    EventChatMessagesLoadState state, {
     required String ownerUid,
     required int actionBoundaryRevision,
   }) {
-    if (_pendingMessages.isEmpty || records.isEmpty) {
-      return;
-    }
-
-    final recordIds = records
-        .map((record) => record.reference.id)
-        .where((id) => id.trim().isNotEmpty)
-        .toSet();
-    if (recordIds.isEmpty) {
-      return;
-    }
-
-    final hasConfirmedPending = _pendingMessages.any((message) {
-      final confirmedMessageId = message.serverMessageId ?? message.localId;
-      return recordIds.contains(confirmedMessageId);
-    });
-    if (!hasConfirmedPending) {
+    if (_pendingMessages.isEmpty && state.pendingWriteMessagePaths.isEmpty) {
       return;
     }
 
@@ -1576,13 +1931,170 @@ class _EventGroupChatWidgetState extends State<EventGroupChatWidget> {
           _actionBoundaryRevision != actionBoundaryRevision) {
         return;
       }
+
+      var changed = false;
+      final nextPending = <_PendingEventChatMessage>[];
+      for (final pending in _pendingMessages) {
+        final matchingRecords = state.messages
+            .where((record) => pending.matchesRecordId(record.reference.id))
+            .toList(growable: false);
+        final hasAuthoritativeMatch = matchingRecords.any(
+          (record) => _isAuthoritativePendingMatch(
+            state,
+            record,
+            pending,
+            ownerUid: ownerUid,
+          ),
+        );
+        if (hasAuthoritativeMatch) {
+          changed = true;
+          continue;
+        }
+
+        final hasLocalMatch = matchingRecords.any(state.hasPendingWriteFor);
+        if (hasLocalMatch && !pending.observedLocalWrite) {
+          nextPending.add(pending.copyWith(observedLocalWrite: true));
+          changed = true;
+          continue;
+        }
+        if (!hasLocalMatch &&
+            matchingRecords.isEmpty &&
+            pending.observedLocalWrite &&
+            pending.attemptSerial == 0 &&
+            !state.isFromCache &&
+            pending.phase != _PendingEventChatMessagePhase.failed) {
+          nextPending.add(
+            pending.copyWith(phase: _PendingEventChatMessagePhase.failed),
+          );
+          changed = true;
+          continue;
+        }
+        nextPending.add(pending);
+      }
+
+      for (final record in state.messages) {
+        if (!state.hasPendingWriteFor(record) ||
+            nextPending.any(
+              (pending) => pending.matchesRecordId(record.reference.id),
+            )) {
+          continue;
+        }
+        final recovered = _recoverLocalPendingMessage(
+          record,
+          ownerUid: ownerUid,
+        );
+        if (recovered != null) {
+          nextPending.add(recovered);
+          changed = true;
+        }
+      }
+
+      if (!changed) {
+        return;
+      }
       setState(() {
-        _pendingMessages.removeWhere((message) {
-          final confirmedMessageId = message.serverMessageId ?? message.localId;
-          return recordIds.contains(confirmedMessageId);
-        });
+        _pendingMessages
+          ..clear()
+          ..addAll(nextPending);
       });
     });
+  }
+
+  _PendingEventChatMessage? _pendingMessageMatchingRecord(
+    EventChatMessagesRecord record,
+  ) {
+    for (final pending in _pendingMessages) {
+      if (pending.matchesRecordId(record.reference.id)) {
+        return pending;
+      }
+    }
+    return null;
+  }
+
+  bool _isAuthoritativePendingMatch(
+    EventChatMessagesLoadState? state,
+    EventChatMessagesRecord record,
+    _PendingEventChatMessage pending, {
+    required String ownerUid,
+  }) {
+    if (state == null ||
+        state.isFromCache ||
+        state.hasPendingWriteFor(record) ||
+        pending.senderId != ownerUid ||
+        !pending.matchesRecordId(record.reference.id)) {
+      return false;
+    }
+    final expectedParentPath =
+        EventGroupChatRepository.chatReferenceForEventId(widget.eventId).path;
+    if (record.parentReference.path != expectedParentPath) {
+      return false;
+    }
+    return isCanonicalAuthoritativeEventChatMessageRecord(
+      record,
+      senderId: pending.senderId,
+      text: pending.text,
+    );
+  }
+
+  _PendingEventChatMessage? _recoverLocalPendingMessage(
+    EventChatMessagesRecord record, {
+    required String ownerUid,
+  }) {
+    final data = record.snapshotData;
+    const expectedKeys = <String>{
+      'senderId',
+      'senderDisplayName',
+      'senderPhotoUrl',
+      'text',
+      'createdAt',
+      'deletedAt',
+    };
+    final messageId = record.reference.id;
+    final displayName = data['senderDisplayName'];
+    final photoUrl = data['senderPhotoUrl'];
+    if (data.keys.toSet().difference(expectedKeys).isNotEmpty ||
+        expectedKeys.difference(data.keys.toSet()).isNotEmpty ||
+        !_eventChatClientMessageIdPattern.hasMatch(messageId) ||
+        data['senderId'] != ownerUid ||
+        displayName is! String ||
+        displayName.isEmpty ||
+        displayName != displayName.trim() ||
+        displayName.runes.length > 70 ||
+        (photoUrl != null &&
+            (photoUrl is! String ||
+                photoUrl.isEmpty ||
+                photoUrl != photoUrl.trim() ||
+                photoUrl.runes.length > 2048)) ||
+        data['text'] is! String ||
+        data['deletedAt'] != null) {
+      return null;
+    }
+    final createdAt = data['createdAt'];
+    if (createdAt != null &&
+        createdAt is! DateTime &&
+        createdAt is! Timestamp) {
+      return null;
+    }
+    late final String text;
+    try {
+      text = canonicalizeEventChatMessageText(data['text'] as String);
+    } on EventChatMessageTextValidationException {
+      return null;
+    }
+    if (text != data['text']) {
+      return null;
+    }
+    return _PendingEventChatMessage(
+      localId: messageId,
+      senderId: ownerUid,
+      senderDisplayName: displayName,
+      senderPhotoUrl: photoUrl as String? ?? '',
+      text: text,
+      createdAt: record.createdAt ?? DateTime.now(),
+      phase: _PendingEventChatMessagePhase.sending,
+      attemptSerial: 0,
+      observedLocalWrite: true,
+    );
   }
 
   Widget _accessDeniedState() {
@@ -1620,6 +2132,35 @@ class _EventGroupChatActionScope {
   final int actionBoundaryRevision;
 }
 
+enum _EventGroupChatSendMode { direct, callableOnly, disabled }
+
+class _EventGroupChatSendContext {
+  const _EventGroupChatSendContext.direct(this.directSender)
+      : mode = _EventGroupChatSendMode.direct,
+        skipRetryLookup = false;
+
+  const _EventGroupChatSendContext.callableOnly({
+    this.skipRetryLookup = false,
+  })  : mode = _EventGroupChatSendMode.callableOnly,
+        directSender = null;
+
+  final _EventGroupChatSendMode mode;
+  final EventChatDirectSenderSnapshot? directSender;
+  final bool skipRetryLookup;
+
+  bool canSendAs(String ownerUid) => switch (mode) {
+        _EventGroupChatSendMode.direct => directSender?.senderId == ownerUid,
+        _EventGroupChatSendMode.callableOnly => true,
+        _EventGroupChatSendMode.disabled => false,
+      };
+}
+
+enum _PendingEventChatMessagePhase {
+  sending,
+  sentAwaitingAuthoritativeRecord,
+  failed,
+}
+
 class _PendingEventChatMessage {
   const _PendingEventChatMessage({
     required this.localId,
@@ -1628,7 +2169,9 @@ class _PendingEventChatMessage {
     required this.senderPhotoUrl,
     required this.text,
     required this.createdAt,
-    required this.status,
+    required this.phase,
+    required this.attemptSerial,
+    this.observedLocalWrite = false,
     this.serverMessageId,
   });
 
@@ -1639,11 +2182,26 @@ class _PendingEventChatMessage {
   final String senderPhotoUrl;
   final String text;
   final DateTime createdAt;
-  final ChatLocalMessageStatus status;
+  final _PendingEventChatMessagePhase phase;
+  final int attemptSerial;
+  final bool observedLocalWrite;
+
+  ChatLocalMessageStatus get localStatus => switch (phase) {
+        _PendingEventChatMessagePhase.sending => ChatLocalMessageStatus.sending,
+        _PendingEventChatMessagePhase.sentAwaitingAuthoritativeRecord =>
+          ChatLocalMessageStatus.sent,
+        _PendingEventChatMessagePhase.failed => ChatLocalMessageStatus.failed,
+      };
+
+  bool matchesRecordId(String recordId) =>
+      recordId == localId ||
+      (serverMessageId != null && recordId == serverMessageId);
 
   _PendingEventChatMessage copyWith({
     String? serverMessageId,
-    ChatLocalMessageStatus? status,
+    _PendingEventChatMessagePhase? phase,
+    int? attemptSerial,
+    bool? observedLocalWrite,
   }) =>
       _PendingEventChatMessage(
         localId: localId,
@@ -1653,7 +2211,9 @@ class _PendingEventChatMessage {
         senderPhotoUrl: senderPhotoUrl,
         text: text,
         createdAt: createdAt,
-        status: status ?? this.status,
+        phase: phase ?? this.phase,
+        attemptSerial: attemptSerial ?? this.attemptSerial,
+        observedLocalWrite: observedLocalWrite ?? this.observedLocalWrite,
       );
 }
 
@@ -1703,7 +2263,7 @@ class _EventGroupChatDisplayMessage {
         deletedAt: null,
         record: null,
         isPending: true,
-        localStatus: message.status,
+        localStatus: message.localStatus,
       );
 
   final String id;

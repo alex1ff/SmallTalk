@@ -1,24 +1,15 @@
 // Automatic FlutterFlow imports
 import '/backend/backend.dart';
-import '/backend/schema/structs/index.dart';
-import '/backend/schema/enums/enums.dart';
-import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import 'index.dart'; // Imports other custom actions
-import '/flutter_flow/custom_functions.dart'; // Imports custom functions
 import 'package:flutter/material.dart';
 export '/services/active_search_recovery.dart' show ActiveSearchRecoveryState;
 // Begin custom action code
 // DO NOT REMOVE OR MODIFY THE CODE ABOVE!
 
-import 'index.dart'; // Imports other custom actions
-
 import 'dart:async';
 import '/auth/firebase_auth/auth_util.dart';
 import '/services/active_search_recovery.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
-import 'package:flutter/foundation.dart';
 import '/index.dart' as app;
 
 const int _activeSessionFallbackTokenMaxAttempts = 2;
@@ -718,34 +709,6 @@ bool _activeSessionSnapshotHasTerminalStatus(
   return _activeSessionIsTerminalStatus(_activeSessionNonEmpty(data['status']));
 }
 
-bool _activeSessionSnapshotHasParticipant(
-  DocumentSnapshot<Map<String, dynamic>>? snapshot,
-  String userId,
-) {
-  if (snapshot == null || !snapshot.exists) {
-    return true;
-  }
-  final data = snapshot.data();
-  if (data == null) {
-    return false;
-  }
-  return _activeSessionHasParticipant(data, userId);
-}
-
-bool _activeSessionSnapshotIsJoinableParticipant(
-  DocumentSnapshot<Map<String, dynamic>>? snapshot,
-  String userId,
-) {
-  if (snapshot == null || !snapshot.exists) {
-    return true;
-  }
-  final data = snapshot.data();
-  if (data == null) {
-    return false;
-  }
-  return _activeSessionIsJoinableParticipant(data, userId);
-}
-
 bool _activeSessionSnapshotCanResumeConnection(
   DocumentSnapshot<Map<String, dynamic>>? snapshot,
   String userId,
@@ -857,7 +820,10 @@ Future<bool> _navigateToActiveSessionCandidate({
   return true;
 }
 
-Future<bool> checkActiveSessionAndNavigate(BuildContext context) async {
+Future<bool> checkActiveSessionAndNavigate(
+  BuildContext context, {
+  void Function(UsersRecord userDocument)? onUserDocumentRead,
+}) async {
   final userId = currentUserUid;
   if (userId.isEmpty) {
     return false;
@@ -868,6 +834,7 @@ Future<bool> checkActiveSessionAndNavigate(BuildContext context) async {
     if (!userDoc.exists) {
       return false;
     }
+    onUserDocumentRead?.call(UsersRecord.fromSnapshot(userDoc));
     final userData = userDoc.data();
     if (userData?['isInCall'] != true) {
       ActiveSearchRecoveryState? activeSearchState;

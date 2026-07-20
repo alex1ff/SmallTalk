@@ -880,6 +880,35 @@ void main() {
       );
     });
 
+    test('live caption updates rebuild only the caption overlay', () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final captionUpdateSource =
+          _curlyBlockSource(source, 'void _updateCaptionState(');
+      final localFlushSource =
+          _curlyBlockSource(source, 'void _flushLocalCaptionUpdate()');
+      final remoteUpsertSource =
+          _curlyBlockSource(source, 'void _upsertRemoteCaption(');
+      final disposeSource = _curlyBlockSource(source, 'void dispose()');
+
+      expect(
+        source,
+        contains('ValueListenableBuilder<_CaptionOverlayState>'),
+      );
+      expect(captionUpdateSource, contains('final layoutChanged'));
+      expect(captionUpdateSource, contains('if (layoutChanged)'));
+      expect(captionUpdateSource, contains('_state = newState;'));
+      expect(
+        captionUpdateSource,
+        contains('_captionOverlayNotifier.value = nextCaptionState;'),
+      );
+      expect(localFlushSource, contains('_updateCaptionState('));
+      expect(localFlushSource, isNot(contains('_updateState(')));
+      expect(remoteUpsertSource, contains('_updateCaptionState('));
+      expect(remoteUpsertSource, isNot(contains('_updateState(')));
+      expect(disposeSource, contains('_captionOverlayNotifier.dispose();'));
+    });
+
     test('connected billing marker requires Daily verification backend', () {
       final markConnectedSource =
           _source('firebase/custom_cloud_functions/mark_session_connected.js');

@@ -19,6 +19,63 @@ EventInboxEventIdsLoadState _eventIdsState(
       isAuthoritative: isAuthoritative,
     );
 
+const Object _defaultCreatedAt = Object();
+
+EventParticipantsRecord _participantRecord({
+  String? photoUrl = 'https://image.test/a',
+  String eventId = 'event-1',
+  String documentId = 'uid-1',
+  String userId = 'uid-1',
+  String role = 'participant',
+  String status = 'active',
+  DateTime? leftAt,
+}) =>
+    EventParticipantsRecord.getDocumentFromData(
+      <String, dynamic>{
+        'userId': userId,
+        'displayName': 'Trusted Name',
+        'photoUrl': photoUrl,
+        'role': role,
+        'status': status,
+        'joinedAt': DateTime.utc(2026, 1, 1),
+        'leftAt': leftAt,
+        'createdAt': DateTime.utc(2026, 1, 1),
+        'updatedAt': DateTime.utc(2026, 1, 1),
+      },
+      EventParticipantsRecord.createDoc(
+        EventsRecord.collection.doc(eventId),
+        id: documentId,
+      ),
+    );
+
+Map<String, dynamic> _messageData({
+  String senderId = 'uid-1',
+  String senderDisplayName = 'Trusted Name',
+  String? senderPhotoUrl,
+  String text = 'hello',
+  Object? createdAt = _defaultCreatedAt,
+  Object? deletedAt,
+}) =>
+    <String, dynamic>{
+      'senderId': senderId,
+      'senderDisplayName': senderDisplayName,
+      'senderPhotoUrl': senderPhotoUrl,
+      'text': text,
+      'createdAt': identical(createdAt, _defaultCreatedAt)
+          ? DateTime.utc(2026, 1, 1)
+          : createdAt,
+      'deletedAt': deletedAt,
+    };
+
+EventChatMessagesRecord _messageRecord({required String messageId}) =>
+    EventChatMessagesRecord.getDocumentFromData(
+      _messageData(),
+      EventChatMessagesRecord.createDoc(
+        EventChatsRecord.collection.doc('event-1'),
+        id: messageId,
+      ),
+    );
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -134,6 +191,371 @@ void main() {
       expect(pendingEmpty.canResolveEmpty, isFalse);
       expect(serverEmpty.canResolveEmpty, isTrue);
       expect(serverEmpty.isAuthoritative, isTrue);
+    });
+
+    test('canonicalizes event chat text in callable order', () {
+      expect(
+        canonicalizeEventChatMessageText(
+          '  Cafe\u0301\r\n\r\n\r\nnext\rline  ',
+        ),
+        'Caf\u00e9\n\nnext\nline',
+      );
+
+      expect(
+        () => canonicalizeEventChatMessageText(' \r\n\n '),
+        throwsA(
+          isA<EventChatMessageTextValidationException>().having(
+            (error) => error.reason,
+            'reason',
+            EventChatMessageTextErrorReason.empty,
+          ),
+        ),
+      );
+    });
+
+    test('counts message limits by grapheme clusters', () {
+      const family = '👩‍👩‍👧‍👧';
+      final accepted = List<String>.filled(1000, family).join();
+      final rejected = '$accepted$family';
+
+      expect(canonicalizeEventChatMessageText(accepted), accepted);
+      expect(
+        () => canonicalizeEventChatMessageText(rejected),
+        throwsA(
+          isA<EventChatMessageTextValidationException>().having(
+            (error) => error.reason,
+            'reason',
+            EventChatMessageTextErrorReason.tooLong,
+          ),
+        ),
+      );
+    });
+
+    test('loads own participant in the exact owner and event scope', () async {
+      final participant = _participantRecord();
+      DocumentReference? subscribedReference;
+      String? subscribedOwner;
+      String? subscribedEvent;
+      final expectedState = resolveEventChatParticipantSnapshot(
+        eventId: 'event-1',
+        ownerUid: 'uid-1',
+        participant: participant,
+        rawData: participant.snapshotData,
+        isFromCache: false,
+        hasPendingWrites: false,
+      );
+
+      final state = await EventGroupChatRepository.watchOwnParticipantState(
+        eventId: ' event-1 ',
+        ownerUid: 'uid-1',
+        participantStateStream: (reference, ownerUid, eventId) {
+          subscribedReference = reference;
+          subscribedOwner = ownerUid;
+          subscribedEvent = eventId;
+          return Stream<EventChatParticipantLoadState>.value(expectedState);
+        },
+      ).single;
+
+      expect(subscribedReference?.path, 'events/event-1/participants/uid-1');
+      expect(subscribedOwner, 'uid-1');
+      expect(subscribedEvent, 'event-1');
+      expect(state.isAuthoritative, isTrue);
+      expect(state.isActive, isTrue);
+      expect(state.directSenderSnapshot?.senderId, 'uid-1');
+      expect(state.directSenderSnapshot?.displayName, 'Trusted Name');
+      expect(state.directSenderSnapshot?.photoUrl, 'https://image.test/a');
+    });
+
+    test('participant sender snapshot preserves missing and null photo', () {
+      final participant = _participantRecord(photoUrl: null);
+      final missingPhoto = resolveEventChatParticipantSnapshot(
+        eventId: 'event-1',
+        ownerUid: 'uid-1',
+        participant: participant,
+        rawData: <String, dynamic>{
+          ...participant.snapshotData,
+        }..remove('photoUrl'),
+        isFromCache: false,
+        hasPendingWrites: false,
+      );
+      final nullPhoto = resolveEventChatParticipantSnapshot(
+        eventId: 'event-1',
+        ownerUid: 'uid-1',
+        participant: participant,
+        rawData: <String, dynamic>{
+          ...participant.snapshotData,
+          'photoUrl': null,
+        },
+        isFromCache: false,
+        hasPendingWrites: false,
+      );
+
+      expect(missingPhoto.hasPhotoUrlField, isFalse);
+      expect(missingPhoto.directSenderSnapshot?.photoUrl, isNull);
+      expect(nullPhoto.hasPhotoUrlField, isTrue);
+      expect(nullPhoto.directSenderSnapshot?.photoUrl, isNull);
+    });
+
+    test('foreign, left, and invalid-role participants cannot send directly',
+        () {
+      final blockedParticipants = <EventParticipantsRecord>[
+        _participantRecord(eventId: 'event-2'),
+        _participantRecord(userId: 'uid-2'),
+        _participantRecord(
+          status: 'left',
+          leftAt: DateTime.utc(2026, 2, 1),
+        ),
+        _participantRecord(role: 'admin'),
+      ];
+
+      for (final participant in blockedParticipants) {
+        final state = resolveEventChatParticipantSnapshot(
+          eventId: 'event-1',
+          ownerUid: 'uid-1',
+          participant: participant,
+          rawData: participant.snapshotData,
+          isFromCache: false,
+          hasPendingWrites: false,
+        );
+
+        expect(state.isActive, isFalse, reason: '${participant.snapshotData}');
+        expect(
+          state.directSenderSnapshot,
+          isNull,
+          reason: '${participant.snapshotData}',
+        );
+      }
+    });
+
+    test('cached and pending participant states are not authoritative', () {
+      final participant = _participantRecord();
+      for (final metadata in <({bool cache, bool pending})>[
+        (cache: true, pending: false),
+        (cache: false, pending: true),
+        (cache: true, pending: true),
+      ]) {
+        final state = resolveEventChatParticipantSnapshot(
+          eventId: 'event-1',
+          ownerUid: 'uid-1',
+          participant: participant,
+          rawData: participant.snapshotData,
+          isFromCache: metadata.cache,
+          hasPendingWrites: metadata.pending,
+        );
+
+        expect(state.isActive, isTrue);
+        expect(state.directSenderSnapshot, isNotNull);
+        expect(state.isAuthoritative, isFalse);
+      }
+    });
+
+    test('malformed participant profile is not direct eligible', () {
+      for (final rawData in <Map<String, dynamic>>[
+        <String, dynamic>{
+          ..._participantRecord().snapshotData,
+          'displayName': ' Trusted Name ',
+        },
+        <String, dynamic>{
+          ..._participantRecord().snapshotData,
+          'photoUrl': '',
+        },
+        <String, dynamic>{
+          ..._participantRecord().snapshotData,
+          'photoUrl': ' https://image.test/a ',
+        },
+        <String, dynamic>{
+          ..._participantRecord().snapshotData,
+          'displayName': 'a' * 71,
+        },
+        <String, dynamic>{
+          ..._participantRecord().snapshotData,
+          'displayName': 42,
+        },
+        <String, dynamic>{
+          ..._participantRecord().snapshotData,
+          'photoUrl': 'p' * 2049,
+        },
+        <String, dynamic>{
+          ..._participantRecord().snapshotData,
+          'photoUrl': 42,
+        },
+      ]) {
+        final state = resolveEventChatParticipantSnapshot(
+          eventId: 'event-1',
+          ownerUid: 'uid-1',
+          participant: _participantRecord(),
+          rawData: rawData,
+          isFromCache: false,
+          hasPendingWrites: false,
+        );
+
+        expect(state.isActive, isTrue);
+        expect(state.directSenderSnapshot, isNull);
+      }
+    });
+
+    test('direct writer targets UUID and emits exact six-field payload',
+        () async {
+      DocumentReference? writtenReference;
+      Map<String, dynamic>? writtenData;
+      await EventGroupChatRepository.createDirectMessage(
+        eventId: ' event-1 ',
+        clientMessageId: '123e4567-e89b-42d3-a456-426614174000',
+        sender: const EventChatDirectSenderSnapshot(
+          senderId: 'uid-1',
+          displayName: 'Trusted Name',
+          photoUrl: null,
+        ),
+        text: '  Cafe\u0301\r\n\r\n\r\nnext  ',
+        writer: (reference, data) async {
+          writtenReference = reference;
+          writtenData = data;
+        },
+      );
+
+      expect(
+        writtenReference?.path,
+        'eventChats/event-1/messages/123e4567-e89b-42d3-a456-426614174000',
+      );
+      expect(writtenData?.keys.toSet(), <String>{
+        'senderId',
+        'senderDisplayName',
+        'senderPhotoUrl',
+        'text',
+        'createdAt',
+        'deletedAt',
+      });
+      expect(writtenData?['senderId'], 'uid-1');
+      expect(writtenData?['senderDisplayName'], 'Trusted Name');
+      expect(writtenData?.containsKey('senderPhotoUrl'), isTrue);
+      expect(writtenData?['senderPhotoUrl'], isNull);
+      expect(writtenData?['text'], 'Caf\u00e9\n\nnext');
+      expect(writtenData?['createdAt'], isA<FieldValue>());
+      expect(writtenData?.containsKey('deletedAt'), isTrue);
+      expect(writtenData?['deletedAt'], isNull);
+    });
+
+    test('direct writer rejects non-lowercase-v4 message ids', () async {
+      for (final messageId in <String>[
+        '123e4567-e89b-12d3-a456-426614174000',
+        '123E4567-E89B-42D3-A456-426614174000',
+        ' 123e4567-e89b-42d3-a456-426614174000 ',
+      ]) {
+        await expectLater(
+          EventGroupChatRepository.createDirectMessage(
+            eventId: 'event-1',
+            clientMessageId: messageId,
+            sender: const EventChatDirectSenderSnapshot(
+              senderId: 'uid-1',
+              displayName: 'Trusted Name',
+              photoUrl: null,
+            ),
+            text: 'hello',
+            writer: (_, __) async {},
+          ),
+          throwsArgumentError,
+          reason: 'Expected $messageId to be rejected.',
+        );
+      }
+    });
+
+    test('message state preserves per-document pending metadata', () {
+      final pending = _messageRecord(
+        messageId: '123e4567-e89b-42d3-a456-426614174000',
+      );
+      final confirmed = _messageRecord(
+        messageId: '223e4567-e89b-42d3-a456-426614174000',
+      );
+
+      final state = resolveEventChatMessagesSnapshot(
+        ownerUid: 'uid-1',
+        messages: <EventChatMessagesRecord>[pending, confirmed],
+        isFromCache: false,
+        hasPendingWrites: true,
+        pendingWriteMessagePaths: <String>[pending.reference.path],
+      );
+
+      expect(state.pendingWriteMessagePaths, <String>{pending.reference.path});
+      expect(state.hasPendingWriteFor(pending), isTrue);
+      expect(state.hasPendingWriteFor(confirmed), isFalse);
+      expect(state.isAuthoritative, isFalse);
+    });
+
+    test('retry lookup classifies matching and missing server documents',
+        () async {
+      final observedPaths = <String>[];
+      final matching =
+          await EventGroupChatRepository.lookupDirectMessageForRetry(
+        eventId: 'event-1',
+        clientMessageId: '123e4567-e89b-42d3-a456-426614174000',
+        senderId: 'uid-1',
+        text: ' hello ',
+        lookup: (reference) async {
+          observedPaths.add(reference.path);
+          return EventChatMessageServerSnapshot(
+            exists: true,
+            data: _messageData(text: 'hello'),
+          );
+        },
+      );
+      final missing =
+          await EventGroupChatRepository.lookupDirectMessageForRetry(
+        eventId: 'event-1',
+        clientMessageId: '223e4567-e89b-42d3-a456-426614174000',
+        senderId: 'uid-1',
+        text: 'hello',
+        lookup: (reference) async {
+          observedPaths.add(reference.path);
+          return const EventChatMessageServerSnapshot.missing();
+        },
+      );
+
+      expect(matching.isMatching, isTrue);
+      expect(missing.isMissing, isTrue);
+      expect(observedPaths, <String>[
+        'eventChats/event-1/messages/123e4567-e89b-42d3-a456-426614174000',
+        'eventChats/event-1/messages/223e4567-e89b-42d3-a456-426614174000',
+      ]);
+    });
+
+    test('retry lookup fails closed for conflicting server documents',
+        () async {
+      final conflicts = <Map<String, dynamic>>[
+        _messageData(senderId: 'uid-2'),
+        _messageData(text: 'different'),
+        _messageData(createdAt: null),
+        _messageData(createdAt: 'not-a-timestamp'),
+        _messageData(deletedAt: DateTime.utc(2026)),
+        _messageData(senderDisplayName: ''),
+        _messageData(senderDisplayName: ' Untrimmed '),
+        _messageData(senderDisplayName: 'a' * 71),
+        <String, dynamic>{
+          ..._messageData(),
+          'senderDisplayName': 42,
+        },
+        _messageData(senderPhotoUrl: ''),
+        _messageData(senderPhotoUrl: ' https://image.test/a '),
+        _messageData(senderPhotoUrl: 'p' * 2049),
+        <String, dynamic>{..._messageData(), 'senderPhotoUrl': 42},
+        <String, dynamic>{..._messageData(), 'extra': true},
+        <String, dynamic>{..._messageData()}..remove('senderPhotoUrl'),
+      ];
+
+      for (final data in conflicts) {
+        final result =
+            await EventGroupChatRepository.lookupDirectMessageForRetry(
+          eventId: 'event-1',
+          clientMessageId: '123e4567-e89b-42d3-a456-426614174000',
+          senderId: 'uid-1',
+          text: 'hello',
+          lookup: (_) async => EventChatMessageServerSnapshot(
+            exists: true,
+            data: data,
+          ),
+        );
+
+        expect(result.isConflict, isTrue, reason: '$data');
+      }
     });
 
     test('bounds remembered inbox ids and forgets inaccessible ids', () {

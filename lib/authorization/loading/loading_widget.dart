@@ -93,8 +93,8 @@ class _LoadingWidgetState extends State<LoadingWidget> {
     );
   }
 
-  Future<AuthenticatedUserProfileResolution>
-      _resolveUserProfileForRouting() async {
+  Future<AuthenticatedUserProfileResolution> _resolveUserProfileForRouting(
+      {bool refreshFromBackend = true}) async {
     final authUid = resolveAuthenticatedUserId();
     if (authUid == null) {
       _debugLoadingLog('auth uid unavailable during route resolution');
@@ -116,7 +116,7 @@ class _LoadingWidgetState extends State<LoadingWidget> {
     );
     return resolveAuthenticatedUserProfile(
       preferredUid: authUid,
-      refreshFromBackend: true,
+      refreshFromBackend: refreshFromBackend,
       onDebugLog: _debugLoadingLog,
     );
   }
@@ -276,12 +276,21 @@ class _LoadingWidgetState extends State<LoadingWidget> {
         return;
       }
 
-      _model.check = await actions.checkActiveSessionAndNavigate(context);
+      UsersRecord? activeSessionUserDocument;
+      _model.check = await actions.checkActiveSessionAndNavigate(
+        context,
+        onUserDocumentRead: (userDocument) {
+          activeSessionUserDocument = userDocument;
+          currentUserDocument = userDocument;
+        },
+      );
       if (_model.check == true || !mounted) {
         return;
       }
 
-      final resolution = await _resolveUserProfileForRouting();
+      final resolution = await _resolveUserProfileForRouting(
+        refreshFromBackend: activeSessionUserDocument == null,
+      );
       final userDocument = resolution.userDocument;
       _latestProfileResolution = resolution;
       _latestResolvedUserDocument = userDocument;
@@ -393,6 +402,7 @@ class _LoadingWidgetState extends State<LoadingWidget> {
                 height: 64.0,
                 child: Image.asset(
                   'assets/images/logo.png',
+                  cacheWidth: 984,
                   fit: BoxFit.contain,
                 ),
               ),

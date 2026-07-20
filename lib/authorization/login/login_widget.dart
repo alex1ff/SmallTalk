@@ -286,6 +286,7 @@ class _LoginWidgetState extends State<LoginWidget> {
                         'assets/images/logo.png',
                         width: 226.0,
                         height: 82.0,
+                        cacheWidth: 984,
                         fit: BoxFit.contain,
                       ),
                       const SizedBox(height: ExpatlioDesign.space32),

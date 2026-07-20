@@ -1298,6 +1298,15 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     }
   }
 
+  String _levelFilterLabel(BuildContext context, Level level) {
+    final levelCode = _levelShortLabel(level);
+    return _localizedText(
+      context: context,
+      ruText: 'От $levelCode',
+      enText: 'From $levelCode',
+    );
+  }
+
   String _defaultPartnerLevelLabel(BuildContext context, UsersRecord? user) {
     final currentUserLevel = resolveUserMatchLevel(user);
     if (currentUserLevel == null) {
@@ -1308,7 +1317,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       );
     }
 
-    return _levelShortLabel(currentUserLevel);
+    return _levelFilterLabel(context, currentUserLevel);
   }
 
   Future<void> _clearPreferredLocation() async {
@@ -1358,16 +1367,17 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       ..sort((left, right) => left.index.compareTo(right.index));
   }
 
-  String _levelDropdownLabel(Level level) {
+  String _levelDropdownLabel(BuildContext context, Level level) {
+    final levelFilterLabel = _levelFilterLabel(context, level);
     switch (level) {
       case Level.Beginner:
-        return 'A1 — Beginner';
+        return '$levelFilterLabel — Beginner';
       case Level.Basic:
-        return 'A2 — Basic';
+        return '$levelFilterLabel — Basic';
       case Level.Intermediate:
-        return 'B1 — Intermediate';
+        return '$levelFilterLabel — Intermediate';
       case Level.Fluent:
-        return 'C1 — Fluent';
+        return '$levelFilterLabel — Fluent';
     }
   }
 
@@ -1384,7 +1394,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
         for (final level in Level.values)
           _DashboardMenuOption<String>(
             value: level.name,
-            label: _levelDropdownLabel(level),
+            label: _levelDropdownLabel(context, level),
             selected: level == currentPartnerLevel,
           ),
         _DashboardMenuOption<String>(
@@ -2840,6 +2850,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
               'assets/images/logo.png',
               width: 246.0,
               height: 72.0,
+              cacheWidth: 984,
               fit: BoxFit.contain,
             ),
             const SizedBox(height: ExpatlioDesign.space24),
@@ -2882,7 +2893,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
                     ),
                     label: selectedPartnerLevel == null
                         ? ''
-                        : _levelShortLabel(selectedPartnerLevel),
+                        : _levelFilterLabel(context, selectedPartnerLevel),
                     selected: selectedPartnerLevel != null,
                     icon: Icons.school_outlined,
                     menuOpen: _isLevelMenuOpen,
@@ -3671,7 +3682,8 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
                                               context,
                                               currentUserDocument,
                                             )
-                                          : _levelShortLabel(
+                                          : _levelFilterLabel(
+                                              context,
                                               selectedPartnerLevel,
                                             ),
                                       selected: selectedPartnerLevel != null,

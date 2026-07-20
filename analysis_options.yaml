@@ -4,5 +4,6 @@
 analyzer:
   exclude:
     - node_modules/**
-    - lib/custom_code/**
+    - lib/custom_code/widgets/minimal_daily_widget_backup_20260124.dart
+    - lib/custom_code/widgets/minimal_daily_widget_snapshot_20260306.dart
     - lib/flutter_flow/custom_functions.dart

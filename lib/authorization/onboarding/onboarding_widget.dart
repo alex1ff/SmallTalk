@@ -92,6 +92,7 @@ class _OnboardingWidgetState extends State<OnboardingWidget> {
                                 'assets/images/logo.png',
                                 width: double.infinity,
                                 height: double.infinity,
+                                cacheWidth: 984,
                                 fit: BoxFit.contain,
                                 alignment: Alignment(0, -0.2),
                               ),

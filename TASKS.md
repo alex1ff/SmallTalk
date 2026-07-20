@@ -96,7 +96,7 @@ Date: 2026-06-14
 - [x] Block reopening/restoring canceled events to `active` in MVP.
 - [x] Block event chat writes after cancellation.
 - [x] Fail closed when event chat metadata is missing or `eventChats/{chatId}.eventId` does not match the owning event id.
-- [x] Implement callable Cloud Function `sendEventChatMessage` with exact request schema `{eventId, text}`; reject unknown request keys; validate `eventId` as a non-empty Firestore document id/path segment with no `/`; use authenticated uid as `senderId`; generate `messageId`; return `messageId` and `createdAt`; and check active event status, matching chat metadata, active participant membership, allowed message fields, trusted `createdAt`, `deletedAt = null`, normalized non-empty text, and max 1000 grapheme clusters.
+- [x] Implement callable Cloud Function `sendEventChatMessage` with required `{eventId, text}` and optional idempotency key `clientMessageId`; reject unknown request keys; validate identifiers; use authenticated uid as `senderId`; return `messageId` and `createdAt`; and check active event status, matching chat metadata, active participant membership, allowed message fields, trusted `createdAt`, `deletedAt = null`, normalized non-empty text, and max 1000 grapheme clusters.
 - [x] Derive event chat message `senderDisplayName` and `senderPhotoUrl` server-side from trusted participant/profile data during send.
 - [x] Block ordinary event chat message edit, soft delete, hard delete, and sender snapshot mutation in MVP.
 
@@ -116,14 +116,14 @@ Date: 2026-06-14
 - [x] Allow canceled event chat reads only for organizer and participants active at cancellation time.
 - [x] Deny canceled event chat reads for nonparticipants and users who left before cancellation.
 - [x] Allow event chat metadata reads only according to active/canceled chat access rules.
-- [x] Enforce that `sendEventChatMessage` is the only MVP message write path; Firestore rules must deny direct message creates, updates, and deletes.
+- [x] Allow strict direct creates at `eventChats/{eventId}/messages/{uuid}` only for authenticated active participants of an active matching event/chat; validate the exact six-field schema, participant-owned sender snapshot, canonical bounded text, UUID v4 id, `createdAt == request.time`, and `deletedAt = null`.
 - [x] Block direct leave/membership writes at or after `startsAt` using trusted request/server time.
 - [x] Block direct client creates, updates, and deletes of `eventChats/{chatId}` metadata, especially `readAccessUserIds`.
 - [x] Block client hard delete of event chat documents.
 - [x] Allow active event chat message reads only for active participants.
 - [x] Allow canceled event chat message reads only for users in frozen `readAccessUserIds`.
 - [x] Deny event chat message reads for nonparticipants, users who left while the event is active, users outside canceled `readAccessUserIds`, and missing/mismatched chat metadata.
-- [x] Deny direct client creates, updates, and deletes of event chat message documents.
+- [x] Deny all direct event chat message updates and deletes; deny every direct create that fails membership, lifecycle, relationship, identity, schema, type, size, canonical-text, UUID, or server-time validation.
 - [x] Add rules tests for create, edit, cancel, join, leave, and chat access.
 
 ## Phase 4: Flutter Data Layer
@@ -277,7 +277,7 @@ Date: 2026-06-14
 - [x] Open chat from event detail only for participants.
 - [x] Show `Сначала присоединитесь к событию` for non-participants.
 - [x] Load event chat messages.
-- [x] Send event chat messages through `sendEventChatMessage`.
+- [x] Show a message optimistically, write it directly to Firestore when the participant snapshot is authoritative/direct-eligible, and retain `sendEventChatMessage` as the permission-denied and callable-only fallback with the same client message UUID.
 - [x] Show sender name/avatar.
 - [x] Render removed/tombstoned message state when `deletedAt` is non-null, if such messages are encountered.
 - [x] Prevent read/write after participant leaves.
@@ -385,9 +385,9 @@ Deferred from active scope on 2026-06-19.
 - [x] Add rules tests that canceled event chat blocks all chat writes for everyone, including message create/update/delete and `eventChats` metadata writes.
 - [x] Add event chat metadata tests for `chatId = eventId`, matching `eventId`, no independent chat status fields, blocked direct metadata writes/deletes, `updatedAt` metadata semantics, and fail-closed missing/mismatched metadata.
 - [x] Add `readAccessUserIds` tests for uniqueness, no semantic ordering, create `[organizerId]`, join/rejoin add, duplicate active join no-op, leave removes only before `startsAt`, cancel snapshot formula, immutable frozen snapshot, repeated cancel no snapshot changes, and join/leave/rejoin versus cancel commit ordering.
-- [x] Add event chat message backend send tests for valid send, exact `{eventId, text}` request schema, unknown request keys denied, malformed/empty/slash-containing `eventId` denied, active participant requirement, nonparticipant denied, user who left denied, canceled send denied, spoofed `senderId` denied or ignored, server-derived sender snapshots, blank display name after fallback denied, 70/71 grapheme sender display name bounds, nullable sender photo, 2048/2049 character sender photo URL bounds, missing/mismatched chat metadata fail-closed behavior, allowed-fields-only writes, invalid `text` denied, text normalization, 1000/1001 grapheme text length bounds, multiline text, trusted `createdAt`, and `deletedAt = null`.
+- [x] Add event chat message backend send tests for valid send, required `{eventId, text}` plus optional `clientMessageId`, unknown request keys denied, malformed identifiers denied, idempotent same-id replay/conflict, active participant requirement, nonparticipant/left/canceled denial, server-derived sender snapshots, allowed-fields-only writes, text normalization and 1000-grapheme bound, trusted `createdAt`, and `deletedAt = null`.
 - [x] Add moderation tombstone tests proving trusted deletion replaces readable `text` with a fixed non-user-content placeholder and does not expose original removed content through event chat message reads.
-- [x] Add event chat message rules tests for active participant read, left/nonparticipant read denial while active, canceled read for frozen `readAccessUserIds`, canceled read denial for users outside the snapshot, missing/mismatched chat metadata fail-closed behavior, and direct client create/update/delete denied.
+- [x] Add event chat message rules tests for active/canceled reads plus strict direct-create allow/deny coverage: participant/organizer, guest/nonparticipant/left/canceled/admin-only, spoofed or mismatched identity snapshots, UUID/timestamp/schema/type/text bounds, update/delete, and mixed batches.
 - [x] Add event chat message repository/UI tests for stable ordering and pagination by `createdAt` plus `__name__` / document id.
 - [x] Add widget tests for canceled chat read-only banner/status and hidden or disabled composer.
 - [x] Add widget tests for list empty/loading/error states.
@@ -405,6 +405,7 @@ Deferred from active scope on 2026-06-19.
 
 - [x] Confirm Firebase indexes deployed.
 - [x] Confirm Firebase rules deployed.
+- [ ] Deploy the updated strict event-chat create rules before releasing the direct-write app build; rollback can set message `allow create` back to `false` while the app falls back to the callable.
 - [x] Confirm Cloud Functions or transaction endpoints deployed if used.
 - [x] Smoke test new user with profile city.
 - [x] Smoke test user without profile city.

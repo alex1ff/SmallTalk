@@ -52,6 +52,9 @@ const ValueKey<String> nativeSpeakerReviewsRetryButtonKey =
     ValueKey<String>('native_speaker_reviews_retry_button');
 const ValueKey<String> nativeSpeakerReviewsRefreshingKey =
     ValueKey<String>('native_speaker_reviews_refreshing');
+const ValueKey<String> nativeSpeakerReviewsLoadMoreButtonKey =
+    ValueKey<String>('native_speaker_reviews_load_more_button');
+const int nativeSpeakerReviewsPageSize = 20;
 const ValueKey<String> nativeSpeakerPageScrollKey =
     ValueKey<String>('native_speaker_page_scroll');
 const ValueKey<String> nativeSpeakerFavoriteActionKey =
@@ -60,6 +63,8 @@ const ValueKey<String> nativeSpeakerDirectCallActionKey =
     ValueKey<String>('native_speaker_direct_call_action');
 const ValueKey<String> nativeSpeakerStatsValueKey =
     ValueKey<String>('native_speaker_stats_value');
+const ValueKey<String> nativeSpeakerRatingDistributionKey =
+    ValueKey<String>('native_speaker_rating_distribution');
 
 ValueKey<String> nativeSpeakerReviewKey(ReviewsRecord review) =>
     ValueKey<String>('native_speaker_review_${review.reference.path}');
@@ -92,6 +97,18 @@ typedef NativeSpeakerDirectCallNavigator = Future<void> Function(
   BuildContext context,
   String targetTutorId,
 );
+
+final class _BoundedNativeSpeakerReviewsResult {
+  const _BoundedNativeSpeakerReviewsResult({
+    required this.result,
+    required this.hasMore,
+    this.visibleLimit,
+  });
+
+  final ReviewsLoadResult result;
+  final bool hasMore;
+  final int? visibleLimit;
+}
 
 class NativeSpeakerPageWidget extends StatefulWidget {
   const NativeSpeakerPageWidget({
@@ -153,11 +170,15 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
   int _authSubscriptionGeneration = 0;
   int _reviewsRequestGeneration = 0;
   StreamSubscription<String>? _authLifecycleSubscription;
-  StreamSubscription<ReviewsLoadResult>? _reviewsResultSubscription;
+  StreamSubscription<_BoundedNativeSpeakerReviewsResult>?
+      _reviewsResultSubscription;
   String? _latestAuthStreamUid;
   List<ReviewsRecord>? _lastSuccessfulReviews;
   Object? _reviewsError;
   bool _reviewsLoading = false;
+  int _reviewsLimit = nativeSpeakerReviewsPageSize;
+  bool _reviewsHasMore = false;
+  Future<Map<int, int>>? _ratingCountsFuture;
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
   final ScrollController _scrollController = ScrollController();
@@ -261,14 +282,16 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
   }
 
   Query _reviewsQuery(
-    DocumentReference targetReference,
-  ) {
-    return ReviewsRecord.collection
+    DocumentReference targetReference, {
+    int? fetchLimit,
+  }) {
+    final query = ReviewsRecord.collection
         .where(
           'toUserId',
           isEqualTo: targetReference,
         )
         .orderBy('createdAt', descending: true);
+    return fetchLimit == null ? query : query.limit(fetchLimit);
   }
 
   ReviewsLoadResult _reviewsResultFromSnapshot(
@@ -283,19 +306,72 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
     );
   }
 
-  Stream<ReviewsLoadResult> _defaultReviewsResultStream(
-    DocumentReference targetReference,
+  _BoundedNativeSpeakerReviewsResult _boundedReviewsResult(
+    ReviewsLoadResult result,
+    int visibleLimit,
   ) {
-    return _reviewsQuery(targetReference)
-        .snapshots(includeMetadataChanges: true)
-        .map(_reviewsResultFromSnapshot);
+    return _BoundedNativeSpeakerReviewsResult(
+      result: ReviewsLoadResult(
+        reviews: List<ReviewsRecord>.unmodifiable(
+          result.reviews.take(visibleLimit),
+        ),
+        isFromCache: result.isFromCache,
+        hasPendingWrites: result.hasPendingWrites,
+      ),
+      hasMore: result.reviews.length > visibleLimit,
+      visibleLimit: visibleLimit,
+    );
   }
 
-  Stream<ReviewsLoadResult> _reviewsResultStream(
+  Stream<_BoundedNativeSpeakerReviewsResult> _defaultReviewsResultStream(
     DocumentReference targetReference,
+    int visibleLimit,
   ) {
-    return widget.reviewsResultStreamFactory?.call(targetReference) ??
-        _defaultReviewsResultStream(targetReference);
+    return _reviewsQuery(
+      targetReference,
+      fetchLimit: visibleLimit + 1,
+    )
+        .snapshots(includeMetadataChanges: true)
+        .map(_reviewsResultFromSnapshot)
+        .map((result) => _boundedReviewsResult(result, visibleLimit));
+  }
+
+  Stream<_BoundedNativeSpeakerReviewsResult> _reviewsResultStream(
+    DocumentReference targetReference,
+    int visibleLimit,
+  ) {
+    final streamFactory = widget.reviewsResultStreamFactory;
+    if (streamFactory != null) {
+      return streamFactory(targetReference)
+          .map((result) => _boundedReviewsResult(result, visibleLimit));
+    }
+    return _defaultReviewsResultStream(targetReference, visibleLimit);
+  }
+
+  bool get _reviewsPaginationEnabled =>
+      widget.reviewsResultStreamFactory != null ||
+      (widget.reviewsResultLoader == null && widget.reviewsLoader == null);
+
+  bool get _usesDefaultReviewsSource =>
+      widget.reviewsResultStreamFactory == null &&
+      widget.reviewsResultLoader == null &&
+      widget.reviewsLoader == null;
+
+  Future<Map<int, int>> _loadRatingCounts(
+    DocumentReference targetReference,
+  ) async {
+    final baseQuery = ReviewsRecord.collection.where(
+      'toUserId',
+      isEqualTo: targetReference,
+    );
+    final snapshots = await Future.wait([
+      for (var rating = 1; rating <= 5; rating++)
+        baseQuery.where('rating', isEqualTo: rating).count().get(),
+    ]);
+    return <int, int>{
+      for (var index = 0; index < snapshots.length; index++)
+        index + 1: snapshots[index].count ?? 0,
+    };
   }
 
   bool get _usesReviewsResultStream =>
@@ -340,9 +416,21 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
     _reviewsRequestGeneration += 1;
     final targetPath = targetReference?.path ?? '';
     _activeReviewsTargetPath = targetPath;
-    _lastSuccessfulReviews = targetPath.isEmpty
+    _reviewsLimit = nativeSpeakerReviewsPageSize;
+    _reviewsHasMore = false;
+    _ratingCountsFuture = targetReference != null &&
+            targetPath.isNotEmpty &&
+            _usesDefaultReviewsSource
+        ? _loadRatingCounts(targetReference)
+        : null;
+    final cachedReviews = targetPath.isEmpty
         ? null
         : NativeSpeakerPageModel.cachedReviews(targetPath);
+    _lastSuccessfulReviews = cachedReviews == null || !_reviewsPaginationEnabled
+        ? cachedReviews
+        : List<ReviewsRecord>.unmodifiable(
+            cachedReviews.take(_reviewsLimit),
+          );
     _reviewsError = null;
     _reviewsLoading = targetReference != null && targetPath.isNotEmpty;
     if (targetReference != null && targetPath.isNotEmpty) {
@@ -366,6 +454,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
     final cacheGeneration = NativeSpeakerPageModel.sessionCacheGeneration;
     final targetEpoch = _targetEpoch;
     final authEpoch = _authEpoch;
+    final reviewsLimit = _reviewsLimit;
     _reviewsError = null;
     _reviewsLoading = true;
     if (notify && mounted) {
@@ -380,6 +469,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
         cacheGeneration: cacheGeneration,
         targetEpoch: targetEpoch,
         authEpoch: authEpoch,
+        reviewsLimit: reviewsLimit,
       );
       return;
     }
@@ -461,10 +551,13 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
     required int cacheGeneration,
     required int targetEpoch,
     required int authEpoch,
+    required int reviewsLimit,
   }) {
     var receivedAuthoritativeResult = false;
-    _reviewsResultSubscription = _reviewsResultStream(targetReference).listen(
-      (result) {
+    _reviewsResultSubscription =
+        _reviewsResultStream(targetReference, reviewsLimit).listen(
+      (boundedResult) {
+        final result = boundedResult.result;
         if (!_reviewsRequestIsCurrent(
           targetPath,
           requestGeneration,
@@ -480,9 +573,14 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
             previous: previous ?? const <ReviewsRecord>[],
             incoming: result.reviews,
           );
+          final visibleReviews = boundedResult.visibleLimit == null
+              ? mergedReviews
+              : List<ReviewsRecord>.unmodifiable(
+                  mergedReviews.take(boundedResult.visibleLimit!),
+                );
           setState(() {
-            if (previous != null || mergedReviews.isNotEmpty) {
-              _lastSuccessfulReviews = mergedReviews;
+            if (previous != null || visibleReviews.isNotEmpty) {
+              _lastSuccessfulReviews = visibleReviews;
             }
             _reviewsError = null;
             _reviewsLoading = true;
@@ -499,6 +597,7 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
         );
         setState(() {
           _lastSuccessfulReviews = stableReviews;
+          _reviewsHasMore = boundedResult.hasMore;
           _reviewsError = null;
           _reviewsLoading = false;
         });
@@ -557,8 +656,46 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
   void _retryReviews() {
     final targetReference = widget.nsUserDocRef;
     if (targetReference != null) {
+      _ratingCountsFuture = _usesDefaultReviewsSource
+          ? _loadRatingCounts(targetReference)
+          : null;
       _startReviewsLoad(targetReference, notify: true);
     }
+  }
+
+  void _loadMoreReviews() {
+    final targetReference = widget.nsUserDocRef;
+    if (targetReference == null ||
+        !_reviewsPaginationEnabled ||
+        !_reviewsHasMore ||
+        _reviewsLoading) {
+      return;
+    }
+    _reviewsLimit += nativeSpeakerReviewsPageSize;
+    _startReviewsLoad(targetReference, notify: true);
+  }
+
+  Widget _buildLoadMoreReviewsButton() {
+    return Padding(
+      padding: const EdgeInsetsDirectional.fromSTEB(
+        ExpatlioDesign.space16,
+        ExpatlioDesign.space16,
+        ExpatlioDesign.space16,
+        ExpatlioDesign.space0,
+      ),
+      child: Center(
+        child: OutlinedButton(
+          key: nativeSpeakerReviewsLoadMoreButtonKey,
+          onPressed: _reviewsLoading ? null : _loadMoreReviews,
+          child: Text(
+            _localizedText(
+              ruText: 'Показать ещё',
+              enText: 'Show more',
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   String _directAuthUid() {
@@ -778,6 +915,11 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
             oldWidget.reviewsResultStreamFactory !=
                 widget.reviewsResultStreamFactory) &&
         widget.nsUserDocRef != null) {
+      _reviewsLimit = nativeSpeakerReviewsPageSize;
+      _reviewsHasMore = false;
+      _ratingCountsFuture = _usesDefaultReviewsSource
+          ? _loadRatingCounts(widget.nsUserDocRef!)
+          : null;
       _startReviewsLoad(widget.nsUserDocRef!, notify: false);
     }
     if (oldWidget.authUidStream != widget.authUidStream) {
@@ -1649,7 +1791,17 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
       );
     }
 
-    Widget content = _buildReviewsContent(nativeSpeakerProfile, reviews);
+    final ratingCountsFuture = _ratingCountsFuture;
+    Widget content = ratingCountsFuture == null
+        ? _buildReviewsContent(nativeSpeakerProfile, reviews)
+        : FutureBuilder<Map<int, int>>(
+            future: ratingCountsFuture,
+            builder: (context, snapshot) => _buildReviewsContent(
+              nativeSpeakerProfile,
+              reviews,
+              authoritativeRatingCounts: snapshot.data,
+            ),
+          );
     content = UxRefreshingIndicatorOverlay(
       key: nativeSpeakerReviewsRefreshingKey,
       isRefreshing: _reviewsLoading,
@@ -1697,23 +1849,30 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
 
   Widget _buildReviewsContent(
     UserPublicProfilesRecord nativeSpeakerProfile,
-    List<ReviewsRecord> containerReviewsRecordList,
-  ) {
-    final ratingBuckets = <int, int>{1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
+    List<ReviewsRecord> containerReviewsRecordList, {
+    Map<int, int>? authoritativeRatingCounts,
+  }) {
+    final loadedRatingCounts = <int, int>{1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
     for (final review in containerReviewsRecordList) {
-      if (ratingBuckets.containsKey(review.rating)) {
-        ratingBuckets[review.rating] = ratingBuckets[review.rating]! + 1;
+      if (loadedRatingCounts.containsKey(review.rating)) {
+        loadedRatingCounts[review.rating] =
+            loadedRatingCounts[review.rating]! + 1;
       }
     }
-    final totalReviews = nativeSpeakerProfile.ratingCount;
+    final loadedReviewsAreComplete =
+        !_reviewsPaginationEnabled || (!_reviewsLoading && !_reviewsHasMore);
+    final ratingCounts = authoritativeRatingCounts ??
+        (loadedReviewsAreComplete ? loadedRatingCounts : null);
+    final ratingDistributionTotal =
+        ratingCounts?.values.fold<int>(0, (sum, count) => sum + count) ?? 0;
 
-    int countForRating(int ratingValue) => ratingBuckets[ratingValue] ?? 0;
+    int countForRating(int ratingValue) => ratingCounts?[ratingValue] ?? 0;
 
     double percentForRating(int ratingValue) {
-      if (totalReviews <= 0) {
+      if (ratingDistributionTotal <= 0) {
         return 0.0;
       }
-      final percent = countForRating(ratingValue) / totalReviews;
+      final percent = countForRating(ratingValue) / ratingDistributionTotal;
       return percent.clamp(0.0, 1.0).toDouble();
     }
 
@@ -1800,7 +1959,9 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                           ),
                         ],
                       ),
-                      Expanded(
+                      if (ratingCounts != null)
+                        Expanded(
+                          key: nativeSpeakerRatingDistributionKey,
                         child: Padding(
                           padding: EdgeInsetsDirectional.fromSTEB(
                               ExpatlioDesign.space12,
@@ -2567,37 +2728,51 @@ class _NativeSpeakerPageWidgetState extends State<NativeSpeakerPageWidget> {
                           .toList();
 
                       if (rew.isEmpty) {
-                        return Center(
-                          child: EmptyWidget(
-                            txt:
-                                'По выбранному рейтингу пока ничего нет. Попробуйте другую оценку.',
-                          ),
+                        return Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Center(
+                              child: EmptyWidget(
+                                txt:
+                                    'По выбранному рейтингу пока ничего нет. Попробуйте другую оценку.',
+                              ),
+                            ),
+                            if (_reviewsPaginationEnabled && _reviewsHasMore)
+                              _buildLoadMoreReviewsButton(),
+                          ],
                         );
                       }
 
-                      return ListView.separated(
-                        key: nativeSpeakerReviewsListKey,
-                        padding: EdgeInsets.zero,
-                        primary: false,
-                        shrinkWrap: true,
-                        scrollDirection: Axis.vertical,
-                        itemCount: rew.length,
-                        separatorBuilder: (_, __) =>
-                            SizedBox(height: ExpatlioDesign.space8),
-                        itemBuilder: (context, rewIndex) {
-                          final rewItem = rew[rewIndex];
-                          return Padding(
-                            padding: EdgeInsetsDirectional.fromSTEB(
-                                ExpatlioDesign.space16,
-                                ExpatlioDesign.space0,
-                                ExpatlioDesign.space16,
-                                ExpatlioDesign.space0),
-                            child: ReviewCardWidget(
-                              key: nativeSpeakerReviewKey(rewItem),
-                              rewDoc: rewItem,
-                            ),
-                          );
-                        },
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ListView.separated(
+                            key: nativeSpeakerReviewsListKey,
+                            padding: EdgeInsets.zero,
+                            primary: false,
+                            shrinkWrap: true,
+                            scrollDirection: Axis.vertical,
+                            itemCount: rew.length,
+                            separatorBuilder: (_, __) =>
+                                SizedBox(height: ExpatlioDesign.space8),
+                            itemBuilder: (context, rewIndex) {
+                              final rewItem = rew[rewIndex];
+                              return Padding(
+                                padding: EdgeInsetsDirectional.fromSTEB(
+                                    ExpatlioDesign.space16,
+                                    ExpatlioDesign.space0,
+                                    ExpatlioDesign.space16,
+                                    ExpatlioDesign.space0),
+                                child: ReviewCardWidget(
+                                  key: nativeSpeakerReviewKey(rewItem),
+                                  rewDoc: rewItem,
+                                ),
+                              );
+                            },
+                          ),
+                          if (_reviewsPaginationEnabled && _reviewsHasMore)
+                            _buildLoadMoreReviewsButton(),
+                        ],
                       );
                     },
                   ),

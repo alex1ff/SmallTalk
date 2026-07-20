@@ -23,6 +23,9 @@ const pastStartsAt = {
   toMillis: () => Date.parse("2026-06-16T09:00:00.000Z"),
   toDate: () => new Date("2026-06-16T09:00:00.000Z"),
 };
+const fixedClientMessageId = "123e4567-e89b-42d3-a456-426614174000";
+const fixedClientMessagePath =
+  `eventChats/event-1/messages/${fixedClientMessageId}`;
 
 function assertHttpsError(fn, code, domainCode, field, reason) {
   assert.throws(fn, (err) => {
@@ -342,24 +345,37 @@ test("normalizeSendEventChatMessagePayload validates event id and text", () => {
   );
 });
 
-test("normalizeSendEventChatMessagePayload accepts optional client message id",
+test("normalizeSendEventChatMessagePayload validates optional client message id",
     () => {
       assert.deepEqual(
           normalizeSendEventChatMessagePayload({
             eventId: "event-1",
             text: "Hello",
-            clientMessageId: " client-message-1 ",
+            clientMessageId: fixedClientMessageId,
           }),
           {
             eventId: "event-1",
             text: "Hello",
-            clientMessageId: "client-message-1",
+            clientMessageId: fixedClientMessageId,
           },
+      );
+      assert.equal(
+          normalizeSendEventChatMessagePayload({
+            eventId: "event-1",
+            text: "Hello",
+            clientMessageId: null,
+          }).clientMessageId,
+          null,
       );
 
       for (const clientMessageId of [
         "",
         " ",
+        "client-message-1",
+        fixedClientMessageId.toUpperCase(),
+        "123e4567-e89b-32d3-a456-426614174000",
+        "123e4567-e89b-42d3-7456-426614174000",
+        ` ${fixedClientMessageId} `,
         "messages/message-1",
         ".",
         "..",
@@ -431,7 +447,7 @@ test("executeSendEventChatMessageTransaction is idempotent by client message id"
     async () => {
       const {db, reads, store, writes} = createFakeFirestore({
         ...validSeed(),
-        "eventChats/event-1/messages/client-message-1": eventChatMessage({
+        [fixedClientMessagePath]: eventChatMessage({
           text: "Hello event",
           createdAt: fixedTimestamp,
         }),
@@ -445,13 +461,13 @@ test("executeSendEventChatMessageTransaction is idempotent by client message id"
         payload: {
           eventId: "event-1",
           text: "Hello event",
-          clientMessageId: "client-message-1",
+          clientMessageId: fixedClientMessageId,
         },
       });
 
       assert.deepEqual(response, {
         eventId: "event-1",
-        messageId: "client-message-1",
+        messageId: fixedClientMessageId,
         createdAt: "2026-06-16T10:00:00.000Z",
       });
       assert.deepEqual(reads, [
@@ -459,7 +475,7 @@ test("executeSendEventChatMessageTransaction is idempotent by client message id"
         "eventChats/event-1",
         "events/event-1/participants/uid",
         "users/uid",
-        "eventChats/event-1/messages/client-message-1",
+        fixedClientMessagePath,
       ]);
       assert.deepEqual(writes, []);
       assert.equal(store.size, 5);
@@ -477,13 +493,13 @@ test("executeSendEventChatMessageTransaction creates deterministic message id wh
         payload: {
           eventId: "event-1",
           text: "Hello event",
-          clientMessageId: "client-message-1",
+          clientMessageId: fixedClientMessageId,
         },
       });
 
       assert.deepEqual(response, {
         eventId: "event-1",
-        messageId: "client-message-1",
+        messageId: fixedClientMessageId,
         createdAt: "2026-06-16T10:00:00.000Z",
       });
       assert.deepEqual(reads, [
@@ -491,14 +507,14 @@ test("executeSendEventChatMessageTransaction creates deterministic message id wh
         "eventChats/event-1",
         "events/event-1/participants/uid",
         "users/uid",
-        "eventChats/event-1/messages/client-message-1",
+        fixedClientMessagePath,
       ]);
       assert.deepEqual(
           writes.map((write) => `${write.type}:${write.path}`),
-          ["create:eventChats/event-1/messages/client-message-1"],
+          [`create:${fixedClientMessagePath}`],
       );
       assert.equal(
-          store.get("eventChats/event-1/messages/client-message-1").text,
+          store.get(fixedClientMessagePath).text,
           "Hello event",
       );
     });
@@ -507,7 +523,7 @@ test("executeSendEventChatMessageTransaction rejects changed idempotent message 
     async () => {
       const {db, writes} = createFakeFirestore({
         ...validSeed(),
-        "eventChats/event-1/messages/client-message-1": eventChatMessage({
+        [fixedClientMessagePath]: eventChatMessage({
           text: "Original text",
           createdAt: fixedTimestamp,
         }),
@@ -522,7 +538,7 @@ test("executeSendEventChatMessageTransaction rejects changed idempotent message 
             payload: {
               eventId: "event-1",
               text: "Changed text",
-              clientMessageId: "client-message-1",
+              clientMessageId: fixedClientMessageId,
             },
           }),
           "already-exists",

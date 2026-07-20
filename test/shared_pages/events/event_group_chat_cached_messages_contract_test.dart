@@ -50,8 +50,8 @@ void main() {
     expect(source, contains('_retryPendingMessage'));
     expect(source, contains('ruText: \'Повторить\''));
     expect(source, contains('enText: \'Retry\''));
-    expect(
-        source, contains('snapshot.hasData && messageState!.isAuthoritative'));
+    expect(source, contains('if (snapshot.hasData)'));
+    expect(source, contains('if (messageState!.isAuthoritative)'));
     expect(source, contains('eventGroupChatMessagesInlineErrorKey'));
     expect(source, contains('_retryMessages'));
   });

@@ -151,11 +151,18 @@ DateTime eventListCityLocalDateForLocation({
   return DateTime(cityInstant.year, cityInstant.month, cityInstant.day);
 }
 
+bool _eventListTimeZonesInitialized = false;
+
 void initializeEventListTimeZones() {
+  if (_eventListTimeZonesInitialized) {
+    return;
+  }
   timezone_data.initializeTimeZones();
+  _eventListTimeZonesInitialized = true;
 }
 
 timezone.Location eventListTimeZoneLocation(String timeZoneId) {
+  initializeEventListTimeZones();
   final normalizedTimeZoneId = timeZoneId.trim();
   if (normalizedTimeZoneId.isEmpty) {
     throw ArgumentError.value(

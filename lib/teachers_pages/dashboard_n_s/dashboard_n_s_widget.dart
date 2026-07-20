@@ -870,6 +870,7 @@ class _DashboardNSWidgetState extends State<DashboardNSWidget> {
                         'assets/images/logo.png',
                         width: 246.0,
                         height: 72.0,
+                        cacheWidth: 984,
                         fit: BoxFit.contain,
                       ),
                     ),

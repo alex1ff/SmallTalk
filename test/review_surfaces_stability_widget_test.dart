@@ -614,6 +614,54 @@ void main() {
         ),
       );
     });
+
+    testWidgets('loads the next bounded review window on demand',
+        (tester) async {
+      const ownerUid = 'owner-a';
+      currentUserDocument = _approvedTeacher(ownerUid);
+      final queue = _ReviewResultStreamQueue();
+      addTearDown(queue.close);
+      final reviews = <ReviewsRecord>[
+        for (var index = 0; index < myRewNSReviewsPageSize; index++)
+          _review('teacher-page-$index'),
+        _review('teacher-next-window', rating: 4),
+      ];
+
+      await tester.pumpWidget(
+        _testApp(
+          MyRewNSWidget(
+            ownerUidProvider: () => ownerUid,
+            reviewsResultStreamLoader: queue.load,
+          ),
+        ),
+      );
+      await _pumpAsync(tester);
+      queue.calls.single.controller.add(
+        ReviewsLoadResult.authoritative(reviews),
+      );
+      await _pumpAsync(tester);
+
+      expect(
+        find.byKey(myRewNSReviewKey(reviews.last)),
+        findsNothing,
+      );
+      expect(find.byKey(myRewNSRatingDistributionKey), findsNothing);
+      expect(find.byKey(myRewNSLoadMoreButtonKey), findsOneWidget);
+
+      tester
+          .widget<OutlinedButton>(find.byKey(myRewNSLoadMoreButtonKey))
+          .onPressed!();
+      await tester.pump();
+      expect(queue.calls, hasLength(2));
+
+      queue.calls.last.controller.add(
+        ReviewsLoadResult.authoritative(reviews),
+      );
+      await _pumpAsync(tester);
+      expect(find.byKey(myRewNSReviewKey(reviews.last)), findsOneWidget);
+      expect(find.byKey(myRewNSRatingDistributionKey), findsOneWidget);
+      expect(find.byKey(myRewNSLoadMoreButtonKey), findsNothing);
+    });
   });
 
   group('NativeSpeakerPageWidget reviews', () {
@@ -692,6 +740,71 @@ void main() {
               Stream.value(_nativeSpeakerProfile(reference!.id)),
           statsLoader: (_) async => const <StatsRecord>[],
         ),
+      );
+    });
+
+    testWidgets('keeps the rating filter while expanding the review window',
+        (tester) async {
+      final target = UsersRecord.collection.doc('owner-a');
+      final queue = _ReviewResultStreamQueue();
+      addTearDown(queue.close);
+      final nextWindowReview = _review('native-next-window', rating: 4);
+      final reviews = <ReviewsRecord>[
+        for (var index = 0; index < nativeSpeakerReviewsPageSize; index++)
+          _review('native-page-$index'),
+        nextWindowReview,
+      ];
+
+      await tester.pumpWidget(
+        _testApp(
+          NativeSpeakerPageWidget(
+            nsUserDocRef: target,
+            hideDirectCallAction: true,
+            reviewsResultStreamFactory: (reference) => queue.load(reference.id),
+            publicProfileStreamFactory: (reference) =>
+                Stream.value(_nativeSpeakerProfile(reference!.id)),
+            statsLoader: (_) async => const <StatsRecord>[],
+          ),
+        ),
+      );
+      await _pumpAsync(tester);
+      queue.calls.single.controller.add(
+        ReviewsLoadResult.authoritative(reviews),
+      );
+      await _pumpAsync(tester);
+
+      tester
+          .widget<InkWell>(find.byKey(nativeSpeakerRatingFilterKey(4)))
+          .onTap!();
+      await tester.pump();
+      expect(
+          find.byKey(nativeSpeakerReviewKey(nextWindowReview)), findsNothing);
+      expect(find.byKey(nativeSpeakerRatingDistributionKey), findsNothing);
+      expect(
+        find.byKey(nativeSpeakerReviewsLoadMoreButtonKey),
+        findsOneWidget,
+      );
+
+      tester
+          .widget<OutlinedButton>(
+            find.byKey(nativeSpeakerReviewsLoadMoreButtonKey),
+          )
+          .onPressed!();
+      await tester.pump();
+      expect(queue.calls, hasLength(2));
+
+      queue.calls.last.controller.add(
+        ReviewsLoadResult.authoritative(reviews),
+      );
+      await _pumpAsync(tester);
+      expect(
+        find.byKey(nativeSpeakerReviewKey(nextWindowReview)),
+        findsOneWidget,
+      );
+      expect(find.byKey(nativeSpeakerRatingDistributionKey), findsOneWidget);
+      expect(
+        find.byKey(nativeSpeakerReviewsLoadMoreButtonKey),
+        findsNothing,
       );
     });
   });

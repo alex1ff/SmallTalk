@@ -36,6 +36,11 @@ const ValueKey<String> myRewNSRefreshingKey =
     ValueKey<String>('my_rew_ns_refreshing');
 const ValueKey<String> myRewNSRefreshingIndicatorKey =
     ValueKey<String>('my_rew_ns_refreshing_indicator');
+const ValueKey<String> myRewNSLoadMoreButtonKey =
+    ValueKey<String>('my_rew_ns_load_more_button');
+const ValueKey<String> myRewNSRatingDistributionKey =
+    ValueKey<String>('my_rew_ns_rating_distribution');
+const int myRewNSReviewsPageSize = 20;
 
 ValueKey<String> myRewNSReviewKey(ReviewsRecord review) =>
     ValueKey<String>('my_rew_ns_review_${review.reference.path}');
@@ -56,6 +61,18 @@ final class _MyRewNSAuthEmission {
 
   final String ownerUid;
   final int epoch;
+}
+
+final class _BoundedMyRewNSReviewsResult {
+  const _BoundedMyRewNSReviewsResult({
+    required this.result,
+    required this.hasMore,
+    this.visibleLimit,
+  });
+
+  final ReviewsLoadResult result;
+  final bool hasMore;
+  final int? visibleLimit;
 }
 
 class MyRewNSWidget extends StatefulWidget {
@@ -104,7 +121,10 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
   List<ReviewsRecord>? _lastSuccessfulReviews;
   Object? _reviewsError;
   bool _reviewsLoading = false;
-  StreamSubscription<ReviewsLoadResult>? _reviewsSubscription;
+  StreamSubscription<_BoundedMyRewNSReviewsResult>? _reviewsSubscription;
+  int _reviewsLimit = myRewNSReviewsPageSize;
+  bool _reviewsHasMore = false;
+  Future<Map<int, int>>? _ratingCountsFuture;
   late Stream<_MyRewNSAuthEmission> _authSessionStream;
   String _latestAuthStreamOwnerUid = '';
   String? _lastObservedSessionCacheOwnerUid;
@@ -217,38 +237,101 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
     return directOwnerUid == ownerUid;
   }
 
-  Stream<ReviewsLoadResult> _defaultReviewsLoader(String ownerUid) {
+  _BoundedMyRewNSReviewsResult _boundedReviewsResult(
+    ReviewsLoadResult result,
+    int visibleLimit,
+  ) {
+    return _BoundedMyRewNSReviewsResult(
+      result: ReviewsLoadResult(
+        reviews: List<ReviewsRecord>.unmodifiable(
+          result.reviews.take(visibleLimit),
+        ),
+        isFromCache: result.isFromCache,
+        hasPendingWrites: result.hasPendingWrites,
+      ),
+      hasMore: result.reviews.length > visibleLimit,
+      visibleLimit: visibleLimit,
+    );
+  }
+
+  Stream<_BoundedMyRewNSReviewsResult> _defaultReviewsLoader(
+    String ownerUid,
+    int visibleLimit,
+  ) {
     final query = ReviewsRecord.collection
         .where(
           'toUserId',
           isEqualTo: UsersRecord.collection.doc(ownerUid),
         )
-        .orderBy('createdAt', descending: true);
+        .orderBy('createdAt', descending: true)
+        .limit(visibleLimit + 1);
     return query.snapshots(includeMetadataChanges: true).map(
-      (snapshot) => ReviewsLoadResult(
-        reviews: snapshot.docs.map(ReviewsRecord.fromSnapshot).toList(),
-        isFromCache: snapshot.metadata.isFromCache,
-        hasPendingWrites: snapshot.metadata.hasPendingWrites,
+      (snapshot) => _boundedReviewsResult(
+        ReviewsLoadResult(
+          reviews: snapshot.docs.map(ReviewsRecord.fromSnapshot).toList(),
+          isFromCache: snapshot.metadata.isFromCache,
+          hasPendingWrites: snapshot.metadata.hasPendingWrites,
+        ),
+        visibleLimit,
       ),
     );
   }
 
-  Stream<ReviewsLoadResult> _loadReviews(String ownerUid) {
+  Stream<_BoundedMyRewNSReviewsResult> _loadReviews(
+    String ownerUid,
+    int visibleLimit,
+  ) {
     final streamLoader = widget.reviewsResultStreamLoader;
     if (streamLoader != null) {
-      return streamLoader(ownerUid);
+      return streamLoader(ownerUid)
+          .map((result) => _boundedReviewsResult(result, visibleLimit));
     }
     final resultLoader = widget.reviewsResultLoader;
     if (resultLoader != null) {
-      return Stream<ReviewsLoadResult>.fromFuture(resultLoader(ownerUid));
+      return Stream<ReviewsLoadResult>.fromFuture(resultLoader(ownerUid)).map(
+        (result) => _BoundedMyRewNSReviewsResult(
+          result: result,
+          hasMore: false,
+        ),
+      );
     }
     final legacyLoader = widget.reviewsLoader;
     if (legacyLoader != null) {
       return Stream<ReviewsLoadResult>.fromFuture(
         legacyLoader(ownerUid).then(ReviewsLoadResult.authoritative),
+      ).map(
+        (result) => _BoundedMyRewNSReviewsResult(
+          result: result,
+          hasMore: false,
+        ),
       );
     }
-    return _defaultReviewsLoader(ownerUid);
+    return _defaultReviewsLoader(ownerUid, visibleLimit);
+  }
+
+  bool get _reviewsPaginationEnabled =>
+      widget.reviewsResultStreamLoader != null ||
+      (widget.reviewsResultLoader == null && widget.reviewsLoader == null);
+
+  bool get _usesDefaultReviewsSource =>
+      widget.reviewsResultStreamLoader == null &&
+      widget.reviewsResultLoader == null &&
+      widget.reviewsLoader == null;
+
+  Future<Map<int, int>> _loadRatingCounts(String ownerUid) async {
+    final ownerReference = UsersRecord.collection.doc(ownerUid);
+    final baseQuery = ReviewsRecord.collection.where(
+      'toUserId',
+      isEqualTo: ownerReference,
+    );
+    final snapshots = await Future.wait([
+      for (var rating = 1; rating <= 5; rating++)
+        baseQuery.where('rating', isEqualTo: rating).count().get(),
+    ]);
+    return <int, int>{
+      for (var index = 0; index < snapshots.length; index++)
+        index + 1: snapshots[index].count ?? 0,
+    };
   }
 
   void _synchronizeOwner(String ownerUid, int ownerEpoch) {
@@ -276,8 +359,16 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
       _model.rate = 0;
       _model.ratingBarValue = null;
     }
-    _lastSuccessfulReviews =
+    _reviewsLimit = myRewNSReviewsPageSize;
+    _reviewsHasMore = false;
+    _ratingCountsFuture = null;
+    final cachedReviews =
         ownerUid.isEmpty ? null : MyRewNSModel.cachedReviews(ownerUid);
+    _lastSuccessfulReviews = cachedReviews == null || !_reviewsPaginationEnabled
+        ? cachedReviews
+        : List<ReviewsRecord>.unmodifiable(
+            cachedReviews.take(_reviewsLimit),
+          );
     _reviewsError = null;
     _reviewsLoading = false;
   }
@@ -291,6 +382,9 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
     _lastAuthorizedOwnerDocument = ownerDocument;
     _scheduledDeniedRedirectEpoch = null;
     _ensureReviewsLoadStarted();
+    if (_ratingCountsFuture == null && _usesDefaultReviewsSource) {
+      _ratingCountsFuture = _loadRatingCounts(_activeOwnerUid);
+    }
   }
 
   void _revokeOwnerAccess() {
@@ -312,6 +406,9 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
     _lastSuccessfulReviews = null;
     _reviewsError = null;
     _reviewsLoading = false;
+    _reviewsLimit = myRewNSReviewsPageSize;
+    _reviewsHasMore = false;
+    _ratingCountsFuture = null;
     _model.rate = 0;
     _model.ratingBarValue = null;
     _scheduledDeniedRedirectEpoch = null;
@@ -375,6 +472,7 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
     _reviewsSubscription = null;
     final requestGeneration = ++_requestGeneration;
     final cacheGeneration = MyRewNSModel.sessionCacheGeneration;
+    final reviewsLimit = _reviewsLimit;
     _reviewsError = null;
     _reviewsLoading = true;
     if (notify && mounted) {
@@ -382,8 +480,9 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
     }
 
     try {
-      _reviewsSubscription = _loadReviews(ownerUid).listen(
-        (result) {
+      _reviewsSubscription = _loadReviews(ownerUid, reviewsLimit).listen(
+        (boundedResult) {
+          final result = boundedResult.result;
           if (!_requestIsCurrent(
             ownerUid,
             ownerEpoch,
@@ -403,9 +502,14 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
               previous: previous,
               incoming: result.reviews,
             );
+            final visibleReviews = boundedResult.visibleLimit == null
+                ? mergedReviews
+                : List<ReviewsRecord>.unmodifiable(
+                    mergedReviews.take(boundedResult.visibleLimit!),
+                  );
             setState(() {
-              if (_lastSuccessfulReviews != null || mergedReviews.isNotEmpty) {
-                _lastSuccessfulReviews = mergedReviews;
+              if (_lastSuccessfulReviews != null || visibleReviews.isNotEmpty) {
+                _lastSuccessfulReviews = visibleReviews;
               }
               _reviewsError = null;
               _reviewsLoading = true;
@@ -421,6 +525,7 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
           );
           setState(() {
             _lastSuccessfulReviews = stableReviews;
+            _reviewsHasMore = boundedResult.hasMore;
             _reviewsError = null;
             _reviewsLoading = false;
           });
@@ -507,7 +612,44 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
 
   void _retryReviews() {
     _loadStartedForOwner = true;
+    _ratingCountsFuture = _usesDefaultReviewsSource
+        ? _loadRatingCounts(_activeOwnerUid)
+        : null;
     _startReviewsLoad(notify: true);
+  }
+
+  void _loadMoreReviews() {
+    if (!_reviewsPaginationEnabled ||
+        !_reviewsHasMore ||
+        _reviewsLoading ||
+        _activeOwnerUid.isEmpty) {
+      return;
+    }
+    _reviewsLimit += myRewNSReviewsPageSize;
+    _startReviewsLoad(notify: true);
+  }
+
+  Widget _buildLoadMoreReviewsButton(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsetsDirectional.fromSTEB(
+        ExpatlioDesign.space16,
+        ExpatlioDesign.space16,
+        ExpatlioDesign.space16,
+        ExpatlioDesign.space0,
+      ),
+      child: Center(
+        child: OutlinedButton(
+          key: myRewNSLoadMoreButtonKey,
+          onPressed: _reviewsLoading ? null : _loadMoreReviews,
+          child: Text(
+            FFLocalizations.of(context).getVariableText(
+              ruText: 'Показать ещё',
+              enText: 'Show more',
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -574,7 +716,17 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
               );
             }
 
-            Widget content = _buildReviewsContent(context, reviews);
+            final ratingCountsFuture = _ratingCountsFuture;
+            Widget content = ratingCountsFuture == null
+                ? _buildReviewsContent(context, reviews)
+                : FutureBuilder<Map<int, int>>(
+                    future: ratingCountsFuture,
+                    builder: (context, snapshot) => _buildReviewsContent(
+                      context,
+                      reviews,
+                      authoritativeRatingCounts: snapshot.data,
+                    ),
+                  );
             content = UxRefreshingIndicatorOverlay(
               key: myRewNSRefreshingKey,
               isRefreshing: _reviewsLoading,
@@ -704,19 +856,33 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
 
   Widget _buildReviewsContent(
     BuildContext context,
-            List<ReviewsRecord> myRewNSReviewsRecordList,
-  ) {
+    List<ReviewsRecord> myRewNSReviewsRecordList, {
+    Map<int, int>? authoritativeRatingCounts,
+  }) {
     final teacherDocument = _lastAuthorizedOwnerDocument;
-    final totalReviews =
-        teacherDocument?.rating.totalReviews ?? myRewNSReviewsRecordList.length;
+    final loadedRatingCounts = <int, int>{1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
+    for (final review in myRewNSReviewsRecordList) {
+      if (loadedRatingCounts.containsKey(review.rating)) {
+        loadedRatingCounts[review.rating] =
+            loadedRatingCounts[review.rating]! + 1;
+      }
+    }
+    final loadedReviewsAreComplete =
+        !_reviewsPaginationEnabled || (!_reviewsLoading && !_reviewsHasMore);
+    final ratingCounts = authoritativeRatingCounts ??
+        (loadedReviewsAreComplete ? loadedRatingCounts : null);
+    final ratingDistributionTotal =
+        ratingCounts?.values.fold<int>(0, (sum, count) => sum + count) ?? 0;
+
+    int countForRating(int rating) => ratingCounts?[rating] ?? 0;
 
     double percentForRating(int rating) {
-      if (totalReviews <= 0) {
+      if (ratingDistributionTotal <= 0) {
         return 0.0;
       }
-      final count =
-          myRewNSReviewsRecordList.where((review) => review.rating == rating);
-      return (count.length / totalReviews).clamp(0.0, 1.0).toDouble();
+      return (countForRating(rating) / ratingDistributionTotal)
+          .clamp(0.0, 1.0)
+          .toDouble();
     }
 
             return GestureDetector(
@@ -834,7 +1000,9 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                       ),
                                     ],
                                   ),
-                                  Expanded(
+                                  if (ratingCounts != null)
+                                    Expanded(
+                                      key: myRewNSRatingDistributionKey,
                                     child: Padding(
                                       padding: EdgeInsetsDirectional.fromSTEB(
                                           ExpatlioDesign.space12,
@@ -912,12 +1080,7 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                 decoration: BoxDecoration(),
                                                 child: AutoSizeText(
                                                   valueOrDefault<String>(
-                                                    myRewNSReviewsRecordList
-                                                        .where((e) =>
-                                                            e.rating == 5)
-                                                        .toList()
-                                                        .length
-                                                        .toString(),
+                                                    countForRating(5).toString(),
                                                     '0',
                                                   ),
                                                   maxLines: 1,
@@ -1005,12 +1168,7 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                 decoration: BoxDecoration(),
                                                 child: AutoSizeText(
                                                   valueOrDefault<String>(
-                                                    myRewNSReviewsRecordList
-                                                        .where((e) =>
-                                                            e.rating == 4)
-                                                        .toList()
-                                                        .length
-                                                        .toString(),
+                                                    countForRating(4).toString(),
                                                     '0',
                                                   ),
                                                   maxLines: 1,
@@ -1099,12 +1257,7 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                 width: 33.0,
                                                 decoration: BoxDecoration(),
                                                 child: AutoSizeText(
-                                                  myRewNSReviewsRecordList
-                                                      .where(
-                                                          (e) => e.rating == 3)
-                                                      .toList()
-                                                      .length
-                                                      .toString(),
+                                                  countForRating(3).toString(),
                                                   maxLines: 1,
                                                   style: FlutterFlowTheme.of(
                                                           context)
@@ -1189,12 +1342,7 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                 width: 33.0,
                                                 decoration: BoxDecoration(),
                                                 child: AutoSizeText(
-                                                  myRewNSReviewsRecordList
-                                                      .where(
-                                                          (e) => e.rating == 2)
-                                                      .toList()
-                                                      .length
-                                                      .toString(),
+                                                  countForRating(2).toString(),
                                                   maxLines: 1,
                                                   style: FlutterFlowTheme.of(
                                                           context)
@@ -1280,12 +1428,7 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                                 decoration: BoxDecoration(),
                                                 child: AutoSizeText(
                                                   valueOrDefault<String>(
-                                                    myRewNSReviewsRecordList
-                                                        .where((e) =>
-                                                            e.rating == 1)
-                                                        .toList()
-                                                        .length
-                                                        .toString(),
+                                                    countForRating(1).toString(),
                                                     '0',
                                                   ),
                                                   maxLines: 1,
@@ -1790,6 +1933,8 @@ class _MyRewNSWidgetState extends State<MyRewNSWidget> {
                                 },
                               ),
                             ),
+                            if (_reviewsPaginationEnabled && _reviewsHasMore)
+                              _buildLoadMoreReviewsButton(context),
                           ]
                               .addToStart(
                                   SizedBox(height: ExpatlioDesign.space112))

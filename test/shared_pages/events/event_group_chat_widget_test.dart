@@ -3707,6 +3707,630 @@ void main() {
     expect(find.byIcon(Icons.done_rounded), findsOneWidget);
   });
 
+  testWidgets('uses direct create with trusted participant and canonical text',
+      (tester) async {
+    currentUser = _TestAuthUser('uid-1', displayName: 'Untrusted profile');
+    final writeCompleter = Completer<void>();
+    DocumentReference? writtenReference;
+    Map<String, dynamic>? writtenData;
+    var callableCalls = 0;
+    addTearDown(() {
+      if (!writeCompleter.isCompleted) {
+        writeCompleter.complete();
+      }
+    });
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-direct',
+          chatStream: _allowedChatStream(eventId: 'event-direct'),
+          messagesStream: (_) =>
+              Stream.value(const <EventChatMessagesRecord>[]),
+          debugParticipantStateStream: _participantStateStream(
+            _participantState(
+              eventId: 'event-direct',
+              displayName: 'Trusted participant',
+              photoUrl: 'https://example.com/trusted.jpg',
+            ),
+          ),
+          debugDirectMessageWriter: (reference, data) {
+            writtenReference = reference;
+            writtenData = data;
+            return writeCompleter.future;
+          },
+          sendMessageInvoker: (_, __) async {
+            callableCalls += 1;
+            return <String, dynamic>{
+              'messageId': 'unexpected',
+              'createdAt': '2026-06-14T12:00:00.000Z',
+            };
+          },
+          debugAuthenticatedUserIdProvider: _testAuthenticatedUserId,
+          debugInboxPersistenceInvoker: _ignoreInboxPersistence,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(eventGroupChatMessageInputKey),
+      '  Cafe\u0301\r\n\r\n\r\nok  ',
+    );
+    await tester.tap(find.byKey(eventGroupChatSendButtonKey));
+    await tester.pump();
+
+    expect(
+        writtenReference?.path,
+        matches(r'^eventChats/event-direct/messages/' +
+            _uuidV4Pattern.pattern.substring(1)));
+    expect(writtenData?['senderId'], 'uid-1');
+    expect(writtenData?['senderDisplayName'], 'Trusted participant');
+    expect(writtenData?['senderPhotoUrl'], 'https://example.com/trusted.jpg');
+    expect(writtenData?['text'], 'Café\n\nok');
+    expect(callableCalls, 0);
+    expect(find.text('Café\n\nok'), findsOneWidget);
+    expect(find.text('Trusted participant'), findsOneWidget);
+    expect(find.byIcon(Icons.schedule_rounded), findsOneWidget);
+
+    writeCompleter.complete();
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.done_rounded), findsOneWidget);
+    expect(callableCalls, 0);
+  });
+
+  testWidgets('permission-denied direct create falls back with the same id',
+      (tester) async {
+    currentUser = _TestAuthUser('uid-1');
+    String? directMessageId;
+    Map<String, dynamic>? callablePayload;
+    var directCalls = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-direct-fallback',
+          chatStream: _allowedChatStream(eventId: 'event-direct-fallback'),
+          messagesStream: (_) =>
+              Stream.value(const <EventChatMessagesRecord>[]),
+          debugParticipantStateStream: _participantStateStream(
+            _participantState(eventId: 'event-direct-fallback'),
+          ),
+          debugDirectMessageWriter: (reference, _) async {
+            directCalls += 1;
+            directMessageId = reference.id;
+            throw FirebaseException(
+              plugin: 'cloud_firestore',
+              code: 'permission-denied',
+            );
+          },
+          sendMessageInvoker: (_, payload) async {
+            callablePayload = payload;
+            return <String, dynamic>{
+              'messageId': payload['clientMessageId'],
+              'createdAt': '2026-06-14T12:00:00.000Z',
+            };
+          },
+          debugAuthenticatedUserIdProvider: _testAuthenticatedUserId,
+          debugInboxPersistenceInvoker: _ignoreInboxPersistence,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(eventGroupChatMessageInputKey), 'Привет');
+    await tester.tap(find.byKey(eventGroupChatSendButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(directCalls, 1);
+    expect(callablePayload?['clientMessageId'], directMessageId);
+    expect(callablePayload?['text'], 'Привет');
+    expect(find.byIcon(Icons.done_rounded), findsOneWidget);
+  });
+
+  testWidgets('local echo rollback does not cancel permission-denied fallback',
+      (tester) async {
+    currentUser = _TestAuthUser('uid-1');
+    final messages = StreamController<EventChatMessagesLoadState>();
+    final directWrite = Completer<void>();
+    final callable = Completer<Object?>();
+    final chatRef =
+        EventChatsRecord.collection.doc('event-direct-rollback-fallback');
+    DocumentReference? messageReference;
+    var callableCalls = 0;
+    addTearDown(messages.close);
+    addTearDown(() {
+      if (!directWrite.isCompleted) {
+        directWrite.complete();
+      }
+      if (!callable.isCompleted) {
+        callable.complete(<String, dynamic>{
+          'messageId':
+              messageReference?.id ?? '123e4567-e89b-42d3-a456-426614174000',
+          'createdAt': '2026-06-14T12:00:00.000Z',
+        });
+      }
+    });
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-direct-rollback-fallback',
+          chatStream: _allowedChatStream(
+            eventId: 'event-direct-rollback-fallback',
+          ),
+          debugMessagesStateStream: (_, __) => messages.stream,
+          debugParticipantStateStream: _participantStateStream(
+            _participantState(eventId: 'event-direct-rollback-fallback'),
+          ),
+          debugDirectMessageWriter: (reference, _) {
+            messageReference = reference;
+            return directWrite.future;
+          },
+          sendMessageInvoker: (_, payload) {
+            callableCalls += 1;
+            expect(payload['clientMessageId'], messageReference?.id);
+            return callable.future;
+          },
+          debugAuthenticatedUserIdProvider: _testAuthenticatedUserId,
+          debugInboxPersistenceInvoker: _ignoreInboxPersistence,
+        ),
+      ),
+    );
+    await tester.pump();
+    messages.add(
+      const EventChatMessagesLoadState(
+        ownerUid: 'uid-1',
+        messages: <EventChatMessagesRecord>[],
+        isFromCache: false,
+        hasPendingWrites: false,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(eventGroupChatMessageInputKey), 'Привет');
+    await tester.tap(find.byKey(eventGroupChatSendButtonKey));
+    await tester.pump();
+    expect(messageReference, isNotNull);
+
+    final localRecord = _messageFixture(
+      chatRef: chatRef,
+      messageId: messageReference!.id,
+      senderDisplayName: 'Trusted participant',
+      text: 'Привет',
+    );
+    messages.add(
+      EventChatMessagesLoadState(
+        ownerUid: 'uid-1',
+        messages: <EventChatMessagesRecord>[localRecord],
+        isFromCache: false,
+        hasPendingWrites: true,
+        pendingWriteMessagePaths: <String>{messageReference!.path},
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    messages.add(
+      const EventChatMessagesLoadState(
+        ownerUid: 'uid-1',
+        messages: <EventChatMessagesRecord>[],
+        isFromCache: false,
+        hasPendingWrites: false,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(find.byIcon(Icons.schedule_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.error_outline_rounded), findsNothing);
+
+    directWrite.completeError(
+      FirebaseException(
+        plugin: 'cloud_firestore',
+        code: 'permission-denied',
+      ),
+    );
+    await tester.pump();
+    expect(callableCalls, 1);
+
+    callable.complete(<String, dynamic>{
+      'messageId': messageReference!.id,
+      'createdAt': '2026-06-14T12:00:00.000Z',
+    });
+    await tester.pumpAndSettle();
+
+    expect(callableCalls, 1);
+    expect(find.byIcon(Icons.done_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.error_outline_rounded), findsNothing);
+  });
+
+  testWidgets('reconciles concurrent sends with per-message pending metadata',
+      (tester) async {
+    currentUser = _TestAuthUser('uid-1');
+    final messages = StreamController<EventChatMessagesLoadState>();
+    final references = <String, DocumentReference>{};
+    final writes = <Completer<void>>[];
+    final chatRef = EventChatsRecord.collection.doc('event-direct-concurrent');
+    addTearDown(messages.close);
+    addTearDown(() {
+      for (final write in writes) {
+        if (!write.isCompleted) {
+          write.complete();
+        }
+      }
+    });
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-direct-concurrent',
+          chatStream: _allowedChatStream(eventId: 'event-direct-concurrent'),
+          debugMessagesStateStream: (_, __) => messages.stream,
+          debugParticipantStateStream: _participantStateStream(
+            _participantState(eventId: 'event-direct-concurrent'),
+          ),
+          debugDirectMessageWriter: (reference, data) {
+            references[data['text'] as String] = reference;
+            final write = Completer<void>();
+            writes.add(write);
+            return write.future;
+          },
+          debugAuthenticatedUserIdProvider: _testAuthenticatedUserId,
+          debugInboxPersistenceInvoker: _ignoreInboxPersistence,
+        ),
+      ),
+    );
+    await tester.pump();
+    messages.add(
+      const EventChatMessagesLoadState(
+        ownerUid: 'uid-1',
+        messages: <EventChatMessagesRecord>[],
+        isFromCache: false,
+        hasPendingWrites: false,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(eventGroupChatMessageInputKey), 'Первое');
+    await tester.tap(find.byKey(eventGroupChatSendButtonKey));
+    await tester.pump();
+    await tester.enterText(find.byKey(eventGroupChatMessageInputKey), 'Второе');
+    await tester.tap(find.byKey(eventGroupChatSendButtonKey));
+    await tester.pump();
+
+    final firstReference = references['Первое'];
+    final secondReference = references['Второе'];
+    expect(firstReference, isNotNull);
+    expect(secondReference, isNotNull);
+    expect(find.byIcon(Icons.schedule_rounded), findsNWidgets(2));
+
+    messages.add(
+      EventChatMessagesLoadState(
+        ownerUid: 'uid-1',
+        messages: <EventChatMessagesRecord>[
+          _messageFixture(
+            chatRef: chatRef,
+            messageId: firstReference!.id,
+            senderDisplayName: 'Trusted participant',
+            text: 'Первое',
+          ),
+          _messageFixture(
+            chatRef: chatRef,
+            messageId: secondReference!.id,
+            senderDisplayName: 'Trusted participant',
+            text: 'Второе',
+          ),
+        ],
+        isFromCache: false,
+        hasPendingWrites: true,
+        pendingWriteMessagePaths: <String>{firstReference.path},
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Первое'), findsOneWidget);
+    expect(find.text('Второе'), findsOneWidget);
+    expect(find.byIcon(Icons.schedule_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.error_outline_rounded), findsNothing);
+  });
+
+  testWidgets('ambiguous direct error never invokes callable fallback',
+      (tester) async {
+    currentUser = _TestAuthUser('uid-1');
+    var callableCalls = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-direct-unavailable',
+          chatStream: _allowedChatStream(eventId: 'event-direct-unavailable'),
+          messagesStream: (_) =>
+              Stream.value(const <EventChatMessagesRecord>[]),
+          debugParticipantStateStream: _participantStateStream(
+            _participantState(eventId: 'event-direct-unavailable'),
+          ),
+          debugDirectMessageWriter: (_, __) async {
+            throw FirebaseException(
+              plugin: 'cloud_firestore',
+              code: 'unavailable',
+            );
+          },
+          sendMessageInvoker: (_, __) async {
+            callableCalls += 1;
+            return <String, dynamic>{
+              'messageId': 'unexpected',
+              'createdAt': '2026-06-14T12:00:00.000Z',
+            };
+          },
+          debugAuthenticatedUserIdProvider: _testAuthenticatedUserId,
+          debugInboxPersistenceInvoker: _ignoreInboxPersistence,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(eventGroupChatMessageInputKey), 'Привет');
+    await tester.tap(find.byKey(eventGroupChatSendButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(callableCalls, 0);
+    expect(find.byIcon(Icons.error_outline_rounded), findsOneWidget);
+    expect(find.byKey(eventGroupChatSendErrorSnackBarKey), findsOneWidget);
+  });
+
+  testWidgets('legacy participant snapshot uses callable without direct write',
+      (tester) async {
+    currentUser = _TestAuthUser('uid-1', displayName: 'Provisional');
+    var directCalls = 0;
+    var callableCalls = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-callable-only',
+          chatStream: _allowedChatStream(eventId: 'event-callable-only'),
+          messagesStream: (_) =>
+              Stream.value(const <EventChatMessagesRecord>[]),
+          debugParticipantStateStream: _participantStateStream(
+            _participantState(
+              eventId: 'event-callable-only',
+              displayName: ' Legacy name ',
+            ),
+          ),
+          debugDirectMessageWriter: (_, __) async {
+            directCalls += 1;
+          },
+          sendMessageInvoker: (_, payload) async {
+            callableCalls += 1;
+            return <String, dynamic>{
+              'messageId': payload['clientMessageId'],
+              'createdAt': '2026-06-14T12:00:00.000Z',
+            };
+          },
+          debugAuthenticatedUserIdProvider: _testAuthenticatedUserId,
+          debugInboxPersistenceInvoker: _ignoreInboxPersistence,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(eventGroupChatMessageInputKey), 'Привет');
+    await tester.tap(find.byKey(eventGroupChatSendButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(directCalls, 0);
+    expect(callableCalls, 1);
+    expect(find.text('Provisional'), findsOneWidget);
+  });
+
+  testWidgets('authoritative record wins before a late direct error',
+      (tester) async {
+    currentUser = _TestAuthUser('uid-1');
+    final messages = StreamController<EventChatMessagesLoadState>();
+    final writer = Completer<void>();
+    String? clientMessageId;
+    addTearDown(messages.close);
+    addTearDown(() {
+      if (!writer.isCompleted) {
+        writer.complete();
+      }
+    });
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-authoritative-first',
+          chatStream: _allowedChatStream(eventId: 'event-authoritative-first'),
+          debugMessagesStateStream: (_, __) => messages.stream,
+          debugParticipantStateStream: _participantStateStream(
+            _participantState(eventId: 'event-authoritative-first'),
+          ),
+          debugDirectMessageWriter: (reference, _) {
+            clientMessageId = reference.id;
+            return writer.future;
+          },
+          debugAuthenticatedUserIdProvider: _testAuthenticatedUserId,
+          debugInboxPersistenceInvoker: _ignoreInboxPersistence,
+        ),
+      ),
+    );
+    await tester.pump();
+    messages.add(
+      const EventChatMessagesLoadState(
+        ownerUid: 'uid-1',
+        messages: <EventChatMessagesRecord>[],
+        isFromCache: false,
+        hasPendingWrites: false,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(eventGroupChatMessageInputKey), 'Привет');
+    await tester.tap(find.byKey(eventGroupChatSendButtonKey));
+    await tester.pump();
+    expect(clientMessageId, isNotNull);
+
+    messages.add(
+      EventChatMessagesLoadState(
+        ownerUid: 'uid-1',
+        messages: <EventChatMessagesRecord>[
+          _messageFixture(
+            chatRef:
+                EventChatsRecord.collection.doc('event-authoritative-first'),
+            messageId: clientMessageId!,
+            senderDisplayName: 'Trusted participant',
+            text: 'Привет',
+          ),
+        ],
+        isFromCache: false,
+        hasPendingWrites: false,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Привет'), findsOneWidget);
+    expect(find.byIcon(Icons.schedule_rounded), findsNothing);
+    expect(find.byIcon(Icons.done_rounded), findsNothing);
+
+    writer.completeError(StateError('late ambiguous completion'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(eventGroupChatSendErrorSnackBarKey), findsNothing);
+    expect(find.text('Привет'), findsOneWidget);
+  });
+
+  testWidgets('recovers local pending record and keeps rejection retryable',
+      (tester) async {
+    currentUser = _TestAuthUser('uid-1');
+    final messages = StreamController<EventChatMessagesLoadState>();
+    final chatRef = EventChatsRecord.collection.doc('event-recover-local');
+    const localMessageId = '123e4567-e89b-42d3-a456-426614174000';
+    final messageRef =
+        EventChatMessagesRecord.createDoc(chatRef, id: localMessageId);
+    final localRecord = EventChatMessagesRecord.getDocumentFromData(
+      <String, dynamic>{
+        'senderId': 'uid-1',
+        'senderDisplayName': 'Trusted participant',
+        'senderPhotoUrl': null,
+        'text': 'В очереди',
+        'createdAt': null,
+        'deletedAt': null,
+      },
+      messageRef,
+    );
+    addTearDown(messages.close);
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-recover-local',
+          chatStream: _allowedChatStream(eventId: 'event-recover-local'),
+          debugMessagesStateStream: (_, __) => messages.stream,
+          debugParticipantStateStream: _participantStateStream(
+            _participantState(eventId: 'event-recover-local'),
+          ),
+          debugAuthenticatedUserIdProvider: _testAuthenticatedUserId,
+          debugInboxPersistenceInvoker: _ignoreInboxPersistence,
+        ),
+      ),
+    );
+    await tester.pump();
+    messages.add(
+      EventChatMessagesLoadState(
+        ownerUid: 'uid-1',
+        messages: <EventChatMessagesRecord>[localRecord],
+        isFromCache: false,
+        hasPendingWrites: true,
+        pendingWriteMessagePaths: <String>{messageRef.path},
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('В очереди'), findsOneWidget);
+    expect(find.byIcon(Icons.schedule_rounded), findsOneWidget);
+
+    messages.add(
+      const EventChatMessagesLoadState(
+        ownerUid: 'uid-1',
+        messages: <EventChatMessagesRecord>[],
+        isFromCache: false,
+        hasPendingWrites: false,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('В очереди'), findsOneWidget);
+    expect(find.byIcon(Icons.error_outline_rounded), findsOneWidget);
+    expect(
+      find.byKey(eventGroupChatMessageRetryButtonKey(localMessageId)),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('retry resolves an already-created matching direct message',
+      (tester) async {
+    currentUser = _TestAuthUser('uid-1');
+    var writeCalls = 0;
+    var lookupCalls = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventGroupChatWidget(
+          eventId: 'event-retry-existing',
+          chatStream: _allowedChatStream(eventId: 'event-retry-existing'),
+          messagesStream: (_) =>
+              Stream.value(const <EventChatMessagesRecord>[]),
+          debugParticipantStateStream: _participantStateStream(
+            _participantState(eventId: 'event-retry-existing'),
+          ),
+          debugDirectMessageWriter: (_, __) async {
+            writeCalls += 1;
+            throw FirebaseException(
+              plugin: 'cloud_firestore',
+              code: 'unavailable',
+            );
+          },
+          debugMessageServerLookup: (_) async {
+            lookupCalls += 1;
+            return EventChatMessageServerSnapshot(
+              exists: true,
+              data: <String, dynamic>{
+                'senderId': 'uid-1',
+                'senderDisplayName': 'Trusted participant',
+                'senderPhotoUrl': null,
+                'text': 'Уже отправлено',
+                'createdAt': DateTime.parse('2026-06-14T12:00:00Z'),
+                'deletedAt': null,
+              },
+            );
+          },
+          debugAuthenticatedUserIdProvider: _testAuthenticatedUserId,
+          debugInboxPersistenceInvoker: _ignoreInboxPersistence,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(eventGroupChatMessageInputKey),
+      'Уже отправлено',
+    );
+    await tester.tap(find.byKey(eventGroupChatSendButtonKey));
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.error_outline_rounded), findsOneWidget);
+
+    await tester.tap(find.text('Повторить'));
+    await tester.pumpAndSettle();
+
+    expect(writeCalls, 1);
+    expect(lookupCalls, 1);
+    expect(find.byIcon(Icons.done_rounded), findsOneWidget);
+    expect(find.text('Повторить'), findsNothing);
+  });
+
   testWidgets('shows error state when event chat messages fail to load',
       (tester) async {
     await tester.pumpWidget(
@@ -3771,6 +4395,46 @@ class _TestFirebaseFunctionsException extends FirebaseFunctionsException {
     required super.message,
     super.details,
   });
+}
+
+EventChatParticipantStateStream _participantStateStream(
+  EventChatParticipantLoadState state,
+) =>
+    (_, __, ___) => Stream<EventChatParticipantLoadState>.value(state);
+
+EventChatParticipantLoadState _participantState({
+  required String eventId,
+  String ownerUid = 'uid-1',
+  String displayName = 'Trusted participant',
+  String? photoUrl,
+  bool isFromCache = false,
+  bool hasPendingWrites = false,
+}) {
+  final eventRef = EventsRecord.collection.doc(eventId);
+  final participant = EventParticipantsRecord.getDocumentFromData(
+    <String, dynamic>{
+      'userId': ownerUid,
+      'displayName': displayName,
+      'photoUrl': photoUrl,
+      'role': 'participant',
+      'status': 'active',
+      'joinedAt': DateTime.parse('2026-06-14T10:00:00Z'),
+      'leftAt': null,
+      'createdAt': DateTime.parse('2026-06-14T10:00:00Z'),
+      'updatedAt': DateTime.parse('2026-06-14T10:00:00Z'),
+    },
+    EventParticipantsRecord.createDoc(eventRef, id: ownerUid),
+  );
+  return EventChatParticipantLoadState(
+    ownerUid: ownerUid,
+    eventId: eventId,
+    participant: participant,
+    rawDisplayName: displayName,
+    rawPhotoUrl: photoUrl,
+    hasPhotoUrlField: true,
+    isFromCache: isFromCache,
+    hasPendingWrites: hasPendingWrites,
+  );
 }
 
 EventChatMessagesRecord _messageFixture({

@@ -126,6 +126,30 @@ class _CallState {
   }
 }
 
+@immutable
+class _CaptionOverlayState {
+  const _CaptionOverlayState({
+    this.localCaption,
+    this.remoteCaptions = const {},
+    this.issueMessage,
+  });
+
+  factory _CaptionOverlayState.fromCallState(_CallState state) {
+    return _CaptionOverlayState(
+      localCaption: state.localCaption,
+      remoteCaptions: state.remoteCaptions,
+      issueMessage: state.captionIssueMessage,
+    );
+  }
+
+  final _ActiveCaption? localCaption;
+  final Map<ParticipantId, _ActiveCaption> remoteCaptions;
+  final String? issueMessage;
+
+  bool get hasContent =>
+      issueMessage != null || localCaption != null || remoteCaptions.isNotEmpty;
+}
+
 enum _CaptionPhase {
   interim,
   finalCaption;
@@ -398,6 +422,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   // State management - immutable
   _CallState _state = const _CallState();
+  final ValueNotifier<_CaptionOverlayState> _captionOverlayNotifier =
+      ValueNotifier<_CaptionOverlayState>(const _CaptionOverlayState());
 
   // Resource tracking for proper cleanup
   final Set<Timer> _activeTimers = {};
@@ -1890,7 +1916,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     if (_state.localCaption == null) {
       return;
     }
-    _updateState(_state.copyWith(clearLocalCaption: true));
+    _updateCaptionState(_state.copyWith(clearLocalCaption: true));
   }
 
   Future<void> _ensureActiveRemoteSubscriptionProfile() async {
@@ -2640,7 +2666,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     }
 
     _invalidateLocalCaptionClear();
-    _updateState(_state.copyWith(
+    _updateCaptionState(_state.copyWith(
       localCaption: _ActiveCaption(
         utteranceId: update.utteranceId,
         revision: update.revision,
@@ -2926,7 +2952,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       _state.remoteCaptions,
     );
     remoteCaptions[participantId] = nextCaption;
-    _updateState(_state.copyWith(
+    _updateCaptionState(_state.copyWith(
       remoteCaptions: Map<ParticipantId, _ActiveCaption>.unmodifiable(
         remoteCaptions,
       ),
@@ -2960,7 +2986,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       if (current == null || current.utteranceId != utteranceId) {
         return;
       }
-      _updateState(_state.copyWith(
+      _updateCaptionState(_state.copyWith(
         localCaption:
             current.copyWith(expiresAt: expiresAt, isFadingOut: false),
       ));
@@ -2976,7 +3002,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         expiresAt: expiresAt,
         isFadingOut: false,
       );
-      _updateState(_state.copyWith(
+      _updateCaptionState(_state.copyWith(
         remoteCaptions: Map<ParticipantId, _ActiveCaption>.unmodifiable(
           remoteCaptions,
         ),
@@ -2992,7 +3018,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
             lifecycleGeneration != _localCaptionClearGeneration) {
           return;
         }
-        _updateState(_state.copyWith(
+        _updateCaptionState(_state.copyWith(
           localCaption: current.copyWith(
             isFadingOut: true,
             expiresAt: expiresAt,
@@ -3013,7 +3039,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
           isFadingOut: true,
           expiresAt: expiresAt,
         );
-        _updateState(_state.copyWith(
+        _updateCaptionState(_state.copyWith(
           remoteCaptions: Map<ParticipantId, _ActiveCaption>.unmodifiable(
             remoteCaptions,
           ),
@@ -3059,7 +3085,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     );
     remoteCaptions.remove(participantId);
     _remoteCaptionClearGenerations.remove(participantId);
-    _updateState(_state.copyWith(
+    _updateCaptionState(_state.copyWith(
       remoteCaptions: Map<ParticipantId, _ActiveCaption>.unmodifiable(
         remoteCaptions,
       ),
@@ -3103,7 +3129,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         !_disposed &&
         (_state.captionIssueCode != normalizedCode ||
             _state.captionIssueMessage != normalizedMessage)) {
-      _updateState(_state.copyWith(
+      _updateCaptionState(_state.copyWith(
         captionIssueCode: normalizedCode,
         captionIssueMessage: normalizedMessage,
       ));
@@ -3144,7 +3170,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     if (_state.captionIssueCode == null && _state.captionIssueMessage == null) {
       return;
     }
-    _updateState(_state.copyWith(clearCaptionIssue: true));
+    _updateCaptionState(_state.copyWith(clearCaptionIssue: true));
   }
 
   bool _canPersistCaptionLogs() {
@@ -3548,6 +3574,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   void _updateState(_CallState newState) {
     if (!mounted || _disposed) return;
 
+    final captionsChanged = _captionStateChanged(_state, newState);
+
     if (newState.connectionState == ConnectionState.disconnected ||
         newState.connectionState == ConnectionState.failed) {
       _stopDurationTimer();
@@ -3557,6 +3585,40 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     setState(() {
       _state = newState;
     });
+
+    if (captionsChanged) {
+      _publishCaptionState(newState);
+    }
+  }
+
+  bool _captionStateChanged(_CallState previous, _CallState next) {
+    return !identical(previous.localCaption, next.localCaption) ||
+        !identical(previous.remoteCaptions, next.remoteCaptions) ||
+        previous.captionIssueMessage != next.captionIssueMessage;
+  }
+
+  void _publishCaptionState(_CallState state) {
+    _captionOverlayNotifier.value = _CaptionOverlayState.fromCallState(state);
+  }
+
+  /// Caption recognition can update several times per second. Keep those
+  /// updates scoped to the overlay unless its presence changes chat layout.
+  void _updateCaptionState(_CallState newState) {
+    if (!mounted || _disposed) return;
+
+    final hadContent = _captionOverlayNotifier.value.hasContent;
+    final nextCaptionState = _CaptionOverlayState.fromCallState(newState);
+    final layoutChanged = hadContent != nextCaptionState.hasContent;
+
+    if (layoutChanged) {
+      setState(() {
+        _state = newState;
+      });
+    } else {
+      _state = newState;
+    }
+
+    _captionOverlayNotifier.value = nextCaptionState;
   }
 
   void _startDurationTimer() {
@@ -4172,9 +4234,15 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                   left: 16,
                   right: captionOverlayRightInset,
                   child: RepaintBoundary(
-                    child: _buildCaptionsOverlay(
-                      compact: captionOverlayTopOffset != null,
-                      maxHeight: captionOverlayMaxHeight,
+                    child: ValueListenableBuilder<_CaptionOverlayState>(
+                      valueListenable: _captionOverlayNotifier,
+                      builder: (context, captionState, _) {
+                        return _buildCaptionsOverlay(
+                          captionState: captionState,
+                          compact: captionOverlayTopOffset != null,
+                          maxHeight: captionOverlayMaxHeight,
+                        );
+                      },
                     ),
                   ),
                 ),
@@ -4816,12 +4884,13 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   /// Build captions overlay with speaker separation
   Widget _buildCaptionsOverlay({
+    required _CaptionOverlayState captionState,
     bool compact = false,
     double? maxHeight,
   }) {
-    final remoteEntry = _latestRemoteCaptionEntry();
-    final localCaption = _state.localCaption;
-    final captionIssueMessage = _state.captionIssueMessage;
+    final remoteEntry = _latestRemoteCaptionEntry(captionState.remoteCaptions);
+    final localCaption = captionState.localCaption;
+    final captionIssueMessage = captionState.issueMessage;
     if (remoteEntry == null &&
         localCaption == null &&
         captionIssueMessage == null) {
@@ -4952,12 +5021,14 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     );
   }
 
-  MapEntry<ParticipantId, _ActiveCaption>? _latestRemoteCaptionEntry() {
-    if (_state.remoteCaptions.isEmpty) {
+  MapEntry<ParticipantId, _ActiveCaption>? _latestRemoteCaptionEntry(
+    Map<ParticipantId, _ActiveCaption> remoteCaptions,
+  ) {
+    if (remoteCaptions.isEmpty) {
       return null;
     }
 
-    final sortedEntries = _state.remoteCaptions.entries.toList()
+    final sortedEntries = remoteCaptions.entries.toList()
       ..sort(
         (left, right) =>
             right.value.lastUpdateAt.compareTo(left.value.lastUpdateAt),
@@ -6022,6 +6093,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     _resetCallCheckpointNotice(clearHistory: true);
     _callDurationNotifier.dispose();
     _callCheckpointNoticeNotifier.dispose();
+    _captionOverlayNotifier.dispose();
     _chatFocusNode.removeListener(_handleChatFocusChanged);
     _chatFocusNode.unfocus();
     _chatTextController.clear();

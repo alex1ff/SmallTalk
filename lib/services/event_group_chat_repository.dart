@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:characters/characters.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:unorm_dart/unorm_dart.dart' as unorm;
 
 import '/backend/backend.dart';
 import '/services/event_detail_repository.dart';
@@ -21,6 +23,18 @@ typedef EventChatMessagesStateStream = Stream<EventChatMessagesLoadState>
   DocumentReference chatRef,
   String ownerUid,
 );
+typedef EventChatParticipantStateStream = Stream<EventChatParticipantLoadState>
+    Function(
+  DocumentReference participantRef,
+  String ownerUid,
+  String eventId,
+);
+typedef EventChatDirectMessageWriter = Future<void> Function(
+  DocumentReference messageRef,
+  Map<String, dynamic> data,
+);
+typedef EventChatMessageServerLookup = Future<EventChatMessageServerSnapshot>
+    Function(DocumentReference messageRef);
 typedef EventChatsStream = Stream<List<EventChatsRecord>> Function();
 typedef EventChatsStateStream = Stream<EventChatInboxLoadState> Function();
 typedef EventInboxEventIdsStream = Stream<EventInboxEventIdsLoadState>
@@ -71,15 +85,178 @@ final class EventChatMessagesLoadState {
     required this.messages,
     required this.isFromCache,
     required this.hasPendingWrites,
+    this.pendingWriteMessagePaths = const <String>{},
   });
 
   final String ownerUid;
   final List<EventChatMessagesRecord> messages;
   final bool isFromCache;
   final bool hasPendingWrites;
+  final Set<String> pendingWriteMessagePaths;
 
   bool get isAuthoritative => !isFromCache && !hasPendingWrites;
   bool get canResolveEmpty => messages.isNotEmpty || isAuthoritative;
+
+  bool hasPendingWriteFor(EventChatMessagesRecord message) =>
+      pendingWriteMessagePaths.contains(message.reference.path);
+}
+
+enum EventChatMessageTextErrorReason { empty, tooLong }
+
+final class EventChatMessageTextValidationException extends FormatException {
+  EventChatMessageTextValidationException({
+    required this.reason,
+    required String source,
+  }) : super(
+          switch (reason) {
+            EventChatMessageTextErrorReason.empty =>
+              'Event chat message text must not be empty.',
+            EventChatMessageTextErrorReason.tooLong =>
+              'Event chat message text must not exceed 1000 graphemes.',
+          },
+          source,
+        );
+
+  final EventChatMessageTextErrorReason reason;
+}
+
+String canonicalizeEventChatMessageText(String value) {
+  final text = unorm
+      .nfc(value)
+      .replaceAll(RegExp(r'\r\n?'), '\n')
+      .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+      .trim();
+  if (text.isEmpty) {
+    throw EventChatMessageTextValidationException(
+      reason: EventChatMessageTextErrorReason.empty,
+      source: value,
+    );
+  }
+  if (text.characters.length > 1000) {
+    throw EventChatMessageTextValidationException(
+      reason: EventChatMessageTextErrorReason.tooLong,
+      source: value,
+    );
+  }
+  return text;
+}
+
+final class EventChatDirectSenderSnapshot {
+  const EventChatDirectSenderSnapshot({
+    required this.senderId,
+    required this.displayName,
+    required this.photoUrl,
+  });
+
+  final String senderId;
+  final String displayName;
+  final String? photoUrl;
+}
+
+final class EventChatParticipantLoadState {
+  const EventChatParticipantLoadState({
+    required this.ownerUid,
+    required this.eventId,
+    required this.participant,
+    required this.rawDisplayName,
+    required this.rawPhotoUrl,
+    required this.hasPhotoUrlField,
+    required this.isFromCache,
+    required this.hasPendingWrites,
+  });
+
+  final String ownerUid;
+  final String eventId;
+  final EventParticipantsRecord? participant;
+  final Object? rawDisplayName;
+  final Object? rawPhotoUrl;
+  final bool hasPhotoUrlField;
+  final bool isFromCache;
+  final bool hasPendingWrites;
+
+  bool get isAuthoritative => !isFromCache && !hasPendingWrites;
+
+  bool get isActive {
+    final value = participant;
+    if (value == null) {
+      return false;
+    }
+    final expectedPath = 'events/$eventId/participants/$ownerUid';
+    return value.reference.path == expectedPath &&
+        value.userId == ownerUid &&
+        (value.role == 'organizer' || value.role == 'participant') &&
+        value.status == 'active' &&
+        value.leftAt == null;
+  }
+
+  EventChatDirectSenderSnapshot? get directSenderSnapshot {
+    if (!isActive) {
+      return null;
+    }
+    final displayName = rawDisplayName;
+    if (displayName is! String ||
+        displayName.isEmpty ||
+        displayName != displayName.trim() ||
+        displayName.runes.length > 70) {
+      return null;
+    }
+
+    final Object? photoValue;
+    if (!hasPhotoUrlField || rawPhotoUrl == null) {
+      photoValue = null;
+    } else {
+      photoValue = rawPhotoUrl;
+      if (photoValue is! String ||
+          photoValue.isEmpty ||
+          photoValue != photoValue.trim() ||
+          photoValue.runes.length > 2048) {
+        return null;
+      }
+    }
+
+    return EventChatDirectSenderSnapshot(
+      senderId: ownerUid,
+      displayName: displayName,
+      photoUrl: photoValue as String?,
+    );
+  }
+}
+
+final class EventChatMessageServerSnapshot {
+  EventChatMessageServerSnapshot({
+    required this.exists,
+    Map<String, dynamic>? data,
+  }) : data = data == null
+            ? null
+            : Map<String, dynamic>.unmodifiable(
+                Map<String, dynamic>.from(data),
+              );
+
+  const EventChatMessageServerSnapshot.missing()
+      : exists = false,
+        data = null;
+
+  final bool exists;
+  final Map<String, dynamic>? data;
+}
+
+enum EventChatMessageRetryLookupDisposition { matching, missing, conflict }
+
+final class EventChatMessageRetryLookupResult {
+  const EventChatMessageRetryLookupResult({
+    required this.disposition,
+    required this.messagePath,
+  });
+
+  final EventChatMessageRetryLookupDisposition disposition;
+  final String messagePath;
+
+  bool get isMatching =>
+      disposition == EventChatMessageRetryLookupDisposition.matching;
+  bool get isMissing =>
+      disposition == EventChatMessageRetryLookupDisposition.missing;
+  bool get isConflict =>
+      disposition == EventChatMessageRetryLookupDisposition.conflict;
 }
 
 final class EventChatInboxLoadState {
@@ -136,6 +313,7 @@ EventChatMessagesLoadState resolveEventChatMessagesSnapshot({
   required Iterable<EventChatMessagesRecord> messages,
   required bool isFromCache,
   required bool hasPendingWrites,
+  Iterable<String> pendingWriteMessagePaths = const <String>[],
 }) {
   final normalizedOwnerUid = ownerUid.trim();
   if (normalizedOwnerUid.isEmpty) {
@@ -145,6 +323,34 @@ EventChatMessagesLoadState resolveEventChatMessagesSnapshot({
   return EventChatMessagesLoadState(
     ownerUid: normalizedOwnerUid,
     messages: List<EventChatMessagesRecord>.unmodifiable(messages),
+    isFromCache: isFromCache,
+    hasPendingWrites: hasPendingWrites,
+    pendingWriteMessagePaths: Set<String>.unmodifiable(
+      pendingWriteMessagePaths,
+    ),
+  );
+}
+
+EventChatParticipantLoadState resolveEventChatParticipantSnapshot({
+  required String eventId,
+  required String ownerUid,
+  required EventParticipantsRecord? participant,
+  required Map<String, dynamic>? rawData,
+  required bool isFromCache,
+  required bool hasPendingWrites,
+}) {
+  final normalizedEventId = normalizeEventDetailId(eventId);
+  final normalizedOwnerUid = ownerUid.trim();
+  if (normalizedOwnerUid.isEmpty) {
+    throw ArgumentError.value(ownerUid, 'ownerUid', 'must not be empty');
+  }
+  return EventChatParticipantLoadState(
+    ownerUid: normalizedOwnerUid,
+    eventId: normalizedEventId,
+    participant: participant,
+    rawDisplayName: rawData?['displayName'],
+    rawPhotoUrl: rawData?['photoUrl'],
+    hasPhotoUrlField: rawData?.containsKey('photoUrl') ?? false,
     isFromCache: isFromCache,
     hasPendingWrites: hasPendingWrites,
   );
@@ -176,6 +382,36 @@ class EventGroupChatRepository {
 
   static DocumentReference chatReferenceForEventId(String eventId) =>
       EventChatsRecord.collection.doc(normalizeEventDetailId(eventId));
+
+  static DocumentReference participantReferenceForEventId({
+    required String eventId,
+    required String ownerUid,
+  }) {
+    final normalizedOwnerUid = ownerUid.trim();
+    if (normalizedOwnerUid.isEmpty) {
+      throw ArgumentError.value(ownerUid, 'ownerUid', 'must not be empty');
+    }
+    final eventRef = EventsRecord.collection.doc(
+      normalizeEventDetailId(eventId),
+    );
+    return EventParticipantsRecord.createDoc(
+      eventRef,
+      id: normalizedOwnerUid,
+    );
+  }
+
+  static DocumentReference messageReferenceForEventId({
+    required String eventId,
+    required String clientMessageId,
+  }) {
+    final normalizedMessageId = _validateEventChatClientMessageId(
+      clientMessageId,
+    );
+    return EventChatMessagesRecord.createDoc(
+      chatReferenceForEventId(eventId),
+      id: normalizedMessageId,
+    );
+  }
 
   static String eventIdForChat(EventChatsRecord chat) {
     final eventId = chat.eventId.trim();
@@ -409,6 +645,56 @@ class EventGroupChatRepository {
     });
   }
 
+  static Stream<EventChatParticipantLoadState> watchOwnParticipantState({
+    required String eventId,
+    required String ownerUid,
+    EventChatParticipantStateStream? participantStateStream,
+  }) {
+    final normalizedEventId = normalizeEventDetailId(eventId);
+    final normalizedOwnerUid = ownerUid.trim();
+    if (normalizedOwnerUid.isEmpty) {
+      return const Stream<EventChatParticipantLoadState>.empty();
+    }
+    final participantRef = participantReferenceForEventId(
+      eventId: normalizedEventId,
+      ownerUid: normalizedOwnerUid,
+    );
+    final injectedStateStream = participantStateStream;
+    if (injectedStateStream != null) {
+      return injectedStateStream(
+        participantRef,
+        normalizedOwnerUid,
+        normalizedEventId,
+      ).map((state) {
+        if (state.ownerUid != normalizedOwnerUid ||
+            state.eventId != normalizedEventId) {
+          throw StateError('Event participant belongs to another scope');
+        }
+        return state;
+      });
+    }
+
+    return participantRef
+        .snapshots(includeMetadataChanges: true)
+        .map((snapshot) {
+      final rawSnapshotData = snapshot.data();
+      final rawData = rawSnapshotData is Map
+          ? Map<String, dynamic>.from(rawSnapshotData)
+          : null;
+      final participant = snapshot.exists
+          ? EventParticipantsRecord.fromSnapshot(snapshot)
+          : null;
+      return resolveEventChatParticipantSnapshot(
+        eventId: normalizedEventId,
+        ownerUid: normalizedOwnerUid,
+        participant: participant,
+        rawData: rawData,
+        isFromCache: snapshot.metadata.isFromCache,
+        hasPendingWrites: snapshot.metadata.hasPendingWrites,
+      );
+    });
+  }
+
   // Use FirebaseAuth directly so a stale profile cache cannot select an owner.
   static List<String> get rememberedInboxEventIds =>
       rememberedInboxEventIdsForOwner(
@@ -596,6 +882,81 @@ class EventGroupChatRepository {
     _rememberedInboxOwnerChanges.add(null);
   }
 
+  static Map<String, dynamic> buildDirectMessagePayload({
+    required EventChatDirectSenderSnapshot sender,
+    required String text,
+  }) {
+    _validateDirectSenderSnapshot(sender);
+    final canonicalText = canonicalizeEventChatMessageText(text);
+    return <String, dynamic>{
+      'senderId': sender.senderId,
+      'senderDisplayName': sender.displayName,
+      'senderPhotoUrl': sender.photoUrl,
+      'text': canonicalText,
+      'createdAt': FieldValue.serverTimestamp(),
+      'deletedAt': null,
+    };
+  }
+
+  static Future<void> createDirectMessage({
+    required String eventId,
+    required String clientMessageId,
+    required EventChatDirectSenderSnapshot sender,
+    required String text,
+    EventChatDirectMessageWriter? writer,
+  }) async {
+    final messageRef = messageReferenceForEventId(
+      eventId: eventId,
+      clientMessageId: clientMessageId,
+    );
+    final data = buildDirectMessagePayload(sender: sender, text: text);
+    final directWriter = writer ??
+        (DocumentReference reference, Map<String, dynamic> payload) =>
+            reference.set(payload);
+    await directWriter(messageRef, data);
+  }
+
+  static Future<EventChatMessageRetryLookupResult> lookupDirectMessageForRetry({
+    required String eventId,
+    required String clientMessageId,
+    required String senderId,
+    required String text,
+    EventChatMessageServerLookup? lookup,
+  }) async {
+    final normalizedSenderId = senderId.trim();
+    if (normalizedSenderId.isEmpty || normalizedSenderId != senderId) {
+      throw ArgumentError.value(
+        senderId,
+        'senderId',
+        'must be a non-empty canonical uid',
+      );
+    }
+    final canonicalText = canonicalizeEventChatMessageText(text);
+    final messageRef = messageReferenceForEventId(
+      eventId: eventId,
+      clientMessageId: clientMessageId,
+    );
+    final serverLookup = lookup ?? _lookupEventChatMessageFromServer;
+    final snapshot = await serverLookup(messageRef);
+    if (!snapshot.exists) {
+      return EventChatMessageRetryLookupResult(
+        disposition: EventChatMessageRetryLookupDisposition.missing,
+        messagePath: messageRef.path,
+      );
+    }
+    final isMatching = isCanonicalAuthoritativeEventChatMessageData(
+      snapshot.data,
+      senderId: normalizedSenderId,
+      text: canonicalText,
+    );
+    return EventChatMessageRetryLookupResult(
+      disposition: isMatching
+          ? EventChatMessageRetryLookupDisposition.matching
+          : EventChatMessageRetryLookupDisposition.conflict,
+      messagePath: messageRef.path,
+    );
+  }
+
   static Stream<EventChatMessagesLoadState> watchMessagesState({
     required String eventId,
     required String ownerUid,
@@ -638,6 +999,9 @@ class EventGroupChatRepository {
         messages: snapshot.docs.map(EventChatMessagesRecord.fromSnapshot),
         isFromCache: snapshot.metadata.isFromCache,
         hasPendingWrites: snapshot.metadata.hasPendingWrites,
+        pendingWriteMessagePaths: snapshot.docs
+            .where((document) => document.metadata.hasPendingWrites)
+            .map((document) => document.reference.path),
       );
     }).where((state) => state.canResolveEmpty);
   }
@@ -683,6 +1047,9 @@ class EventGroupChatRepository {
         messages: snapshot.docs.map(EventChatMessagesRecord.fromSnapshot),
         isFromCache: snapshot.metadata.isFromCache,
         hasPendingWrites: snapshot.metadata.hasPendingWrites,
+        pendingWriteMessagePaths: snapshot.docs
+            .where((document) => document.metadata.hasPendingWrites)
+            .map((document) => document.reference.path),
       );
     }).where((state) => state.canResolveEmpty);
   }
@@ -715,6 +1082,143 @@ class EventGroupChatRepository {
     }
     return limit;
   }
+}
+
+bool isCanonicalAuthoritativeEventChatMessageRecord(
+  EventChatMessagesRecord message, {
+  required String senderId,
+  required String text,
+}) =>
+    isCanonicalAuthoritativeEventChatMessageData(
+      message.snapshotData,
+      senderId: senderId,
+      text: text,
+    );
+
+bool isCanonicalAuthoritativeEventChatMessageData(
+  Map<String, dynamic>? data, {
+  required String senderId,
+  required String text,
+}) {
+  if (data == null || !_hasExactEventChatMessageKeys(data)) {
+    return false;
+  }
+
+  late final String canonicalText;
+  try {
+    canonicalText = canonicalizeEventChatMessageText(text);
+  } on EventChatMessageTextValidationException {
+    return false;
+  }
+  final messageText = data['text'];
+  if (senderId.isEmpty ||
+      senderId != senderId.trim() ||
+      data['senderId'] != senderId ||
+      messageText is! String ||
+      messageText != canonicalText) {
+    return false;
+  }
+  try {
+    if (canonicalizeEventChatMessageText(messageText) != messageText) {
+      return false;
+    }
+  } on EventChatMessageTextValidationException {
+    return false;
+  }
+
+  final displayName = data['senderDisplayName'];
+  if (displayName is! String ||
+      displayName.isEmpty ||
+      displayName != displayName.trim() ||
+      displayName.runes.length > 70) {
+    return false;
+  }
+  final photoUrl = data['senderPhotoUrl'];
+  if (photoUrl != null &&
+      (photoUrl is! String ||
+          photoUrl.isEmpty ||
+          photoUrl != photoUrl.trim() ||
+          photoUrl.runes.length > 2048)) {
+    return false;
+  }
+
+  final createdAt = data['createdAt'];
+  if (createdAt is! DateTime && createdAt is! Timestamp) {
+    return false;
+  }
+  return data['deletedAt'] == null;
+}
+
+Future<EventChatMessageServerSnapshot> _lookupEventChatMessageFromServer(
+  DocumentReference messageRef,
+) async {
+  final snapshot = await messageRef.get(
+    const GetOptions(source: Source.server),
+  );
+  if (!snapshot.exists) {
+    return const EventChatMessageServerSnapshot.missing();
+  }
+  final rawData = snapshot.data();
+  return EventChatMessageServerSnapshot(
+    exists: true,
+    data: rawData is Map ? Map<String, dynamic>.from(rawData) : null,
+  );
+}
+
+void _validateDirectSenderSnapshot(EventChatDirectSenderSnapshot sender) {
+  if (sender.senderId.isEmpty || sender.senderId != sender.senderId.trim()) {
+    throw ArgumentError.value(
+      sender.senderId,
+      'sender.senderId',
+      'must be a non-empty canonical uid',
+    );
+  }
+  if (sender.displayName.isEmpty ||
+      sender.displayName != sender.displayName.trim() ||
+      sender.displayName.runes.length > 70) {
+    throw ArgumentError.value(
+      sender.displayName,
+      'sender.displayName',
+      'must be a direct-eligible participant display name',
+    );
+  }
+  final photoUrl = sender.photoUrl;
+  if (photoUrl != null &&
+      (photoUrl.isEmpty ||
+          photoUrl != photoUrl.trim() ||
+          photoUrl.runes.length > 2048)) {
+    throw ArgumentError.value(
+      photoUrl,
+      'sender.photoUrl',
+      'must be a direct-eligible participant photo url',
+    );
+  }
+}
+
+String _validateEventChatClientMessageId(String clientMessageId) {
+  final isUuidV4 = RegExp(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+  ).hasMatch(clientMessageId);
+  if (!isUuidV4) {
+    throw ArgumentError.value(
+      clientMessageId,
+      'clientMessageId',
+      'must be a lowercase UUID v4',
+    );
+  }
+  return clientMessageId;
+}
+
+bool _hasExactEventChatMessageKeys(Map<String, dynamic> data) {
+  const keys = <String>{
+    'senderId',
+    'senderDisplayName',
+    'senderPhotoUrl',
+    'text',
+    'createdAt',
+    'deletedAt',
+  };
+  return data.length == keys.length && keys.every(data.containsKey);
 }
 
 Stream<EventInboxEventIdsLoadState> _watchInboxEventIdsFromHistory({

@@ -12,6 +12,10 @@ const SEND_EVENT_CHAT_MESSAGE_KEYS = Object.freeze([
 ]);
 const SEND_EVENT_CHAT_MESSAGE_KEY_SET =
   new Set(SEND_EVENT_CHAT_MESSAGE_KEYS);
+const LOWERCASE_UUID_V4_PATTERN = new RegExp(
+    "^[0-9a-f]{8}-[0-9a-f]{4}-" +
+    "4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+);
 const EVENT_CHAT_METADATA_KEYS = Object.freeze([
   "eventId",
   "readAccessUserIds",
@@ -103,24 +107,16 @@ function normalizeMessageText(value) {
 }
 
 function normalizeClientMessageId(value) {
-  if (value === undefined) {
+  if (value === undefined || value === null) {
     return null;
   }
   if (typeof value !== "string") {
     throwInvalidSendRequest("clientMessageId", "invalid_type");
   }
-  const clientMessageId = value.trim();
-  if (
-    !clientMessageId ||
-    clientMessageId === "." ||
-    clientMessageId === ".." ||
-    clientMessageId.includes("/") ||
-    /^__.*__$/.test(clientMessageId) ||
-    Buffer.byteLength(clientMessageId, "utf8") > 1500
-  ) {
+  if (!LOWERCASE_UUID_V4_PATTERN.test(value)) {
     throwInvalidSendRequest("clientMessageId", "invalid_format");
   }
-  return clientMessageId;
+  return value;
 }
 
 function normalizeSendEventChatMessagePayload(data) {
