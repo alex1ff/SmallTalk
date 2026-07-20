@@ -1,5 +1,5 @@
 {
-  "startedAt": "2026-04-17T12:55:25.067Z",
+  "startedAt": "2026-07-20T20:43:19.287Z",
   "projectId": "demo-smalltalk",
   "emulators": {
     "firestore": "127.0.0.1:8080",
@@ -7,7 +7,7 @@
   },
   "checks": {
     "rules": {
-      "pass": true,
+      "pass": false,
       "checks": [
         {
           "label": "Firestore unauth read users denied",
@@ -27,7 +27,8 @@
         },
         {
           "label": "Firestore approved teacher withdrawal create allowed",
-          "status": "pass"
+          "status": "fail",
+          "error": "FirebaseError: [code=permission-denied]: 7 PERMISSION_DENIED: \nfalse for 'create' @ L1439, false for 'update' @ L1441"
         },
         {
           "label": "Firestore self profile update allowed",
@@ -63,11 +64,13 @@
         },
         {
           "label": "Firestore self teacher verification request create pending allowed",
-          "status": "pass"
+          "status": "fail",
+          "error": "FirebaseError: [code=permission-denied]: 7 PERMISSION_DENIED: \nevaluation error at L1313:24 for 'create' @ L1313, evaluation error at L1314:24 for 'update' @ L1314, false for 'create' @ L1313"
         },
         {
           "label": "Firestore self teacher verification request update pending allowed",
-          "status": "pass"
+          "status": "fail",
+          "error": "FirebaseError: [code=permission-denied]: 7 PERMISSION_DENIED: \nevaluation error at L1314:24 for 'update' @ L1314, Null value error. for 'update' @ L1314"
         },
         {
           "label": "Firestore self teacher verification request review fields denied",
@@ -87,6 +90,49 @@
         },
         {
           "label": "Firestore admin teacher verification request approve allowed",
+          "status": "fail",
+          "error": "FirebaseError: [code=not-found]: 5 NOT_FOUND: no entity to update: app: \"dev~demo-smalltalk\"\npath <\n  Element {\n    type: \"teacherVerificationRequests\"\n    name: \"teacherRequestUser\"\n  }\n>\n"
+        },
+        {
+          "label": "Firestore session read allowed via participantIds",
+          "status": "pass"
+        },
+        {
+          "label": "Firestore session update allowed via participantIds",
+          "status": "fail",
+          "error": "FirebaseError: [code=permission-denied]: 7 PERMISSION_DENIED: \nUnable to evaluate the expression as the maximum of 1000 expressions to evaluate has been reached. for 'update' @ L1326, false for 'update' @ L1326"
+        },
+        {
+          "label": "Firestore session participantIds escalation denied to participant",
+          "status": "pass"
+        },
+        {
+          "label": "Firestore session read denied for non-participant",
+          "status": "pass"
+        },
+        {
+          "label": "Firestore session create denied when participantIds omit requester",
+          "status": "pass"
+        },
+        {
+          "label": "Firestore session create allowed with requester-only participantIds",
+          "status": "fail",
+          "error": "FirebaseError: [code=permission-denied]: 7 PERMISSION_DENIED: \nfalse for 'create' @ L1324, Unable to evaluate the expression as the maximum of 1000 expressions to evaluate has been reached. for 'update' @ L1326, false for 'create' @ L1324"
+        },
+        {
+          "label": "Firestore session create denied when participantIds include extra uid",
+          "status": "pass"
+        },
+        {
+          "label": "Firestore session create denied when currentTutorId is preseeded",
+          "status": "pass"
+        },
+        {
+          "label": "Firestore currentTutorId fallback still allows read",
+          "status": "pass"
+        },
+        {
+          "label": "Firestore legacy tutorId escalation denied to participant",
           "status": "pass"
         },
         {
@@ -131,7 +177,8 @@
         },
         {
           "label": "Session responder navigation update allowed via participantIds",
-          "status": "pass"
+          "status": "fail",
+          "error": "FirebaseError: [code=permission-denied]: 7 PERMISSION_DENIED: \nUnable to evaluate the expression as the maximum of 1000 expressions to evaluate has been reached. for 'update' @ L1326, false for 'update' @ L1326"
         },
         {
           "label": "Session participantIds tamper denied",
@@ -151,7 +198,8 @@
         },
         {
           "label": "Caption peer legacy write allowed for participant writer",
-          "status": "pass"
+          "status": "fail",
+          "error": "FirebaseError: [code=permission-denied]: 7 PERMISSION_DENIED: \nUnable to evaluate the expression as the maximum of 1000 expressions to evaluate has been reached. for 'create' @ L1331, Unable to evaluate the expression as the maximum of 1000 expressions to evaluate has been reached. for 'update' @ L1337, false for 'create' @ L1331"
         },
         {
           "label": "Chat unauth conversation read denied",
@@ -163,7 +211,8 @@
         },
         {
           "label": "Chat missing conversation get returns not found for signed-in user",
-          "status": "pass"
+          "status": "fail",
+          "error": "FirebaseError: [code=permission-denied]: \nevaluation error at L1356:21 for 'get' @ L1356, false for 'get' @ L1516, Null value error. for 'get' @ L1356, false for 'get' @ L1516"
         },
         {
           "label": "Chat conversations collection query denied",
@@ -230,17 +279,27 @@
           "status": "pass"
         }
       ],
-      "failures": []
+      "failures": [
+        "Firestore approved teacher withdrawal create allowed: FirebaseError: [code=permission-denied]: 7 PERMISSION_DENIED: \nfalse for 'create' @ L1439, false for 'update' @ L1441",
+        "Firestore self teacher verification request create pending allowed: FirebaseError: [code=permission-denied]: 7 PERMISSION_DENIED: \nevaluation error at L1313:24 for 'create' @ L1313, evaluation error at L1314:24 for 'update' @ L1314, false for 'create' @ L1313",
+        "Firestore self teacher verification request update pending allowed: FirebaseError: [code=permission-denied]: 7 PERMISSION_DENIED: \nevaluation error at L1314:24 for 'update' @ L1314, Null value error. for 'update' @ L1314",
+        "Firestore admin teacher verification request approve allowed: FirebaseError: [code=not-found]: 5 NOT_FOUND: no entity to update: app: \"dev~demo-smalltalk\"\npath <\n  Element {\n    type: \"teacherVerificationRequests\"\n    name: \"teacherRequestUser\"\n  }\n>\n",
+        "Firestore session update allowed via participantIds: FirebaseError: [code=permission-denied]: 7 PERMISSION_DENIED: \nUnable to evaluate the expression as the maximum of 1000 expressions to evaluate has been reached. for 'update' @ L1326, false for 'update' @ L1326",
+        "Firestore session create allowed with requester-only participantIds: FirebaseError: [code=permission-denied]: 7 PERMISSION_DENIED: \nfalse for 'create' @ L1324, Unable to evaluate the expression as the maximum of 1000 expressions to evaluate has been reached. for 'update' @ L1326, false for 'create' @ L1324",
+        "Session responder navigation update allowed via participantIds: FirebaseError: [code=permission-denied]: 7 PERMISSION_DENIED: \nUnable to evaluate the expression as the maximum of 1000 expressions to evaluate has been reached. for 'update' @ L1326, false for 'update' @ L1326",
+        "Caption peer legacy write allowed for participant writer: FirebaseError: [code=permission-denied]: 7 PERMISSION_DENIED: \nUnable to evaluate the expression as the maximum of 1000 expressions to evaluate has been reached. for 'create' @ L1331, Unable to evaluate the expression as the maximum of 1000 expressions to evaluate has been reached. for 'update' @ L1337, false for 'create' @ L1331",
+        "Chat missing conversation get returns not found for signed-in user: FirebaseError: [code=permission-denied]: \nevaluation error at L1356:21 for 'get' @ L1356, false for 'get' @ L1516, Null value error. for 'get' @ L1356, false for 'get' @ L1516"
+      ]
     },
     "endSessionConcurrency": {
-      "pass": true,
-      "sessionId": "audit_session_1776430532711",
+      "pass": false,
+      "sessionId": "audit_session_1784580201826",
       "invocation": [
         {
           "caller": "student",
           "status": "fulfilled",
           "responseStatus": "already_ended",
-          "message": "Session was already ended"
+          "message": "Session was already terminal"
         },
         {
           "caller": "tutor",
@@ -250,15 +309,15 @@
         }
       ],
       "transactionCounts": {
-        "total": 2,
-        "call_charge": 1,
+        "total": 1,
+        "call_charge": 0,
         "earning": 1
       },
       "studentBalanceMinutesBefore": 50,
-      "studentBalanceMinutesAfter": 41,
+      "studentBalanceMinutesAfter": 50,
       "sessionStatusAfter": "ended",
-      "unlockEventCreated": true,
-      "failure": null
+      "unlockEventCreated": false,
+      "failure": "Expected exactly one call_charge + one earning, ended status, unlock event creation, and reduced student balance."
     },
     "unlockProcessorIntegration": {
       "pass": true,
@@ -267,18 +326,18 @@
         "eligibleProcessed": {
           "pass": true,
           "manualFallbackUsed": false,
-          "sessionId": "unlock_session_1776430537961",
-          "pairId": "unlock_student_1776430537961_unlock_tutor_1776430537961",
+          "sessionId": "unlock_session_1784580206716",
+          "pairId": "unlock_student_1784580206716_unlock_tutor_1784580206716",
           "eventStatus": "processed",
           "eventReason": "processed_unlocked",
-          "conversationPath": "conversations/unlock_student_1776430537961_unlock_tutor_1776430537961",
+          "conversationPath": "conversations/unlock_student_1784580206716_unlock_tutor_1784580206716",
           "failure": null
         },
         "existingConversationReuse": {
           "pass": true,
           "manualFallbackUsed": false,
-          "sessionId": "reuse_session_1776430537961",
-          "pairId": "reuse_student_1776430537961_reuse_tutor_1776430537961",
+          "sessionId": "reuse_session_1784580206716",
+          "pairId": "reuse_student_1784580206716_reuse_tutor_1784580206716",
           "eventStatus": "processed",
           "eventReason": "processed_existing_conversation",
           "unlockRefPreserved": true,
@@ -287,8 +346,8 @@
         "ignoredIneligible": {
           "pass": true,
           "manualFallbackUsed": false,
-          "sessionId": "ignored_session_1776430537961",
-          "pairId": "ignored_student_1776430537961_ignored_tutor_1776430537961",
+          "sessionId": "ignored_session_1784580206716",
+          "pairId": "ignored_student_1784580206716_ignored_tutor_1784580206716",
           "eventStatus": "ignored",
           "eventReason": "ignored_not_connected",
           "conversationCreated": false,
@@ -297,8 +356,8 @@
         "missingSessionFailed": {
           "pass": true,
           "manualFallbackUsed": false,
-          "sessionId": "missing_session_1776430537961",
-          "pairId": "missing_student_1776430537961_missing_tutor_1776430537961",
+          "sessionId": "missing_session_1784580206716",
+          "pairId": "missing_student_1784580206716_missing_tutor_1784580206716",
           "eventStatus": "failed",
           "eventReason": "failed_exception",
           "conversationCreated": false,
@@ -308,168 +367,64 @@
       "failure": null
     },
     "createVideoSessionMatrix": {
-      "pass": true,
-      "failure": null,
+      "pass": false,
+      "failure": "Error: Cannot read properties of undefined (reading 'email')",
       "scenario": "student and native_speaker requesters can build all-to-all candidate pools",
-      "scenarios": {
-        "nativeSpeakerRequester": {
-          "pass": true,
-          "failure": null,
-          "scenario": "native_speaker requester can build all-to-all candidate pool",
-          "responseStatus": "searching",
-          "sessionId": "WhnG9gkJrYIEq1beeCmM",
-          "participantIds": [
-            "audit_matrix_native_requester_requester_1776430542828"
-          ],
-          "candidateIds": [
-            "audit_matrix_native_requester_speaker_1776430542828",
-            "audit_matrix_native_requester_student_1776430542828"
-          ],
-          "candidateRoleCounts": {
-            "native_speaker": 1,
-            "student": 1
-          }
-        },
-        "studentRequester": {
-          "pass": true,
-          "failure": null,
-          "scenario": "student requester can build all-to-all candidate pool",
-          "responseStatus": "searching",
-          "sessionId": "1YRdXUJt6gkUmXW183Cg",
-          "participantIds": [
-            "audit_matrix_student_requester_requester_1776430542828"
-          ],
-          "candidateIds": [
-            "audit_matrix_student_requester_speaker_1776430542828",
-            "audit_matrix_student_requester_student_1776430542828"
-          ],
-          "candidateRoleCounts": {
-            "native_speaker": 1,
-            "student": 1
-          }
-        },
-        "studentStudentPair": {
-          "pass": true,
-          "failure": null,
-          "scenario": "student requester can match an explicit student-student pair",
-          "responseStatus": "searching",
-          "sessionId": "g6trwgm3xjtbjoNWnrSj",
-          "participantIds": [
-            "audit_matrix_student_student_pair_requester_1776430542828"
-          ],
-          "candidateIds": [
-            "audit_matrix_student_student_pair_student_1776430542828"
-          ],
-          "candidateRoleCounts": {
-            "student": 1
-          }
-        },
-        "studentNativeSpeakerPair": {
-          "pass": true,
-          "failure": null,
-          "scenario": "student requester can match an explicit student-native_speaker pair",
-          "responseStatus": "searching",
-          "sessionId": "3rq23fBTrkqKQzKlAu5D",
-          "participantIds": [
-            "audit_matrix_student_native_pair_requester_1776430542828"
-          ],
-          "candidateIds": [
-            "audit_matrix_student_native_pair_speaker_1776430542828"
-          ],
-          "candidateRoleCounts": {
-            "native_speaker": 1
-          }
-        },
-        "nativeSpeakerNativeSpeakerPair": {
-          "pass": true,
-          "failure": null,
-          "scenario": "native_speaker requester can match an explicit native_speaker-native_speaker pair",
-          "responseStatus": "searching",
-          "sessionId": "7GG7pTWpBze2tTZnLpEV",
-          "participantIds": [
-            "audit_matrix_native_native_pair_requester_1776430542828"
-          ],
-          "candidateIds": [
-            "audit_matrix_native_native_pair_speaker_1776430542828"
-          ],
-          "candidateRoleCounts": {
-            "native_speaker": 1
-          }
-        }
-      }
+      "scenarios": {}
     },
     "sameDayRepeatPrevention": {
-      "pass": true,
-      "failure": null,
+      "pass": false,
+      "failure": "Error: Оформите подписку или дождитесь восстановления подарочных минут.",
       "scenarios": {
         "completedConnectedExcluded": {
-          "pass": true,
-          "sessionId": "repeat_completed_session_1776430543640",
+          "pass": false,
+          "sessionId": "repeat_completed_session_1784580208641",
           "historyCreated": true,
-          "directStatus": "no_tutors_available",
-          "poolExcludedCompletedCandidate": true,
-          "poolIncludesFreshCandidate": true,
+          "directStatus": null,
+          "poolExcludedCompletedCandidate": false,
+          "poolIncludesFreshCandidate": false,
           "failure": null
         },
         "neverConnectedDoesNotCount": {
-          "pass": true,
-          "sessionId": "repeat_never_session_1776430543640",
+          "pass": false,
+          "sessionId": null,
           "historyCreated": false,
-          "directStatus": "searching",
+          "directStatus": null,
           "failure": null
         },
         "cancelledDoesNotCount": {
-          "pass": true,
-          "sessionId": "repeat_cancelled_session_1776430543640",
+          "pass": false,
+          "sessionId": null,
           "historyCreated": false,
-          "directStatus": "searching",
+          "directStatus": null,
           "failure": null
         },
         "testerBypass": {
-          "pass": true,
-          "directStatus": "searching",
+          "pass": false,
+          "directStatus": null,
           "failure": null
         }
       }
     },
     "partnerLevelFilter": {
-      "pass": true,
-      "failure": null,
+      "pass": false,
+      "failure": "Error: Оформите подписку или дождитесь восстановления подарочных минут.",
       "scenario": "preferred partner level filters pool and direct calls",
-      "poolSessionId": "hY59C1eDMs4LZn8Q2aq2",
-      "poolCandidateIds": [
-        "level_fluent_1776430544616"
-      ],
-      "directMismatchStatus": "no_tutors_available",
-      "directMatchStatus": "searching",
-      "directMatchSessionId": "onTPTR8DQ6i7Swgw82ew",
-      "matchContextFilters": {
-        "preferredCountry": null,
-        "preferredPartnerLevel": "Fluent"
-      },
-      "directMatchContextFilters": {
-        "preferredCountry": null,
-        "preferredPartnerLevel": "Fluent"
-      }
+      "poolSessionId": null,
+      "poolCandidateIds": [],
+      "directMismatchStatus": null,
+      "directMatchStatus": null,
+      "directMatchSessionId": null,
+      "matchContextFilters": null,
+      "directMatchContextFilters": null
     },
     "teacherBoostRanking": {
-      "pass": true,
-      "failure": null,
+      "pass": false,
+      "failure": "Error: Оформите подписку или дождитесь восстановления подарочных минут.",
       "scenario": "approved teacher boost ranks Fluent approved teachers first",
-      "sessionId": "TvN1o3qUt9iVX8sBCMZr",
-      "candidateIds": [
-        "teacher_boost_approved_1776430544820",
-        "level_fluent_1776430544616",
-        "teacher_boost_student_1776430544820"
-      ],
-      "ranking": {
-        "friendPriorityApplied": false,
-        "locationApplied": false,
-        "levelApplied": true,
-        "teacherBoostApplied": true,
-        "internalRankingScore": 0,
-        "legacyPriorityUsedAsTiebreaker": true
-      }
+      "sessionId": null,
+      "candidateIds": [],
+      "ranking": null
     },
     "teacherVerificationRequestFlow": {
       "pass": true,
@@ -479,7 +434,7 @@
         "approvedRequest": {
           "pass": true,
           "manualFallbackUsed": false,
-          "userId": "audit_teacher_request_approved_1776430545023",
+          "userId": "audit_teacher_request_approved_1784580208852",
           "userStatus": "approved",
           "verifNS": true,
           "matchProfile": {
@@ -503,7 +458,7 @@
         "rejectedRequestClearsLegacy": {
           "pass": true,
           "manualFallbackUsed": false,
-          "userId": "audit_teacher_request_rejected_1776430545023",
+          "userId": "audit_teacher_request_rejected_1784580208852",
           "userStatus": "rejected",
           "verifNS": false,
           "matchProfile": {
@@ -534,7 +489,7 @@
         "studentProfile": {
           "pass": true,
           "manualFallbackUsed": false,
-          "userId": "audit_match_student_1776430545871",
+          "userId": "audit_match_student_1784580210949",
           "matchProfile": {
             "country": "BR",
             "role": "student",
@@ -556,7 +511,7 @@
         "nativeSpeakerProfile": {
           "pass": true,
           "manualFallbackUsed": false,
-          "userId": "audit_match_native_1776430545871",
+          "userId": "audit_match_native_1784580210949",
           "matchProfile": {
             "country": "US",
             "role": "native_speaker",
@@ -578,7 +533,7 @@
         "rejectedTeacherProfile": {
           "pass": true,
           "manualFallbackUsed": false,
-          "userId": "audit_match_rejected_teacher_1776430545871",
+          "userId": "audit_match_rejected_teacher_1784580210949",
           "matchProfile": {
             "country": null,
             "role": "native_speaker",
@@ -600,7 +555,7 @@
         "storedOnlyProfile": {
           "pass": true,
           "manualFallbackUsed": false,
-          "userId": "audit_match_stored_only_1776430545871",
+          "userId": "audit_match_stored_only_1784580210949",
           "matchProfile": {
             "version": "v1",
             "role": "native_speaker",
@@ -612,32 +567,32 @@
             "country": "CA",
             "level": "Fluent",
             "ratingAverage": 4.6,
+            "ratingCount": 14,
             "teacherAccreditationStatus": "approved",
             "approvedTeacher": true,
-            "legacyPriorityScore": 7,
-            "ratingCount": 0
+            "legacyPriorityScore": 7
           },
           "failure": null
         }
       }
     },
     "createVideoSessionLoad": {
-      "pass": true,
+      "pass": false,
       "requests": 20,
       "concurrency": 5,
-      "successCount": 20,
-      "errorCount": 0,
-      "p50_ms": 65,
-      "p95_ms": 85,
-      "max_ms": 98,
-      "avg_ms": 67.9,
-      "logLines": 80,
-      "errorLines": 0,
+      "successCount": 0,
+      "errorCount": 20,
+      "p50_ms": 0,
+      "p95_ms": 1,
+      "max_ms": 1,
+      "avg_ms": 0.45,
+      "logLines": 20,
+      "errorLines": 20,
       "responseStatuses": {
-        "no_tutors_available": 20
+        "error": 20
       },
-      "failure": null
+      "failure": "Some load-test invocations returned errors."
     }
   },
-  "finishedAt": "2026-04-17T12:55:47.245Z"
+  "finishedAt": "2026-07-20T20:43:32.050Z"
 }
