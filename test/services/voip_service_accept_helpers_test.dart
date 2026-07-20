@@ -89,7 +89,7 @@ void main() {
       );
     });
 
-    test('all foreground matches use in-app navigation instead of CallKit', () {
+    test('foreground teacher waits for native CallKit acceptance', () {
       expect(
         voipIncomingCallShouldUseInAppNavigation(
           const {'scenario': 'student_student'},
@@ -116,6 +116,25 @@ void main() {
           const {
             'sessionId': 'teacher-session',
             'scenario': 'student_teacher',
+            'recipientId': 'teacher-a',
+            'responderId': 'teacher-a',
+            'responderRole': 'native_speaker',
+            'navRole': 'tutor',
+          },
+          lifecycleState: AppLifecycleState.resumed,
+        ),
+        isFalse,
+      );
+      expect(
+        voipIncomingCallShouldUseInAppNavigation(
+          const {
+            'sessionId': 'teacher-session',
+            'scenario': 'student_teacher',
+            'recipientId': 'student-a',
+            'responderId': 'teacher-a',
+            'responderRole': 'native_speaker',
+            'navRole': 'student',
+            'acceptMode': 'open_session',
           },
           lifecycleState: AppLifecycleState.resumed,
         ),
@@ -2411,7 +2430,7 @@ void main() {
       );
     });
 
-    test('foreground teacher incoming call accepts and navigates in app',
+    test('foreground teacher navigates only after native CallKit acceptance',
         () async {
       const sessionId = 'session-foreground-teacher';
       final navigated = Completer<void>();
@@ -2453,11 +2472,36 @@ void main() {
           'type': 'incoming_call',
           'sessionId': sessionId,
           'recipientId': 'teacher-a',
+          'responderId': 'teacher-a',
+          'responderRole': 'native_speaker',
+          'navRole': 'tutor',
           'scenario': 'student_teacher',
           'acceptMode': 'responder_accepts',
           'tokenStrategy': 'accept_call',
         },
       );
+
+      expect(acceptCallInvoked, isFalse);
+      expect(navigated.isCompleted, isFalse);
+      expect(service.debugAcceptedSessionForTesting(sessionId), isFalse);
+      expect(
+        service.debugCallKitIdForSessionForTesting(sessionId),
+        deterministicCallKitIdForTest(sessionId),
+      );
+
+      await service.debugHandleCallAcceptForTesting({
+        'id': deterministicCallKitIdForTest(sessionId),
+        'extra': const {
+          'sessionId': sessionId,
+          'recipientId': 'teacher-a',
+          'responderId': 'teacher-a',
+          'responderRole': 'native_speaker',
+          'navRole': 'tutor',
+          'scenario': 'student_teacher',
+          'acceptMode': 'responder_accepts',
+          'tokenStrategy': 'accept_call',
+        },
+      });
       await navigated.future.timeout(const Duration(seconds: 1));
 
       expect(acceptCallInvoked, isTrue);

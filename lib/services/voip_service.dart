@@ -215,7 +215,17 @@ bool voipIncomingCallShouldUseInAppNavigation(
     return false;
   }
 
-  return true;
+  final navRole = _voipStringFromPayload(data, 'navRole')?.toLowerCase();
+  final responderRole =
+      _voipStringFromPayload(data, 'responderRole')?.toLowerCase();
+  final recipientId = _voipStringFromPayload(data, 'recipientId');
+  final responderId = _voipStringFromPayload(data, 'responderId');
+  final targetsNativeSpeakerResponder = navRole == 'tutor' ||
+      (responderRole == 'native_speaker' &&
+          recipientId != null &&
+          recipientId == responderId);
+
+  return !targetsNativeSpeakerResponder;
 }
 
 Iterable<dynamic> _voipActiveCallEntries(dynamic activeCalls) {
