@@ -14,6 +14,7 @@ import '/flutter_flow/permissions_util.dart';
 import '/services/user_match_profile.dart';
 import '/services/active_search_recovery.dart';
 import '/services/nearby_partner_count_cache.dart';
+import '/services/nearby_partner_preview_cache.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/components/no_balance_widget.dart';
 import '/components/promo_redeem_widget.dart';
@@ -57,6 +58,11 @@ typedef PartnerCountLoader = Future<int?> Function({
   required CountryStruct? preferredLocation,
   required Level? preferredPartnerLevel,
 });
+typedef PartnerPreviewLoader = Future<List<NearbyPartnerPreviewEntry>?>
+    Function({
+  required CountryStruct? preferredLocation,
+  required Level? preferredPartnerLevel,
+});
 typedef StudentCallNavigator = FutureOr<void> Function(
   BuildContext context,
   DocumentReference videoDocRef, {
@@ -79,6 +85,7 @@ class StudentsDashboardWidget extends StatefulWidget {
     this.stopSearchRequest,
     this.activeSearchRecoveryReader,
     this.partnerCountLoader,
+    this.partnerPreviewLoader,
   })  : this.zn = zn ?? false,
         this.topUpSuccess = topUpSuccess ?? false;
 
@@ -94,6 +101,7 @@ class StudentsDashboardWidget extends StatefulWidget {
   final Future<ActiveSearchRecoveryState> Function(String userId)?
       activeSearchRecoveryReader;
   final PartnerCountLoader? partnerCountLoader;
+  final PartnerPreviewLoader? partnerPreviewLoader;
 
   static Future<bool> Function(UsersRecord user)? debugUsageLimitReachedChecker;
   static Future<VideoSessionsRecord?> Function(DocumentReference sessionRef)?
@@ -133,11 +141,13 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
   late final NearbyPartnerCountCache _partnerCountCache;
+  late final NearbyPartnerPreviewCache _partnerPreviewCache;
   final Map<String, int> _partnerCountMemoryCache = <String, int>{};
   final Set<String> _partnerCountRefreshesStarted = <String>{};
   String? _activePartnerCountCacheKey;
   String? _partnerPreviewCacheKey;
   Future<List<OrbitingAvatarData>>? _partnerPreviewFuture;
+  List<OrbitingAvatarData>? _partnerPreviewInitialData;
   bool _isLocationMenuOpen = false;
   bool _isLevelMenuOpen = false;
   StudentDashboardSearchState _searchState = StudentDashboardSearchState.idle;
@@ -1618,24 +1628,36 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     }
   }
 
-  Future<List<OrbitingAvatarData>> _loadFilteredPartnerPreviewAvatars({
+  Future<List<NearbyPartnerPreviewEntry>?> _loadFilteredPartnerPreviewEntries({
     required CountryStruct? preferredLocation,
     required Level? preferredPartnerLevel,
   }) async {
     try {
+      final loader = widget.partnerPreviewLoader;
+      if (loader != null) {
+        return loader(
+          preferredLocation: preferredLocation,
+          preferredPartnerLevel: preferredPartnerLevel,
+        );
+      }
+
       final snapshot = await _filteredPartnerProfilesQuery(
         preferredLocation: preferredLocation,
         preferredPartnerLevel: preferredPartnerLevel,
       ).limit(_searchAvatarMotions.length).get();
 
-      final profiles = snapshot.docs
+      return snapshot.docs
           .map(UserPublicProfilesRecord.fromSnapshot)
+          .map(
+            (profile) => NearbyPartnerPreviewEntry(
+              displayName: profile.displayName,
+              photoUrl: profile.photoUrl,
+            ),
+          )
           .toList(growable: false);
-
-      return _buildPartnerPreviewAvatars(profiles);
     } catch (error) {
       debugPrint('StudentsDashboard: failed to load partner avatars: $error');
-      return _fallbackSearchAvatars;
+      return null;
     }
   }
 
@@ -1723,31 +1745,91 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     }
   }
 
-  Future<List<OrbitingAvatarData>> _partnerPreviewFutureFor({
+  String _partnerPreviewCacheKeyFor({
     required CountryStruct? preferredLocation,
     required Level? preferredPartnerLevel,
   }) {
     final activeLanguage =
         resolveUserActiveConversationLanguage(currentUserDocument) ?? '';
-    final cacheKey = [
-      activeLanguage,
-      preferredLocation?.code ?? '',
-      preferredPartnerLevel?.name ?? '',
-    ].join('|');
+    return nearbyPartnerPreviewCacheKey(
+      languageCode: activeLanguage,
+      countryCode: preferredLocation?.code ?? '',
+      partnerLevel: preferredPartnerLevel?.name ?? '',
+    );
+  }
+
+  void _ensurePartnerPreviewLoad({
+    required CountryStruct? preferredLocation,
+    required Level? preferredPartnerLevel,
+  }) {
+    final cacheKey = _partnerPreviewCacheKeyFor(
+      preferredLocation: preferredLocation,
+      preferredPartnerLevel: preferredPartnerLevel,
+    );
 
     if (_partnerPreviewCacheKey != cacheKey || _partnerPreviewFuture == null) {
       _partnerPreviewCacheKey = cacheKey;
-      _partnerPreviewFuture = _loadFilteredPartnerPreviewAvatars(
+      final cachedEntries = _partnerPreviewCache.read(cacheKey);
+      _partnerPreviewInitialData = cachedEntries == null
+          ? _fallbackSearchAvatars
+          : _buildPartnerPreviewAvatars(cachedEntries);
+      _partnerPreviewFuture = _refreshPartnerPreview(
+        cacheKey: cacheKey,
+        cachedAvatars: _partnerPreviewInitialData!,
         preferredLocation: preferredLocation,
         preferredPartnerLevel: preferredPartnerLevel,
       );
     }
+  }
+
+  Future<List<OrbitingAvatarData>> _partnerPreviewFutureFor({
+    required CountryStruct? preferredLocation,
+    required Level? preferredPartnerLevel,
+  }) {
+    _ensurePartnerPreviewLoad(
+      preferredLocation: preferredLocation,
+      preferredPartnerLevel: preferredPartnerLevel,
+    );
 
     return _partnerPreviewFuture!;
   }
 
+  List<OrbitingAvatarData> _partnerPreviewInitialDataFor({
+    required CountryStruct? preferredLocation,
+    required Level? preferredPartnerLevel,
+  }) {
+    _ensurePartnerPreviewLoad(
+      preferredLocation: preferredLocation,
+      preferredPartnerLevel: preferredPartnerLevel,
+    );
+    return _partnerPreviewInitialData ?? _fallbackSearchAvatars;
+  }
+
+  Future<List<OrbitingAvatarData>> _refreshPartnerPreview({
+    required String cacheKey,
+    required List<OrbitingAvatarData> cachedAvatars,
+    required CountryStruct? preferredLocation,
+    required Level? preferredPartnerLevel,
+  }) async {
+    final freshEntries = await _loadFilteredPartnerPreviewEntries(
+      preferredLocation: preferredLocation,
+      preferredPartnerLevel: preferredPartnerLevel,
+    );
+    if (freshEntries == null) {
+      return cachedAvatars;
+    }
+
+    final freshAvatars = _buildPartnerPreviewAvatars(freshEntries);
+    try {
+      await _partnerPreviewCache.write(cacheKey, freshEntries);
+    } catch (error) {
+      debugPrint('StudentsDashboard: failed to cache partner avatars: $error');
+    }
+    return freshAvatars;
+  }
+
   List<OrbitingAvatarData> _buildPartnerPreviewAvatars(
-    List<UserPublicProfilesRecord> profiles,
+    List<NearbyPartnerPreviewEntry> profiles,
   ) {
     final avatars = <OrbitingAvatarData>[];
     final maxCount = math.min(profiles.length, _searchAvatarMotions.length);
@@ -2821,7 +2903,10 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
                   preferredLocation: preferredLocation,
                   preferredPartnerLevel: selectedPartnerLevel,
                 ),
-                initialData: _fallbackSearchAvatars,
+                initialData: _partnerPreviewInitialDataFor(
+                  preferredLocation: preferredLocation,
+                  preferredPartnerLevel: selectedPartnerLevel,
+                ),
                 builder: (context, snapshot) {
                   final avatars = snapshot.data?.isNotEmpty == true
                       ? snapshot.data!
@@ -2849,6 +2934,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
   void initState() {
     super.initState();
     _partnerCountCache = NearbyPartnerCountCache(FFAppState().prefs);
+    _partnerPreviewCache = NearbyPartnerPreviewCache(FFAppState().prefs);
     _searchAppState = _searchAppStateForLifecycle(
       WidgetsBinding.instance.lifecycleState,
     );

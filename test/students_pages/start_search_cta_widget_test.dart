@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_auth_platform_interface/firebase_auth_platform_interface.dart';
 import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter/material.dart';
@@ -19,6 +20,7 @@ import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/flutter_flow/nav/nav.dart';
 import 'package:small_talk/shared_pages/video_call_page/video_call_page_widget.dart';
 import 'package:small_talk/services/nearby_partner_count_cache.dart';
+import 'package:small_talk/services/nearby_partner_preview_cache.dart';
 import 'package:small_talk/students_pages/students_dashboard/students_dashboard_widget.dart';
 import 'package:small_talk/students_pages/waiting_for_teacher_page/waiting_for_teacher_page_widget.dart';
 
@@ -897,6 +899,66 @@ void main() {
       findsOneWidget,
     );
     expect(preferences.getInt(cacheKey), 7);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard shows cached partner photos while refreshing',
+      (tester) async {
+    setActiveStudent('student-partner-preview-cache-test');
+    final cacheKey = nearbyPartnerPreviewCacheKey(
+      languageCode: 'en',
+      countryCode: '',
+      partnerLevel: '',
+    );
+    final preferences = await SharedPreferences.getInstance();
+    final previewCache = NearbyPartnerPreviewCache(preferences);
+    await previewCache.write(
+      cacheKey,
+      const <NearbyPartnerPreviewEntry>[
+        NearbyPartnerPreviewEntry(
+          displayName: 'Cached Partner',
+          photoUrl: 'https://example.test/cached-partner.jpg',
+        ),
+      ],
+    );
+    addTearDown(() => preferences.remove(cacheKey));
+    final freshPreview = Completer<List<NearbyPartnerPreviewEntry>?>();
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          partnerPreviewLoader: ({
+            required preferredLocation,
+            required preferredPartnerLevel,
+          }) =>
+              freshPreview.future,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final photoUrls = tester
+        .widgetList<CachedNetworkImage>(find.byType(CachedNetworkImage))
+        .map((image) => image.imageUrl);
+    expect(photoUrls, contains('https://example.test/cached-partner.jpg'));
+
+    freshPreview.complete(const <NearbyPartnerPreviewEntry>[
+      NearbyPartnerPreviewEntry(
+        displayName: 'Fresh Partner',
+        photoUrl: 'https://example.test/fresh-partner.jpg',
+      ),
+    ]);
+    await tester.pump();
+    await tester.pump();
+
+    final refreshedPhotoUrls = tester
+        .widgetList<CachedNetworkImage>(find.byType(CachedNetworkImage))
+        .map((image) => image.imageUrl);
+    expect(
+        refreshedPhotoUrls, contains('https://example.test/fresh-partner.jpg'));
+    expect(previewCache.read(cacheKey)!.single.photoUrl,
+        'https://example.test/fresh-partner.jpg');
 
     await tester.pumpWidget(const SizedBox.shrink());
   });

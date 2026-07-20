@@ -224,6 +224,9 @@ class _OrbitingAvatar extends StatelessWidget {
       fit: BoxFit.cover,
       memCacheWidth: _avatarCacheDimension,
       memCacheHeight: _avatarCacheDimension,
+      useOldImageOnUrlChange: true,
+      fadeInDuration: Duration.zero,
+      fadeOutDuration: Duration.zero,
       placeholder: (context, url) => _buildInitials(context),
       errorWidget: (context, url, error) => _buildInitials(context),
     );
