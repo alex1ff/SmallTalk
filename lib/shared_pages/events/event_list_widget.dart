@@ -175,8 +175,7 @@ const double _eventListTitleTextHeight = 1.22;
 const double _eventListDescriptionTextHeight = 1.38;
 const double _eventListActionTextHeight = 1.0;
 const Color _eventListBorderColor = Color(0xFFEBEBEB);
-const Color _eventListChipBackground =
-    ExpatlioDesign.segmentedControlBackground;
+const Color _eventListChipBackground = Colors.white;
 const Color _eventListSoftPrimaryBackground = Color(0xFFF0E6FF);
 final RegExp _eventListInvisibleAvatarCharacters = RegExp(
   r'[\u0000-\u001F\u007F-\u009F\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180B-\u180F\u200B-\u200F\u202A-\u202E\u2060-\u206F\u3164\uFE00-\uFE0F\uFEFF\uFFA0]',
@@ -838,20 +837,19 @@ class _EventListWidgetState extends State<EventListWidget> {
                                 selectedLevel: _selectedLevel,
                                 onChanged: _selectLevelFilter,
                               ),
-                              if (selectedState == null ||
-                                  selectedState.needsCitySelection ||
-                                  selectedState.hasOutdatedProfileCity) ...[
+                              if (selectedState != null &&
+                                  (selectedState.needsCitySelection ||
+                                      selectedState
+                                          .hasOutdatedProfileCity)) ...[
                                 const SizedBox(
                                   height: ExpatlioDesign.space16,
                                 ),
                                 _EventCitySelector(
-                                  selectedCity: selectedState?.selected,
+                                  selectedCity: selectedState.selected,
                                   hasOutdatedProfileCity:
-                                      selectedState?.hasOutdatedProfileCity ??
-                                          false,
+                                      selectedState.hasOutdatedProfileCity,
                                   showsMissingLocationPrompt:
-                                      selectedState != null &&
-                                          selectedState.needsCitySelection &&
+                                      selectedState.needsCitySelection &&
                                           !selectedState.hasOutdatedProfileCity,
                                   onPressed: onCitySelectorPressed,
                                 ),
@@ -6191,7 +6189,8 @@ class _EventListFilterChip extends StatelessWidget {
     final backgroundColor = selected
         ? selectedBackgroundColor ?? _eventListChipBackground
         : _eventListChipBackground;
-    final borderColor = selected ? selectedBorderColor : null;
+    final borderColor = selected ? selectedBorderColor : _eventListBorderColor;
+    final borderWidth = selected ? selectedBorderWidth : 1.0;
 
     return Semantics(
       key: chipKey,
@@ -6211,13 +6210,17 @@ class _EventListFilterChip extends StatelessWidget {
             decoration: BoxDecoration(
               color: backgroundColor,
               borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
-              border: borderColor == null
-                  ? null
-                  : Border.all(
-                      color: borderColor,
-                      width: selectedBorderWidth,
-                    ),
             ),
+            foregroundDecoration: borderColor == null
+                ? null
+                : BoxDecoration(
+                    borderRadius:
+                        BorderRadius.circular(ExpatlioDesign.radiusCapsule),
+                    border: Border.all(
+                      color: borderColor,
+                      width: borderWidth,
+                    ),
+                  ),
             child: Text(
               label,
               maxLines: 1,

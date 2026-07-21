@@ -220,7 +220,14 @@ void main() {
         tester,
         _dateFilterFinder(EventListDateFilter.today),
       ),
-      ExpatlioDesign.segmentedControlBackground,
+      Colors.white,
+    );
+    expect(
+      _filterChipBorderColor(
+        tester,
+        _dateFilterFinder(EventListDateFilter.today),
+      ),
+      ExpatlioDesign.border,
     );
   });
 
@@ -324,7 +331,11 @@ void main() {
     expect(find.text('От C2'), findsNothing);
     expect(
       _filterChipBackgroundColor(tester, _levelFilterFinder('A1')),
-      ExpatlioDesign.segmentedControlBackground,
+      Colors.white,
+    );
+    expect(
+      _filterChipBorderColor(tester, _levelFilterFinder('A1')),
+      ExpatlioDesign.border,
     );
   });
 
@@ -503,6 +514,42 @@ void main() {
     expect(find.byIcon(Icons.location_on_outlined), findsOneWidget);
     expect(find.byIcon(FFIcons.kchevronDown), findsOneWidget);
     expect(find.text('Выберите город'), findsOneWidget);
+  });
+
+  testWidgets('does not flash city selector while profile city is resolving',
+      (tester) async {
+    final catalogJson = await rootBundle.loadString(eventCityCatalogAssetPath);
+    final catalog = EventCityCatalog.fromJsonString(catalogJson);
+    final city = catalog.cities.first;
+    final catalogCompleter = Completer<String>();
+    currentUserDocument = _userFixture(
+      uid: 'delayed-catalog-user',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: city.countryCode,
+          cityKey: city.cityKey,
+          catalogVersion: catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: DefaultAssetBundle(
+          bundle: _DelayedCityCatalogAssetBundle(catalogCompleter.future),
+          child: const EventListWidget(eventCardsOverride: []),
+        ),
+      ),
+    );
+
+    expect(find.byKey(eventListCitySelectorKey), findsNothing);
+    expect(find.text('Выберите город'), findsNothing);
+
+    catalogCompleter.complete(catalogJson);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListCitySelectorKey), findsNothing);
+    expect(find.text('Выберите город'), findsNothing);
   });
 
   testWidgets('does not show event card layout before city is selected',
@@ -13135,10 +13182,34 @@ Color? _filterChipBackgroundColor(WidgetTester tester, Finder chipFinder) {
   return decoration is BoxDecoration ? decoration.color : null;
 }
 
+Color? _filterChipBorderColor(WidgetTester tester, Finder chipFinder) {
+  final container = tester.widget<Container>(
+    _filterChipContainerFinder(chipFinder),
+  );
+  final decoration = container.foregroundDecoration;
+  final border = decoration is BoxDecoration ? decoration.border : null;
+  return border is Border ? border.top.color : null;
+}
+
 Finder _filterChipContainerFinder(Finder chipFinder) => find.descendant(
       of: chipFinder,
       matching: find.byType(Container),
     );
+
+class _DelayedCityCatalogAssetBundle extends CachingAssetBundle {
+  _DelayedCityCatalogAssetBundle(this.catalog);
+
+  final Future<String> catalog;
+
+  @override
+  Future<ByteData> load(String key) => rootBundle.load(key);
+
+  @override
+  Future<String> loadString(String key, {bool cache = true}) =>
+      key == eventCityCatalogAssetPath
+          ? catalog
+          : rootBundle.loadString(key, cache: cache);
+}
 
 void _expectWhereCondition(
   List<dynamic> conditions,
