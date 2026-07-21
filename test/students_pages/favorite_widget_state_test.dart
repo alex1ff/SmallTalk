@@ -2512,6 +2512,90 @@ void main() {
     );
   });
 
+  testWidgets('event preview does not flash empty-chat text while loading',
+      (tester) async {
+    final sources = _FavoriteSources();
+    final preview = StreamController<EventChatMessagesLoadState>.broadcast(
+      sync: true,
+    );
+    addTearDown(preview.close);
+    final chat = _eventChat('event-preview-loading');
+    final message = _eventMessage(
+      chat: chat,
+      id: 'preview-loading-message',
+      text: 'Latest event message',
+      createdAt: DateTime.parse('2026-07-13T10:00:00Z'),
+    );
+    await _mount(
+      tester,
+      sources,
+      eventLoader: (eventId) async =>
+          _event(eventId, title: 'Loading preview event'),
+      latestMessageSource: (_, __) => preview.stream,
+    );
+    await _emitFriends(
+      tester,
+      sources,
+      'user-a',
+      _friendsState(ownerUid: 'user-a', authoritative: true),
+    );
+    await _emitConversations(tester, sources, 'user-a', const []);
+    await _emitEventChats(
+      tester,
+      sources,
+      'user-a',
+      eventChats: <EventChatsRecord>[chat],
+    );
+    await tester.pump();
+
+    final row = find.byKey(
+      favoriteEventChatAsyncRowKey(
+        ownerUid: 'user-a',
+        chatPath: chat.reference.path,
+        eventId: chat.eventId,
+      ),
+    );
+    expect(
+      find.descendant(of: row, matching: find.text('Чат события')),
+      findsNothing,
+    );
+
+    preview.add(
+      EventChatMessagesLoadState(
+        ownerUid: 'user-a',
+        messages: <EventChatMessagesRecord>[message],
+        isFromCache: false,
+        hasPendingWrites: false,
+      ),
+    );
+    await tester.pump();
+    expect(
+      find.descendant(of: row, matching: find.text('Latest event message')),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(_testApp(const SizedBox.shrink()));
+    await tester.pumpWidget(
+      _testApp(
+        sources.widget(
+          eventLoader: (eventId) async =>
+              _event(eventId, title: 'Loading preview event'),
+          latestMessageSource: (_, __) => preview.stream,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.descendant(of: row, matching: find.text('Latest event message')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: row, matching: find.text('Чат события')),
+      findsNothing,
+    );
+  });
+
   testWidgets('event preview rejects state owned by another account',
       (tester) async {
     final sources = _FavoriteSources();

@@ -585,6 +585,8 @@ class FavoriteWidget extends StatefulWidget {
           .any((cacheKey) => cacheKey.$1 == uid) ||
       _FavoriteWidgetState._eventCacheByOwnerAndEventId.keys
           .any((cacheKey) => cacheKey.$1 == uid) ||
+      _FavoriteWidgetState._latestEventChatMessageStateCacheByOwnerAndChat.keys
+          .any((cacheKey) => cacheKey.$1 == uid) ||
       _FavoriteWidgetState._hiddenChatKeyOverridesByUid.containsKey(uid) ||
       _FavoriteWidgetState._serverConfirmedHiddenChatKeyOverridesByUid
           .containsKey(uid);
@@ -613,6 +615,8 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
       _userFutureCacheByUid = {};
   static final Map<(String, String), UserPublicProfilesRecord>
       _userProfileCacheByUid = {};
+  static final Map<(String, String), EventChatMessagesLoadState>
+      _latestEventChatMessageStateCacheByOwnerAndChat = {};
   static final Map<(String, String), Future<EventsRecord?>>
       _eventFutureCacheByOwnerAndEventId = {};
   static final Map<(String, String), EventsRecord>
@@ -654,6 +658,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     _friendsOwnerDocumentCacheByUid.clear();
     _userFutureCacheByUid.clear();
     _userProfileCacheByUid.clear();
+    _latestEventChatMessageStateCacheByOwnerAndChat.clear();
     _eventFutureCacheByOwnerAndEventId.clear();
     _eventCacheByOwnerAndEventId.clear();
     _hiddenChatKeyOverridesByUid.clear();
@@ -1449,9 +1454,29 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
           currentGeneration: () => _sessionCacheGeneration,
           ownerIsCurrent: _guardedSourceOwnerIsCurrent,
           ownerUidOf: (state) => state.ownerUid,
-        );
+        ).map((state) {
+          _latestEventChatMessageStateCacheByOwnerAndChat[(
+            currentUid,
+            chat.reference.path
+          )] = state;
+          return state;
+        });
       },
     );
+  }
+
+  EventChatMessagesLoadState? _cachedLatestEventChatMessageState(
+    String currentUid,
+    EventChatsRecord chat,
+  ) {
+    if (!_ownerIsCurrent(currentUid)) {
+      return null;
+    }
+    final state = _latestEventChatMessageStateCacheByOwnerAndChat[(
+      currentUid,
+      chat.reference.path
+    )];
+    return state?.ownerUid == currentUid ? state : null;
   }
 
   Stream<int> _watchConversationUnreadCount(
@@ -2171,7 +2196,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
           currentUid: currentUid,
           sourceEpoch: sourceEpoch,
           stream: _watchLatestEventChatMessage(currentUid, chat),
-          cachedState: null,
+          cachedState: _cachedLatestEventChatMessageState(currentUid, chat),
           retryToken: _latestMessagesRetryToken,
           builder: (context, messageSnapshot, messageResolution) {
             if (!_authEpochOwnerIsCurrent(currentUid, sourceEpoch)) {
@@ -2185,11 +2210,14 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
               );
             }
 
-            final latestMessages = messageResolution.displayState?.messages ??
-                const <EventChatMessagesRecord>[];
+            final messageState = messageResolution.displayState;
+            final latestMessages =
+                messageState?.messages ?? const <EventChatMessagesRecord>[];
             final latestMessage =
                 latestMessages.isEmpty ? null : latestMessages.first;
-            final subtitle = _eventChatSubtitle(context, latestMessage);
+            final subtitle = messageState == null
+                ? '\u00A0'
+                : _eventChatSubtitle(context, latestMessage);
             final timestamp = _eventChatTimestamp(chat, latestMessage);
 
             return _dismissibleChatCard(
