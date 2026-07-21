@@ -168,7 +168,7 @@ void main() {
     expect(sources.words, hasLength(2));
     expect(find.text('shown word'), findsOneWidget);
     expect(find.byKey(wordsRefreshErrorIndicatorKey), findsNothing);
-    expect(find.byKey(wordsRefreshingIndicatorKey), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(
         tester.getRect(find.byKey(wordsRowKey(_wordPath('shown')))), rowRect);
 
@@ -180,7 +180,7 @@ void main() {
 
     expect(find.text('shown word'), findsNothing);
     expect(find.text('updated word'), findsOneWidget);
-    expect(find.byKey(wordsRefreshingIndicatorKey), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 
   testWidgets('refresh error and retry preserve the list scroll position',
@@ -229,7 +229,7 @@ void main() {
     await tester.tap(find.byKey(wordsRefreshErrorIndicatorKey));
     await tester.pump();
 
-    expect(find.byKey(wordsRefreshingIndicatorKey), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(
       tester.state<ScrollableState>(listScrollable).position.pixels,
       closeTo(beforeError, 0.01),
@@ -256,14 +256,14 @@ void main() {
 
     expect(find.text('kept word'), findsOneWidget);
     expect(find.byKey(wordsEmptyStateKey), findsNothing);
-    expect(find.byKey(wordsRefreshingIndicatorKey), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
 
     sources.words.single.add(_queryResult(const [], confirmed: true));
     await tester.pump();
 
     expect(find.text('kept word'), findsNothing);
     expect(find.byKey(wordsEmptyStateKey), findsOneWidget);
-    expect(find.byKey(wordsRefreshingIndicatorKey), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 
   testWidgets('cold error fits a compact viewport without a review bar',
@@ -546,7 +546,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('session cache is shown while replacement streams reconnect',
+  testWidgets('session cache is shown while refresh stays silent',
       (tester) async {
     final firstSources = _WordsTestSources();
     final secondSources = _WordsTestSources();
@@ -573,7 +573,7 @@ void main() {
 
     expect(find.text('cached word'), findsOneWidget);
     expect(find.byKey(wordsInitialLoadingKey), findsNothing);
-    expect(find.byKey(wordsRefreshingIndicatorKey), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 
   testWidgets('user data key change drops old rows and stale stream events',

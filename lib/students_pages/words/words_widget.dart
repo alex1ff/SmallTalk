@@ -5,7 +5,6 @@ import '/components/dictionary_word_row.dart';
 import '/components/empty/empty_widget.dart';
 import '/components/review_words_bar.dart';
 import '/components/ux_error_state.dart';
-import '/components/ux_refreshing_indicator_overlay.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/index.dart';
 import '/services/ux_loading_state.dart';
@@ -29,8 +28,6 @@ const ValueKey<String> wordsFullErrorStateKey =
     ValueKey<String>('words_full_error_state');
 const ValueKey<String> wordsRetryButtonKey =
     ValueKey<String>('words_retry_button');
-const ValueKey<String> wordsRefreshingIndicatorKey =
-    ValueKey<String>('words_refreshing_indicator');
 const ValueKey<String> wordsRefreshErrorIndicatorKey =
     ValueKey<String>('words_refresh_error_indicator');
 
@@ -418,11 +415,6 @@ class _WordsWidgetState extends State<WordsWidget> {
     final hasDisplayResult = displayedResult != null;
     final hasRefreshError = wordsState.isErrorWithPreviousResult ||
         (hasDisplayResult && reviewsState.hasError);
-    final isRefreshing = hasDisplayResult &&
-        !hasRefreshError &&
-        (wordsState.isRefreshing ||
-            reviewsState.isRefreshing ||
-            reviewsState.isInitialLoading);
 
     Widget content;
     if (wordsState.isInitialLoading) {
@@ -548,19 +540,6 @@ class _WordsWidgetState extends State<WordsWidget> {
         },
       );
     }
-
-    content = UxRefreshingIndicatorOverlay(
-      isRefreshing: isRefreshing,
-      semanticsLabel: localizations.getVariableText(
-        ruText: 'Обновление словаря',
-        enText: 'Refreshing dictionary',
-      ),
-      indicator: const UxRefreshingIndicatorPill(
-        key: wordsRefreshingIndicatorKey,
-        semanticsLabel: null,
-      ),
-      child: content,
-    );
 
     content = Stack(
       fit: StackFit.passthrough,
