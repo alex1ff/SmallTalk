@@ -18,6 +18,7 @@ import 'shared_pages/design/expatlio_design.dart';
 // 🔔 VoIP imports
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'services/voip_service.dart';
+import 'services/match_coordinator.dart';
 import 'services/user_presence_service.dart';
 import 'custom_code/actions/check_active_session_and_navigate.dart' as actions;
 import 'shared_pages/video_call_page/video_call_page_widget.dart';
@@ -39,7 +40,11 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   if (message.data['type'] == 'call_cancelled') {
     final sessionId = message.data['sessionId']?.trim();
     if (sessionId != null && sessionId.isNotEmpty) {
-      await VoIPService().cancelIncomingCall(sessionId: sessionId);
+      await VoIPService().cancelIncomingCall(
+        sessionId: sessionId,
+        callKitId: message.data['callKitId']?.toString(),
+        pairAttemptId: message.data['pairAttemptId']?.toString(),
+      );
       debugPrint('✅ Cancelled CallKit UI for session $sessionId');
     }
     return;
@@ -128,14 +133,29 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   late Stream<BaseAuthUser> userStream;
   StreamSubscription<BaseAuthUser>? _userStreamSub;
   bool _activeSessionRecoveryInProgress = false;
+  int _authServiceGeneration = 0;
+  String? _authServiceUserId;
 
   final authUserSub = authenticatedUserStream.listen((_) {});
   StreamSubscription? _jwtTokenSub;
 
-  Future<void> _initializeVoipService() async {
+  bool _isCurrentAuthServiceUser(String userId, int generation) =>
+      mounted &&
+      generation == _authServiceGeneration &&
+      _authServiceUserId == userId;
+
+  Future<void> _initializeVoipService(
+    String userId,
+    int generation,
+  ) async {
     try {
+      // CallKit actions may drain immediately after VoIP initialization. The
+      // coordinator must already own this user so an Accept can be persisted
+      // and retried with the correct identity.
+      await MatchCoordinator.instance.startForUser(userId);
+      if (!_isCurrentAuthServiceUser(userId, generation)) return;
       await VoIPService().initialize();
-      if (mounted && loggedIn) {
+      if (_isCurrentAuthServiceUser(userId, generation) && loggedIn) {
         await VoIPService().setCallActionHandlingReady(true);
       }
       debugPrint('✅ VoIP Service initialized successfully');
@@ -213,15 +233,29 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     _userStreamSub = userStream.listen((user) {
       final wasLoggedIn = _appStateNotifier.loggedIn;
       if (!user.loggedIn) {
+        _authServiceGeneration += 1;
+        _authServiceUserId = null;
         FFAppState().clearPendingSocialAuthContext();
         UserPresenceService.instance.stop();
+        unawaited(MatchCoordinator.instance.stop());
         if (wasLoggedIn) {
           unawaited(VoIPService().setCallActionHandlingReady(false));
           unawaited(_deinitializeVoipService());
         }
-      } else if (!wasLoggedIn) {
-        UserPresenceService.instance.start();
-        unawaited(_initializeVoipService());
+      }
+      final userId = user.uid;
+      if (user.loggedIn && userId != null && userId.isNotEmpty) {
+        if (!wasLoggedIn) {
+          UserPresenceService.instance.start();
+        }
+        if (_authServiceUserId != userId) {
+          _authServiceUserId = userId;
+          final generation = ++_authServiceGeneration;
+          unawaited(VoIPService().setCallActionHandlingReady(false));
+          unawaited(_initializeVoipService(userId, generation));
+        } else {
+          unawaited(MatchCoordinator.instance.startForUser(userId));
+        }
       }
       _appStateNotifier.update(user);
       _appStateNotifier.stopShowingSplashImage();
@@ -238,8 +272,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       unawaited(_refreshAuthUserOnResume());
       unawaited(UserPresenceService.instance.markSeen(force: true));
       if (loggedIn) {
-        unawaited(VoIPService().drainPendingCallKitActions());
-        unawaited(VoIPService().recoverBackgroundAcceptedCalls());
+        final userId = _authServiceUserId;
+        if (userId != null) {
+          unawaited(_initializeVoipService(
+            userId,
+            _authServiceGeneration,
+          ));
+        }
       }
       unawaited(_recoverActiveSessionOnResume());
     }
@@ -252,6 +291,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     _userStreamSub?.cancel();
     _jwtTokenSub?.cancel();
     UserPresenceService.instance.stop();
+    _authServiceGeneration += 1;
+    _authServiceUserId = null;
+    unawaited(VoIPService().setCallActionHandlingReady(false));
+    unawaited(MatchCoordinator.instance.stop());
 
     super.dispose();
   }

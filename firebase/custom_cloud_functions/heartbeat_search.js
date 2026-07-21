@@ -260,6 +260,8 @@ function buildHeartbeatSearchDecision({
   userId,
   requestId,
   appState,
+  sessionExists = false,
+  sessionData = {},
   nowMillis = Date.now(),
   serverTimestamp,
   fieldDelete = admin.firestore.FieldValue.delete(),
@@ -302,6 +304,33 @@ function buildHeartbeatSearchDecision({
   }
 
   if (status === SEARCH_REQUEST_STATUS.MATCHED) {
+    const sessionId = readRequestSessionId(requestData);
+    const pairAttemptId = normalizeString(requestData.pairAttemptId);
+    const exactProtocolV2Binding =
+      Number(requestData.matchProtocolVersion) >= 2 &&
+      Boolean(sessionId) &&
+      Boolean(pairAttemptId) &&
+      sessionExists &&
+      Number(sessionData.matchProtocolVersion) >= 2 &&
+      normalizeString(sessionData.pairAttemptId) === pairAttemptId &&
+      (sessionData.participantIds || []).includes(userId);
+    if (exactProtocolV2Binding) {
+      const nextAppState = normalizeAppState(appState);
+      return {
+        ok: true,
+        update: {
+          heartbeatAt: serverTimestamp,
+          appState: nextAppState,
+          appStateUpdatedAt: serverTimestamp,
+        },
+        response: buildHeartbeatResponse({
+          userId,
+          requestData,
+          heartbeat: true,
+          reason: "matched_liveness_updated",
+        }),
+      };
+    }
     return buildNoopDecision({
       userId,
       requestData,
@@ -411,12 +440,24 @@ exports.heartbeatSearch = functions.https.onCall(async (data, context) => {
     const requestData = searchRequestSnapshot.exists ?
       searchRequestSnapshot.data() || {} :
       {};
+    const matchedSessionId =
+      normalizeString(requestData.status) === SEARCH_REQUEST_STATUS.MATCHED &&
+      Number(requestData.matchProtocolVersion) >= 2 ?
+        readRequestSessionId(requestData) :
+        null;
+    const sessionSnapshot = matchedSessionId ?
+      await transaction.get(
+        db.collection("videoSessions").doc(matchedSessionId),
+      ) :
+      null;
     const decision = buildHeartbeatSearchDecision({
       requestExists: searchRequestSnapshot.exists,
       requestData,
       userId,
       requestId: input.requestId,
       appState: input.appState,
+      sessionExists: sessionSnapshot?.exists === true,
+      sessionData: sessionSnapshot?.exists ? sessionSnapshot.data() || {} : {},
       nowMillis,
       serverTimestamp,
     });

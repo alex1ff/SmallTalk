@@ -38,6 +38,17 @@ const {
   logCallLifecycleError,
   logCallLifecycleEvent,
 } = require("./call_lifecycle_logs");
+const {
+  MATCH_PROTOCOL_VERSION,
+  MATCH_STAGE,
+  allParticipantsAccepted,
+  allParticipantsReadyForFinalization,
+} = require("./match_protocol_v2");
+const {
+  CALLKIT_RESPONSE_WINDOW_MS,
+  buildCallKitLifecycleEscalation,
+  findInAppParticipantsNeedingCallKitEscalation,
+} = require("./match_delivery_v2");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -299,9 +310,7 @@ function isPendingSessionAssignedToResponder(
     normalizeSessionId(responderId);
 }
 
-exports.acceptCall = functions
-  .runWith({ secrets: [...apnsSecrets, ...dailySecrets] })
-  .https.onCall(async (data, context) => {
+async function acceptCallCallable(data, context, internalOptions = {}) {
     console.log("✅ Tutor accepting call (updated version)...");
 
     let tutorId = null;
@@ -320,7 +329,8 @@ exports.acceptCall = functions
         );
       }
 
-      tutorId = context.auth.uid;
+      tutorId = normalizeSessionId(internalOptions.responderId) ||
+        context.auth.uid;
       ({ sessionId } = data || {});
 
       console.log("👨‍🏫 Tutor ID:", tutorId);
@@ -360,6 +370,35 @@ exports.acceptCall = functions
           );
         }
         const fresh = freshSnap.data() || {};
+        const nowMs = Date.now();
+        const isProtocolV2 =
+          Number(fresh.matchProtocolVersion) >= MATCH_PROTOCOL_VERSION;
+        if (isProtocolV2) {
+          const expectedPairAttemptId = normalizeSessionId(
+            fresh.pairAttemptId,
+          );
+          const suppliedPairAttemptId = normalizeSessionId(
+            data?.pairAttemptId,
+          );
+          if (
+            !suppliedPairAttemptId ||
+            suppliedPairAttemptId !== expectedPairAttemptId
+          ) {
+            throw new functions.https.HttpsError(
+              "failed-precondition",
+              "Protocol v2 acceptance requires the current pairAttemptId",
+            );
+          }
+          if (!allParticipantsReadyForFinalization(
+            fresh.participantStates || {},
+            fresh.participantIds || [],
+          )) {
+            throw new functions.https.HttpsError(
+              "failed-precondition",
+              "All participants must accept before finalization",
+            );
+          }
+        }
         if (ACCEPTED_SESSION_STATUSES.has(fresh.status)) {
           if (fresh.tutorId === tutorId && fresh.dailyRoomUrl) {
             return {
@@ -384,8 +423,65 @@ exports.acceptCall = functions
             "This session is not assigned to you",
           );
         }
-        const nowMs = Date.now();
-        assertAcceptWindowOpenOrThrow(fresh, nowMs);
+        if (!(isProtocolV2 &&
+          internalOptions.protocolV2Finalization === true)) {
+          assertAcceptWindowOpenOrThrow(fresh, nowMs);
+        }
+        if (isProtocolV2) {
+          const searchEntries = await Promise.all((fresh.participantIds || [])
+            .map(normalizeSessionId)
+            .filter(Boolean)
+            .map(async (participantId) => {
+              const snapshot = await transaction.get(admin.firestore()
+                .collection("searchRequests")
+                .doc(participantId));
+              return [
+                participantId,
+                snapshot.exists ? snapshot.data() || {} : {},
+              ];
+            }));
+          const escalationParticipantIds =
+            findInAppParticipantsNeedingCallKitEscalation({
+              sessionData: {
+                ...fresh,
+                sessionId,
+              },
+              searchDataByParticipantId: Object.fromEntries(searchEntries),
+              nowMillis: nowMs,
+            });
+          if (escalationParticipantIds.length > 0) {
+            const responseExpiresAt = admin.firestore.Timestamp.fromMillis(
+              nowMs + CALLKIT_RESPONSE_WINDOW_MS,
+            );
+            const participantStates = buildCallKitLifecycleEscalation({
+              sessionData: {...fresh, sessionId},
+              participantIds: escalationParticipantIds,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+            transaction.update(sessionRef, {
+              participantStates,
+              responseExpiresAt,
+              confirmationExpiresAt: responseExpiresAt,
+              "matchLock.expiresAt": responseExpiresAt,
+              matchStage: MATCH_STAGE.AWAITING_INITIAL_DISPATCH,
+              lifecycleEscalation: {
+                revision:
+                  Math.max(
+                    0,
+                    Number(fresh.lifecycleEscalation?.revision) || 0,
+                  ) + 1,
+                participantIds: escalationParticipantIds,
+                requestedAt: admin.firestore.FieldValue.serverTimestamp(),
+              },
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+            return {
+              alreadyAccepted: false,
+              finalizationDeferred: true,
+              session: {...fresh, participantStates},
+            };
+          }
+        }
         const acceptingTutorId = fresh.acceptingTutorId || null;
         const acceptingAtMs = timestampToMillis(fresh.acceptingAt);
         const acceptingAt = admin.firestore.Timestamp.fromMillis(nowMs);
@@ -410,6 +506,14 @@ exports.acceptCall = functions
           "Session is already being accepted",
         );
       });
+
+      if (initialSessionState.finalizationDeferred) {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "Participant lifecycle requires CallKit confirmation",
+          {reason: "lifecycle_escalation_pending"},
+        );
+      }
 
       const sessionData = initialSessionState.session || {};
       console.log("📋 Session data:", {
@@ -702,7 +806,74 @@ exports.acceptCall = functions
             sessionData: fresh,
             responderId: tutorId,
             acceptAttemptId,
+            skipResponseDeadline:
+              Number(fresh.matchProtocolVersion) >= MATCH_PROTOCOL_VERSION &&
+              internalOptions.protocolV2Finalization === true,
           });
+          if (Number(fresh.matchProtocolVersion) >= MATCH_PROTOCOL_VERSION) {
+            if (!allParticipantsReadyForFinalization(
+              fresh.participantStates || {},
+              fresh.participantIds || [],
+            )) {
+              throw new functions.https.HttpsError(
+                "failed-precondition",
+                "All participants must accept before finalization",
+              );
+            }
+            const nowMs = Date.now();
+            const searchEntries = await Promise.all((fresh.participantIds || [])
+              .map(normalizeSessionId)
+              .filter(Boolean)
+              .map(async (participantId) => {
+                const snapshot = await transaction.get(admin.firestore()
+                  .collection("searchRequests")
+                  .doc(participantId));
+                return [
+                  participantId,
+                  snapshot.exists ? snapshot.data() || {} : {},
+                ];
+              }));
+            const escalationParticipantIds =
+              findInAppParticipantsNeedingCallKitEscalation({
+                sessionData: {...fresh, sessionId},
+                searchDataByParticipantId: Object.fromEntries(searchEntries),
+                nowMillis: nowMs,
+              });
+            if (escalationParticipantIds.length > 0) {
+              const responseExpiresAt = admin.firestore.Timestamp.fromMillis(
+                nowMs + CALLKIT_RESPONSE_WINDOW_MS,
+              );
+              const participantStates = buildCallKitLifecycleEscalation({
+                sessionData: {...fresh, sessionId},
+                participantIds: escalationParticipantIds,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              });
+              transaction.update(sessionRef, {
+                participantStates,
+                responseExpiresAt,
+                confirmationExpiresAt: responseExpiresAt,
+                "matchLock.expiresAt": responseExpiresAt,
+                matchStage: MATCH_STAGE.AWAITING_INITIAL_DISPATCH,
+                lifecycleEscalation: {
+                  revision:
+                    Math.max(
+                      0,
+                      Number(fresh.lifecycleEscalation?.revision) || 0,
+                    ) + 1,
+                  participantIds: escalationParticipantIds,
+                  requestedAt: admin.firestore.FieldValue.serverTimestamp(),
+                },
+                acceptingTutorId: admin.firestore.FieldValue.delete(),
+                acceptingAt: admin.firestore.FieldValue.delete(),
+                acceptAttemptId: admin.firestore.FieldValue.delete(),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              });
+              return {
+                alreadyAccepted: false,
+                finalizationDeferred: true,
+              };
+            }
+          }
           const usersCollection = admin.firestore().collection("users");
           const requesterUserRef = usersCollection.doc(requesterId);
           const responderUserRef = usersCollection.doc(tutorId);
@@ -774,6 +945,15 @@ exports.acceptCall = functions
             sessionUpdate.sessionPolicy =
               activePolicyUpdate.sessionUpdateFields.sessionPolicy;
           }
+          if (Number(fresh.matchProtocolVersion) >= MATCH_PROTOCOL_VERSION) {
+            sessionUpdate.matchStage = MATCH_STAGE.CONNECTING;
+            sessionUpdate.matchFinalization = {
+              ...(fresh.matchFinalization || {}),
+              status: "completed",
+              pairAttemptId: fresh.pairAttemptId,
+              completedAt: admin.firestore.FieldValue.serverTimestamp(),
+            };
+          }
 
           transaction.update(sessionRef, sessionUpdate);
 
@@ -789,6 +969,19 @@ exports.acceptCall = functions
           console.log("✅ Transaction completed successfully");
           return { alreadyAccepted: false };
         });
+
+      if (txnResult?.finalizationDeferred) {
+        lockAcquired = false;
+        if (transientDailyRoomName) {
+          await deleteDailyRoom(transientDailyRoomName);
+          transientDailyRoomName = null;
+        }
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "Participant lifecycle requires CallKit confirmation",
+          {reason: "lifecycle_escalation_pending"},
+        );
+      }
 
       if (txnResult?.alreadyAccepted) {
         if (transientDailyRoomName) {
@@ -890,8 +1083,12 @@ exports.acceptCall = functions
 
       // 🔔 === ОТПРАВКА PUSH + ОБНОВЛЕНИЕ УВЕДОМЛЕНИЙ (ПАРАЛЛЕЛЬНО) ===
       console.log("📲 Sending push + updating notifications in parallel...");
-      await Promise.all([
-        sendVoipPushToStudent(requesterId, {
+      const postAcceptTasks = [
+        updateNotificationStatus(sessionId, tutorId, "accepted"),
+        cancelOtherNotifications(sessionId, tutorId),
+      ];
+      if (Number(acceptedLiveSession.matchProtocolVersion) < 2) {
+        postAcceptTasks.push(sendVoipPushToStudent(requesterId, {
           sessionId: sessionId,
           callerName: tutorData.display_name || "Собеседник",
           callerId: tutorId,
@@ -929,10 +1126,9 @@ exports.acceptCall = functions
             "⚠️ Failed to send VoIP push (non-critical):",
             pushError.message,
           );
-        }),
-        updateNotificationStatus(sessionId, tutorId, "accepted"),
-        cancelOtherNotifications(sessionId, tutorId),
-      ]);
+        }));
+      }
+      await Promise.all(postAcceptTasks);
       console.log("✅ Push + notifications completed");
 
       // === 8. ПОДГОТОВКА ОТВЕТА ===
@@ -1038,7 +1234,11 @@ exports.acceptCall = functions
         `Internal server error: ${error.message}`,
       );
     }
-  });
+}
+
+exports.acceptCall = functions
+  .runWith({ secrets: [...apnsSecrets, ...dailySecrets] })
+  .https.onCall(acceptCallCallable);
 
 // === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
 
@@ -1272,6 +1472,7 @@ async function cancelOtherNotifications(sessionId, acceptedTutorId) {
 }
 
 exports.__private__ = {
+  acceptCallCallable,
   assertAcceptAttemptCanFinalizeOrThrow,
   assertAcceptLockOwnedByAttemptOrThrow,
   assertAcceptLockOwnedByResponderOrThrow,

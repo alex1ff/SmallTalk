@@ -4,6 +4,7 @@ const { evaluateTutorAvailabilityWindow } = require("./availability");
 const { sendApnsVoip } = require("./apns_voip");
 const { hasActiveAcceptLockForResponder } = require("./accept_lock_policy");
 const {
+  cancelProtocolV2NotificationsInTransaction,
   createIncomingCallNotificationInTransaction,
 } = require("./call_notifications");
 const {
@@ -47,13 +48,35 @@ const {
   releaseSessionPairLocksInTransaction,
   reserveMatchPair,
 } = require("./match_pair_lock");
+const {
+  MATCH_DECISION,
+  MATCH_DELIVERY,
+  MATCH_PROTOCOL_VERSION,
+  MATCH_STAGE,
+  normalizeParticipantState,
+  supportsMatchProtocolV2,
+} = require("./match_protocol_v2");
+const {
+  advanceProtocolV2MatchStage,
+  cancelProtocolV2NativeSurfaces,
+  classifyProtocolV2RouteResult,
+  routeProtocolV2Participant,
+  waitForForegroundMatchClaim,
+} = require("./match_delivery_v2");
+const {
+  reconcileProtocolV2TerminalSideEffects,
+} = require("./match_recovery_v2");
+const {
+  isSearchCancellationIntentActive,
+  normalizeSearchLifecycleRequestId,
+  searchCancellationIntentRef,
+} = require("./search_cancellation_intents");
 
 const STUDENT_REVIEW_FLAG_FIELD = "studentHasReviewed";
 const TUTOR_REVIEW_FLAG_FIELD = "tutorHasReviewed";
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const BACKGROUND_STUDENT_RESPONDER_PUSH_TIMEOUT_MS = 3 * 1000;
 const BACKGROUND_STUDENT_RESPONDER_APNS_TIMEOUT_MS = 2 * 1000;
-const BACKGROUND_STUDENT_RESPONDER_FOREGROUND_GRACE_MS = 1200;
 
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -72,6 +95,17 @@ function readErrorMessage(error, fallback = "") {
   } catch (stringifyError) {
     return fallback;
   }
+}
+
+function classifyApnsDeliveryFailure(error) {
+  const message = readErrorMessage(error, "").toLowerCase();
+  return [
+    "baddevicetoken",
+    "unregistered",
+    "devicetokennotfortopic",
+  ].some((reason) => message.includes(reason)) ?
+    "definitive" :
+    "unknown";
 }
 
 function isFirestoreIndexUnavailableError(error) {
@@ -174,10 +208,8 @@ function calculateApnsFallbackTimeoutMs(totalTimeoutMs) {
   );
 }
 
-function waitForForegroundStudentResponderResolution() {
-  return new Promise((resolve) => {
-    setTimeout(resolve, BACKGROUND_STUDENT_RESPONDER_FOREGROUND_GRACE_MS);
-  });
+function waitForForegroundStudentResponderResolution(options = {}) {
+  return waitForForegroundMatchClaim(options);
 }
 
 function readCallableData(data) {
@@ -228,7 +260,18 @@ function normalizeStartSearchInput(data) {
   }
 
   const filters = readNestedObject(payload.filters);
+  const rawRequestId = payload.requestId;
+  const requestId = rawRequestId == null ?
+    "" :
+    normalizeSearchLifecycleRequestId(rawRequestId);
+  if (rawRequestId != null && !requestId) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "requestId is invalid",
+    );
+  }
   return {
+    requestId,
     language: normalizeString(payload.language || payload.languageCode),
     preferredPartnerLevel: normalizeString(
       payload.preferredPartnerLevel ||
@@ -244,6 +287,9 @@ function normalizeStartSearchInput(data) {
     cityKey: normalizeString(payload.cityKey || filters.cityKey),
     appState: normalizeAppState(payload.appState),
     platform: normalizeString(payload.platform),
+    matchProtocolVersion: supportsMatchProtocolV2(
+      payload.matchProtocolVersion,
+    ) ? MATCH_PROTOCOL_VERSION : 1,
   };
 }
 
@@ -398,6 +444,9 @@ function buildStartSearchResponse({
     expiresAt: timestampToIsoString(requestData.expiresAt),
     errorCode: null,
     reused,
+    ...(Number(requestData.matchProtocolVersion) >= MATCH_PROTOCOL_VERSION ? {
+      matchProtocolVersion: MATCH_PROTOCOL_VERSION,
+    } : {}),
   };
 }
 
@@ -617,6 +666,10 @@ function buildStudentPairSessionData({
     normalizeRole(selectedCandidate.role) || "student";
   const sessionPolicyState = buildInitialSessionPolicyState(nowMillis);
   return {
+    matchProtocolVersion:
+      Number(requestData.matchProtocolVersion) >= MATCH_PROTOCOL_VERSION ?
+        MATCH_PROTOCOL_VERSION :
+        1,
     language: normalizeString(requestData.language),
     expiresAt: timestampFromDate(sessionPolicyState.expiresAt),
     sessionPolicy: sessionPolicyState.sessionPolicy,
@@ -671,6 +724,11 @@ function buildStudentPairResponderCallData({
     roomUrl: "",
     roomName: normalizeString(pushPayload.roomName),
     tokenStrategy: normalizeString(pushPayload.tokenStrategy) || "accept_call",
+    ...(normalizeString(pushPayload.matchProtocolVersion) === "2" ? {
+      matchProtocolVersion: "2",
+      pairAttemptId: normalizeString(pushPayload.pairAttemptId),
+      surface: normalizeString(pushPayload.surface) || "callkit",
+    } : {}),
   };
 }
 
@@ -700,6 +758,11 @@ function buildStudentPairResponderPushPayload(callData = {}) {
     roomUrl: "",
     roomName: normalizeString(callData.roomName),
     tokenStrategy: normalizeString(callData.tokenStrategy) || "accept_call",
+    ...(normalizeString(callData.matchProtocolVersion) === "2" ? {
+      matchProtocolVersion: "2",
+      pairAttemptId: normalizeString(callData.pairAttemptId),
+      surface: normalizeString(callData.surface) || "callkit",
+    } : {}),
   };
 }
 
@@ -1797,6 +1860,196 @@ async function releaseBackgroundStudentResponderMatchForRetry({
   });
 }
 
+async function releaseProtocolV2MatchAfterRouteFailure({
+  db,
+  sessionId = "",
+  pairAttemptId = "",
+  failedParticipantId = "",
+  expectedDispatchId = "",
+  expectedDelivery = MATCH_DELIVERY.FAILED,
+  expectedDeliveryFailureKind = "definitive",
+  requireResponseWindowClosed = false,
+  nowMillis = Date.now(),
+  stopReason = "protocol_v2_push_failed",
+}) {
+  const normalizedSessionId = normalizeString(sessionId);
+  const normalizedPairAttemptId = normalizeString(pairAttemptId);
+  const normalizedFailedParticipantId = normalizeString(failedParticipantId);
+  const normalizedExpectedDispatchId = normalizeString(expectedDispatchId);
+  if (
+    !normalizedSessionId ||
+    !normalizedPairAttemptId ||
+    !normalizedFailedParticipantId ||
+    !normalizedExpectedDispatchId
+  ) {
+    return {released: false, reason: "missing_failure_identity"};
+  }
+
+  return db.runTransaction(async (transaction) => {
+    const sessionRef = db.collection("videoSessions").doc(normalizedSessionId);
+    const sessionSnap = await transaction.get(sessionRef);
+    if (!sessionSnap.exists) {
+      return {released: false, reason: "session_missing"};
+    }
+    const sessionData = sessionSnap.data() || {};
+    if (
+      Number(sessionData.matchProtocolVersion) !== MATCH_PROTOCOL_VERSION ||
+      normalizeString(sessionData.pairAttemptId) !== normalizedPairAttemptId
+    ) {
+      return {released: false, reason: "pair_attempt_mismatch"};
+    }
+    if (![
+      VIDEO_SESSION_STATUS.SEARCHING,
+      VIDEO_SESSION_STATUS.PENDING_CONFIRMATION,
+    ].includes(sessionData.status)) {
+      return {released: false, reason: "session_not_pending"};
+    }
+    const participantIds = Array.from(new Set(
+      (sessionData.participantIds || []).map(normalizeString).filter(Boolean),
+    ));
+    if (!participantIds.includes(normalizedFailedParticipantId)) {
+      return {released: false, reason: "participant_missing"};
+    }
+    const failedState = normalizeParticipantState(
+      sessionData.participantStates?.[normalizedFailedParticipantId],
+      sessionData.participantRoles?.[normalizedFailedParticipantId],
+    );
+    if (failedState.decision === MATCH_DECISION.ACCEPTED) {
+      return {released: false, reason: "delivery_recovered"};
+    }
+    if (
+      failedState.dispatchId !== normalizedExpectedDispatchId ||
+      failedState.delivery !== expectedDelivery
+    ) {
+      return {released: false, reason: "route_failure_superseded"};
+    }
+    if (requireResponseWindowClosed) {
+      const responseDeadlineMillis = timestampToMillis(
+        sessionData.responseExpiresAt || sessionData.confirmationExpiresAt,
+      );
+      if (
+        responseDeadlineMillis === null ||
+        responseDeadlineMillis > nowMillis
+      ) {
+        return {released: false, reason: "response_window_open"};
+      }
+    } else if (
+      failedState.deliveryFailureKind !== expectedDeliveryFailureKind ||
+      expectedDeliveryFailureKind !== "definitive"
+    ) {
+      return {released: false, reason: "delivery_failure_not_definitive"};
+    }
+
+    const serverTimestamp = admin.firestore.FieldValue.serverTimestamp();
+    const fieldDelete = admin.firestore.FieldValue.delete();
+    const participantStates = {
+      ...sessionData.participantStates,
+      [normalizedFailedParticipantId]: {
+        ...failedState,
+        decision: MATCH_DECISION.DECLINED,
+        actionId: `delivery-failed-${normalizedPairAttemptId}`,
+        updatedAt: serverTimestamp,
+      },
+    };
+    const restoreParticipantIds = participantIds.filter((participantId) =>
+      participantId !== normalizedFailedParticipantId &&
+      sessionData.participantRoles?.[participantId] === "student" &&
+      participantStates[participantId]?.decision !== MATCH_DECISION.DECLINED,
+    );
+    await releaseSessionPairLocksInTransaction({
+      db,
+      transaction,
+      sessionId: normalizedSessionId,
+      sessionData: {...sessionData, participantStates},
+      participantIds,
+      serverTimestamp,
+      fieldDelete,
+      searchRequestStatus: SEARCH_REQUEST_STATUS.CANCELLED,
+      stopReason: normalizeString(stopReason) || "protocol_v2_push_failed",
+      releaseCallState: true,
+      restoreSearchParticipantIds: restoreParticipantIds,
+      restoreSearchExcludedCandidateIdsByParticipantId: Object.fromEntries(
+        restoreParticipantIds.map((participantId) => [
+          participantId,
+          [normalizedFailedParticipantId],
+        ]),
+      ),
+    });
+    cancelProtocolV2NotificationsInTransaction({
+      db,
+      transaction,
+      sessionId: normalizedSessionId,
+      pairAttemptId: normalizedPairAttemptId,
+      participantStates,
+      cancelReason: normalizeString(stopReason) || "protocol_v2_push_failed",
+      serverTimestamp,
+    });
+    transaction.update(sessionRef, {
+      status: VIDEO_SESSION_STATUS.CANCELLED,
+      pairStatus: VIDEO_SESSION_STATUS.CANCELLED,
+      participantStates,
+      cancelReason: normalizeString(stopReason) || "protocol_v2_push_failed",
+      cancelledBy: normalizedFailedParticipantId,
+      cancelledAt: serverTimestamp,
+      matchRecovery: {
+        status: "pending",
+        attempts: 0,
+        pairAttemptId: normalizedPairAttemptId,
+        reason: normalizeString(stopReason) || "protocol_v2_push_failed",
+        restoreParticipantIds,
+        requestedAt: serverTimestamp,
+      },
+      currentResponderId: fieldDelete,
+      currentResponderRole: fieldDelete,
+      currentTutorId: fieldDelete,
+      acceptingTutorId: fieldDelete,
+      acceptingAt: fieldDelete,
+      acceptAttemptId: fieldDelete,
+      updatedAt: serverTimestamp,
+    });
+    return {
+      released: true,
+      reason: "released",
+      participantStates,
+      restoreParticipantIds,
+      failedParticipantId: normalizedFailedParticipantId,
+    };
+  });
+}
+
+async function completeProtocolV2MatchRecovery({
+  db,
+  sessionId,
+  pairAttemptId,
+}) {
+  return db.runTransaction(async (transaction) => {
+    const sessionRef = db.collection("videoSessions").doc(sessionId);
+    const sessionSnap = await transaction.get(sessionRef);
+    if (!sessionSnap.exists) {
+      return {completed: false, reason: "session_missing"};
+    }
+    const sessionData = sessionSnap.data() || {};
+    if (
+      normalizeString(sessionData.pairAttemptId) !== pairAttemptId ||
+      normalizeString(sessionData.matchRecovery?.pairAttemptId) !==
+        pairAttemptId ||
+      normalizeString(sessionData.matchRecovery?.status) !== "pending"
+    ) {
+      return {completed: false, reason: "recovery_not_pending"};
+    }
+    const serverTimestamp = admin.firestore.FieldValue.serverTimestamp();
+    transaction.update(sessionRef, {
+      matchRecovery: {
+        ...(sessionData.matchRecovery || {}),
+        status: "completed",
+        completedAt: serverTimestamp,
+      },
+      updatedAt: serverTimestamp,
+    });
+    return {completed: true, reason: "completed"};
+  });
+}
+
 async function recordBackgroundStudentResponderPushFailure({
   db,
   notificationId = "",
@@ -2200,6 +2453,16 @@ async function sendVoipPushToStudentResponder(
   }
 
   const responderData = responderDoc.data() || {};
+  const callExpiresAtMillis = Date.parse(normalizeString(callData.expiresAt));
+  if (
+    Number.isFinite(callExpiresAtMillis) &&
+    callExpiresAtMillis <= Date.now()
+  ) {
+    return {sent: false, reason: "response_window_closed"};
+  }
+  const apnsExpiration = Number.isFinite(callExpiresAtMillis) ?
+    Math.floor(callExpiresAtMillis / 1000) :
+    null;
   const bundleId = process.env.IOS_BUNDLE_ID || "com.appwave.smalltalk";
   const voipTopic =
     process.env.IOS_VOIP_TOPIC ||
@@ -2213,6 +2476,7 @@ async function sendVoipPushToStudentResponder(
 
   const payload = buildStudentPairResponderPushPayload(callData);
   let apnsErrorMessage = "";
+  let apnsFailureKind = null;
 
   if (voipPushToken) {
     const apnsAbort = buildChildAbortController({
@@ -2224,6 +2488,8 @@ async function sendVoipPushToStudentResponder(
       await sendApns({
         deviceToken: voipPushToken,
         topic: voipTopic,
+        expiration: apnsExpiration,
+        collapseId: normalizeString(callData.callKitId),
         signal: apnsAbort.signal,
         payload: {
           aps: {"content-available": 1},
@@ -2234,6 +2500,7 @@ async function sendVoipPushToStudentResponder(
     } catch (error) {
       apnsErrorMessage =
         readErrorMessage(error, "apns_voip_failed");
+      apnsFailureKind = classifyApnsDeliveryFailure(error);
       logger.error(
         "Failed to send APNs VoIP push to background student:",
         readErrorMessage(error, "apns_voip_failed"),
@@ -2248,6 +2515,8 @@ async function sendVoipPushToStudentResponder(
       sent: false,
       reason: "missing_fcm_token",
       error: apnsErrorMessage || "missing_fcm_token",
+      attemptedChannels: ["apns_voip"],
+      apnsFailureKind: apnsFailureKind || "unknown",
     };
   }
 
@@ -2270,6 +2539,23 @@ async function sendVoipPushToStudentResponder(
       error: apnsErrorMessage ?
         `apns: ${apnsErrorMessage}; fcm: ${fcmErrorMessage}` :
         fcmErrorMessage,
+    };
+  }
+  const requiresApnsVoipDelivery =
+    normalizeString(responderData.matchProtocolPlatform) === "ios" ||
+    Boolean(voipPushToken);
+  if (requiresApnsVoipDelivery) {
+    return {
+      sent: false,
+      reason: voipPushToken ?
+        "ios_fcm_wake_not_native" :
+        "missing_voip_push_token",
+      error: apnsErrorMessage || "ios_fcm_wake_not_native",
+      fcmWakeSent: true,
+      attemptedChannels: voipPushToken ? ["apns_voip", "fcm"] : ["fcm"],
+      apnsFailureKind: voipPushToken ?
+        (apnsFailureKind || "unknown") :
+        "definitive",
     };
   }
   return {sent: true, channel: "fcm"};
@@ -2305,6 +2591,101 @@ async function runBackgroundStudentResponderPushSender({
     clearTimeout(timeout);
     pushPromise.catch(() => {});
   }
+}
+
+async function routeProtocolV2InitialMatch({
+  db,
+  lockResult = {},
+  requesterId = "",
+  responderRole = "student",
+  studentPushSender = sendVoipPushToStudentResponder,
+  teacherPushSender = sendVoipPushToStudentResponder,
+  studentPreDispatchWait = waitForForegroundStudentResponderResolution,
+}) {
+  const isTeacherMatch = normalizeRole(responderRole) === "native_speaker";
+  const participantIds = isTeacherMatch ?
+    [normalizeString(lockResult.responderId)] :
+    [normalizeString(requesterId), normalizeString(lockResult.responderId)];
+  const results = await Promise.all(participantIds.filter(Boolean).map(
+    async (participantId) => {
+      try {
+        return await routeProtocolV2Participant({
+          db,
+          sessionId: lockResult.sessionId,
+          pairAttemptId: lockResult.pairAttemptId,
+          participantId,
+          preDispatchWait: isTeacherMatch ? null : studentPreDispatchWait,
+          pushSender: (recipientId, callData) =>
+            runBackgroundStudentResponderPushSender({
+              pushSender: isTeacherMatch ? teacherPushSender : studentPushSender,
+              responderId: recipientId,
+              callData,
+            }),
+        });
+      } catch (error) {
+        return {
+          shouldNotify: true,
+          participantId,
+          pushResult: {sent: false, reason: "route_failed"},
+          error: readErrorMessage(error, "route_failed"),
+        };
+      }
+    },
+  ));
+  const failedResult = results.find((result) => [
+    "definitive_failure",
+    "response_window_closed",
+  ].includes(classifyProtocolV2RouteResult(result))) || null;
+  const retryPending = results.some((result) =>
+    classifyProtocolV2RouteResult(result) === "in_progress",
+  );
+  if (!failedResult && !retryPending) {
+    await advanceProtocolV2MatchStage({
+      db,
+      sessionId: lockResult.sessionId,
+      pairAttemptId: lockResult.pairAttemptId,
+      expectedStages: [MATCH_STAGE.AWAITING_INITIAL_DISPATCH],
+      nextStage: isTeacherMatch ?
+        MATCH_STAGE.AWAITING_TEACHER_RESPONSE :
+        MATCH_STAGE.AWAITING_ACCEPTANCE,
+    });
+  }
+  return {results, failedResult, retryPending};
+}
+
+async function readProtocolV2PostRouteOutcome({
+  db,
+  sessionId,
+  pairAttemptId,
+}) {
+  const sessionSnap = await db.collection("videoSessions").doc(sessionId).get();
+  if (!sessionSnap.exists) {
+    return {current: false, terminal: true, reason: "session_missing"};
+  }
+  const sessionData = sessionSnap.data() || {};
+  if (
+    Number(sessionData.matchProtocolVersion) !== MATCH_PROTOCOL_VERSION ||
+    normalizeString(sessionData.pairAttemptId) !== pairAttemptId
+  ) {
+    return {
+      current: false,
+      terminal: true,
+      reason: "pair_attempt_mismatch",
+      sessionData,
+    };
+  }
+  const current = [
+    VIDEO_SESSION_STATUS.SEARCHING,
+    VIDEO_SESSION_STATUS.PENDING_CONFIRMATION,
+    VIDEO_SESSION_STATUS.CONNECTING,
+    VIDEO_SESSION_STATUS.ACTIVE,
+  ].includes(sessionData.status);
+  return {
+    current,
+    terminal: !current,
+    reason: current ? "current" : `session_${sessionData.status || "unknown"}`,
+    sessionData,
+  };
 }
 
 async function maybeNotifyBackgroundStudentResponder({
@@ -2761,7 +3142,121 @@ async function tryCreateStudentPairForSearchRequest({
     });
 
     if (lockResult.locked) {
-      if (isStudentQueueResponder) {
+      if (
+        Number(lockResult.matchProtocolVersion) === MATCH_PROTOCOL_VERSION
+      ) {
+        let protocolV2RouteResult;
+        try {
+          protocolV2RouteResult = await routeProtocolV2InitialMatch({
+            db,
+            lockResult,
+            requesterId: userId,
+            responderRole,
+            studentPushSender: backgroundStudentResponderPushSender,
+            teacherPushSender: teacherResponderPushSender,
+            studentPreDispatchWait:
+              backgroundStudentResponderPrePushWait,
+          });
+        } catch (error) {
+          protocolV2RouteResult = {
+            results: [],
+            failedResult: null,
+            retryPending: true,
+            error: readErrorMessage(error, "route_failed"),
+          };
+        }
+
+        if (protocolV2RouteResult.failedResult) {
+          const failure = protocolV2RouteResult.failedResult;
+          const failedParticipantId = normalizeString(
+            failure.participantId,
+          ) || normalizeString(lockResult.responderId);
+          const failureState = failure.participantState || {};
+          const failureOutcome = classifyProtocolV2RouteResult(failure);
+          const releaseResult =
+            await releaseProtocolV2MatchAfterRouteFailure({
+              db,
+              sessionId: lockResult.sessionId,
+              pairAttemptId: lockResult.pairAttemptId,
+              failedParticipantId,
+              expectedDispatchId: failureState.dispatchId,
+              expectedDelivery: failureState.delivery,
+              expectedDeliveryFailureKind:
+                failureState.deliveryFailureKind,
+              requireResponseWindowClosed:
+                failureOutcome === "response_window_closed",
+              stopReason: failureOutcome === "response_window_closed" ?
+                "protocol_v2_response_timeout" :
+                "protocol_v2_push_failed",
+          });
+          if (releaseResult.released) {
+            await reconcileReleasedProtocolV2Match({
+              db,
+              sessionId: lockResult.sessionId,
+              pairAttemptId: lockResult.pairAttemptId,
+              options: {
+                participantPushSender:
+                  backgroundStudentResponderPushSender,
+                studentPreDispatchWait:
+                  backgroundStudentResponderPrePushWait,
+              },
+            }).catch((error) => {
+              console.warn("Protocol v2 terminal recovery deferred", {
+                sessionId: lockResult.sessionId,
+                pairAttemptId: lockResult.pairAttemptId,
+                error: readErrorMessage(error, "recovery_deferred"),
+              });
+            });
+            if (failedParticipantId === normalizeString(userId)) {
+              return {
+                matched: false,
+                response: buildStartSearchResponse({
+                  userId,
+                  requestData: {
+                    ...requestData,
+                    status: SEARCH_REQUEST_STATUS.CANCELLED,
+                    currentSessionId: null,
+                    matchedSessionId: null,
+                    pairAttemptId: null,
+                  },
+                  reused,
+                }),
+              };
+            }
+            retryExcludedResponderIds.add(normalizeString(candidate.userId));
+            continue;
+          }
+        }
+        const postRouteOutcome = await readProtocolV2PostRouteOutcome({
+          db,
+          sessionId: lockResult.sessionId,
+          pairAttemptId: lockResult.pairAttemptId,
+        });
+        if (postRouteOutcome.terminal) {
+          const requesterSearchSnap = await db
+            .collection(SEARCH_REQUEST_COLLECTION)
+            .doc(userId)
+            .get();
+          const latestRequestData = requesterSearchSnap.exists ?
+            requesterSearchSnap.data() || {} :
+            {};
+          if (
+            latestRequestData.status === SEARCH_REQUEST_STATUS.ACTIVE &&
+            !hasSearchRequestSessionBinding(latestRequestData)
+          ) {
+            retryExcludedResponderIds.add(normalizeString(candidate.userId));
+            continue;
+          }
+          return {
+            matched: false,
+            response: buildStartSearchResponse({
+              userId,
+              requestData: latestRequestData,
+              reused,
+            }),
+          };
+        }
+      } else if (isStudentQueueResponder) {
         let backgroundStudentNotifyResult = null;
         try {
           backgroundStudentNotifyResult =
@@ -2981,6 +3476,129 @@ function buildStartSearchRequestData({
     serverTimestamp,
     expiresAt,
     backgroundExpiresAt,
+    matchProtocolVersion: input.matchProtocolVersion,
+  });
+}
+
+function buildReusedSearchRequestRefresh({
+  requestData = {},
+  input = {},
+  nowMillis = Date.now(),
+  serverTimestamp,
+  timestampFromMillis = admin.firestore.Timestamp.fromMillis,
+  preserveMatchBinding = false,
+}) {
+  const expiresAt = timestampFromMillis(
+    nowMillis + SEARCH_REQUEST_TIMING.MAX_SEARCH_SECONDS * 1000,
+  );
+  const backgroundExpiresAt =
+    input.appState === SEARCH_REQUEST_APP_STATE.BACKGROUND ?
+      timestampFromMillis(
+        nowMillis +
+          SEARCH_REQUEST_TIMING.BACKGROUND_MAX_SEARCH_SECONDS * 1000,
+      ) :
+      null;
+  const refresh = {
+    ...requestData,
+    [SEARCH_REQUEST_FIELD.APP_STATE]: input.appState,
+    [SEARCH_REQUEST_FIELD.APP_STATE_UPDATED_AT]: serverTimestamp,
+    [SEARCH_REQUEST_FIELD.PLATFORM]: input.platform,
+    [SEARCH_REQUEST_FIELD.UPDATED_AT]: serverTimestamp,
+    [SEARCH_REQUEST_FIELD.HEARTBEAT_AT]: serverTimestamp,
+  };
+  if (!preserveMatchBinding) {
+    refresh[SEARCH_REQUEST_FIELD.MATCH_PROTOCOL_VERSION] =
+      input.matchProtocolVersion;
+    refresh[SEARCH_REQUEST_FIELD.EXPIRES_AT] = expiresAt;
+    refresh[SEARCH_REQUEST_FIELD.BACKGROUND_EXPIRES_AT] = backgroundExpiresAt;
+  }
+  return refresh;
+}
+
+async function resumeRestoredStudentSearch({
+  db,
+  participantId,
+  sessionId,
+  pairAttemptId,
+  options = {},
+}) {
+  const normalizedParticipantId = normalizeString(participantId);
+  const normalizedSessionId = normalizeString(sessionId);
+  const normalizedPairAttemptId = normalizeString(pairAttemptId);
+  if (
+    !normalizedParticipantId ||
+    !normalizedSessionId ||
+    !normalizedPairAttemptId
+  ) {
+    return {resumed: false, settled: false, reason: "resume_ids_missing"};
+  }
+  const [searchSnap, userSnap] = await Promise.all([
+    db.collection(SEARCH_REQUEST_COLLECTION).doc(normalizedParticipantId).get(),
+    db.collection("users").doc(normalizedParticipantId).get(),
+  ]);
+  if (!searchSnap.exists) {
+    return {resumed: false, settled: true, reason: "search_missing"};
+  }
+  const requestData = searchSnap.data() || {};
+  if (
+    normalizeString(requestData.restoredFromSessionId) !==
+      normalizedSessionId ||
+    normalizeString(requestData.restoredFromPairAttemptId) !==
+      normalizedPairAttemptId
+  ) {
+    return {resumed: false, settled: true, reason: "search_moved_on"};
+  }
+  if (
+    requestData.status !== SEARCH_REQUEST_STATUS.ACTIVE ||
+    hasSearchRequestSessionBinding(requestData)
+  ) {
+    return {resumed: false, settled: true, reason: "search_already_done"};
+  }
+  if (!userSnap.exists) {
+    return {resumed: false, settled: false, reason: "user_missing"};
+  }
+
+  await tryCreateStudentPairForSearchRequest({
+    db,
+    userId: normalizedParticipantId,
+    requesterData: userSnap.data() || {},
+    requestData,
+    reused: true,
+    backgroundStudentResponderPushSender:
+      options.participantPushSender || sendVoipPushToStudentResponder,
+    teacherResponderPushSender:
+      options.participantPushSender || sendVoipPushToStudentResponder,
+    backgroundStudentResponderPrePushWait:
+      options.studentPreDispatchWait ||
+      waitForForegroundStudentResponderResolution,
+  });
+  return {resumed: true, settled: true, reason: "matching_restarted"};
+}
+
+async function reconcileReleasedProtocolV2Match({
+  db,
+  sessionId,
+  pairAttemptId,
+  options = {},
+  cancelSurfaces = cancelProtocolV2NativeSurfaces,
+  resumeSearch = resumeRestoredStudentSearch,
+  ownerId,
+  nowMillis,
+}) {
+  return reconcileProtocolV2TerminalSideEffects({
+    db,
+    sessionId,
+    pairAttemptId,
+    cancelSurfaces,
+    resumeSearch: ({participantId}) => resumeSearch({
+      db,
+      participantId,
+      sessionId,
+      pairAttemptId,
+      options,
+    }),
+    ownerId,
+    nowMillis,
   });
 }
 
@@ -2995,19 +3613,28 @@ async function startSearchCallable(data, context, options = {}) {
   }
 
   const input = normalizeStartSearchInput(data);
-  const db = admin.firestore();
+  const db = callableOptions.db || admin.firestore();
   const userId = context.auth.uid;
   const userRef = db.collection("users").doc(userId);
   const searchRequestRef = db
     .collection(SEARCH_REQUEST_COLLECTION)
     .doc(userId);
   const usageRef = usageDocRef(db, userId);
-  const requestId = db.collection(SEARCH_REQUEST_COLLECTION).doc().id;
+  const requestId = input.requestId ||
+    db.collection(SEARCH_REQUEST_COLLECTION).doc().id;
+  const cancellationIntentRef = searchCancellationIntentRef(
+    db,
+    userId,
+    requestId,
+  );
   const nowMillis = Date.now();
   const serverTimestamp = admin.firestore.FieldValue.serverTimestamp();
 
   const startResult = await db.runTransaction(async (transaction) => {
-    const requesterSnapshot = await transaction.get(userRef);
+    const [requesterSnapshot, cancellationIntentSnap] = await Promise.all([
+      transaction.get(userRef),
+      cancellationIntentRef ? transaction.get(cancellationIntentRef) : null,
+    ]);
     if (!requesterSnapshot.exists) {
       throw new functions.https.HttpsError(
         "not-found",
@@ -3030,6 +3657,37 @@ async function startSearchCallable(data, context, options = {}) {
     const existingRequestData = searchRequestSnapshot.exists ?
       searchRequestSnapshot.data() || {} :
       null;
+    const cancellationIntentData = cancellationIntentSnap?.exists ?
+      cancellationIntentSnap.data() || {} :
+      {};
+    if (isSearchCancellationIntentActive({
+      intentData: cancellationIntentData,
+      userId,
+      requestId,
+      nowMillis,
+    })) {
+      transaction.set(cancellationIntentRef, {
+        ...cancellationIntentData,
+        status: "consumed",
+        consumedAt: serverTimestamp,
+        updatedAt: serverTimestamp,
+      }, {merge: true});
+      const stoppedRequestData = {
+        requestId,
+        status: SEARCH_REQUEST_STATUS.STOPPED,
+      };
+      return {
+        response: buildStartSearchResponse({
+          userId,
+          requestData: stoppedRequestData,
+          reused: true,
+        }),
+        requestData: stoppedRequestData,
+        requesterData,
+        reused: true,
+        shouldTryStudentPair: false,
+      };
+    }
     const accessDecision = buildStartSearchAccessDecision({
       requesterRole,
       requesterData,
@@ -3045,26 +3703,50 @@ async function startSearchCallable(data, context, options = {}) {
         nowMillis,
       })
     ) {
-      const response = hasCurrentMatchedSession(existingRequestData) ?
+      if (
+        input.requestId &&
+        normalizeString(existingRequestData.requestId) !== input.requestId
+      ) {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "Another search request is already active",
+          {
+            reason: "search_already_active",
+            requestId: normalizeString(existingRequestData.requestId),
+          },
+        );
+      }
+      const preserveMatchBinding = hasCurrentMatchedSession(
+        existingRequestData,
+      );
+      const refreshedRequestData = buildReusedSearchRequestRefresh({
+        requestData: existingRequestData,
+        input,
+        nowMillis,
+        serverTimestamp,
+        preserveMatchBinding,
+      });
+      transaction.update(searchRequestRef, refreshedRequestData);
+      const response = preserveMatchBinding ?
         buildCurrentMatchedStartSearchResponse({
           userId,
-          requestData: existingRequestData,
+          requestData: refreshedRequestData,
           reused: true,
         }) :
         buildStartSearchResponse({
           userId,
-          requestData: existingRequestData,
+          requestData: refreshedRequestData,
           reused: true,
         });
 
       return {
         response,
-        requestData: existingRequestData,
+        requestData: refreshedRequestData,
         requesterData,
         reused: true,
         shouldTryStudentPair:
           accessDecision.allowed &&
-          canAttemptStudentPairForSearchRequest(existingRequestData),
+          canAttemptStudentPairForSearchRequest(refreshedRequestData),
       };
     }
 
@@ -3150,6 +3832,9 @@ async function startSearchCallable(data, context, options = {}) {
     if (matchResult.matched) {
       return matchResult.response;
     }
+    if (matchResult.response) {
+      return matchResult.response;
+    }
   }
 
   return startResult.response;
@@ -3167,23 +3852,31 @@ exports.__private__ = {
   buildStartSearchAccessDecision,
   buildStartSearchFailureUpdate,
   buildStartSearchFilters,
+  buildReusedSearchRequestRefresh,
   buildCurrentMatchedStartSearchResponse,
   buildMatchedStartSearchResponse,
   buildStartSearchRequestData,
   buildStartSearchResponse,
   buildStudentPairSessionData,
   canAttemptStudentPairForSearchRequest,
+  completeProtocolV2MatchRecovery,
   cancelBackgroundStudentResponderNotification,
   cancelTeacherResponderNotification,
+  classifyApnsDeliveryFailure,
   createTeacherResponderIncomingCall,
   failUnboundStartSearchRequestForError,
   recordBackgroundStudentResponderPushFailure,
   recordBackgroundStudentResponderPushSuccess,
+  reconcileReleasedProtocolV2Match,
   releaseBackgroundStudentResponderMatchForRetry,
+  releaseProtocolV2MatchAfterRouteFailure,
   recordTeacherResponderPushResult,
   releaseTeacherResponderMatchForRetry,
   readErrorMessage,
+  readProtocolV2PostRouteOutcome,
   runBackgroundStudentResponderPushSender,
+  routeProtocolV2InitialMatch,
+  resumeRestoredStudentSearch,
   sendVoipPushToStudentResponder,
   startSearchCallable,
   isFirestoreIndexUnavailableError,
@@ -3211,4 +3904,5 @@ exports.__private__ = {
   timestampToMillis,
   tryReadCurrentMatchedStartSearchResponse,
   tryCreateStudentPairForSearchRequest,
+  waitForForegroundStudentResponderResolution,
 };

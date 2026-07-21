@@ -13,6 +13,13 @@ const cancelCall = require("./cancel_call.js");
 exports.cancelCall = cancelCall.cancelCall;
 const startSearch = require("./start_search.js");
 exports.startSearch = startSearch.startSearch;
+const respondToMatch = require("./respond_to_match.js");
+exports.respondToMatch = respondToMatch.respondToMatch;
+const matchProtocolV2State = require("./process_match_protocol_v2_state.js");
+exports.processMatchProtocolV2State =
+  matchProtocolV2State.processMatchProtocolV2State;
+exports.recoverMatchProtocolV2State =
+  matchProtocolV2State.recoverMatchProtocolV2State;
 const stopSearch = require("./stop_search.js");
 exports.stopSearch = stopSearch.stopSearch;
 const heartbeatSearch = require("./heartbeat_search.js");

@@ -10,6 +10,7 @@ const {
   ensureConversationCallEventForSession,
 } = require("./chats_shared");
 const {
+  cancelProtocolV2NotificationsInTransaction,
   incomingCallNotificationRef,
 } = require("./call_notifications");
 const {
@@ -22,6 +23,17 @@ const {
   releaseSessionPairLocksInTransaction,
 } = require("./match_pair_lock");
 const {
+  MATCH_DECISION,
+  MATCH_DELIVERY,
+  MATCH_STAGE,
+  MATCH_SURFACE,
+  allParticipantsAccepted,
+  normalizeParticipantState,
+} = require("./match_protocol_v2");
+const {
+  reconcileReleasedProtocolV2Match,
+} = require("./start_search").__private__;
+const {
   VIDEO_SESSION_STATUS,
 } = require("./video_sessions_shared");
 const {
@@ -29,11 +41,13 @@ const {
   logCallLifecycleEvent,
 } = require("./call_lifecycle_logs");
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
+const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const PENDING_RESPONSE_TIMEOUT_SESSION_STATUSES = new Set([
   VIDEO_SESSION_STATUS.SEARCHING,
   VIDEO_SESSION_STATUS.PENDING_CONFIRMATION,
 ]);
 const PENDING_RESPONSE_NOTIFICATION_BACKSTOP_GRACE_MS = 2 * 60 * 1000;
+const PROTOCOL_V2_NOTIFICATION_OWNER_GRACE_MS = 75 * 1000;
 /*
 АВТОМАТИЧЕСКАЯ ФУНКЦИЯ: cleanupExpiredSessions
 Завершает истекшие активные сессии (запускается по расписанию)
@@ -315,6 +329,98 @@ function buildPendingResponseTimeoutReleaseOptions({
   };
 }
 
+function resolveProtocolV2TimedOutParticipantId(sessionData = {}) {
+  const participantIds = readSessionParticipantIds(sessionData);
+  const pendingStates = participantIds.map((participantId) => ({
+    participantId,
+    state: normalizeParticipantState(
+      sessionData.participantStates?.[participantId],
+      sessionData.participantRoles?.[participantId],
+    ),
+  })).filter(({state}) => state.decision === MATCH_DECISION.PENDING);
+  const callKitOwner = pendingStates.find(({state}) =>
+    state.surface === MATCH_SURFACE.CALLKIT &&
+    [MATCH_DELIVERY.DISPATCHING, MATCH_DELIVERY.SENT].includes(state.delivery),
+  );
+  return callKitOwner?.participantId || pendingStates[0]?.participantId || "";
+}
+
+function shouldDeferProtocolV2PendingCleanup({
+  sessionData = {},
+  nowMillis = Date.now(),
+} = {}) {
+  if (Number(sessionData.matchProtocolVersion) < 2) {
+    return {defer: false, reason: "legacy_protocol"};
+  }
+  const participantIds = readSessionParticipantIds(sessionData);
+  const finalizationExpiresAtMillis = timestampToMillis(
+    sessionData.matchFinalization?.expiresAt,
+  );
+  if (
+    sessionData.matchStage === MATCH_STAGE.FINALIZATION_REQUESTED &&
+    allParticipantsAccepted(
+      sessionData.participantStates || {},
+      participantIds,
+    ) &&
+    finalizationExpiresAtMillis > nowMillis
+  ) {
+    return {defer: true, reason: "finalization_guard_active"};
+  }
+  const hasNotificationOwnedTimeout = participantIds.some((participantId) => {
+    const state = normalizeParticipantState(
+      sessionData.participantStates?.[participantId],
+      sessionData.participantRoles?.[participantId],
+    );
+    return state.decision === MATCH_DECISION.PENDING &&
+      state.surface === MATCH_SURFACE.CALLKIT &&
+      state.delivery === MATCH_DELIVERY.SENT;
+  });
+  const responseDeadlineMillis = getPendingResponseCleanupDeadlineMillis(
+    sessionData,
+  );
+  if (
+    hasNotificationOwnedTimeout &&
+    responseDeadlineMillis + PROTOCOL_V2_NOTIFICATION_OWNER_GRACE_MS > nowMillis
+  ) {
+    return {defer: true, reason: "notification_worker_owns_timeout"};
+  }
+  return {defer: false, reason: "cleanup_backstop"};
+}
+
+function buildProtocolV2TimeoutReleaseOptions({
+  sessionId,
+  sessionData = {},
+  serverTimestamp,
+  fieldDelete,
+}) {
+  const participantIds = readSessionParticipantIds(sessionData);
+  const timedOutParticipantId = resolveProtocolV2TimedOutParticipantId(
+    sessionData,
+  );
+  const restoreParticipantIds = participantIds.filter((participantId) =>
+    participantId !== timedOutParticipantId &&
+    sessionData.participantRoles?.[participantId] === "student" &&
+    sessionData.participantStates?.[participantId]?.decision !== "declined",
+  );
+  return {
+    sessionId,
+    sessionData,
+    serverTimestamp,
+    fieldDelete,
+    searchRequestStatus: SEARCH_REQUEST_STATUS.CANCELLED,
+    stopReason: "match_timeout",
+    releaseCallState: true,
+    timedOutParticipantId,
+    restoreSearchParticipantIds: restoreParticipantIds,
+    restoreSearchExcludedCandidateIdsByParticipantId: Object.fromEntries(
+      restoreParticipantIds.map((participantId) => [
+        participantId,
+        participantIds.filter((candidateId) => candidateId !== participantId),
+      ]),
+    ),
+  };
+}
+
 function queueExpiredSessionCleanup({
   writer,
   db,
@@ -385,7 +491,14 @@ async function hasSentIncomingCallNotification({
   }
 
   const notificationSnap = await transaction.get(
-    incomingCallNotificationRef(db, sessionId, responderId),
+    incomingCallNotificationRef(
+      db,
+      sessionId,
+      responderId,
+      Number(sessionData.matchProtocolVersion) >= 2 ?
+        sessionData.pairAttemptId :
+        "",
+    ),
   );
   if (!notificationSnap.exists) {
     return false;
@@ -411,7 +524,7 @@ async function hasSentIncomingCallNotification({
 }
 
 exports.cleanupExpiredSessions = functions
-  .runWith({ secrets: dailySecrets })
+  .runWith({ secrets: [...apnsSecrets, ...dailySecrets] })
   .pubsub
   .schedule("every 1 minutes")
   .onRun(async () => {
@@ -501,7 +614,15 @@ exports.cleanupExpiredSessions = functions
             if (pendingResponseCleanupDeadlineMillis > now.toMillis()) {
               return { cleaned: false, dailyRoomName: null, sessionData: null };
             }
-            if (await hasSentIncomingCallNotification({
+            const isProtocolV2 =
+              Number(freshData.matchProtocolVersion) >= 2;
+            if (isProtocolV2 && shouldDeferProtocolV2PendingCleanup({
+              sessionData: freshData,
+              nowMillis: now.toMillis(),
+            }).defer) {
+              return { cleaned: false, dailyRoomName: null, sessionData: null };
+            }
+            if (!isProtocolV2 && await hasSentIncomingCallNotification({
               db,
               transaction,
               sessionId: doc.id,
@@ -512,15 +633,51 @@ exports.cleanupExpiredSessions = functions
             }
 
             console.log(`🔚 Expiring orphaned pending session: ${doc.id}`);
+            const protocolV2ReleaseOptions = isProtocolV2 ?
+              buildProtocolV2TimeoutReleaseOptions({
+                sessionId: doc.id,
+                sessionData: freshData,
+                serverTimestamp:
+                  admin.firestore.FieldValue.serverTimestamp(),
+                fieldDelete: admin.firestore.FieldValue.delete(),
+              }) :
+              null;
+            const protocolV2ParticipantStates = isProtocolV2 &&
+              protocolV2ReleaseOptions.timedOutParticipantId ? {
+                ...(freshData.participantStates || {}),
+                [protocolV2ReleaseOptions.timedOutParticipantId]: {
+                  ...normalizeParticipantState(
+                    freshData.participantStates?.[
+                      protocolV2ReleaseOptions.timedOutParticipantId
+                    ],
+                    freshData.participantRoles?.[
+                      protocolV2ReleaseOptions.timedOutParticipantId
+                    ],
+                  ),
+                  decision: MATCH_DECISION.DECLINED,
+                  actionId: `cleanup-timeout-${freshData.pairAttemptId || doc.id}`,
+                  updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                },
+              } :
+              freshData.participantStates || {};
+            const releaseSessionData = isProtocolV2 ? {
+              ...freshData,
+              participantStates: protocolV2ParticipantStates,
+            } : freshData;
             await releaseSessionPairLocksInTransaction({
               db,
               transaction,
-              ...buildPendingResponseTimeoutReleaseOptions({
+              ...(isProtocolV2 ?
+                {
+                  ...protocolV2ReleaseOptions,
+                  sessionData: releaseSessionData,
+                } :
+                buildPendingResponseTimeoutReleaseOptions({
                 sessionId: doc.id,
                 sessionData: freshData,
                 serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
                 fieldDelete: admin.firestore.FieldValue.delete(),
-              }),
+                })),
             });
             queuePendingResponseTimeoutCleanup({
               writer: transaction,
@@ -531,6 +688,31 @@ exports.cleanupExpiredSessions = functions
               },
               endedAtMillis: pendingResponseCleanupDeadlineMillis,
             });
+            if (isProtocolV2) {
+              cancelProtocolV2NotificationsInTransaction({
+                db,
+                transaction,
+                sessionId: doc.id,
+                pairAttemptId: freshData.pairAttemptId,
+                participantStates: protocolV2ParticipantStates,
+                cancelReason: "match_timeout",
+                serverTimestamp:
+                  admin.firestore.FieldValue.serverTimestamp(),
+              });
+              transaction.update(doc.ref, {
+                participantStates: protocolV2ParticipantStates,
+                matchRecovery: {
+                  status: "pending",
+                  attempts: 0,
+                  pairAttemptId: freshData.pairAttemptId,
+                  reason: "match_timeout",
+                  restoreParticipantIds:
+                    protocolV2ReleaseOptions.restoreSearchParticipantIds,
+                  requestedAt:
+                    admin.firestore.FieldValue.serverTimestamp(),
+                },
+              });
+            }
 
             return {
               cleaned: true,
@@ -541,6 +723,16 @@ exports.cleanupExpiredSessions = functions
                 endedAtMillis: pendingResponseCleanupDeadlineMillis,
               }),
               endedAtMillis: pendingResponseCleanupDeadlineMillis,
+              protocolV2: isProtocolV2,
+              pairAttemptId: isProtocolV2 ?
+                freshData.pairAttemptId :
+                "",
+              participantStates: isProtocolV2 ?
+                protocolV2ParticipantStates :
+                null,
+              restoreParticipantIds: isProtocolV2 ?
+                protocolV2ReleaseOptions.restoreSearchParticipantIds :
+                [],
             };
           }
 
@@ -589,6 +781,13 @@ exports.cleanupExpiredSessions = functions
         }
 
         cleanedCount += 1;
+        if (cleanupResult.protocolV2) {
+          await reconcileReleasedProtocolV2Match({
+            db,
+            sessionId: doc.id,
+            pairAttemptId: cleanupResult.pairAttemptId,
+          }).catch(() => {});
+        }
         try {
           await ensureConversationCallEventForSession({
             db,
@@ -640,6 +839,7 @@ exports.__private__ = {
   buildExpiredSessionReleaseOptions,
   buildJoinTimeoutParticipantState,
   buildPendingResponseTimeoutReleaseOptions,
+  buildProtocolV2TimeoutReleaseOptions,
   buildPendingResponseTimeoutSessionProjection,
   buildPendingResponseTimeoutSessionUpdate,
   buildExpiredSessionCleanupPayload,
@@ -650,6 +850,8 @@ exports.__private__ = {
   queuePendingResponseTimeoutCleanup,
   queueExpiredSessionCleanup,
   readConnectedSignalParticipantIds,
+  resolveProtocolV2TimedOutParticipantId,
   resolvePendingResponderId,
+  shouldDeferProtocolV2PendingCleanup,
   timestampToMillis,
 };

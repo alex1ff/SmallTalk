@@ -1,10 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:small_talk/flutter_flow/nav/nav.dart';
+import 'package:small_talk/services/match_coordinator.dart';
 import 'package:small_talk/services/voip_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'voip_test_helpers.dart';
 
@@ -12,6 +16,7 @@ void main() {
   late VoIPService service;
 
   setUp(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
     appNavigatorKey = GlobalKey<NavigatorState>();
     service = VoIPService();
     service.debugResetInMemoryStateForTesting();
@@ -24,6 +29,50 @@ void main() {
   }
 
   group('VoIP accept helpers', () {
+    test('token registration reports the concrete client platform', () {
+      expect(
+        voipClientPlatform(isWeb: false, targetPlatform: TargetPlatform.iOS),
+        'ios',
+      );
+      expect(
+        voipClientPlatform(
+          isWeb: false,
+          targetPlatform: TargetPlatform.android,
+        ),
+        'android',
+      );
+      expect(
+        voipClientPlatform(isWeb: true, targetPlatform: TargetPlatform.iOS),
+        'web',
+      );
+    });
+
+    test('v2 accept failures distinguish permanent rejection from uncertainty',
+        () {
+      expect(
+        voipIsDefinitiveV2AcceptFailure(
+          _TestFirebaseFunctionsException(
+            code: 'permission-denied',
+            message: 'not a participant',
+          ),
+        ),
+        isTrue,
+      );
+      expect(
+        voipIsDefinitiveV2AcceptFailure(
+          _TestFirebaseFunctionsException(
+            code: 'deadline-exceeded',
+            message: 'response lost after commit',
+          ),
+        ),
+        isFalse,
+      );
+      expect(
+        voipIsDefinitiveV2AcceptFailure(StateError('network interrupted')),
+        isFalse,
+      );
+    });
+
     test('assigned responder prefers currentResponderId with legacy fallback',
         () {
       expect(
@@ -102,7 +151,7 @@ void main() {
           const {'scenario': 'student_student'},
           lifecycleState: AppLifecycleState.inactive,
         ),
-        isTrue,
+        isFalse,
       );
       expect(
         voipIncomingCallShouldUseInAppNavigation(
@@ -139,6 +188,103 @@ void main() {
           lifecycleState: AppLifecycleState.resumed,
         ),
         isTrue,
+      );
+      expect(
+        voipIncomingCallShouldUseInAppNavigation(
+          const {
+            'scenario': 'student_student',
+            'matchProtocolVersion': '2',
+            'pairAttemptId': 'pair-v2',
+            'surface': 'callkit',
+            'delivery': 'sent',
+            'acceptMode': 'respond_to_match',
+          },
+          lifecycleState: AppLifecycleState.resumed,
+        ),
+        isFalse,
+      );
+    });
+
+    test('v2 notification requires exact attempt and CallKit identity', () {
+      const callKitId = '11111111-1111-4111-8111-111111111111';
+      const notification = <String, dynamic>{
+        'matchProtocolVersion': '2',
+        'pairAttemptId': 'pair-a',
+        'callKitId': callKitId,
+      };
+      const session = <String, dynamic>{
+        'matchProtocolVersion': 2,
+        'pairAttemptId': 'pair-a',
+        'status': 'pending_confirmation',
+        'participantIds': ['current-user', 'student-b'],
+        'participantStates': {
+          'current-user': {
+            'surface': 'callkit',
+            'decision': 'pending',
+            'delivery': 'sent',
+            'callKitId': callKitId,
+          },
+        },
+      };
+
+      expect(
+        voipV2NotificationMatchesSession(
+          notificationData: notification,
+          sessionData: session,
+          userId: 'current-user',
+        ),
+        isTrue,
+      );
+      expect(
+        voipV2NotificationMatchesSession(
+          notificationData: {
+            ...notification,
+            'pairAttemptId': 'pair-old',
+          },
+          sessionData: session,
+          userId: 'current-user',
+        ),
+        isFalse,
+      );
+      expect(
+        voipV2NotificationMatchesSession(
+          notificationData: const {
+            'matchProtocolVersion': '2',
+            'pairAttemptId': 'pair-a',
+          },
+          sessionData: session,
+          userId: 'current-user',
+        ),
+        isFalse,
+      );
+      expect(
+        voipV2NotificationMatchesSession(
+          notificationData: notification,
+          sessionData: {
+            ...session,
+            'status': 'cancelled',
+          },
+          userId: 'current-user',
+        ),
+        isFalse,
+      );
+      expect(
+        voipV2NotificationMatchesSession(
+          notificationData: notification,
+          sessionData: {
+            ...session,
+            'participantStates': {
+              'current-user': {
+                'surface': 'callkit',
+                'decision': 'accepted',
+                'delivery': 'sent',
+                'callKitId': callKitId,
+              },
+            },
+          },
+          userId: 'current-user',
+        ),
+        isFalse,
       );
     });
 
@@ -321,6 +467,34 @@ void main() {
       );
     });
 
+    test('incoming CallKit duration is bounded by the server deadline', () {
+      final now = DateTime.utc(2026, 7, 21, 12);
+      expect(
+        voipIncomingCallDurationMilliseconds(
+          {'expiresAt': now.add(const Duration(seconds: 5)).toIso8601String()},
+          now: now,
+        ),
+        5000,
+      );
+      expect(
+        voipIncomingCallDurationMilliseconds(
+          {'expiresAt': now.add(const Duration(minutes: 2)).toIso8601String()},
+          now: now,
+        ),
+        45000,
+      );
+      expect(
+        voipIncomingCallDurationMilliseconds(
+          {
+            'expiresAt':
+                now.subtract(const Duration(seconds: 1)).toIso8601String()
+          },
+          now: now,
+        ),
+        1,
+      );
+    });
+
     test('active call replay data keeps accepted call metadata', () {
       final acceptedCalls = voipAcceptDataFromActiveCalls([
         {
@@ -417,6 +591,22 @@ void main() {
           },
         ]),
         isEmpty,
+      );
+
+      final typedAcceptedCall = voipAcceptDataFromActiveCalls([
+        const CallKitParams(
+          id: '22222222-2222-2222-2222-222222222222',
+          isAccepted: true,
+          extra: <String, dynamic>{
+            'sessionId': 'typed-active-session',
+            'pairAttemptId': 'typed-attempt',
+          },
+        ),
+      ]).single;
+      expect(typedAcceptedCall['sessionId'], 'typed-active-session');
+      expect(
+        typedAcceptedCall['id'],
+        '22222222-2222-2222-2222-222222222222',
       );
     });
 
@@ -1018,6 +1208,34 @@ void main() {
       expect(acceptCallInvoked, isFalse);
       expect(
           await declined.future.timeout(const Duration(seconds: 1)), sessionId);
+    });
+
+    test('explicit early accept outranks an automatic timeout', () async {
+      const sessionId = 'early-accept-before-timeout-session';
+      final callKitId = deterministicCallKitIdForTest(sessionId);
+      var acceptCallInvoked = false;
+
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugAcceptCallOverride = (_) async {
+        acceptCallInvoked = true;
+        return const <String, dynamic>{};
+      };
+
+      await service.debugHandleCallKitAcceptEventForTesting({
+        'id': callKitId,
+        'sessionId': sessionId,
+      });
+      await service.debugHandleCallKitTimeoutEventForTesting({
+        'id': callKitId,
+        'sessionId': sessionId,
+      });
+
+      expect(service.debugPendingCallKitActionCountForTesting, 1);
+      service.debugSetInitializedForTesting(true);
+      await service.debugSetCallActionHandlingReadyForTesting(true);
+
+      expect(service.debugPendingCallKitActionCountForTesting, 0);
+      expect(acceptCallInvoked, isTrue);
     });
 
     test('targeted early action is dropped for a different user', () async {
@@ -2430,6 +2648,421 @@ void main() {
       );
     });
 
+    test('v2 cancellation cannot close a newer pair attempt', () async {
+      const sessionId = 'session-reused-for-pair';
+      const currentCallKitId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+      var endCalls = 0;
+      service.debugEndCallKitCallOverride = ({
+        required sessionId,
+        required callKitId,
+      }) async {
+        endCalls += 1;
+      };
+      service.debugTrackCallKitSessionForTesting(
+        sessionId: sessionId,
+        callKitId: currentCallKitId,
+        pairAttemptId: 'pair-new',
+      );
+
+      await service.cancelIncomingCall(
+        sessionId: sessionId,
+        callKitId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        pairAttemptId: 'pair-old',
+      );
+      expect(endCalls, 0);
+      expect(
+        service.debugCallKitIdForSessionForTesting(sessionId),
+        currentCallKitId,
+      );
+
+      await service.cancelIncomingCall(
+        sessionId: sessionId,
+        callKitId: currentCallKitId,
+        pairAttemptId: 'pair-new',
+      );
+      expect(endCalls, 1);
+    });
+
+    test('server-driven v2 CallKit end never sends a late user cancellation',
+        () async {
+      const sessionId = 'session-server-ended-v2';
+      const pairAttemptId = 'pair-server-ended-v2';
+      const callKitId = '77777777-7777-4777-8777-777777777777';
+      final actions = <Map<String, dynamic>>[];
+      var nativeEndCalls = 0;
+      final coordinator = MatchCoordinator.forTesting(
+        sessionStream: (_) => const Stream<Map<String, dynamic>?>.empty(),
+        respondInvoker: (payload) async {
+          actions.add(Map<String, dynamic>.from(payload));
+          return const <String, dynamic>{'ok': true};
+        },
+      );
+      service.debugMatchCoordinatorOverride = coordinator;
+      service.debugEndCallKitCallOverride = ({
+        required sessionId,
+        required callKitId,
+      }) async {
+        nativeEndCalls += 1;
+      };
+      service.debugTrackCallKitSessionForTesting(
+        sessionId: sessionId,
+        callKitId: callKitId,
+        pairAttemptId: pairAttemptId,
+      );
+
+      await service.cancelIncomingCall(
+        sessionId: sessionId,
+        callKitId: callKitId,
+        pairAttemptId: pairAttemptId,
+      );
+
+      const terminalEvent = <String, dynamic>{
+        'id': callKitId,
+        'sessionId': sessionId,
+        'recipientId': 'current-user',
+        'matchProtocolVersion': '2',
+        'pairAttemptId': pairAttemptId,
+        'callKitId': callKitId,
+        'surface': 'callkit',
+        'acceptMode': 'respond_to_match',
+      };
+      await service.debugHandleCallDeclineForTesting(terminalEvent);
+      await service.debugHandleCallEndedForTesting(terminalEvent);
+      await service.debugHandleCallTimeoutForTesting(terminalEvent);
+      await service.showIncomingCall(
+        sessionId: sessionId,
+        callerName: 'Late caller',
+        callerId: 'late-caller',
+        extraData: const <String, dynamic>{
+          'sessionId': sessionId,
+          'recipientId': 'current-user',
+          'matchProtocolVersion': '2',
+          'pairAttemptId': pairAttemptId,
+          'callKitId': callKitId,
+          'surface': 'callkit',
+          'acceptMode': 'respond_to_match',
+        },
+      );
+
+      expect(nativeEndCalls, 1);
+      expect(actions, isEmpty);
+      expect(service.debugCallKitIdForSessionForTesting(sessionId), isNull);
+      await coordinator.stop();
+    });
+
+    test('cold PushKit v2 accept adopts exact per-attempt identity', () async {
+      const sessionId = 'session-cold-v2-accept';
+      const pairAttemptId = 'pair-cold-v2-accept';
+      const callKitId = '66666666-6666-4666-8666-666666666666';
+      final actions = <Map<String, dynamic>>[];
+      var legacyAcceptCalled = false;
+      final coordinator = MatchCoordinator.forTesting(
+        sessionStream: (_) => const Stream<Map<String, dynamic>?>.empty(),
+        respondInvoker: (payload) async {
+          actions.add(Map<String, dynamic>.from(payload));
+          return const <String, dynamic>{'ok': true};
+        },
+      );
+      service.debugMatchCoordinatorOverride = coordinator;
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugAcceptCallOverride = (_) async {
+        legacyAcceptCalled = true;
+        return const <String, dynamic>{};
+      };
+
+      await service.debugHandleCallAcceptForTesting(const {
+        'id': callKitId,
+        'sessionId': sessionId,
+        'recipientId': 'current-user',
+        'matchProtocolVersion': '2',
+        'pairAttemptId': pairAttemptId,
+        'callKitId': callKitId,
+        'surface': 'callkit',
+        'acceptMode': 'respond_to_match',
+      });
+
+      expect(actions, hasLength(1));
+      expect(actions.single['action'], 'accept');
+      expect(actions.single['pairAttemptId'], pairAttemptId);
+      expect(
+        service.debugCallKitIdForSessionForTesting(sessionId),
+        callKitId,
+      );
+      expect(legacyAcceptCalled, isFalse);
+      await coordinator.stop();
+    });
+
+    test('uncertain v2 accept failure keeps exact CallKit for reconciliation',
+        () async {
+      const sessionId = 'session-v2-uncertain-accept';
+      const pairAttemptId = 'pair-v2-uncertain-accept';
+      const callKitId = '12345678-1234-4234-8234-123456789abc';
+      var endedCallCount = 0;
+      final coordinator = MatchCoordinator.forTesting(
+        sessionStream: (_) => const Stream<Map<String, dynamic>?>.empty(),
+        respondInvoker: (_) async {
+          throw TimeoutException('accept response lost after commit');
+        },
+      );
+      service.debugMatchCoordinatorOverride = coordinator;
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugEndCallKitCallOverride = ({
+        required sessionId,
+        required callKitId,
+      }) async {
+        endedCallCount += 1;
+      };
+      service.debugTrackCallKitSessionForTesting(
+        sessionId: sessionId,
+        callKitId: callKitId,
+        pairAttemptId: pairAttemptId,
+      );
+
+      await service.debugHandleCallAcceptForTesting(const {
+        'id': callKitId,
+        'sessionId': sessionId,
+        'recipientId': 'current-user',
+        'matchProtocolVersion': '2',
+        'pairAttemptId': pairAttemptId,
+        'callKitId': callKitId,
+        'surface': 'callkit',
+        'acceptMode': 'respond_to_match',
+      });
+
+      expect(endedCallCount, 0);
+      expect(
+        service.debugCallKitIdForSessionForTesting(sessionId),
+        callKitId,
+      );
+      await coordinator.stop();
+    });
+
+    test('definitive v2 accept rejection ends exact CallKit', () async {
+      const sessionId = 'session-v2-rejected-accept';
+      const pairAttemptId = 'pair-v2-rejected-accept';
+      const callKitId = 'abcdefab-cdef-4def-8def-abcdefabcdef';
+      var endedCallCount = 0;
+      final coordinator = MatchCoordinator.forTesting(
+        sessionStream: (_) => const Stream<Map<String, dynamic>?>.empty(),
+        respondInvoker: (_) async {
+          throw _TestFirebaseFunctionsException(
+            code: 'permission-denied',
+            message: 'not a participant',
+          );
+        },
+      );
+      service.debugMatchCoordinatorOverride = coordinator;
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugEndCallKitCallOverride = ({
+        required sessionId,
+        required callKitId,
+      }) async {
+        endedCallCount += 1;
+      };
+      service.debugTrackCallKitSessionForTesting(
+        sessionId: sessionId,
+        callKitId: callKitId,
+        pairAttemptId: pairAttemptId,
+      );
+
+      await service.debugHandleCallAcceptForTesting(const {
+        'id': callKitId,
+        'sessionId': sessionId,
+        'recipientId': 'current-user',
+        'matchProtocolVersion': '2',
+        'pairAttemptId': pairAttemptId,
+        'callKitId': callKitId,
+        'surface': 'callkit',
+        'acceptMode': 'respond_to_match',
+      });
+
+      expect(endedCallCount, 1);
+      expect(service.debugCallKitIdForSessionForTesting(sessionId), isNull);
+      await coordinator.stop();
+    });
+
+    test('cold PushKit v2 accept rejects incomplete exact identity', () async {
+      const sessionId = 'session-cold-v2-incomplete';
+      const pairAttemptId = 'pair-cold-v2-incomplete';
+      const callKitId = '55555555-5555-4555-8555-555555555555';
+      final actions = <Map<String, dynamic>>[];
+      final coordinator = MatchCoordinator.forTesting(
+        sessionStream: (_) => const Stream<Map<String, dynamic>?>.empty(),
+        respondInvoker: (payload) async {
+          actions.add(Map<String, dynamic>.from(payload));
+          return const <String, dynamic>{'ok': true};
+        },
+      );
+      service.debugMatchCoordinatorOverride = coordinator;
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+
+      await service.debugHandleCallAcceptForTesting(const {
+        'id': callKitId,
+        'sessionId': sessionId,
+        'recipientId': 'another-user',
+        'matchProtocolVersion': '2',
+        'pairAttemptId': pairAttemptId,
+        'callKitId': callKitId,
+        'acceptMode': 'respond_to_match',
+      });
+
+      expect(actions, isEmpty);
+      expect(service.debugCallKitIdForSessionForTesting(sessionId), isNull);
+      await coordinator.stop();
+    });
+
+    test('v2 permission denial declines match instead of accepting it',
+        () async {
+      const sessionId = 'session-permission-denied-v2';
+      const pairAttemptId = 'pair-permission-denied';
+      const callKitId = '99999999-9999-4999-8999-999999999999';
+      final actions = <Map<String, dynamic>>[];
+      var legacyAcceptCalled = false;
+      var endedCall = false;
+      final coordinator = MatchCoordinator.forTesting(
+        initialLifecycleState: AppLifecycleState.resumed,
+        sessionStream: (_) => const Stream<Map<String, dynamic>?>.empty(),
+        respondInvoker: (payload) async {
+          actions.add(Map<String, dynamic>.from(payload));
+          return const <String, dynamic>{'ok': true};
+        },
+      );
+      service.debugMatchCoordinatorOverride = coordinator;
+      service.debugEnsureMediaPermissionsOverride = () async => false;
+      service.debugAcceptCallOverride = (_) async {
+        legacyAcceptCalled = true;
+        return const <String, dynamic>{};
+      };
+      service.debugEndCallKitCallOverride = ({
+        required sessionId,
+        required callKitId,
+      }) async {
+        endedCall = true;
+      };
+      service.debugTrackCallKitSessionForTesting(
+        sessionId: sessionId,
+        callKitId: callKitId,
+        pairAttemptId: pairAttemptId,
+      );
+
+      await service.debugHandleCallAcceptForTesting(const {
+        'id': callKitId,
+        'sessionId': sessionId,
+        'recipientId': 'current-user',
+        'matchProtocolVersion': '2',
+        'pairAttemptId': pairAttemptId,
+        'callKitId': callKitId,
+        'surface': 'callkit',
+        'acceptMode': 'respond_to_match',
+      });
+
+      expect(actions, hasLength(1));
+      expect(actions.single['action'], 'decline');
+      expect(actions.single['pairAttemptId'], pairAttemptId);
+      expect(legacyAcceptCalled, isFalse);
+      expect(endedCall, isTrue);
+      await coordinator.stop();
+    });
+
+    test('v2 hang-up cancels pending attempt and never ends a live session',
+        () async {
+      const sessionId = 'session-v2-pending-hangup';
+      const pairAttemptId = 'pair-v2-pending-hangup';
+      const callKitId = '88888888-8888-4888-8888-888888888888';
+      final actions = <Map<String, dynamic>>[];
+      var endSessionCalls = 0;
+      final coordinator = MatchCoordinator.forTesting(
+        sessionStream: (_) => const Stream<Map<String, dynamic>?>.empty(),
+        respondInvoker: (payload) async {
+          actions.add(Map<String, dynamic>.from(payload));
+          return const <String, dynamic>{
+            'ok': true,
+            'status': 'cancelled',
+          };
+        },
+      );
+      service.debugMatchCoordinatorOverride = coordinator;
+      service.debugEndSessionOverride = (_) async {
+        endSessionCalls += 1;
+      };
+      service.debugTrackCallKitSessionForTesting(
+        sessionId: sessionId,
+        callKitId: callKitId,
+        pairAttemptId: pairAttemptId,
+      );
+
+      await service.debugHandleCallEndedForTesting(const {
+        'id': callKitId,
+        'sessionId': sessionId,
+        'recipientId': 'current-user',
+        'matchProtocolVersion': '2',
+        'pairAttemptId': 'stale-pair',
+        'callKitId': callKitId,
+        'acceptMode': 'respond_to_match',
+      });
+      expect(actions, isEmpty);
+
+      await service.debugHandleCallEndedForTesting(const {
+        'id': callKitId,
+        'sessionId': sessionId,
+        'recipientId': 'current-user',
+        'matchProtocolVersion': '2',
+        'pairAttemptId': pairAttemptId,
+        'callKitId': callKitId,
+        'acceptMode': 'respond_to_match',
+      });
+
+      expect(actions, hasLength(1));
+      expect(actions.single['action'], 'cancel');
+      expect(actions.single['pairAttemptId'], pairAttemptId);
+      expect(endSessionCalls, 0);
+      await coordinator.stop();
+    });
+
+    test('v2 hang-up ends session after backend reports connecting', () async {
+      const sessionId = 'session-v2-connecting-hangup';
+      const pairAttemptId = 'pair-v2-connecting-hangup';
+      const callKitId = '77777777-7777-4777-8777-777777777777';
+      var endSessionCalls = 0;
+      final coordinator = MatchCoordinator.forTesting(
+        sessionStream: (_) => const Stream<Map<String, dynamic>?>.empty(),
+        respondInvoker: (_) async => const <String, dynamic>{
+          'ok': true,
+          'stale': true,
+          'status': 'connecting',
+          'reason': 'session_not_pending',
+        },
+        endInvoker: (payload) async {
+          expect(payload['sessionId'], sessionId);
+          expect(payload['actionId'], isNotEmpty);
+          endSessionCalls += 1;
+          return const <String, dynamic>{
+            'ok': true,
+            'status': 'ended',
+          };
+        },
+      );
+      service.debugMatchCoordinatorOverride = coordinator;
+      service.debugTrackCallKitSessionForTesting(
+        sessionId: sessionId,
+        callKitId: callKitId,
+        pairAttemptId: pairAttemptId,
+      );
+
+      await service.debugHandleCallEndedForTesting(const {
+        'id': callKitId,
+        'sessionId': sessionId,
+        'recipientId': 'current-user',
+        'matchProtocolVersion': '2',
+        'pairAttemptId': pairAttemptId,
+        'callKitId': callKitId,
+        'acceptMode': 'respond_to_match',
+      });
+
+      expect(endSessionCalls, 1);
+      await coordinator.stop();
+    });
+
     test('foreground teacher navigates only after native CallKit acceptance',
         () async {
       const sessionId = 'session-foreground-teacher';
@@ -3122,4 +3755,11 @@ class _TimestampLike {
   final DateTime value;
 
   DateTime toDate() => value;
+}
+
+class _TestFirebaseFunctionsException extends FirebaseFunctionsException {
+  _TestFirebaseFunctionsException({
+    required super.code,
+    required super.message,
+  });
 }

@@ -313,6 +313,72 @@ test("heartbeat does not mutate matched request state", () => {
   assert.equal(decision.response.pairAttemptId, "pair-a");
 });
 
+test("exact protocol v2 matched heartbeat updates only app liveness", () => {
+  const decision = buildHeartbeatSearchDecision({
+    requestExists: true,
+    requestData: activeRequest({
+      status: "matched",
+      matchProtocolVersion: 2,
+      currentSessionId: "session-a",
+      pairAttemptId: "pair-a",
+    }),
+    sessionExists: true,
+    sessionData: {
+      matchProtocolVersion: 2,
+      pairAttemptId: "pair-a",
+      participantIds: ["student-a", "student-b"],
+    },
+    userId: "student-a",
+    requestId: "request-a",
+    appState: SEARCH_REQUEST_APP_STATE.BACKGROUND,
+    nowMillis: fixedNowMillis,
+    serverTimestamp,
+    timestampFromMillis,
+  });
+
+  assert.equal(decision.response.heartbeat, true);
+  assert.equal(decision.response.reason, "matched_liveness_updated");
+  assert.deepEqual(decision.update, {
+    heartbeatAt: serverTimestamp,
+    appState: "background",
+    appStateUpdatedAt: serverTimestamp,
+  });
+});
+
+test("matched heartbeat rejects legacy and mismatched v2 binding", () => {
+  const base = {
+    requestExists: true,
+    requestData: activeRequest({
+      status: "matched",
+      currentSessionId: "session-a",
+      pairAttemptId: "pair-a",
+    }),
+    sessionExists: true,
+    sessionData: {
+      matchProtocolVersion: 2,
+      pairAttemptId: "pair-a",
+      participantIds: ["student-a", "student-b"],
+    },
+    userId: "student-a",
+    requestId: "request-a",
+    appState: SEARCH_REQUEST_APP_STATE.FOREGROUND,
+    nowMillis: fixedNowMillis,
+    serverTimestamp,
+    timestampFromMillis,
+  };
+  const legacy = buildHeartbeatSearchDecision(base);
+  const mismatched = buildHeartbeatSearchDecision({
+    ...base,
+    requestData: {...base.requestData, matchProtocolVersion: 2},
+    sessionData: {...base.sessionData, pairAttemptId: "pair-new"},
+  });
+
+  assert.equal(legacy.update, null);
+  assert.equal(legacy.response.reason, "matched");
+  assert.equal(mismatched.update, null);
+  assert.equal(mismatched.response.reason, "matched");
+});
+
 test("heartbeat response keeps queue API shape", () => {
   assert.deepEqual(
     buildHeartbeatResponse({

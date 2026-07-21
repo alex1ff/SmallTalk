@@ -22,6 +22,7 @@ const {
 } = require("./call_candidate_tokens");
 const {
   buildReadOnlyVoipTokenState,
+  VOIP_TOKEN_FRESHNESS_MS,
 } = require("./voip_tokens");
 const {
   buildStudentCallAccessDecision,
@@ -29,6 +30,15 @@ const {
 const {
   usageDocRef,
 } = require("./subscription_usage_shared");
+const {
+  buildCallKitIdForMatchParticipant,
+} = require("./call_notifications");
+const {
+  MATCH_PROTOCOL_VERSION,
+  MATCH_STAGE,
+  buildInitialParticipantStates,
+  supportsMatchProtocolV2,
+} = require("./match_protocol_v2");
 
 const USER_COLLECTION = "users";
 const PRIVATE_TOKEN_COLLECTION = "userPrivateTokens";
@@ -341,6 +351,41 @@ function buildParticipantInfo(userData = {}) {
   };
 }
 
+function resolveMatchProtocolVersion({
+  requestedVersion = 1,
+  requesterSearchData = {},
+  responderSearchData = null,
+  responderRole = "student",
+  responderCapabilityVersion = 1,
+  responderCallKitCapable = false,
+  responderCapabilityExpiresAt = null,
+  nowMillis = Date.now(),
+} = {}) {
+  if (
+    !supportsMatchProtocolV2(requestedVersion) ||
+    !supportsMatchProtocolV2(requesterSearchData.matchProtocolVersion)
+  ) {
+    return 1;
+  }
+  if (
+    normalizeRole(responderRole) === "student" &&
+    !supportsMatchProtocolV2(responderSearchData?.matchProtocolVersion)
+  ) {
+    return 1;
+  }
+  if (
+    normalizeRole(responderRole) === "native_speaker" &&
+    (
+      !supportsMatchProtocolV2(responderCapabilityVersion) ||
+      responderCallKitCapable !== true ||
+      (timestampToMillis(responderCapabilityExpiresAt) || 0) <= nowMillis
+    )
+  ) {
+    return 1;
+  }
+  return MATCH_PROTOCOL_VERSION;
+}
+
 function buildLegacySessionUserInfo(participantInfo = {}, fallbackName) {
   return {
     name: normalizeString(participantInfo.displayName) || fallbackName,
@@ -367,6 +412,8 @@ function buildSearchRequestPairLockUpdate({
     [SEARCH_REQUEST_FIELD.MATCHED_RESPONDER_ID]: matchedResponderId,
     [SEARCH_REQUEST_FIELD.MATCHED_ROLE]: otherRole,
     [SEARCH_REQUEST_FIELD.PAIR_ATTEMPT_ID]: pairAttemptId,
+    [SEARCH_REQUEST_FIELD.RESTORED_FROM_SESSION_ID]: null,
+    [SEARCH_REQUEST_FIELD.RESTORED_FROM_PAIR_ATTEMPT_ID]: null,
     [SEARCH_REQUEST_FIELD.LOCK_OWNER]: pairAttemptId,
     [SEARCH_REQUEST_FIELD.LOCK_EXPIRES_AT]: lockExpiresAt,
     [SEARCH_REQUEST_FIELD.LAST_ERROR]: null,
@@ -391,6 +438,7 @@ function buildVideoSessionPairLockData({
   participantInfos = {},
   serverTimestamp,
   lockExpiresAt,
+  matchProtocolVersion = 1,
 }) {
   const participantIds = buildParticipantIds(requesterId, responderId);
   const scenario = responderRole === "student" ?
@@ -407,9 +455,31 @@ function buildVideoSessionPairLockData({
     participantInfos[requesterId] || {};
   const responderInfo =
     participantInfos[responderId] || {};
+  const protocolVersion = supportsMatchProtocolV2(matchProtocolVersion) ?
+    MATCH_PROTOCOL_VERSION :
+    1;
+  const participantRoles = {
+    [requesterId]: requesterRole,
+    [responderId]: responderRole,
+  };
+  const participantStates = protocolVersion === MATCH_PROTOCOL_VERSION ?
+    buildInitialParticipantStates({
+      participantIds,
+      participantRoles,
+      callKitIds: Object.fromEntries(participantIds.map((participantId) => [
+        participantId,
+        buildCallKitIdForMatchParticipant({
+          sessionId,
+          pairAttemptId,
+          participantId,
+        }),
+      ])),
+    }) :
+    null;
 
   return {
     ...sessionData,
+    matchProtocolVersion: protocolVersion,
     status: sessionStatus,
     pairStatus: VIDEO_SESSION_STATUS.PENDING_CONFIRMATION,
     sessionId,
@@ -421,10 +491,7 @@ function buildVideoSessionPairLockData({
     requesterRole,
     responderRole,
     participantIds,
-    participantRoles: {
-      [requesterId]: requesterRole,
-      [responderId]: responderRole,
-    },
+    participantRoles,
     participantInfos,
     requesterInfo,
     responderInfo,
@@ -453,6 +520,11 @@ function buildVideoSessionPairLockData({
       expiresAt: lockExpiresAt,
       participantIds,
     },
+    ...(protocolVersion === MATCH_PROTOCOL_VERSION ? {
+      matchProtocolVersion: MATCH_PROTOCOL_VERSION,
+      matchStage: MATCH_STAGE.AWAITING_INITIAL_DISPATCH,
+      participantStates,
+    } : {}),
   };
 }
 
@@ -614,6 +686,8 @@ function buildSearchRequestPairLockReleaseUpdate({
     [SEARCH_REQUEST_FIELD.MATCHED_RESPONDER_ID]: fieldDelete,
     [SEARCH_REQUEST_FIELD.MATCHED_ROLE]: null,
     [SEARCH_REQUEST_FIELD.PAIR_ATTEMPT_ID]: null,
+    [SEARCH_REQUEST_FIELD.RESTORED_FROM_SESSION_ID]: fieldDelete,
+    [SEARCH_REQUEST_FIELD.RESTORED_FROM_PAIR_ATTEMPT_ID]: fieldDelete,
     [SEARCH_REQUEST_FIELD.ATTEMPT_EXCLUDED_CANDIDATE_IDS]: [],
     [SEARCH_REQUEST_FIELD.LOCK_OWNER]: null,
     [SEARCH_REQUEST_FIELD.LOCK_EXPIRES_AT]: null,
@@ -646,6 +720,8 @@ function readCandidateIdList(value) {
 function buildSearchRequestActiveRestoreUpdate({
   requestData = {},
   excludedCandidateIds = [],
+  restoredFromSessionId = "",
+  restoredFromPairAttemptId = "",
   serverTimestamp,
   fieldDelete,
 }) {
@@ -667,6 +743,10 @@ function buildSearchRequestActiveRestoreUpdate({
     [SEARCH_REQUEST_FIELD.MATCHED_RESPONDER_ID]: fieldDelete,
     [SEARCH_REQUEST_FIELD.MATCHED_ROLE]: null,
     [SEARCH_REQUEST_FIELD.PAIR_ATTEMPT_ID]: null,
+    [SEARCH_REQUEST_FIELD.RESTORED_FROM_SESSION_ID]:
+      normalizeDocumentId(restoredFromSessionId) || null,
+    [SEARCH_REQUEST_FIELD.RESTORED_FROM_PAIR_ATTEMPT_ID]:
+      normalizeDocumentId(restoredFromPairAttemptId) || null,
     [SEARCH_REQUEST_FIELD.EXCLUDED_CANDIDATE_IDS]: nextExcludedCandidateIds,
     [SEARCH_REQUEST_FIELD.ATTEMPT_EXCLUDED_CANDIDATE_IDS]: [],
     [SEARCH_REQUEST_FIELD.LOCK_OWNER]: null,
@@ -781,6 +861,7 @@ function applyPairLockReleaseWrites({
   restoreLegacyAvailability = false,
   restoreSearchParticipantIds = [],
   restoreSearchExcludedCandidateIdsByParticipantId = {},
+  restoredFromPairAttemptId = "",
 }) {
   const restoreParticipantIdSet = new Set(
     restoreSearchParticipantIds.map(normalizeDocumentId).filter(Boolean),
@@ -821,6 +902,8 @@ function applyPairLockReleaseWrites({
             restoreExcludedIdsByParticipantId[
               target.participantId
             ] || [],
+          restoredFromSessionId: sessionId,
+          restoredFromPairAttemptId,
           serverTimestamp,
           fieldDelete,
         }));
@@ -920,6 +1003,7 @@ async function releaseSessionPairLocksInTransaction({
     restoreLegacyAvailability,
     restoreSearchParticipantIds,
     restoreSearchExcludedCandidateIdsByParticipantId,
+    restoredFromPairAttemptId: sessionData.pairAttemptId,
   });
   return {
     released: true,
@@ -973,6 +1057,9 @@ async function prepareExistingSessionNextResponderPairLockInTransaction({
   if (normalizeString(pairAttemptId) && !normalizeDocumentId(pairAttemptId)) {
     return buildPairLockFailure("invalid_pair_lock_input");
   }
+  if (Number(sessionData.matchProtocolVersion) >= MATCH_PROTOCOL_VERSION) {
+    return buildPairLockFailure("v2_requires_new_session");
+  }
 
   const requesterUserRef = db
     .collection(USER_COLLECTION)
@@ -986,6 +1073,10 @@ async function prepareExistingSessionNextResponderPairLockInTransaction({
   const responderSearchRef = normalizedResponderRole === "student" ?
     db.collection(SEARCH_REQUEST_COLLECTION).doc(normalizedResponderId) :
     null;
+  const responderPrivateTokenRef =
+    normalizedResponderRole === "native_speaker" ?
+      db.collection(PRIVATE_TOKEN_COLLECTION).doc(normalizedResponderId) :
+      null;
   const currentResponderReleaseTargets = normalizedCurrentResponderId ?
     await readPairLockReleaseTargetsInTransaction({
       db,
@@ -1001,11 +1092,15 @@ async function prepareExistingSessionNextResponderPairLockInTransaction({
     responderUserSnapshot,
     requesterSearchSnapshot,
     responderSearchSnapshot,
+    responderPrivateTokenSnapshot,
   ] = await Promise.all([
     transaction.get(requesterUserRef),
     transaction.get(responderUserRef),
     transaction.get(requesterSearchRef),
     responderSearchRef ? transaction.get(responderSearchRef) : null,
+    responderPrivateTokenRef ?
+      transaction.get(responderPrivateTokenRef) :
+      null,
   ]);
 
   const requesterUserData = requesterUserSnapshot.exists ?
@@ -1272,6 +1367,10 @@ async function reserveMatchPairInTransaction({
   const responderSearchRef = normalizedResponderRole === "student" ?
     db.collection(SEARCH_REQUEST_COLLECTION).doc(normalizedResponderId) :
     null;
+  const responderPrivateTokenRef =
+    normalizedResponderRole === "native_speaker" ?
+      db.collection(PRIVATE_TOKEN_COLLECTION).doc(normalizedResponderId) :
+      null;
 
   const [
     sessionSnapshot,
@@ -1279,12 +1378,16 @@ async function reserveMatchPairInTransaction({
     responderUserSnapshot,
     requesterSearchSnapshot,
     responderSearchSnapshot,
+    responderPrivateTokenSnapshot,
   ] = await Promise.all([
     transaction.get(sessionRef),
     transaction.get(requesterUserRef),
     transaction.get(responderUserRef),
     transaction.get(requesterSearchRef),
     responderSearchRef ? transaction.get(responderSearchRef) : null,
+    responderPrivateTokenRef ?
+      transaction.get(responderPrivateTokenRef) :
+      null,
   ]);
 
   if (sessionSnapshot.exists) {
@@ -1351,6 +1454,50 @@ async function reserveMatchPairInTransaction({
     }
   }
 
+  const responderTokenState = responderPrivateTokenSnapshot ?
+    buildReadOnlyVoipTokenState({
+      privateData: responderPrivateTokenSnapshot.exists ?
+        responderPrivateTokenSnapshot.data() || {} :
+        {},
+      legacyUserData: responderUserData,
+      nowMillis,
+    }) :
+    null;
+  const freshPrivatePushKitCapability =
+    responderTokenState?.hasFreshVoipPushToken === true;
+  const matchProtocolVersion = resolveMatchProtocolVersion({
+    requestedVersion: sessionData.matchProtocolVersion,
+    requesterSearchData: requesterSearchSnapshot.data() || {},
+    responderSearchData: responderSearchSnapshot?.data?.() || null,
+    responderRole: normalizedResponderRole,
+    responderCapabilityVersion: freshPrivatePushKitCapability ?
+      MATCH_PROTOCOL_VERSION :
+      responderUserData.matchProtocolVersion,
+    responderCallKitCapable: freshPrivatePushKitCapability ||
+      responderUserData.v2CallKitCapable === true,
+    responderCapabilityExpiresAt:
+      freshPrivatePushKitCapability ?
+        responderPrivateTokenSnapshot.data()?.voipPushTokenUpdatedAt &&
+          admin.firestore.Timestamp.fromMillis(
+            timestampToMillis(
+              responderPrivateTokenSnapshot.data()?.voipPushTokenUpdatedAt,
+            ) + VOIP_TOKEN_FRESHNESS_MS,
+          ) :
+        responderUserData.v2CallKitCapabilityExpiresAt,
+    nowMillis,
+  });
+  const requesterRequiresProtocolV2 =
+    supportsMatchProtocolV2(sessionData.matchProtocolVersion) &&
+    supportsMatchProtocolV2(
+      requesterSearchSnapshot.data()?.matchProtocolVersion,
+    );
+  if (
+    requesterRequiresProtocolV2 &&
+    matchProtocolVersion !== MATCH_PROTOCOL_VERSION
+  ) {
+    return buildPairLockFailure("responder_protocol_incompatible");
+  }
+
   const sessionId = sessionRef.id;
   const finalPairAttemptId = normalizeDocumentId(pairAttemptId) ||
     buildPairAttemptId({
@@ -1382,6 +1529,7 @@ async function reserveMatchPairInTransaction({
     },
     serverTimestamp,
     lockExpiresAt,
+    matchProtocolVersion,
   });
   const requesterLockUpdate = buildSearchRequestPairLockUpdate({
     sessionId,
@@ -1424,6 +1572,7 @@ async function reserveMatchPairInTransaction({
     requesterId: normalizedRequesterId,
     responderId: normalizedResponderId,
     responderRole: normalizedResponderRole,
+    matchProtocolVersion,
   };
 }
 
@@ -1647,6 +1796,7 @@ module.exports = {
   isSearchRequestFreshForPairLock,
   prepareExistingSessionNextResponderPairLockInTransaction,
   releaseSessionPairLocksInTransaction,
+  resolveMatchProtocolVersion,
   reserveDirectPairInTransaction,
   reserveMatchPair,
   reserveMatchPairInTransaction,

@@ -17,6 +17,7 @@ const {
     buildExpiredSessionReleaseOptions,
     buildJoinTimeoutParticipantState,
     buildPendingResponseTimeoutReleaseOptions,
+    buildProtocolV2TimeoutReleaseOptions,
     buildPendingResponseTimeoutSessionProjection,
     buildPendingResponseTimeoutSessionUpdate,
     buildExpiredSessionCleanupPayload,
@@ -27,10 +28,113 @@ const {
     queuePendingResponseTimeoutCleanup,
     queueExpiredSessionCleanup,
     readConnectedSignalParticipantIds,
+    resolveProtocolV2TimedOutParticipantId,
     resolvePendingResponderId,
+    shouldDeferProtocolV2PendingCleanup,
     timestampToMillis,
   },
 } = require("./cleanup_expired_sessions");
+
+test("protocol v2 session timeout restores eligible students", () => {
+  const options = buildProtocolV2TimeoutReleaseOptions({
+    sessionId: "session-a",
+    sessionData: {
+      participantIds: ["student-a", "teacher-a"],
+      participantRoles: {
+        "student-a": "student",
+        "teacher-a": "native_speaker",
+      },
+      participantStates: {
+        "student-a": {decision: "accepted"},
+        "teacher-a": {decision: "pending"},
+      },
+    },
+    serverTimestamp: "server-now",
+    fieldDelete: "delete",
+  });
+  assert.equal(options.searchRequestStatus, SEARCH_REQUEST_STATUS.CANCELLED);
+  assert.deepEqual(options.restoreSearchParticipantIds, ["student-a"]);
+  assert.deepEqual(
+    options.restoreSearchExcludedCandidateIdsByParticipantId["student-a"],
+    ["teacher-a"],
+  );
+});
+
+test("protocol v2 cleanup lets notification worker own CallKit timeout", () => {
+  const deadlineMillis = Date.now();
+  const sessionData = {
+    matchProtocolVersion: 2,
+    status: "pending_confirmation",
+    responseExpiresAt: {
+      toMillis: () => deadlineMillis,
+    },
+    participantIds: ["student-a", "student-b"],
+    participantRoles: {
+      "student-a": "student",
+      "student-b": "student",
+    },
+    participantStates: {
+      "student-a": {
+        role: "student",
+        surface: "callkit",
+        decision: "pending",
+        delivery: "sent",
+      },
+      "student-b": {
+        role: "student",
+        surface: "in_app",
+        decision: "accepted",
+        delivery: "not_required",
+      },
+    },
+  };
+
+  assert.deepEqual(shouldDeferProtocolV2PendingCleanup({
+    sessionData,
+    nowMillis: deadlineMillis + 10_000,
+  }), {
+    defer: true,
+    reason: "notification_worker_owns_timeout",
+  });
+  assert.deepEqual(shouldDeferProtocolV2PendingCleanup({
+    sessionData,
+    nowMillis: deadlineMillis + 76_000,
+  }), {
+    defer: false,
+    reason: "cleanup_backstop",
+  });
+  assert.equal(resolveProtocolV2TimedOutParticipantId(sessionData), "student-a");
+  assert.deepEqual(
+    buildProtocolV2TimeoutReleaseOptions({
+      sessionId: "session-a",
+      sessionData,
+    }).restoreSearchParticipantIds,
+    ["student-b"],
+  );
+});
+
+test("protocol v2 cleanup defers accepted finalization guard", () => {
+  const nowMillis = Date.now();
+  const sessionData = {
+    matchProtocolVersion: 2,
+    matchStage: "finalization_requested",
+    status: "pending_confirmation",
+    responseExpiresAt: {toMillis: () => nowMillis - 1},
+    matchFinalization: {
+      expiresAt: {toMillis: () => nowMillis + 30_000},
+    },
+    participantIds: ["student-a", "teacher-a"],
+    participantStates: {
+      "student-a": {decision: "accepted"},
+      "teacher-a": {decision: "accepted"},
+    },
+  };
+
+  assert.deepEqual(shouldDeferProtocolV2PendingCleanup({
+    sessionData,
+    nowMillis,
+  }), {defer: true, reason: "finalization_guard_active"});
+});
 
 if (!admin.apps.length) {
   admin.initializeApp({ projectId: "demo-smalltalk" });

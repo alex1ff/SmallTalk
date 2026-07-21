@@ -8,6 +8,8 @@ const {
 const {
   __private__: {
     buildTerminalTimeoutSessionProjection,
+    buildProtocolV2NotificationTimeoutRouting,
+    buildProtocolV2NotificationTimeoutDecision,
     buildTimeoutNextResponderPairLockInput,
     buildTimeoutPushLifecycleDecision,
     buildTimeoutResponderDecision,
@@ -19,6 +21,104 @@ const {
     resolveTimedOutResponderForNotification,
   },
 } = require("./process_expired_notifications");
+
+test("protocol v2 B/B timeout restores only the other student", () => {
+  const routing = buildProtocolV2NotificationTimeoutRouting({
+    sessionData: {
+      participantIds: ["student-a", "student-b"],
+      participantRoles: {
+        "student-a": "student",
+        "student-b": "student",
+      },
+      participantStates: {
+        "student-a": {decision: "pending"},
+        "student-b": {decision: "accepted"},
+      },
+    },
+    timedOutParticipantId: "student-a",
+  });
+  assert.deepEqual(routing.restoreParticipantIds, ["student-b"]);
+  assert.deepEqual(
+    routing.restoreExcludedCandidateIdsByParticipantId["student-b"],
+    ["student-a"],
+  );
+});
+
+test("protocol v2 teacher timeout restores the student requester", () => {
+  const routing = buildProtocolV2NotificationTimeoutRouting({
+    sessionData: {
+      participantIds: ["student-a", "teacher-a"],
+      participantRoles: {
+        "student-a": "student",
+        "teacher-a": "native_speaker",
+      },
+      participantStates: {
+        "student-a": {decision: "pending"},
+        "teacher-a": {decision: "pending"},
+      },
+    },
+    timedOutParticipantId: "teacher-a",
+  });
+  assert.deepEqual(routing.restoreParticipantIds, ["student-a"]);
+});
+
+test("protocol v2 ignores an accepted student notification while peer waits", () => {
+  const decision = buildProtocolV2NotificationTimeoutDecision({
+    sessionData: {
+      matchProtocolVersion: 2,
+      pairAttemptId: "pair-a",
+      participantIds: ["student-a", "student-b"],
+      participantStates: {
+        "student-a": {
+          surface: "callkit",
+          delivery: "sent",
+          decision: "accepted",
+        },
+        "student-b": {
+          surface: "callkit",
+          delivery: "sent",
+          decision: "pending",
+        },
+      },
+    },
+    notificationData: {
+      matchProtocolVersion: "2",
+      pairAttemptId: "pair-a",
+      recipientId: "student-a",
+    },
+  });
+  assert.equal(decision.shouldProcess, false);
+  assert.equal(decision.reason, "participant_accepted");
+});
+
+test("protocol v2 ignores accepted teacher notification during student stage", () => {
+  const decision = buildProtocolV2NotificationTimeoutDecision({
+    sessionData: {
+      matchProtocolVersion: 2,
+      pairAttemptId: "pair-a",
+      participantIds: ["student-a", "teacher-a"],
+      participantStates: {
+        "teacher-a": {
+          surface: "callkit",
+          delivery: "sent",
+          decision: "accepted",
+        },
+        "student-a": {
+          surface: "pending",
+          delivery: "pending",
+          decision: "pending",
+        },
+      },
+    },
+    notificationData: {
+      matchProtocolVersion: "2",
+      pairAttemptId: "pair-a",
+      recipientId: "teacher-a",
+    },
+  });
+  assert.equal(decision.shouldProcess, false);
+  assert.equal(decision.reason, "participant_accepted");
+});
 
 function timestampFromMillis(millis) {
   return {

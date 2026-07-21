@@ -5,6 +5,7 @@ const path = require("node:path");
 const {
   REQUIRED_FUNCTIONS,
   analyzeFunctionsDeployment,
+  analyzeReadinessDeployCommand,
   parseFunctionsListJson,
 } = require("./scripts/validate_deployment_readiness");
 
@@ -294,10 +295,26 @@ test("deployment readiness exposes stale search cleanup scheduler", () => {
   assert.ok(functionIds.has("cleanupStaleSearchRequests"));
   assert.equal(readinessEntry.trigger, "scheduled");
   assert.match(indexSource, /exports\.cleanupStaleSearchRequests\b/);
-  assert.match(deployScript, /--only firestore:indexes,/);
+  assert.match(deployScript, /--only firestore:rules,firestore:indexes,/);
   assert.match(
       deployScript,
       /functions:custom_cloud_functions:cleanupStaleSearchRequests\b/,
+  );
+});
+
+test("readiness deployment includes rules and indexes atomically", () => {
+  const packageJson = JSON.parse(fs.readFileSync(
+    path.join(__dirname, "package.json"),
+    "utf8",
+  ));
+  const deployScript = packageJson.scripts["deploy:readiness-functions"];
+
+  assert.deepEqual(analyzeReadinessDeployCommand(deployScript).failures, []);
+  assert.equal(
+    analyzeReadinessDeployCommand(
+      "firebase deploy --only firestore:indexes,functions:x",
+    ).failures[0].message,
+    "deploy:readiness-functions is missing firestore:rules",
   );
 });
 

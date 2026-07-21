@@ -419,6 +419,21 @@ test("user cannot update server-owned user fields", async () => {
       },
     }),
   );
+
+  for (const update of [
+    {matchProtocolVersion: 2},
+    {v2CallKitCapable: true},
+    {v2CallKitCapabilityExpiresAt: new Date(Date.now() + 60_000)},
+    {matchProtocolPlatform: "ios"},
+    {
+      matchProtocolUpdatedAt:
+        firebaseCompat.firestore.FieldValue.serverTimestamp(),
+    },
+  ]) {
+    await assertFails(
+      user.firestore().doc("users/student-a").update(update),
+    );
+  }
 });
 
 test("user cannot directly set or clear balance_NS", async () => {

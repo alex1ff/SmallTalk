@@ -7,7 +7,15 @@ const {
   buildVoipTokenUpdate,
   normalizeVoipTokenType,
   preserveLegacyCompanionToken,
+  VOIP_TOKEN_FRESHNESS_MS,
 } = require("./voip_tokens");
+const {
+  buildMatchProtocolCapabilityUpdate,
+} = require("./register_voip_token").__private__;
+
+function timestampFromMillis(millis) {
+  return {toMillis: () => millis};
+}
 
 function readSource(relativePath) {
   return fs.readFileSync(path.join(__dirname, "..", "..", relativePath), "utf8");
@@ -106,6 +114,10 @@ test("read-only VoIP token state does not expose token strings", () => {
       hasUsableToken: true,
       source: "private",
       hasFcmToken: true,
+      hasFreshFcmToken: false,
+      freshFcmTokenExpiresAtMillis: null,
+      hasFreshVoipPushToken: false,
+      freshVoipPushTokenExpiresAtMillis: null,
       hasVoipPushToken: true,
     },
   );
@@ -121,6 +133,10 @@ test("read-only VoIP token state does not expose token strings", () => {
       hasUsableToken: false,
       source: "cleared",
       hasFcmToken: false,
+      hasFreshFcmToken: false,
+      freshFcmTokenExpiresAtMillis: null,
+      hasFreshVoipPushToken: false,
+      freshVoipPushTokenExpiresAtMillis: null,
       hasVoipPushToken: false,
     },
   );
@@ -138,6 +154,10 @@ test("read-only VoIP token state does not expose token strings", () => {
       hasUsableToken: true,
       source: "private",
       hasFcmToken: true,
+      hasFreshFcmToken: false,
+      freshFcmTokenExpiresAtMillis: null,
+      hasFreshVoipPushToken: false,
+      freshVoipPushTokenExpiresAtMillis: null,
       hasVoipPushToken: false,
     },
   );
@@ -149,6 +169,10 @@ test("read-only VoIP token state does not expose token strings", () => {
       hasUsableToken: true,
       source: "legacy",
       hasFcmToken: false,
+      hasFreshFcmToken: false,
+      freshFcmTokenExpiresAtMillis: null,
+      hasFreshVoipPushToken: false,
+      freshVoipPushTokenExpiresAtMillis: null,
       hasVoipPushToken: true,
     },
   );
@@ -160,6 +184,10 @@ test("read-only VoIP token state does not expose token strings", () => {
       hasUsableToken: true,
       source: "private",
       hasFcmToken: false,
+      hasFreshFcmToken: false,
+      freshFcmTokenExpiresAtMillis: null,
+      hasFreshVoipPushToken: false,
+      freshVoipPushTokenExpiresAtMillis: null,
       hasVoipPushToken: true,
     },
   );
@@ -171,7 +199,87 @@ test("read-only VoIP token state does not expose token strings", () => {
       hasUsableToken: true,
       source: "legacy",
       hasFcmToken: true,
+      hasFreshFcmToken: false,
+      freshFcmTokenExpiresAtMillis: null,
+      hasFreshVoipPushToken: false,
+      freshVoipPushTokenExpiresAtMillis: null,
       hasVoipPushToken: false,
     },
   );
+});
+
+test("fresh token state exposes expiry metadata without token values", () => {
+  const nowMillis = 100_000;
+  const updatedAtMillis = nowMillis - 1_000;
+  const state = buildReadOnlyVoipTokenState({
+    privateData: {
+      voipPushToken: "private-push",
+      voipPushTokenUpdatedAt: timestampFromMillis(updatedAtMillis),
+    },
+    nowMillis,
+  });
+
+  assert.equal(state.hasFreshVoipPushToken, true);
+  assert.equal(
+    state.freshVoipPushTokenExpiresAtMillis,
+    updatedAtMillis + VOIP_TOKEN_FRESHNESS_MS,
+  );
+  assert.equal(JSON.stringify(state).includes("private-push"), false);
+});
+
+test("iOS FCM refresh never extends PushKit capability", () => {
+  const nowMillis = 100_000;
+  const pushExpiry = nowMillis + 2_000;
+  const fcmExpiry = nowMillis + VOIP_TOKEN_FRESHNESS_MS;
+  const update = buildMatchProtocolCapabilityUpdate({
+    tokenType: "fcm",
+    platform: "ios",
+    requestedVersion: 2,
+    nowMillis,
+    tokenState: {
+      hasVoipPushToken: true,
+      hasFreshVoipPushToken: true,
+      freshVoipPushTokenExpiresAtMillis: pushExpiry,
+      hasFreshFcmToken: true,
+      freshFcmTokenExpiresAtMillis: fcmExpiry,
+    },
+  });
+
+  assert.equal(update.matchProtocolVersion, 2);
+  assert.equal(update.v2CallKitCapable, true);
+  assert.equal(update.v2CallKitCapabilityExpiresAt.toMillis(), pushExpiry);
+
+  const stalePushUpdate = buildMatchProtocolCapabilityUpdate({
+    tokenType: "fcm",
+    platform: "ios",
+    requestedVersion: 2,
+    nowMillis,
+    tokenState: {
+      hasVoipPushToken: true,
+      hasFreshVoipPushToken: false,
+      freshVoipPushTokenExpiresAtMillis: null,
+      hasFreshFcmToken: true,
+      freshFcmTokenExpiresAtMillis: fcmExpiry,
+    },
+  });
+  assert.equal(stalePushUpdate.matchProtocolVersion, 1);
+  assert.equal(stalePushUpdate.v2CallKitCapable, false);
+});
+
+test("Android v2 capability follows the FCM token expiry", () => {
+  const nowMillis = 100_000;
+  const fcmExpiry = nowMillis + 5_000;
+  const update = buildMatchProtocolCapabilityUpdate({
+    tokenType: "fcm",
+    platform: "android",
+    requestedVersion: 2,
+    nowMillis,
+    tokenState: {
+      hasFreshFcmToken: true,
+      freshFcmTokenExpiresAtMillis: fcmExpiry,
+    },
+  });
+
+  assert.equal(update.matchProtocolVersion, 2);
+  assert.equal(update.v2CallKitCapabilityExpiresAt.toMillis(), fcmExpiry);
 });

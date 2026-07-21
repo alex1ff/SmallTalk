@@ -168,6 +168,16 @@ test("accept attempt finalization uses lock start instead of final deadline", ()
     }),
     (error) => error.code === "invalid-argument",
   );
+  assert.doesNotThrow(() => assertAcceptAttemptCanFinalizeOrThrow({
+    sessionData: {
+      ...sessionData,
+      acceptingAt: timestampFromMillis(responseDeadlineMillis),
+    },
+    responderId: "student-b",
+    acceptAttemptId: "attempt-current",
+    nowMillis: responseDeadlineMillis + 1,
+    skipResponseDeadline: true,
+  }));
   assert.throws(
     () => assertAcceptAttemptCanFinalizeOrThrow({
       sessionData: {

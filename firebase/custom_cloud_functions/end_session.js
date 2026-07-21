@@ -33,8 +33,15 @@ const {
 const {
   releaseSessionPairLocksInTransaction,
 } = require("./match_pair_lock");
+const {
+  cancelProtocolV2NotificationsInTransaction,
+} = require("./call_notifications");
+const {
+  cancelProtocolV2NativeSurfaces,
+} = require("./match_delivery_v2");
 
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
+const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 
 // ─── Pricing ────────────────────────────────────────────────────────────────
 // Student pays ~45-50 RUB/min (10 SmallTalks = 4990₽, 20 SmallTalks = 8900₽)
@@ -220,7 +227,7 @@ endSession
 */
 
 exports.endSession = functions
-  .runWith({ secrets: dailySecrets })
+  .runWith({secrets: [...apnsSecrets, ...dailySecrets]})
   .https.onCall(async (data, context) => {
   console.log("🔚 Ending video session...");
 
@@ -332,6 +339,9 @@ exports.endSession = functions
           "sessionMetadata.endReason": stopReason,
           "sessionMetadata.endedAtTimestamp": requestTimestamp,
         };
+        const isProtocolV2 =
+          Number(sessionData.matchProtocolVersion) >= 2 &&
+          Boolean(String(sessionData.pairAttemptId || "").trim());
         if (terminalStatus === VIDEO_SESSION_STATUS.EXPIRED) {
           sessionUpdates.expiredAt =
             admin.firestore.FieldValue.serverTimestamp();
@@ -355,6 +365,27 @@ exports.endSession = functions
             stopReason,
           }),
         );
+        if (isProtocolV2) {
+          const serverTimestamp =
+            admin.firestore.FieldValue.serverTimestamp();
+          cancelProtocolV2NotificationsInTransaction({
+            db,
+            transaction,
+            sessionId,
+            pairAttemptId: sessionData.pairAttemptId,
+            participantStates: sessionData.participantStates || {},
+            cancelReason: stopReason,
+            serverTimestamp,
+          });
+          sessionUpdates.matchRecovery = {
+            status: "pending",
+            attempts: 0,
+            pairAttemptId: sessionData.pairAttemptId,
+            reason: stopReason,
+            restoreParticipantIds: [],
+            requestedAt: serverTimestamp,
+          };
+        }
         transaction.update(sessionRef, sessionUpdates);
 
         return {
@@ -363,6 +394,10 @@ exports.endSession = functions
           sessionId,
           endedAt: requestTimestamp,
           dailyRoomName: resolveDailyRoomName(sessionData),
+          matchProtocolVersion: sessionData.matchProtocolVersion || 1,
+          pairAttemptId: sessionData.pairAttemptId || null,
+          participantStates: sessionData.participantStates || {},
+          cancelReason: stopReason,
         };
       }
 
@@ -616,6 +651,28 @@ exports.endSession = functions
       VIDEO_SESSION_STATUS.CANCELLED,
       VIDEO_SESSION_STATUS.EXPIRED,
     ].includes(txResult.status)) {
+      const terminalSideEffects = [cancelAllSessionNotifications(sessionId)];
+      if (
+        Number(txResult.matchProtocolVersion) >= 2 &&
+        txResult.pairAttemptId
+      ) {
+        terminalSideEffects.push(cancelProtocolV2NativeSurfaces({
+          db,
+          sessionId,
+          pairAttemptId: txResult.pairAttemptId,
+          participantStates: txResult.participantStates,
+          reason: txResult.cancelReason || "pre_active_cancelled",
+        }));
+      }
+      const terminalResults = await Promise.allSettled(terminalSideEffects);
+      terminalResults.forEach((result) => {
+        if (result.status === "rejected") {
+          console.error(
+            "⚠️ Failed to close pre-active native call surface:",
+            result.reason,
+          );
+        }
+      });
       if (txResult.dailyRoomName) {
         await deleteDailyRoomForSession({
           db,
@@ -624,7 +681,14 @@ exports.endSession = functions
           source: "endSession_pre_active_terminal",
         });
       }
-      return txResult;
+      const {
+        matchProtocolVersion: _matchProtocolVersion,
+        pairAttemptId: _pairAttemptId,
+        participantStates: _participantStates,
+        cancelReason: _cancelReason,
+        ...response
+      } = txResult;
+      return response;
     }
 
     if (txResult.status !== VIDEO_SESSION_STATUS.ENDED) {

@@ -120,6 +120,42 @@ test("stop cancellation sends a VoIP end event to the responder", async () => {
   assert.equal(sentRequest.payload.recipientId, "teacher-a");
 });
 
+test("CallKit cancellation bounds APNs and falls back to FCM", async () => {
+  let apnsSignal = null;
+  let fcmCalls = 0;
+  const startedAt = Date.now();
+  const result = await sendCallCancellationToResponder({
+    db: {
+      collection: () => ({
+        doc: () => ({
+          get: async () => ({exists: true, data: () => ({role: "student"})}),
+        }),
+      }),
+    },
+    sessionId: "session-a",
+    responderUserId: "student-a",
+    tokenReader: async () => ({
+      voipPushToken: "push-token",
+      voipToken: "fcm-token",
+    }),
+    apnsSender: async ({signal}) => {
+      apnsSignal = signal;
+      return new Promise(() => {});
+    },
+    messaging: {
+      send: async () => {
+        fcmCalls += 1;
+      },
+    },
+    deliveryTimeoutMs: 20,
+  });
+
+  assert.deepEqual(result, {sent: true, channel: "fcm"});
+  assert.equal(apnsSignal.aborted, true);
+  assert.equal(fcmCalls, 1);
+  assert.ok(Date.now() - startedAt < 200);
+});
+
 test("request owner can be stored as ids, refs, or omitted for uid doc", () => {
   assert.equal(requestBelongsToUser({userId: "student-a"}, "student-a"), true);
   assert.equal(requestBelongsToUser({studentId: "student-a"}, "student-a"), true);
@@ -399,6 +435,34 @@ test("searching video session is cancelled and user pointers are cleared", () =>
   assert.equal(decision.responderUpdate.currentSessionId, fieldDelete);
 });
 
+test("protocol v2 responder can immediately cancel matched search", () => {
+  const decision = buildStopSessionDecision({
+    sessionExists: true,
+    sessionData: {
+      status: "pending_confirmation",
+      matchProtocolVersion: 2,
+      requesterId: "student-a",
+      currentResponderId: "student-b",
+      participantIds: ["student-a", "student-b"],
+      participantRoles: {
+        "student-a": "student",
+        "student-b": "student",
+      },
+      participantStates: {},
+      pairAttemptId: "pair-a",
+    },
+    userId: "student-b",
+    sessionId: "session-a",
+    requesterCurrentSessionId: "session-a",
+    responderCurrentSessionId: "session-a",
+    serverTimestamp,
+    fieldDelete,
+  });
+  assert.equal(decision.ok, true);
+  assert.equal(decision.response.stopped, true);
+  assert.deepEqual(decision.response.restoreParticipantIds, ["student-a"]);
+});
+
 test("active video session is not cancelled by stopSearch", () => {
   const decision = stopSessionDecision({
     sessionData: {
@@ -434,6 +498,59 @@ test("connecting video session is not cancelled by stopSearch", () => {
     stopped: false,
     reason: "session_not_searching",
   });
+});
+
+test("explicit protocol v2 stop cancels a pre-active connecting session", () => {
+  const decision = stopSessionDecision({
+    explicitSessionIdProvided: true,
+    sessionData: {
+      status: "connecting",
+      matchProtocolVersion: 2,
+      pairAttemptId: "pair-a",
+      studentId: "student-a",
+      tutorId: "student-b",
+      participantIds: ["student-a", "student-b"],
+      participantRoles: {
+        "student-a": "student",
+        "student-b": "student",
+      },
+      participantStates: {
+        "student-b": {
+          role: "student",
+          surface: "callkit",
+          decision: "accepted",
+          delivery: "sent",
+          callKitId: "callkit-b",
+        },
+      },
+      dailyRoomName: "room-a",
+    },
+  });
+
+  assert.equal(decision.ok, true);
+  assert.equal(decision.sessionUpdate.status, "cancelled");
+  assert.equal(decision.response.stopped, true);
+  assert.equal(decision.response.pairAttemptId, "pair-a");
+  assert.deepEqual(decision.response.restoreParticipantIds, ["student-b"]);
+});
+
+test("stopSearch never cancels a protocol v2 connecting call after join", () => {
+  const decision = stopSessionDecision({
+    explicitSessionIdProvided: true,
+    sessionData: {
+      status: "connecting",
+      matchProtocolVersion: 2,
+      pairAttemptId: "pair-a",
+      studentId: "student-a",
+      tutorId: "student-b",
+      participantIds: ["student-a", "student-b"],
+      sessionMetadata: {callConnectedAtTimestamp: Date.now()},
+    },
+  });
+
+  assert.equal(decision.ok, true);
+  assert.equal(decision.sessionUpdate, null);
+  assert.equal(decision.response.reason, "session_not_searching");
 });
 
 test("assigned responder lookup supports legacy and neutral fields", () => {
@@ -766,8 +883,9 @@ if (!hasFirestoreEmulator) {
     }, authContext(uid));
     const snapshot = await searchRequestRef(uid).get();
 
-    assert.equal(response.status, "noop");
-    assert.equal(response.reason, "request_mismatch");
+    assert.equal(response.status, "stopped");
+    assert.equal(response.stopped, true);
+    assert.equal(response.reason, "cancellation_intent_recorded");
     assert.equal(snapshot.data().status, "active");
     assert.equal(snapshot.data().requestId, "request-new");
   });

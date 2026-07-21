@@ -517,6 +517,20 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
+          "fieldPath": "matchStage",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "videoSessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
           "fieldPath": "studentId",
           "order": "ASCENDING"
         },

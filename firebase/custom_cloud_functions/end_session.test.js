@@ -16,6 +16,9 @@ const {
     shouldProcessExpiredEndReason,
   },
 } = require("./end_session");
+const {
+  incomingCallNotificationId,
+} = require("./call_notifications");
 
 const fakeDeleteField = Symbol("deleteField");
 const fakeServerTimestamp = {__fakeFieldValue: "serverTimestamp"};
@@ -774,6 +777,73 @@ test("endSession callable cancels pre-active user-ended sessions", async () => {
   );
 });
 
+test("pre-active protocol v2 end closes the exact peer CallKit surface", async () => {
+  const sessionId = "session-pre-active-v2-cancelled";
+  const firstStudentId = "student-pre-active-v2-a";
+  const secondStudentId = "student-pre-active-v2-b";
+  const pairAttemptId = "pair-pre-active-v2";
+  const notificationId = incomingCallNotificationId(
+    sessionId,
+    secondStudentId,
+    pairAttemptId,
+  );
+  const seed = callableSessionSeed({
+    sessionId,
+    firstStudentId,
+    secondStudentId,
+    status: "connecting",
+    overrides: {
+      matchProtocolVersion: 2,
+      pairAttemptId,
+      participantStates: {
+        [firstStudentId]: {
+          role: "student",
+          surface: "in_app",
+          decision: "accepted",
+          delivery: "not_required",
+          callKitId: "callkit-first",
+        },
+        [secondStudentId]: {
+          role: "student",
+          surface: "callkit",
+          decision: "accepted",
+          delivery: "sent",
+          callKitId: "callkit-second",
+        },
+      },
+    },
+  });
+  seed[`notifications/${notificationId}`] = {
+    type: "incoming_call",
+    sessionId,
+    recipientId: secondStudentId,
+    pairAttemptId,
+    callKitId: "callkit-second",
+    status: "sent",
+  };
+  const {firestore, store} = createFakeFirestore(seed);
+
+  const response = await withFakeFirestore(firestore, () =>
+    endSession.run(
+      {sessionId, endReason: "user_ended"},
+      {auth: {uid: firstStudentId}},
+    ));
+
+  assert.equal(response.status, "cancelled");
+  assert.equal(
+    store.get(`notifications/${notificationId}`).status,
+    "cancelled",
+  );
+  assert.equal(
+    store.get(`notifications/${notificationId}`).callKitId,
+    "callkit-second",
+  );
+  assert.equal(
+    store.get(`videoSessions/${sessionId}`).matchRecovery.status,
+    "pending",
+  );
+});
+
 test("endSession callable expires pre-active expired sessions", async () => {
   const sessionId = "session-pre-active-expired";
   const firstStudentId = "student-pre-active-expired-a";
@@ -965,7 +1035,10 @@ test("endSession source keeps the ignored_expired_end wrapper path", () => {
   assert.match(source, /getConnectedCallStartMillis\(sessionData\)/);
   assert.match(source, /acceptAttemptId: admin\.firestore\.FieldValue\.delete\(\)/);
   assert.doesNotMatch(source, /serverConnectedAt/);
-  assert.match(source, /\.runWith\(\{\s*secrets:\s*dailySecrets\s*\}\)/);
+  assert.match(
+    source,
+    /\.runWith\(\{secrets:\s*\[\.\.\.apnsSecrets,\s*\.\.\.dailySecrets\]\}\)/,
+  );
   assert.match(source, /dailyRoomName:\s*resolveDailyRoomName\(sessionData\)/);
   assert.match(
     source,

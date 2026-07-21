@@ -18,6 +18,7 @@ const {
 const {
   buildTeacherIncomingCallApnsPayload,
   buildTeacherIncomingCallFcmMessage,
+  cancelProtocolV2NotificationsInTransaction,
   createIncomingCallNotificationInTransaction,
 } = require("./call_notifications");
 const {
@@ -46,6 +47,9 @@ const {
   logCallLifecycleError,
   logCallLifecycleEvent,
 } = require("./call_lifecycle_logs");
+const {
+  reconcileReleasedProtocolV2Match,
+} = require("./start_search").__private__;
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -169,6 +173,83 @@ function readRequesterIdForResponderFailure(sessionData = {}) {
     sessionData.studentId ||
     sessionData.matchContext?.requesterId ||
     "";
+}
+
+function buildProtocolV2NotificationTimeoutRouting({
+  sessionData = {},
+  timedOutParticipantId = "",
+} = {}) {
+  const participantIds = Array.from(new Set(
+    (sessionData.participantIds || [])
+      .map(normalizeSessionId)
+      .filter(Boolean),
+  ));
+  const restoreParticipantIds = participantIds.filter((participantId) =>
+    participantId !== timedOutParticipantId &&
+    sessionData.participantRoles?.[participantId] === "student" &&
+    sessionData.participantStates?.[participantId]?.decision !== "declined",
+  );
+  return {
+    participantIds,
+    restoreParticipantIds,
+    restoreExcludedCandidateIdsByParticipantId: Object.fromEntries(
+      restoreParticipantIds.map((participantId) => [
+        participantId,
+        timedOutParticipantId ? [timedOutParticipantId] : [],
+      ]),
+    ),
+  };
+}
+
+function buildProtocolV2NotificationTimeoutDecision({
+  sessionData = {},
+  notificationData = {},
+} = {}) {
+  const pairAttemptId = normalizeSessionId(sessionData.pairAttemptId);
+  const notificationPairAttemptId = normalizeSessionId(
+    notificationData.pairAttemptId,
+  );
+  const participantId = normalizeSessionId(notificationData.recipientId);
+  if (
+    Number(sessionData.matchProtocolVersion) < 2 ||
+    Number(notificationData.matchProtocolVersion) < 2 ||
+    !pairAttemptId ||
+    pairAttemptId !== notificationPairAttemptId ||
+    !(sessionData.participantIds || []).includes(participantId)
+  ) {
+    return {
+      shouldProcess: false,
+      reason: "protocol_v2_attempt_stale",
+      pairAttemptId,
+      participantId,
+    };
+  }
+  const participantState = sessionData.participantStates?.[participantId] || {};
+  if (participantState.decision !== "pending") {
+    return {
+      shouldProcess: false,
+      reason: `participant_${participantState.decision || "unknown"}`,
+      pairAttemptId,
+      participantId,
+    };
+  }
+  if (
+    participantState.surface !== "callkit" ||
+    !["dispatching", "sent", "failed"].includes(participantState.delivery)
+  ) {
+    return {
+      shouldProcess: false,
+      reason: "callkit_surface_not_active",
+      pairAttemptId,
+      participantId,
+    };
+  }
+  return {
+    shouldProcess: true,
+    reason: "callkit_timeout",
+    pairAttemptId,
+    participantId,
+  };
 }
 
 function buildTimeoutResponderFailureRouting({
@@ -405,19 +486,21 @@ async function processExpiredNotification(notificationDoc) {
       ? db.collection("videoSessions").doc(sessionId)
       : null;
     let freshFailureResponderRouting = null;
-    try {
-      freshFailureResponderRouting =
-        await collectFreshTimeoutFailureResponderIds({
-          db,
-          sessionRef,
-          notificationData: initialNotificationData,
-          nowMillis: Date.now(),
-        });
-    } catch (error) {
-      console.error(
-        "⚠️ Failed to collect fresh responder pool after timeout:",
-        error.message,
-      );
+    if (Number(initialNotificationData.matchProtocolVersion) < 2) {
+      try {
+        freshFailureResponderRouting =
+          await collectFreshTimeoutFailureResponderIds({
+            db,
+            sessionRef,
+            notificationData: initialNotificationData,
+            nowMillis: Date.now(),
+          });
+      } catch (error) {
+        console.error(
+          "⚠️ Failed to collect fresh responder pool after timeout:",
+          error.message,
+        );
+      }
     }
 
     const transition = await db.runTransaction(
@@ -470,6 +553,107 @@ async function processExpiredNotification(notificationDoc) {
           return {
             shouldNotify: false,
             skipReason: `status_${status}`,
+          };
+        }
+
+        const isProtocolV2 =
+          Number(freshSessionData.matchProtocolVersion) >= 2 ||
+          Number(freshNotificationData.matchProtocolVersion) >= 2;
+        if (isProtocolV2) {
+          const protocolV2TimeoutDecision =
+            buildProtocolV2NotificationTimeoutDecision({
+              sessionData: freshSessionData,
+              notificationData: freshNotificationData,
+            });
+          if (!protocolV2TimeoutDecision.shouldProcess) {
+            transaction.update(notificationDoc.ref, expireNotificationUpdate);
+            return {
+              shouldNotify: false,
+              skipReason: protocolV2TimeoutDecision.reason,
+            };
+          }
+          const pairAttemptId = protocolV2TimeoutDecision.pairAttemptId;
+          const timedOutParticipantId =
+            protocolV2TimeoutDecision.participantId;
+          const routing = buildProtocolV2NotificationTimeoutRouting({
+            sessionData: freshSessionData,
+            timedOutParticipantId,
+          });
+          const serverTimestamp =
+            admin.firestore.FieldValue.serverTimestamp();
+          const fieldDelete = admin.firestore.FieldValue.delete();
+          await releaseSessionPairLocksInTransaction({
+            db,
+            transaction,
+            sessionId,
+            sessionData: freshSessionData,
+            participantIds: routing.participantIds,
+            serverTimestamp,
+            fieldDelete,
+            searchRequestStatus: SEARCH_REQUEST_STATUS.EXPIRED,
+            stopReason: "match_timeout",
+            releaseCallState: true,
+            restoreSearchParticipantIds: routing.restoreParticipantIds,
+            restoreSearchExcludedCandidateIdsByParticipantId:
+              routing.restoreExcludedCandidateIdsByParticipantId,
+          });
+          const participantStates = {
+            ...(freshSessionData.participantStates || {}),
+            [timedOutParticipantId]: {
+              ...(freshSessionData.participantStates?.[
+                timedOutParticipantId
+              ] || {}),
+              decision: "declined",
+              actionId: `notification-timeout-${notificationId}`,
+              updatedAt: serverTimestamp,
+            },
+          };
+          cancelProtocolV2NotificationsInTransaction({
+            db,
+            transaction,
+            sessionId,
+            pairAttemptId,
+            participantStates,
+            cancelReason: "match_timeout",
+            serverTimestamp,
+          });
+          transaction.update(notificationDoc.ref, expireNotificationUpdate);
+          transaction.update(sessionRef, {
+            status: VIDEO_SESSION_STATUS.EXPIRED,
+            pairStatus: VIDEO_SESSION_STATUS.EXPIRED,
+            participantStates,
+            currentTutorId: fieldDelete,
+            currentResponderId: fieldDelete,
+            currentResponderRole: fieldDelete,
+            acceptingTutorId: fieldDelete,
+            acceptingAt: fieldDelete,
+            acceptAttemptId: fieldDelete,
+            endedAt: serverTimestamp,
+            expiredAt: serverTimestamp,
+            expireReason: "match_timeout",
+            matchRecovery: {
+              status: "pending",
+              attempts: 0,
+              pairAttemptId,
+              reason: "match_timeout",
+              restoreParticipantIds: routing.restoreParticipantIds,
+              requestedAt: serverTimestamp,
+            },
+          });
+          return {
+            protocolV2: true,
+            pairAttemptId,
+            participantStates,
+            restoreParticipantIds: routing.restoreParticipantIds,
+            shouldNotify: false,
+            shouldRecordMissed: true,
+            timedOutResponderId: timedOutParticipantId,
+            statusBefore: freshSessionData.status,
+            statusAfter: VIDEO_SESSION_STATUS.EXPIRED,
+            terminalStopReason: "match_timeout",
+            sessionData: buildTerminalTimeoutSessionProjection({
+              sessionData: freshSessionData,
+            }),
           };
         }
 
@@ -710,6 +894,16 @@ async function processExpiredNotification(notificationDoc) {
       });
     }
 
+    if (transition.protocolV2) {
+      await reconcileReleasedProtocolV2Match({
+        db,
+        sessionId,
+        pairAttemptId: transition.pairAttemptId,
+      }).catch(() => {});
+      logTimeoutCompleted();
+      return;
+    }
+
     if (transition.shouldNotify) {
       const pushPayload = transition.pushPayload || {};
       console.log("📨 Sending notification to next tutor:", transition.nextTutor);
@@ -895,6 +1089,8 @@ async function processExpiredNotification(notificationDoc) {
 }
 
 exports.__private__ = {
+  buildProtocolV2NotificationTimeoutDecision,
+  buildProtocolV2NotificationTimeoutRouting,
   buildTerminalTimeoutSessionProjection,
   buildTimeoutNextResponderPairLockInput,
   buildTimeoutPushLifecycleDecision,

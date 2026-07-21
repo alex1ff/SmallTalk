@@ -45,6 +45,27 @@ function buildCallKitIdForSession(sessionId = "") {
     `${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
 }
 
+function buildCallKitIdForMatchParticipant({
+  sessionId = "",
+  pairAttemptId = "",
+  participantId = "",
+} = {}) {
+  const normalizedSessionId = normalizeString(sessionId);
+  const normalizedPairAttemptId = normalizeString(pairAttemptId);
+  const normalizedParticipantId = normalizeString(participantId);
+  if (
+    !normalizedSessionId ||
+    !normalizedPairAttemptId ||
+    !normalizedParticipantId
+  ) {
+    return buildCallKitIdForSession(normalizedSessionId);
+  }
+  return buildCallKitIdForSession(
+    `${normalizedSessionId}:${normalizedPairAttemptId}:` +
+      normalizedParticipantId,
+  );
+}
+
 function readParticipantRole(sessionData = {}, participantId = "") {
   const normalizedParticipantId = normalizeString(participantId);
   if (!normalizedParticipantId) return "";
@@ -59,13 +80,19 @@ function readRequesterId(sessionData = {}) {
 }
 
 function readResponderId(sessionData = {}, recipientId = "") {
-  return normalizeString(recipientId) ||
+  const requesterId = readRequesterId(sessionData);
+  const assignedResponderId =
     normalizeString(sessionData.currentResponderId) ||
     normalizeString(sessionData.currentTutorId) ||
     normalizeString(sessionData.responderId) ||
     normalizeString(sessionData.tutorId) ||
     normalizeString(sessionData.matchContext?.selectedResponderId) ||
     normalizeString(sessionData.matchContext?.acceptedResponderId);
+  if (assignedResponderId) return assignedResponderId;
+  const normalizedRecipientId = normalizeString(recipientId);
+  return normalizedRecipientId && normalizedRecipientId !== requesterId ?
+    normalizedRecipientId :
+    "";
 }
 
 function readRequesterRole(sessionData = {}, requesterId = "") {
@@ -138,6 +165,18 @@ function buildIncomingCallPayloadMetadata({
   const recipientRole = normalizedRecipientId === requesterId ?
     requesterRole :
     responderRole;
+  const requestedProtocolV2 = Number(sessionData.matchProtocolVersion) >= 2;
+  const matchProtocolVersion = requestedProtocolV2 ?
+    "2" :
+    "1";
+  const pairAttemptId = normalizeString(sessionData.pairAttemptId);
+  if (requestedProtocolV2 && !pairAttemptId) {
+    throw new Error("match protocol v2 requires pairAttemptId");
+  }
+  const participantState =
+    sessionData.participantStates?.[normalizedRecipientId] || {};
+  const isMatchProtocolV2 =
+    matchProtocolVersion === "2" && Boolean(pairAttemptId);
 
   return {
     recipientId: normalizedRecipientId,
@@ -147,8 +186,18 @@ function buildIncomingCallPayloadMetadata({
     requesterRole,
     responderRole,
     navRole: roleToNavRole(recipientRole),
-    acceptMode: "responder_accepts",
-    callKitId: buildCallKitIdForSession(normalizedSessionId),
+    acceptMode: isMatchProtocolV2 ?
+      "respond_to_match" :
+      "responder_accepts",
+    callKitId:
+      normalizeString(participantState.callKitId) ||
+      (isMatchProtocolV2 ?
+        buildCallKitIdForMatchParticipant({
+          sessionId: normalizedSessionId,
+          pairAttemptId,
+          participantId: normalizedRecipientId,
+        }) :
+        buildCallKitIdForSession(normalizedSessionId)),
     notificationId: normalizeString(notificationId),
     searchRequestId: readSearchRequestId({
       sessionData,
@@ -162,17 +211,80 @@ function buildIncomingCallPayloadMetadata({
       normalizeString(sessionData.dailyRoomName) ||
       normalizeString(sessionData.roomName),
     tokenStrategy: "accept_call",
+    ...(isMatchProtocolV2 ? {
+      matchProtocolVersion,
+      pairAttemptId,
+      surface: "callkit",
+    } : {}),
   };
 }
 
-function incomingCallNotificationId(sessionId, recipientId) {
-  return `${sessionId}_${recipientId}`.replace(/[^A-Za-z0-9_-]/g, "_");
+function incomingCallNotificationId(
+  sessionId,
+  recipientId,
+  pairAttemptId = "",
+) {
+  return [sessionId, pairAttemptId, recipientId]
+    .map(normalizeString)
+    .filter(Boolean)
+    .join("_")
+    .replace(/[^A-Za-z0-9_-]/g, "_");
 }
 
-function incomingCallNotificationRef(db, sessionId, recipientId) {
+function incomingCallNotificationRef(
+  db,
+  sessionId,
+  recipientId,
+  pairAttemptId = "",
+) {
   return db
     .collection("notifications")
-    .doc(incomingCallNotificationId(sessionId, recipientId));
+    .doc(incomingCallNotificationId(
+      sessionId,
+      recipientId,
+      pairAttemptId,
+    ));
+}
+
+function cancelProtocolV2NotificationsInTransaction({
+  db,
+  transaction,
+  sessionId,
+  pairAttemptId,
+  participantStates = {},
+  cancelReason = "match_cancelled",
+  serverTimestamp = admin.firestore.FieldValue.serverTimestamp(),
+} = {}) {
+  let cancelledCount = 0;
+  Object.entries(participantStates || {}).forEach(
+    ([participantId, participantState]) => {
+      if (
+        normalizeString(participantState?.surface) !== "callkit" ||
+        !normalizeString(participantState?.callKitId)
+      ) {
+        return;
+      }
+      transaction.set(incomingCallNotificationRef(
+        db,
+        sessionId,
+        participantId,
+        pairAttemptId,
+      ), {
+        type: "incoming_call",
+        sessionId,
+        recipientId: participantId,
+        pairAttemptId,
+        matchProtocolVersion: 2,
+        callKitId: participantState.callKitId,
+        status: "cancelled",
+        cancelledAt: serverTimestamp,
+        cancelReason,
+        updatedAt: serverTimestamp,
+      }, {merge: true});
+      cancelledCount += 1;
+    },
+  );
+  return cancelledCount;
 }
 
 function normalizeStudentInfo(studentInfo = {}) {
@@ -193,6 +305,7 @@ function buildIncomingCallNotificationData({
   studentInfo = null,
   studentNameFallback = "Student",
   notificationId = "",
+  status = "sent",
   now = new Date(),
 } = {}) {
   const resolvedStudentInfo = normalizeStudentInfo(
@@ -217,7 +330,7 @@ function buildIncomingCallNotificationData({
     sessionId,
     notificationId: payloadMetadata.notificationId,
     type: "incoming_call",
-    status: "sent",
+    status: normalizeString(status) || "sent",
     title: "Входящий звонок",
     message: `${studentName} хочет попрактиковать ${language}`,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -236,6 +349,11 @@ function buildIncomingCallNotificationData({
     roomUrl: payloadMetadata.roomUrl,
     roomName: payloadMetadata.roomName,
     tokenStrategy: payloadMetadata.tokenStrategy,
+    ...(payloadMetadata.matchProtocolVersion === "2" ? {
+      matchProtocolVersion: payloadMetadata.matchProtocolVersion,
+      pairAttemptId: payloadMetadata.pairAttemptId,
+      surface: payloadMetadata.surface,
+    } : {}),
   };
 }
 
@@ -307,6 +425,11 @@ function buildTeacherIncomingCallPushData(callData = {}) {
     roomUrl: normalizeString(callData.roomUrl),
     roomName: normalizeString(callData.roomName),
     tokenStrategy: normalizeString(callData.tokenStrategy) || "accept_call",
+    ...(normalizeString(callData.matchProtocolVersion) === "2" ? {
+      matchProtocolVersion: "2",
+      pairAttemptId: normalizeString(callData.pairAttemptId),
+      surface: normalizeString(callData.surface) || "callkit",
+    } : {}),
   };
 }
 
@@ -357,12 +480,16 @@ function createIncomingCallNotificationInTransaction({
   sessionData = {},
   studentInfo = null,
   studentNameFallback = "Student",
+  status = "sent",
   now,
 }) {
   const notificationRef = incomingCallNotificationRef(
     db,
     sessionId,
     recipientId,
+    Number(sessionData.matchProtocolVersion) >= 2 ?
+      sessionData.pairAttemptId :
+      "",
   );
   const notificationId = notificationRef.id;
   const notificationData = buildIncomingCallNotificationData({
@@ -372,6 +499,7 @@ function createIncomingCallNotificationInTransaction({
     studentInfo,
     studentNameFallback,
     notificationId,
+    status,
     now,
   });
   transaction.set(notificationRef, notificationData);
@@ -394,12 +522,14 @@ function createIncomingCallNotificationInTransaction({
 module.exports = {
   INCOMING_CALL_NOTIFICATION_TTL_SECONDS,
   buildCallKitIdForSession,
+  buildCallKitIdForMatchParticipant,
   buildIncomingCallNotificationData,
   buildIncomingCallPayloadMetadata,
   buildIncomingCallPushPayload,
   buildTeacherIncomingCallApnsPayload,
   buildTeacherIncomingCallFcmMessage,
   buildTeacherIncomingCallPushData,
+  cancelProtocolV2NotificationsInTransaction,
   createIncomingCallNotificationInTransaction,
   incomingCallNotificationId,
   incomingCallNotificationRef,

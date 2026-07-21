@@ -15,6 +15,7 @@ import '/services/user_match_profile.dart';
 import '/services/active_search_recovery.dart';
 import '/services/nearby_partner_count_cache.dart';
 import '/services/nearby_partner_preview_cache.dart';
+import '/services/match_coordinator.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/components/no_balance_widget.dart';
 import '/components/promo_redeem_widget.dart';
@@ -30,6 +31,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
+import 'package:uuid/uuid.dart';
 
 import 'students_dashboard_model.dart';
 export 'students_dashboard_model.dart';
@@ -166,14 +168,17 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
   Timer? _searchHeartbeatTimer;
   Timer? _activeSearchRecoveryRetryTimer;
   String? _activeSearchRequestId;
+  String? _pendingStartSearchRequestId;
   String? _matchedSearchSessionId;
   String? _recoveredConnectionSessionId;
   String? _activeSearchRecoveryAttemptedUserId;
   bool _activeSearchRecoveryInFlight = false;
   bool _searchHeartbeatInFlight = false;
   bool _pendingLifecycleSearchHeartbeat = false;
+  bool _searchHeartbeatOwnedByCoordinator = false;
   String _searchAppState = 'foreground';
   String? _autoOpenedSessionId;
+  final Set<String> _terminalV2SessionReconciliations = <String>{};
   final Set<String> _foregroundAcceptStartedSessionIds = <String>{};
   final Set<String> _autoOpenCredentialStartedSessionIds = <String>{};
   StudentDashboardSearchErrorReason? _searchErrorReason;
@@ -363,6 +368,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     _activeSearchRequestId = null;
     _searchHeartbeatInFlight = false;
     _pendingLifecycleSearchHeartbeat = false;
+    _searchHeartbeatOwnedByCoordinator = false;
   }
 
   void _clearActiveSearchRecoveryRetryTimer() {
@@ -447,6 +453,12 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     return false;
   }
 
+  int _responseInt(Map<String, dynamic> data, String key) {
+    final value = data[key];
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
   void _handleSearchHeartbeatResponse(
     String requestId,
     Map<String, dynamic> data,
@@ -492,9 +504,14 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     });
   }
 
-  Map<String, dynamic> _buildStartSearchPayload(UsersRecord user) {
+  Map<String, dynamic> _buildStartSearchPayload(
+    UsersRecord user, {
+    required String requestId,
+  }) {
     final payload = <String, dynamic>{
+      'requestId': requestId,
       'appState': _searchAppState,
+      'matchProtocolVersion': matchProtocolVersion,
     };
     final language = resolveUserActiveConversationLanguage(user);
     if (language != null && language.trim().isNotEmpty) {
@@ -516,8 +533,9 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
 
   Future<Map<String, dynamic>> _startActiveSearchRequest(
     UsersRecord user,
+    String requestId,
   ) async {
-    final payload = _buildStartSearchPayload(user);
+    final payload = _buildStartSearchPayload(user, requestId: requestId);
     final startSearchRequest = widget.startSearchRequest ??
         StudentsDashboardWidget.debugStartSearchRequest;
     if (startSearchRequest != null) {
@@ -679,8 +697,12 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       return;
     }
     _startSearchTimeoutTimer(remainingSearchDuration);
-    _startSearchHeartbeatTimer(requestId);
-    unawaited(_sendSearchHeartbeat(requestId));
+    final protocolV2 = _responseInt(state.data, 'matchProtocolVersion') >=
+        matchProtocolVersion;
+    _startSearchHeartbeatTimer(requestId, protocolV2: protocolV2);
+    if (!protocolV2) {
+      unawaited(_sendSearchHeartbeat(requestId));
+    }
   }
 
   Future<bool> _recoverStartSearchRequestAfterFailure() async {
@@ -804,9 +826,14 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     return _normalizeCallableMap(response.data);
   }
 
-  void _startSearchHeartbeatTimer(String requestId) {
+  void _startSearchHeartbeatTimer(
+    String requestId, {
+    bool protocolV2 = false,
+  }) {
     _clearSearchHeartbeatTimer();
     _activeSearchRequestId = requestId;
+    _searchHeartbeatOwnedByCoordinator = protocolV2;
+    if (protocolV2) return;
     _searchHeartbeatTimer = Timer.periodic(
       StudentsDashboardWidget.heartbeatSearchInterval,
       (_) => unawaited(_sendSearchHeartbeat(requestId)),
@@ -816,6 +843,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
   Future<void> _sendSearchHeartbeat(String requestId) async {
     if (_searchHeartbeatInFlight ||
         !mounted ||
+        _searchHeartbeatOwnedByCoordinator ||
         _activeSearchRequestId != requestId ||
         _searchState != StudentDashboardSearchState.searching) {
       return;
@@ -825,6 +853,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     final payload = <String, dynamic>{
       'requestId': requestId,
       'appState': _searchAppState,
+      'matchProtocolVersion': matchProtocolVersion,
     };
 
     try {
@@ -866,10 +895,10 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
 
   String _searchAppStateForLifecycle(AppLifecycleState? state) {
     switch (state) {
-      case null:
       case AppLifecycleState.resumed:
-      case AppLifecycleState.inactive:
         return 'foreground';
+      case null:
+      case AppLifecycleState.inactive:
       case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
@@ -880,6 +909,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
   void _sendLifecycleSearchHeartbeat() {
     final requestId = _activeSearchRequestId;
     if (requestId == null ||
+        _searchHeartbeatOwnedByCoordinator ||
         _searchState != StudentDashboardSearchState.searching) {
       return;
     }
@@ -986,6 +1016,52 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     }
   }
 
+  bool _isProtocolV2Session(VideoSessionsRecord session) {
+    return (int.tryParse(
+              session.snapshotData['matchProtocolVersion']?.toString() ?? '',
+            ) ??
+            0) >=
+        matchProtocolVersion;
+  }
+
+  void _scheduleTerminalV2SessionReconciliation(
+    VideoSessionsRecord session,
+  ) {
+    final sessionId = _normalizedSessionId(session.reference.id);
+    if (sessionId == null ||
+        !_terminalV2SessionReconciliations.add(sessionId)) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final linkedUserSessionId = _normalizedSessionId(
+        currentUserDocument?.currentSessionId,
+      );
+      if (linkedUserSessionId != sessionId &&
+          _matchedSearchSessionId != sessionId &&
+          _recoveredConnectionSessionId != sessionId) {
+        return;
+      }
+
+      _clearSearchTimeoutTimer();
+      _clearSearchHeartbeatTimer();
+      _clearActiveSearchRecoveryRetryTimer();
+      safeSetState(() {
+        _searchState = StudentDashboardSearchState.idle;
+        _searchErrorReason = null;
+        if (_matchedSearchSessionId == sessionId) {
+          _matchedSearchSessionId = null;
+        }
+        if (_recoveredConnectionSessionId == sessionId) {
+          _recoveredConnectionSessionId = null;
+        }
+        _lastActiveSessionId = null;
+        _lastActiveSessionSearchState = StudentDashboardSearchState.idle;
+        _activeSearchRecoveryAttemptedUserId = null;
+      });
+    });
+  }
+
   void _clearRecoveredConnectionSession() {
     final recoveredSessionId = _recoveredConnectionSessionId;
     _recoveredConnectionSessionId = null;
@@ -1050,6 +1126,13 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
         _searchState = StudentDashboardSearchState.idle;
       }
       return _searchState;
+    }
+    if (activeSessionSnapshotSettled &&
+        session != null &&
+        _isProtocolV2Session(session) &&
+        _isTerminalSessionStatus(session.status)) {
+      _scheduleTerminalV2SessionReconciliation(session);
+      return StudentDashboardSearchState.idle;
     }
     if (_isRecoveredConnectionSession(_matchedSearchSessionId) &&
         activeSessionSnapshotSettled &&
@@ -2037,6 +2120,15 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
         StudentsDashboardWidget.debugDisableAutoOpenSessionNavigation) {
       return;
     }
+    final sessionProtocolVersion = int.tryParse(
+          session.snapshotData['matchProtocolVersion']?.toString() ?? '',
+        ) ??
+        0;
+    if (sessionProtocolVersion >= matchProtocolVersion) {
+      // Protocol v2 is owned by the global MatchCoordinator. Running accept or
+      // navigation from build would race CallKit and Firestore delivery.
+      return;
+    }
 
     final sessionId = _normalizedSessionId(session.reference.id);
     if (sessionId == null ||
@@ -2367,8 +2459,20 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     StudentsDashboardWidget.debugStopSearchPayloadObserver?.call(
       Map<String, dynamic>.from(payload),
     );
+    if (normalizedSessionId != null) {
+      MatchCoordinator.instance.noteLocalCancellation(normalizedSessionId);
+    }
 
     try {
+      if (normalizedSessionId != null &&
+          MatchCoordinator.instance.currentSession?.sessionId ==
+              normalizedSessionId &&
+          MatchCoordinator.instance.hasCancellableV2Match) {
+        stopSucceeded = await MatchCoordinator.instance
+            .cancelCurrentMatch()
+            .timeout(StudentsDashboardWidget.stopSearchRequestTimeout);
+        return;
+      }
       if (stopSearchRequest != null) {
         final stopSearchResult = await stopSearchRequest(
           normalizedSessionId,
@@ -2427,12 +2531,13 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
 
       _ignoreStopSearchUntilNextFrame = true;
       final stopSessionId = _stopSessionIdFor(visibleSessionId);
-      final stopSearchRequestId = _activeSearchRequestId;
-      final shouldStopWhenStartCompletes = _isStartingSearch &&
-          stopSessionId == null &&
-          stopSearchRequestId == null;
+      final stopSearchRequestId =
+          _activeSearchRequestId ?? _pendingStartSearchRequestId;
+      final shouldSuppressLateStartResult = _isStartingSearch;
+      final canStopImmediately =
+          stopSessionId != null || stopSearchRequestId != null;
       _clearQueuedStartSearchAfterStop();
-      if (shouldStopWhenStartCompletes) {
+      if (shouldSuppressLateStartResult) {
         _stopSearchWhenStartCompletes = true;
       }
       safeSetState(() {
@@ -2446,7 +2551,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       });
       _clearSearchTimeoutTimer();
       _clearSearchHeartbeatTimer();
-      if (!shouldStopWhenStartCompletes) {
+      if (!shouldSuppressLateStartResult || canStopImmediately) {
         unawaited(_stopActiveSearchRequest(
           stopSessionId,
           activeSearchRequestId: stopSearchRequestId,
@@ -2487,6 +2592,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
 
     var startSearchRequestSent = false;
     var startSearchResponseReceived = false;
+    String? startOperationRequestId;
     try {
       if (!await _ensureStartSearchAccess(
         hasActiveCallSession: hasActiveCallSession,
@@ -2506,9 +2612,12 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
         _suppressedActiveSearchUserId = null;
       });
 
+      startOperationRequestId = const Uuid().v4();
+      _pendingStartSearchRequestId = startOperationRequestId;
       startSearchRequestSent = true;
       final startSearchData = await _startActiveSearchRequest(
         currentUserDocument!,
+        startOperationRequestId,
       );
       startSearchResponseReceived = true;
       final requestId = _normalizedResponseString(startSearchData, 'requestId');
@@ -2544,8 +2653,11 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       });
       if (nextSearchState == StudentDashboardSearchState.searching) {
         _startSearchTimeoutTimer();
-        _startSearchHeartbeatTimer(requestId);
-        if (reusedSearchRequest) {
+        final protocolV2 =
+            _responseInt(startSearchData, 'matchProtocolVersion') >=
+                matchProtocolVersion;
+        _startSearchHeartbeatTimer(requestId, protocolV2: protocolV2);
+        if (reusedSearchRequest && !protocolV2) {
           unawaited(_sendSearchHeartbeat(requestId));
         }
       } else {
@@ -2555,6 +2667,10 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     } on Exception catch (error, stackTrace) {
       if (_stopSearchWhenStartCompletes) {
         _stopSearchWhenStartCompletes = false;
+        await _stopActiveSearchRequest(
+          null,
+          activeSearchRequestId: startOperationRequestId,
+        );
         return;
       }
       if (startSearchRequestSent &&
@@ -2567,6 +2683,9 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
         _setSearchError(StudentDashboardSearchErrorReason.searchUnavailable);
       }
     } finally {
+      if (_pendingStartSearchRequestId == startOperationRequestId) {
+        _pendingStartSearchRequestId = null;
+      }
       if (mounted) {
         safeSetState(() => _isStartingSearch = false);
       }

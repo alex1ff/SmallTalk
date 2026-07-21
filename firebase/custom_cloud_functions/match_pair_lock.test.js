@@ -806,6 +806,7 @@ test("reserveDirectPair locks requester and teacher without search requests", as
     }));
 
   assert.equal(result.locked, true);
+  assert.equal(result.matchProtocolVersion, undefined);
   assert.deepEqual(
     writes.map((write) => write.path),
     [
@@ -815,6 +816,14 @@ test("reserveDirectPair locks requester and teacher without search requests", as
     ],
   );
   assert.equal(store.get("videoSessions/session-direct").currentTutorId, "teacher-a");
+  assert.equal(
+    store.get("videoSessions/session-direct").matchProtocolVersion,
+    1,
+  );
+  assert.equal(
+    Object.hasOwn(store.get("videoSessions/session-direct"), "participantStates"),
+    false,
+  );
   assert.equal(store.get("videoSessions/session-direct").tutorId, "teacher-a");
   assert.equal(store.get("videoSessions/session-direct").scenario, "student_teacher");
   assert.equal(store.get("videoSessions/session-direct").responderId, "teacher-a");

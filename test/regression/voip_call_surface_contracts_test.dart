@@ -336,10 +336,9 @@ void main() {
 
     test('root app clears queued CallKit actions only on real logout', () {
       final mainSource = _source('lib/main.dart');
-      final loggedOutBranchSource = _sourceBetween(
+      final loggedOutBranchSource = _curlyBlockSource(
         mainSource,
         'if (!user.loggedIn) {',
-        '} else if (!wasLoggedIn) {',
       );
       final realLogoutSource = _curlyBlockSource(
         loggedOutBranchSource,
@@ -455,7 +454,7 @@ void main() {
       final foregroundListenerSource = _sourceBetween(
         initializeSource,
         'FirebaseMessaging.onMessage.listen',
-        '// 4. Слушаем события CallKit/ConnectionService',
+        '_startSessionPruneTimer();',
       );
       expect(
         foregroundListenerSource,
@@ -519,7 +518,9 @@ void main() {
       );
       expect(
         showIncomingCallSource,
-        contains('duration: _incomingCallTimeoutMilliseconds'),
+        contains(
+          'duration: voipIncomingCallDurationMilliseconds(extraData ?? const {})',
+        ),
       );
       expect(
         showIncomingCallSource,
@@ -572,7 +573,9 @@ void main() {
       );
       expect(
         pushKitReceiveSource,
-        contains('data.duration = incomingCallTimeoutMilliseconds'),
+        contains(
+          'data.duration = incomingCallDurationMilliseconds(from: payloadDict, now: now)',
+        ),
       );
       expect(
         pushKitReceiveSource,
@@ -1628,6 +1631,42 @@ void main() {
       expect(appDelegateSource, contains('"expiresAt"'));
     });
 
+    test(
+        'iOS CallKit keeps exact UUID identity and reports cancellation pushes',
+        () {
+      final appDelegateSource = _source('ios/Runner/AppDelegate.swift');
+      final podfileSource = _source('ios/Podfile');
+      final pubspecSource = _source('pubspec.yaml');
+
+      expect(pubspecSource, contains('flutter_callkit_incoming: ^3.1.3'));
+      expect(
+        podfileSource,
+        contains('patch_callkit_incoming_exact_identity(installer)'),
+      );
+      expect(
+        podfileSource,
+        contains('ACTION_CALL_DECLINE, call.data.toJSON()'),
+      );
+      expect(
+        podfileSource,
+        contains('let uuidSourceString = data.uuid'),
+      );
+      expect(
+        appDelegateSource,
+        contains('plugin.showCallkitIncoming(cancelData, fromPushKit: true)'),
+      );
+      expect(appDelegateSource, contains('plugin.saveEndCall(callKitId, 2)'));
+      expect(
+        appDelegateSource,
+        contains('flutterServerEndedCallKitTombstonesKey'),
+      );
+      expect(
+        appDelegateSource,
+        contains(
+            'defaults.string(forKey: flutterServerEndedCallKitTombstonesKey)'),
+      );
+    });
+
     test('background accepted calls replay through VoIP accept flow', () {
       final mainSource = _source('lib/main.dart');
       final voipSource = _source('lib/services/voip_service.dart');
@@ -1644,8 +1683,8 @@ void main() {
         'Future<void> recoverBackgroundAcceptedCalls() async {',
       );
 
-      expect(mainSource,
-          contains('VoIPService().recoverBackgroundAcceptedCalls()'));
+      expect(mainSource, contains('await VoIPService().initialize()'));
+      expect(mainSource, contains('unawaited(_initializeVoipService('));
       expect(initializeSource, contains('_ensureCallKitEventSubscription()'));
       expect(
         callKitSubscriptionSource,

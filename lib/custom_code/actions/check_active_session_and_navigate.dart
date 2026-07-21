@@ -180,6 +180,14 @@ bool _activeSessionIsJoinableParticipant(
   Map<String, dynamic> data,
   String userId,
 ) {
+  final protocolVersion = int.tryParse(
+        data['matchProtocolVersion']?.toString() ?? '',
+      ) ??
+      0;
+  if (protocolVersion >= 2) {
+    // Protocol v2 navigation is exclusively owned by MatchCoordinator.
+    return false;
+  }
   return _activeSessionIsJoinableStatus(data['status'] as String?) &&
       _activeSessionHasOpenJoinWindow(data) &&
       _activeSessionHasParticipant(data, userId);

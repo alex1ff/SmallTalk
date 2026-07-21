@@ -177,6 +177,8 @@ void main() {
   });
 
   setUp(() {
+    TestWidgetsFlutterBinding.instance
+        .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     _permissionStatus = _permissionGranted;
     _permissionStatusByPermission = <int, int>{};
     _checkPermissionStatusCallCount = 0;
@@ -187,8 +189,8 @@ void main() {
       return false;
     };
     StudentsDashboardWidget.debugActiveSessionReader = (_) async => null;
-    StudentsDashboardWidget.debugStartSearchRequest = (_) async {
-      return <String, dynamic>{'requestId': 'request-debug'};
+    StudentsDashboardWidget.debugStartSearchRequest = (payload) async {
+      return <String, dynamic>{'requestId': payload['requestId']};
     };
     StudentsDashboardWidget.debugHeartbeatSearchRequest = (_) async {};
     StudentsDashboardWidget.debugStopSearchRequest = (_) async {};
@@ -300,6 +302,8 @@ void main() {
     String? dailyRoomName,
     String? meetingToken,
     List<String>? participantIds,
+    int? matchProtocolVersion,
+    String? cancelledBy,
   }) {
     return VideoSessionsRecord.getDocumentFromData(
       {
@@ -323,6 +327,9 @@ void main() {
         if (dailyRoomUrl != null) 'dailyRoomUrl': dailyRoomUrl,
         if (dailyRoomName != null) 'dailyRoomName': dailyRoomName,
         if (meetingToken != null) 'meetingToken': meetingToken,
+        if (matchProtocolVersion != null)
+          'matchProtocolVersion': matchProtocolVersion,
+        if (cancelledBy != null) 'cancelledBy': cancelledBy,
       },
       VideoSessionsRecord.collection.doc(sessionId),
     );
@@ -1423,6 +1430,7 @@ void main() {
       <String, dynamic>{
         'requestId': recoveredRequestId,
         'appState': 'foreground',
+        'matchProtocolVersion': 2,
       },
     ]);
 
@@ -1499,18 +1507,21 @@ void main() {
       <String, dynamic>{
         'requestId': recoveredRequestId,
         'appState': 'foreground',
+        'matchProtocolVersion': 2,
       },
     ]);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('student dashboard stops queued start after request id arrives',
+  testWidgets(
+      'student dashboard stops queued start with client request id immediately',
       (tester) async {
     setActiveStudent('student-stop-queued-start-search-test');
     final startCompleter = Completer<Map<String, dynamic>>();
     final stopPayloads = <Map<String, dynamic>>[];
     final stoppedSessionIds = <String?>[];
+    late Map<String, dynamic> startPayload;
     StudentsDashboardWidget.debugStopSearchPayloadObserver = (payload) {
       stopPayloads.add(Map<String, dynamic>.from(payload));
     };
@@ -1518,7 +1529,10 @@ void main() {
     await tester.pumpWidget(
       _buildDashboardTestApp(
         StudentsDashboardWidget(
-          startSearchRequest: (_) => startCompleter.future,
+          startSearchRequest: (payload) {
+            startPayload = Map<String, dynamic>.from(payload);
+            return startCompleter.future;
+          },
           stopSearchRequest: (activeSessionId) async {
             stoppedSessionIds.add(activeSessionId);
           },
@@ -1543,19 +1557,170 @@ void main() {
     await tester.pump();
 
     expect(find.text('Начать поиск'), findsOneWidget);
-    expect(stopPayloads, isEmpty);
+    final requestId = startPayload['requestId'];
+    expect(requestId, isA<String>());
+    expect((requestId as String).trim(), isNotEmpty);
+    expect(stopPayloads, [
+      <String, dynamic>{'requestId': requestId},
+    ]);
+    expect(stoppedSessionIds, [null]);
 
     startCompleter.complete(<String, dynamic>{
-      'requestId': 'request-stop-queued-start-test',
+      'requestId': requestId,
     });
     await tester.pump();
     await tester.pump();
 
     expect(stopPayloads, [
-      <String, dynamic>{'requestId': 'request-stop-queued-start-test'},
+      <String, dynamic>{'requestId': requestId},
+      <String, dynamic>{'requestId': requestId},
+    ]);
+    expect(stoppedSessionIds, [null, null]);
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets(
+      'student dashboard stops search when cancelled start response is lost',
+      (tester) async {
+    setActiveStudent('student-stop-lost-start-response-test');
+    final startCompleter = Completer<Map<String, dynamic>>();
+    final stopPayloads = <Map<String, dynamic>>[];
+    final stoppedSessionIds = <String?>[];
+    late Map<String, dynamic> startPayload;
+    StudentsDashboardWidget.debugStopSearchPayloadObserver = (payload) {
+      stopPayloads.add(Map<String, dynamic>.from(payload));
+    };
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          startSearchRequest: (payload) {
+            startPayload = Map<String, dynamic>.from(payload);
+            return startCompleter.future;
+          },
+          stopSearchRequest: (activeSessionId) async {
+            stoppedSessionIds.add(activeSessionId);
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Остановить поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Начать поиск'), findsOneWidget);
+    final requestId = startPayload['requestId'];
+    expect(requestId, isA<String>());
+    expect((requestId as String).trim(), isNotEmpty);
+    expect(stopPayloads, [
+      <String, dynamic>{'requestId': requestId},
     ]);
     expect(stoppedSessionIds, [null]);
+
+    startCompleter.completeError(
+      TimeoutException('start response lost after server commit'),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(stopPayloads, [
+      <String, dynamic>{'requestId': requestId},
+      <String, dynamic>{'requestId': requestId},
+    ]);
+    expect(stoppedSessionIds, [null, null]);
     expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Соединяем'), findsNothing);
+    expect(find.text('Остановить поиск'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets(
+      'late matched start response stays cancelled after session appeared',
+      (tester) async {
+    const userId = 'student-cancel-late-match-test';
+    const peerId = 'student-cancel-late-match-peer';
+    const sessionId = 'session-cancel-late-match-test';
+    final startCompleter = Completer<Map<String, dynamic>>();
+    final activeSessionController = StreamController<VideoSessionsRecord?>();
+    final stoppedSessionIds = <String?>[];
+    late Map<String, dynamic> startPayload;
+    addTearDown(activeSessionController.close);
+    setActiveStudent(userId, currentSessionId: sessionId);
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSessionStream: activeSessionController.stream,
+          startSearchRequest: (payload) {
+            startPayload = Map<String, dynamic>.from(payload);
+            return startCompleter.future;
+          },
+          stopSearchRequest: (sessionId) async {
+            stoppedSessionIds.add(sessionId);
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    activeSessionController.add(
+      sessionFixture(
+        sessionId,
+        'pending_confirmation',
+        requesterId: userId,
+        responderId: peerId,
+        participantIds: const [userId, peerId],
+        matchProtocolVersion: 2,
+      ),
+    );
+    await tester.pump();
+    expect(find.text('Соединяем'), findsOneWidget);
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Остановить поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(stoppedSessionIds, contains(sessionId));
+
+    startCompleter.complete(<String, dynamic>{
+      'requestId': startPayload['requestId'],
+      'sessionId': sessionId,
+      'status': 'matched',
+    });
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.text('Соединяем'), findsNothing);
     expect(find.text('Остановить поиск'), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -1640,6 +1805,7 @@ void main() {
     expect(heartbeatPayloads.single, <String, dynamic>{
       'requestId': 'request-heartbeat-test',
       'appState': 'foreground',
+      'matchProtocolVersion': 2,
     });
 
     await tester.pump(const Duration(seconds: 30));
@@ -1658,6 +1824,45 @@ void main() {
     await tester.pump();
 
     expect(heartbeatPayloads, hasLength(2));
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('protocol v2 heartbeat is owned by the global coordinator',
+      (tester) async {
+    setActiveStudent('student-global-heartbeat-owner-test');
+    final heartbeatPayloads = <Map<String, dynamic>>[];
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          startSearchRequest: (_) async => const <String, dynamic>{
+            'requestId': 'request-global-heartbeat-owner-test',
+            'matchProtocolVersion': 2,
+          },
+          heartbeatSearchRequest: (payload) async {
+            heartbeatPayloads.add(Map<String, dynamic>.from(payload));
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    await tester.pump(StudentsDashboardWidget.heartbeatSearchInterval);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+
+    expect(heartbeatPayloads, isEmpty);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
@@ -1692,7 +1897,12 @@ void main() {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     await tester.pump();
 
-    expect(heartbeatPayloads, isEmpty);
+    expect(heartbeatPayloads, hasLength(1));
+    expect(heartbeatPayloads.last, <String, dynamic>{
+      'requestId': 'request-lifecycle-test',
+      'appState': 'background',
+      'matchProtocolVersion': 2,
+    });
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
     await tester.pump();
@@ -1701,6 +1911,7 @@ void main() {
     expect(heartbeatPayloads.last, <String, dynamic>{
       'requestId': 'request-lifecycle-test',
       'appState': 'background',
+      'matchProtocolVersion': 2,
     });
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
@@ -1710,6 +1921,7 @@ void main() {
     expect(heartbeatPayloads.last, <String, dynamic>{
       'requestId': 'request-lifecycle-test',
       'appState': 'foreground',
+      'matchProtocolVersion': 2,
     });
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -1749,6 +1961,7 @@ void main() {
     expect(heartbeatPayloads.single, <String, dynamic>{
       'requestId': 'request-reused-test',
       'appState': 'foreground',
+      'matchProtocolVersion': 2,
     });
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -1806,6 +2019,7 @@ void main() {
     expect(heartbeatPayloads.single, <String, dynamic>{
       'requestId': requestId,
       'appState': 'foreground',
+      'matchProtocolVersion': 2,
     });
 
     await tester.pump(StudentsDashboardWidget.heartbeatSearchInterval);
@@ -1815,6 +2029,7 @@ void main() {
     expect(heartbeatPayloads.last, <String, dynamic>{
       'requestId': requestId,
       'appState': 'foreground',
+      'matchProtocolVersion': 2,
     });
 
     await tester.tap(
@@ -1874,6 +2089,7 @@ void main() {
       <String, dynamic>{
         'requestId': requestId,
         'appState': 'foreground',
+        'matchProtocolVersion': 2,
       },
     ]);
     expect(find.text('Пока никого не нашли'), findsOneWidget);
@@ -2036,6 +2252,7 @@ void main() {
       <String, dynamic>{
         'requestId': requestId,
         'appState': 'foreground',
+        'matchProtocolVersion': 2,
       },
     ]);
 
@@ -2243,6 +2460,68 @@ void main() {
     expect(find.text('Начать поиск'), findsOneWidget);
     expect(find.text('Соединяем'), findsNothing);
     expect(find.text('Остановить поиск'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets(
+      'v2 counterpart cancellation restores dashboard search instead of stale connecting',
+      (tester) async {
+    const userId = 'student-v2-counterpart-cancel-test';
+    const peerId = 'student-v2-counterpart-cancel-peer';
+    const sessionId = 'session-v2-counterpart-cancel-test';
+    const requestId = 'request-v2-counterpart-cancel-test';
+    final activeSessionController = StreamController<VideoSessionsRecord?>();
+    addTearDown(activeSessionController.close);
+    setActiveStudent(userId, currentSessionId: sessionId);
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          activeSessionStream: activeSessionController.stream,
+          activeSearchRecoveryReader: (_) async => activeSearchRecoveryState(
+            userId: userId,
+            requestId: requestId,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    activeSessionController.add(
+      sessionFixture(
+        sessionId,
+        'pending_confirmation',
+        requesterId: userId,
+        responderId: peerId,
+        participantIds: const [userId, peerId],
+        matchProtocolVersion: 2,
+      ),
+    );
+    await tester.pump();
+    expect(find.text('Соединяем'), findsOneWidget);
+
+    activeSessionController.add(
+      sessionFixture(
+        sessionId,
+        'cancelled',
+        requesterId: userId,
+        responderId: peerId,
+        participantIds: const [userId, peerId],
+        matchProtocolVersion: 2,
+        cancelledBy: peerId,
+      ),
+    );
+    await tester.pump();
+    setActiveStudent(userId);
+    await tester.pump();
+    await tester.pump();
+    await tester.idle();
+    await tester.pump();
+
+    expect(find.text('Ищем собеседника'), findsOneWidget);
+    expect(find.text('Соединяем'), findsNothing);
+    expect(find.text('Остановить поиск'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
@@ -2527,6 +2806,7 @@ void main() {
       <String, dynamic>{
         'requestId': requestId,
         'appState': 'foreground',
+        'matchProtocolVersion': 2,
       },
     ]);
 
@@ -2645,6 +2925,7 @@ void main() {
     expect(heartbeatPayloads.last, <String, dynamic>{
       'requestId': 'request-lifecycle-queued-test',
       'appState': 'background',
+      'matchProtocolVersion': 2,
     });
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);

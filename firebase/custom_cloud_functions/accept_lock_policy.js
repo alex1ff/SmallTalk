@@ -85,6 +85,7 @@ function assertAcceptAttemptCanFinalizeOrThrow({
   acceptAttemptId = "",
   nowMillis = Date.now(),
   lockWindowMs = ACCEPT_LOCK_WINDOW_MS,
+  skipResponseDeadline = false,
 }) {
   assertAcceptLockOwnedByAttemptOrThrow(
     sessionData,
@@ -106,17 +107,19 @@ function assertAcceptAttemptCanFinalizeOrThrow({
     );
   }
 
-  const responseDeadlineMillis = timestampToMillis(
-    sessionData.responseExpiresAt || sessionData.confirmationExpiresAt,
-  );
-  if (
-    responseDeadlineMillis !== null &&
-    acceptingAtMillis >= responseDeadlineMillis
-  ) {
-    throw new functions.https.HttpsError(
-      "invalid-argument",
-      "Session response window has expired",
+  if (!skipResponseDeadline) {
+    const responseDeadlineMillis = timestampToMillis(
+      sessionData.responseExpiresAt || sessionData.confirmationExpiresAt,
     );
+    if (
+      responseDeadlineMillis !== null &&
+      acceptingAtMillis >= responseDeadlineMillis
+    ) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "Session response window has expired",
+      );
+    }
   }
 }
 

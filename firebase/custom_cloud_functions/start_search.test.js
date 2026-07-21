@@ -19,6 +19,7 @@ const {
     buildStartSearchFailureUpdate,
     buildStartSearchFilters,
     buildMatchedStartSearchResponse,
+    buildReusedSearchRequestRefresh,
     buildStartSearchRequestData,
     buildStartSearchResponse,
     buildStudentPairSessionData,
@@ -38,9 +39,11 @@ const {
     maybeNotifyTeacherResponder,
     normalizeStartSearchInput,
     readErrorMessage,
+    readProtocolV2PostRouteOutcome,
     recordBackgroundStudentResponderPushFailure,
     recordBackgroundStudentResponderPushSuccess,
     releaseBackgroundStudentResponderMatchForRetry,
+    releaseProtocolV2MatchAfterRouteFailure,
     recordTeacherResponderPushResult,
     releaseTeacherResponderMatchForRetry,
     runBackgroundStudentResponderPushSender,
@@ -130,6 +133,45 @@ test("start search input rejects direct-call payload", () => {
     }).language,
     "EN",
   );
+});
+
+test("reused unbound search upgrades capability but matched attempt does not", () => {
+  const base = {
+    requestId: "request-a",
+    matchProtocolVersion: 1,
+    pairAttemptId: null,
+    expiresAt: timestampFromMillis(fixedNowMillis + 1_000),
+  };
+  const input = {
+    appState: "foreground",
+    platform: "ios",
+    matchProtocolVersion: 2,
+  };
+  const upgraded = buildReusedSearchRequestRefresh({
+    requestData: base,
+    input,
+    nowMillis: fixedNowMillis,
+    serverTimestamp,
+    timestampFromMillis,
+  });
+  assert.equal(upgraded.matchProtocolVersion, 2);
+  assert.ok(upgraded.expiresAt.toMillis() > base.expiresAt.toMillis());
+
+  const matched = buildReusedSearchRequestRefresh({
+    requestData: {
+      ...base,
+      pairAttemptId: "pair-current",
+      matchedSessionId: "session-current",
+    },
+    input,
+    nowMillis: fixedNowMillis,
+    serverTimestamp,
+    timestampFromMillis,
+    preserveMatchBinding: true,
+  });
+  assert.equal(matched.matchProtocolVersion, 1);
+  assert.equal(matched.pairAttemptId, "pair-current");
+  assert.equal(matched.expiresAt.toMillis(), base.expiresAt.toMillis());
 });
 
 test("start search source avoids unsafe error.message reads", () => {
@@ -1985,6 +2027,114 @@ test("background student notification failure releases match for retry", async (
   );
 });
 
+test("v2 requester delivery failure releases an already in-app peer", async () => {
+  const nowMillis = Date.now();
+  const store = new Map([
+    ["videoSessions/session-ab", {
+      sessionId: "session-ab",
+      matchProtocolVersion: 2,
+      status: "pending_confirmation",
+      pairStatus: "pending_confirmation",
+      requesterId: "student-a",
+      responderId: "student-b",
+      currentResponderId: "student-b",
+      currentTutorId: "student-b",
+      currentResponderRole: "student",
+      pairAttemptId: "pair-ab",
+      participantIds: ["student-a", "student-b"],
+      participantRoles: {
+        "student-a": "student",
+        "student-b": "student",
+      },
+      participantStates: {
+        "student-a": {
+          role: "student",
+          surface: "callkit",
+          decision: "pending",
+          delivery: "failed",
+          deliveryFailureKind: "definitive",
+          dispatchId: "dispatch-a",
+          callKitId: "call-a",
+        },
+        "student-b": {
+          role: "student",
+          surface: "in_app",
+          decision: "accepted",
+          delivery: "not_required",
+          callKitId: "call-b",
+        },
+      },
+      responseExpiresAt: timestampFromMillis(nowMillis + 45_000),
+    }],
+    ["users/student-a", {
+      role: "student",
+      currentSessionId: "session-ab",
+    }],
+    ["users/student-b", {
+      role: "student",
+      currentSessionId: "session-ab",
+    }],
+    ["searchRequests/student-a", {
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      requestId: "request-a",
+      userId: "student-a",
+      currentSessionId: "session-ab",
+      matchedSessionId: "session-ab",
+    }],
+    ["searchRequests/student-b", {
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      requestId: "request-b",
+      userId: "student-b",
+      currentSessionId: "session-ab",
+      matchedSessionId: "session-ab",
+    }],
+  ]);
+
+  const result = await releaseProtocolV2MatchAfterRouteFailure({
+    db: fakeStoreDb(store),
+    sessionId: "session-ab",
+    pairAttemptId: "pair-ab",
+    failedParticipantId: "student-a",
+    expectedDispatchId: "dispatch-a",
+    expectedDelivery: "failed",
+    expectedDeliveryFailureKind: "definitive",
+  });
+
+  assert.equal(result.released, true);
+  assert.deepEqual(result.restoreParticipantIds, ["student-b"]);
+  assert.equal(store.get("videoSessions/session-ab").status, "cancelled");
+  assert.equal(
+    store.get("videoSessions/session-ab")
+      .participantStates["student-a"].decision,
+    "declined",
+  );
+  assert.equal(store.get("searchRequests/student-a").status, "cancelled");
+  assert.equal(store.get("searchRequests/student-b").status, "active");
+  assert.deepEqual(
+    store.get("searchRequests/student-b").excludedCandidateIds,
+    ["student-a"],
+  );
+});
+
+test("post-route validation refuses a match cancelled during push", async () => {
+  const store = new Map([
+    ["videoSessions/session-ab", {
+      matchProtocolVersion: 2,
+      pairAttemptId: "pair-ab",
+      status: "cancelled",
+    }],
+  ]);
+  const outcome = await readProtocolV2PostRouteOutcome({
+    db: fakeStoreDb(store),
+    sessionId: "session-ab",
+    pairAttemptId: "pair-ab",
+  });
+
+  assert.equal(outcome.current, false);
+  assert.equal(outcome.terminal, true);
+  assert.equal(outcome.reason, "session_cancelled");
+});
+
 test("background student retry release preserves accept race", async () => {
   const nowMillis = Date.now();
   const store = new Map([
@@ -2258,6 +2408,8 @@ test("student responder APNS failure is preserved when FCM is missing", async ()
     sent: false,
     reason: "missing_fcm_token",
     error: "apns unavailable",
+    attemptedChannels: ["apns_voip"],
+    apnsFailureKind: "unknown",
   });
   assert.equal(fcmSendCount, 0);
 });
@@ -2314,7 +2466,7 @@ test("student responder APNS success skips FCM fallback", async () => {
   assert.equal(fcmSendCount, 0);
 });
 
-test("student responder falls back to FCM after APNS timeout", async () => {
+test("migrated iOS responder keeps APNS timeout ambiguous after FCM wake", async () => {
   let fcmSendCount = 0;
   let apnsAbortReason = "";
   const controller = new AbortController();
@@ -2364,15 +2516,19 @@ test("student responder falls back to FCM after APNS timeout", async () => {
   );
 
   assert.deepEqual(result, {
-    sent: true,
-    channel: "fcm",
+    sent: false,
+    reason: "ios_fcm_wake_not_native",
+    error: "apns_voip_timeout",
+    fcmWakeSent: true,
+    attemptedChannels: ["apns_voip", "fcm"],
+    apnsFailureKind: "unknown",
   });
   assert.equal(apnsAbortReason, "apns_voip_timeout");
   assert.equal(controller.signal.aborted, false);
   assert.equal(fcmSendCount, 1);
 });
 
-test("student responder falls back to FCM after APNS error response", async () => {
+test("migrated iOS responder treats definitive APNS failure as undelivered", async () => {
   let fcmSendCount = 0;
   const result = await sendVoipPushToStudentResponder(
     "student-b",
@@ -2415,10 +2571,41 @@ test("student responder falls back to FCM after APNS error response", async () =
   );
 
   assert.deepEqual(result, {
-    sent: true,
-    channel: "fcm",
+    sent: false,
+    reason: "ios_fcm_wake_not_native",
+    error: "APNs error 410: {\"reason\":\"Unregistered\"}",
+    fcmWakeSent: true,
+    attemptedChannels: ["apns_voip", "fcm"],
+    apnsFailureKind: "definitive",
   });
   assert.equal(fcmSendCount, 1);
+});
+
+test("Android responder can use FCM as the native delivery channel", async () => {
+  const result = await sendVoipPushToStudentResponder(
+    "student-b",
+    {sessionId: "session-ab", callerName: "Ana", language: "en"},
+    {
+      firestore: {
+        collection: () => ({
+          doc: () => ({
+            get: async () => ({
+              exists: true,
+              data: () => ({matchProtocolPlatform: "android"}),
+            }),
+          }),
+        }),
+      },
+      getUserVoipTokens: async () => ({
+        voipPushToken: "",
+        voipToken: "fcm-token",
+      }),
+      messaging: {send: async () => "message-id"},
+      logger: {error: () => {}},
+    },
+  );
+
+  assert.deepEqual(result, {sent: true, channel: "fcm"});
 });
 
 test("student responder push result preserves APNS and FCM failures", async () => {

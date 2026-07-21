@@ -48,6 +48,7 @@ const SEARCH_REQUEST_FIELD = Object.freeze({
   APP_STATE: "appState",
   APP_STATE_UPDATED_AT: "appStateUpdatedAt",
   PLATFORM: "platform",
+  MATCH_PROTOCOL_VERSION: "matchProtocolVersion",
   CREATED_AT: "createdAt",
   UPDATED_AT: "updatedAt",
   HEARTBEAT_AT: "heartbeatAt",
@@ -60,6 +61,8 @@ const SEARCH_REQUEST_FIELD = Object.freeze({
   MATCHED_RESPONDER_ID: "matchedResponderId",
   MATCHED_ROLE: "matchedRole",
   PAIR_ATTEMPT_ID: "pairAttemptId",
+  RESTORED_FROM_SESSION_ID: "restoredFromSessionId",
+  RESTORED_FROM_PAIR_ATTEMPT_ID: "restoredFromPairAttemptId",
   EXCLUDED_CANDIDATE_IDS: "excludedCandidateIds",
   ATTEMPT_EXCLUDED_CANDIDATE_IDS: "attemptExcludedCandidateIds",
   LOCK_OWNER: "lockOwner",
@@ -143,6 +146,8 @@ const SEARCH_REQUEST_SERVER_OWNED_FIELDS = Object.freeze([
   SEARCH_REQUEST_FIELD.MATCHED_RESPONDER_ID,
   SEARCH_REQUEST_FIELD.MATCHED_ROLE,
   SEARCH_REQUEST_FIELD.PAIR_ATTEMPT_ID,
+  SEARCH_REQUEST_FIELD.RESTORED_FROM_SESSION_ID,
+  SEARCH_REQUEST_FIELD.RESTORED_FROM_PAIR_ATTEMPT_ID,
   SEARCH_REQUEST_FIELD.EXCLUDED_CANDIDATE_IDS,
   SEARCH_REQUEST_FIELD.ATTEMPT_EXCLUDED_CANDIDATE_IDS,
   SEARCH_REQUEST_FIELD.LOCK_OWNER,
@@ -328,6 +333,7 @@ function buildInitialSearchRequestData({
   serverTimestamp,
   expiresAt,
   backgroundExpiresAt = null,
+  matchProtocolVersion = 1,
 }) {
   const normalizedUserId = normalizeSearchRequestDocumentId(userId);
   const normalizedRequestId = normalizeSearchRequestDocumentId(requestId);
@@ -376,6 +382,9 @@ function buildInitialSearchRequestData({
 
   if (platform) {
     data[SEARCH_REQUEST_FIELD.PLATFORM] = String(platform).trim();
+  }
+  if (Number(matchProtocolVersion) >= 2) {
+    data[SEARCH_REQUEST_FIELD.MATCH_PROTOCOL_VERSION] = 2;
   }
 
   assertSearchRequestHasNoPublicProfileSnapshot(data);

@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 
+const fs = require("node:fs");
+const path = require("node:path");
+
 const DEFAULT_PROJECT_ID = "smalltalk-2109b";
 const APNS_SECRETS = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const DAILY_SECRETS = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 const DEEPGRAM_SECRETS = ["DEEPGRAM_API_KEY"];
+const REQUIRED_DEPLOY_TARGETS = ["firestore:rules", "firestore:indexes"];
 
 const REQUIRED_FUNCTIONS = [
   {
@@ -28,6 +32,21 @@ const REQUIRED_FUNCTIONS = [
   },
   {id: "startSearch", trigger: "callable", secrets: APNS_SECRETS},
   {
+    id: "respondToMatch",
+    trigger: "callable",
+    secrets: [...APNS_SECRETS, ...DAILY_SECRETS],
+  },
+  {
+    id: "processMatchProtocolV2State",
+    trigger: "firestore",
+    secrets: [...APNS_SECRETS, ...DAILY_SECRETS],
+  },
+  {
+    id: "recoverMatchProtocolV2State",
+    trigger: "scheduled",
+    secrets: [...APNS_SECRETS, ...DAILY_SECRETS],
+  },
+  {
     id: "stopSearch",
     trigger: "callable",
     secrets: DAILY_SECRETS,
@@ -37,12 +56,12 @@ const REQUIRED_FUNCTIONS = [
   {
     id: "endSession",
     trigger: "callable",
-    secrets: DAILY_SECRETS,
+    secrets: [...APNS_SECRETS, ...DAILY_SECRETS],
   },
   {
     id: "cleanupExpiredSessions",
     trigger: "scheduled",
-    secrets: DAILY_SECRETS,
+    secrets: [...APNS_SECRETS, ...DAILY_SECRETS],
   },
   {
     id: "processExpiredNotifications",
@@ -281,6 +300,24 @@ function analyzeFunctionsDeployment(functionsList, {
   };
 }
 
+function analyzeReadinessDeployCommand(
+  deployCommand,
+  requiredTargets = REQUIRED_DEPLOY_TARGETS,
+) {
+  const onlyMatch = String(deployCommand || "").match(/--only\s+([^\s]+)/);
+  const targets = new Set(
+    (onlyMatch?.[1] || "").split(",").map((value) => value.trim()),
+  );
+  const failures = requiredTargets
+    .filter((target) => !targets.has(target))
+    .map((target) => ({
+      id: "deploy:readiness-functions",
+      reason: "missing_deploy_target",
+      message: `deploy:readiness-functions is missing ${target}`,
+    }));
+  return {ok: failures.length === 0, failures};
+}
+
 function formatReport(report) {
   const lines = [
     `Firebase deployment readiness for ${report.projectId}: ${
@@ -318,6 +355,15 @@ async function main() {
   const report = analyzeFunctionsDeployment(functionsList, {
     projectId: options.projectId || DEFAULT_PROJECT_ID,
   });
+  const packageJson = JSON.parse(fs.readFileSync(
+    path.join(__dirname, "..", "package.json"),
+    "utf8",
+  ));
+  const deployReport = analyzeReadinessDeployCommand(
+    packageJson.scripts?.["deploy:readiness-functions"],
+  );
+  report.failures.push(...deployReport.failures);
+  report.ok = report.failures.length === 0;
 
   if (options.json) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
@@ -337,8 +383,10 @@ if (require.main === module) {
 
 module.exports = {
   REQUIRED_FUNCTIONS,
+  REQUIRED_DEPLOY_TARGETS,
   SECRET_ENV_KEYS,
   analyzeFunctionsDeployment,
+  analyzeReadinessDeployCommand,
   formatReport,
   parseFunctionsListJson,
 };

@@ -83,6 +83,8 @@ async function sendApnsVoip({
   payload,
   pushType = "voip",
   priority = "10",
+  expiration = null,
+  collapseId = "",
   signal = null,
 }) {
   const token = normalizeDeviceToken(deviceToken);
@@ -139,7 +141,7 @@ async function sendApnsVoip({
     }
     signal?.addEventListener?.("abort", abortRequest, {once: true});
 
-    request = client.request({
+    const headers = {
       ":method": "POST",
       ":path": `/3/device/${token}`,
       authorization: `bearer ${jwt}`,
@@ -147,7 +149,18 @@ async function sendApnsVoip({
       "apns-push-type": pushType,
       "apns-priority": priority,
       "content-type": "application/json",
-    });
+    };
+    const normalizedExpiration = Number(expiration);
+    if (Number.isInteger(normalizedExpiration) && normalizedExpiration >= 0) {
+      headers["apns-expiration"] = String(normalizedExpiration);
+    }
+    const normalizedCollapseId = typeof collapseId === "string" ?
+      collapseId.trim().slice(0, 64) :
+      "";
+    if (normalizedCollapseId) {
+      headers["apns-collapse-id"] = normalizedCollapseId;
+    }
+    request = client.request(headers);
 
     request.setEncoding("utf8");
 

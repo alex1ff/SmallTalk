@@ -16,10 +16,46 @@ const {
 } = require("./match_pair_lock");
 const {sendApnsVoip} = require("./apns_voip");
 const {getUserVoipTokens} = require("./voip_tokens");
-const {buildCallKitIdForSession} = require("./call_notifications");
+const {
+  buildCallKitIdForSession,
+  cancelProtocolV2NotificationsInTransaction,
+} = require("./call_notifications");
+const {
+  buildSearchCancellationIntentData,
+  searchCancellationIntentRef,
+} = require("./search_cancellation_intents");
+const {
+  getConnectedCallStartMillis,
+} = require("./chats_shared");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
+const CALL_CANCELLATION_DELIVERY_TIMEOUT_MS = 2 * 1000;
+const CALL_CANCELLATION_APNS_BUDGET_RATIO = 0.6;
+
+async function runBoundedCancellationDelivery({
+  operation,
+  timeoutMs,
+  controller = null,
+}) {
+  const timeoutError = new Error("call_cancellation_delivery_timeout");
+  let timeout = null;
+  const operationPromise = Promise.resolve().then(() => operation(
+    controller?.signal || null,
+  ));
+  const timeoutPromise = new Promise((resolve, reject) => {
+    timeout = setTimeout(() => {
+      controller?.abort(timeoutError);
+      reject(timeoutError);
+    }, Math.max(1, timeoutMs));
+  });
+  try {
+    return await Promise.race([operationPromise, timeoutPromise]);
+  } finally {
+    clearTimeout(timeout);
+    operationPromise.catch(() => {});
+  }
+}
 
 const TERMINAL_SEARCH_REQUEST_STATUSES = new Set([
   ...SEARCH_REQUEST_TERMINAL_STATUSES,
@@ -301,6 +337,7 @@ function buildStopSessionDecision({
   sessionId = "",
   requesterCurrentSessionId = "",
   responderCurrentSessionId = "",
+  explicitSessionIdProvided = false,
   serverTimestamp,
   fieldDelete,
 }) {
@@ -335,7 +372,10 @@ function buildStopSessionDecision({
   }
 
   const requesterId = getSessionRequesterId(sessionData);
-  if (requesterId !== userId) {
+  const protocolV2ParticipantCanStop =
+    Number(sessionData.matchProtocolVersion) >= 2 &&
+    (sessionData.participantIds || []).includes(userId);
+  if (requesterId !== userId && !protocolV2ParticipantCanStop) {
     return {
       ok: false,
       code: "permission-denied",
@@ -359,7 +399,15 @@ function buildStopSessionDecision({
     };
   }
 
-  if (!STOPPABLE_SESSION_STATUSES.has(currentStatus)) {
+  const isExplicitProtocolV2PreActiveConnecting =
+    explicitSessionIdProvided === true &&
+    Number(sessionData.matchProtocolVersion) >= 2 &&
+    currentStatus === "connecting" &&
+    getConnectedCallStartMillis(sessionData) <= 0;
+  if (
+    !STOPPABLE_SESSION_STATUSES.has(currentStatus) &&
+    !isExplicitProtocolV2PreActiveConnecting
+  ) {
     return {
       ok: true,
       sessionUpdate: null,
@@ -375,6 +423,14 @@ function buildStopSessionDecision({
   }
 
   const responderUserId = getAssignedResponderId(sessionData);
+  const protocolV2RestoreParticipantIds =
+    Number(sessionData.matchProtocolVersion) >= 2 ?
+      (sessionData.participantIds || []).filter(
+        (participantId) =>
+          participantId !== userId &&
+          sessionData.participantRoles?.[participantId] === "student",
+      ) :
+      [];
   return {
     ok: true,
     sessionUpdate: {
@@ -389,6 +445,16 @@ function buildStopSessionDecision({
       acceptAttemptId: fieldDelete,
       tutorNavigationTriggered: false,
       studentNavigationTriggered: false,
+      ...(Number(sessionData.matchProtocolVersion) >= 2 ? {
+        matchRecovery: {
+          status: "pending",
+          attempts: 0,
+          pairAttemptId: normalizeNonEmptyString(sessionData.pairAttemptId),
+          reason: "manual_stop_search",
+          restoreParticipantIds: protocolV2RestoreParticipantIds,
+          requestedAt: serverTimestamp,
+        },
+      } : {}),
     },
     requesterUpdate: requesterCurrentSessionId === sessionId ?
       {currentSessionId: fieldDelete} :
@@ -404,6 +470,12 @@ function buildStopSessionDecision({
       reason: "manual",
       dailyRoomName: resolveDailyRoomName(sessionData),
       responderUserId,
+      ...(Number(sessionData.matchProtocolVersion) >= 2 ? {
+        matchProtocolVersion: 2,
+        pairAttemptId: normalizeNonEmptyString(sessionData.pairAttemptId),
+        participantStates: sessionData.participantStates || {},
+        restoreParticipantIds: protocolV2RestoreParticipantIds,
+      } : {}),
     },
   };
 }
@@ -440,6 +512,12 @@ function buildResponse({
       "",
     searchRequest: searchDecision.response,
     videoSession: sessionDecision.response,
+    ...(Number(sessionDecision.response.matchProtocolVersion) >= 2 ? {
+      matchProtocolVersion: 2,
+      participantStates: sessionDecision.response.participantStates || {},
+      restoreParticipantIds:
+        sessionDecision.response.restoreParticipantIds || [],
+    } : {}),
   };
 }
 
@@ -463,7 +541,18 @@ function buildManualStopPairLockReleaseOptions({
   sessionData = {},
   serverTimestamp,
   fieldDelete,
+  stoppedBy = "",
 }) {
+  const participantIds = Array.isArray(sessionData.participantIds) ?
+    sessionData.participantIds :
+    [];
+  const restoreParticipantIds =
+    Number(sessionData.matchProtocolVersion) >= 2 ?
+      participantIds.filter((participantId) =>
+        participantId !== stoppedBy &&
+        sessionData.participantRoles?.[participantId] === "student",
+      ) :
+      [];
   return {
     db,
     transaction,
@@ -474,6 +563,15 @@ function buildManualStopPairLockReleaseOptions({
     searchRequestStatus: SEARCH_REQUEST_STATUS.STOPPED,
     stopReason: "manual_stop_search",
     releaseCallState: true,
+    ...(restoreParticipantIds.length > 0 ? {
+      restoreSearchParticipantIds: restoreParticipantIds,
+      restoreSearchExcludedCandidateIdsByParticipantId: Object.fromEntries(
+        restoreParticipantIds.map((participantId) => [
+          participantId,
+          stoppedBy ? [stoppedBy] : [],
+        ]),
+      ),
+    } : {}),
   };
 }
 
@@ -515,13 +613,19 @@ async function cancelSentNotificationsForSession({
 function buildCallCancellationPayload({
   sessionId = "",
   responderUserId = "",
+  pairAttemptId = "",
+  callKitId = "",
 } = {}) {
   const normalizedSessionId = normalizeSessionId(sessionId);
   return {
     type: "call_cancelled",
     sessionId: normalizedSessionId,
     recipientId: normalizeNonEmptyString(responderUserId),
-    callKitId: buildCallKitIdForSession(normalizedSessionId),
+    callKitId:
+      normalizeNonEmptyString(callKitId) ||
+      buildCallKitIdForSession(normalizedSessionId),
+    pairAttemptId: normalizeNonEmptyString(pairAttemptId),
+    matchProtocolVersion: normalizeNonEmptyString(pairAttemptId) ? "2" : "1",
   };
 }
 
@@ -532,6 +636,9 @@ async function sendCallCancellationToResponder({
   tokenReader = getUserVoipTokens,
   apnsSender = sendApnsVoip,
   messaging = admin.messaging(),
+  pairAttemptId = "",
+  callKitId = "",
+  deliveryTimeoutMs = CALL_CANCELLATION_DELIVERY_TIMEOUT_MS,
 } = {}) {
   const normalizedSessionId = normalizeSessionId(sessionId);
   const normalizedResponderId = normalizeNonEmptyString(responderUserId);
@@ -555,21 +662,42 @@ async function sendCallCancellationToResponder({
   const payload = buildCallCancellationPayload({
     sessionId: normalizedSessionId,
     responderUserId: normalizedResponderId,
+    pairAttemptId,
+    callKitId,
   });
   const bundleId = process.env.IOS_BUNDLE_ID || "com.appwave.smalltalk";
   const voipTopic = process.env.IOS_VOIP_TOPIC ||
     (bundleId.endsWith(".voip") ? bundleId : `${bundleId}.voip`);
   let apnsError = "";
+  const deliveryStartedAtMillis = Date.now();
+  const normalizedDeliveryTimeoutMs =
+    Number.isFinite(deliveryTimeoutMs) && deliveryTimeoutMs > 0 ?
+      deliveryTimeoutMs :
+      CALL_CANCELLATION_DELIVERY_TIMEOUT_MS;
 
   if (voipPushToken) {
+    const controller = new AbortController();
     try {
-      await apnsSender({
-        deviceToken: voipPushToken,
-        topic: voipTopic,
-        payload: {
-          aps: {"content-available": 1},
-          ...payload,
-        },
+      await runBoundedCancellationDelivery({
+        controller,
+        timeoutMs: Math.max(
+          1,
+          Math.floor(
+            normalizedDeliveryTimeoutMs *
+              CALL_CANCELLATION_APNS_BUDGET_RATIO,
+          ),
+        ),
+        operation: (signal) => apnsSender({
+          deviceToken: voipPushToken,
+          topic: voipTopic,
+          expiration: 0,
+          collapseId: payload.callKitId,
+          signal,
+          payload: {
+            aps: {"content-available": 1},
+            ...payload,
+          },
+        }),
       });
       return {sent: true, channel: "apns_voip"};
     } catch (error) {
@@ -591,20 +719,28 @@ async function sendCallCancellationToResponder({
   }
 
   try {
-    await messaging.send({
-      token: fcmToken,
-      data: payload,
-      android: {priority: "high"},
-      apns: {
-        headers: {
-          "apns-priority": "5",
-          "apns-push-type": "background",
-          "apns-topic": bundleId,
+    const remainingTimeoutMs = Math.max(
+      1,
+      normalizedDeliveryTimeoutMs -
+        (Date.now() - deliveryStartedAtMillis),
+    );
+    await runBoundedCancellationDelivery({
+      timeoutMs: remainingTimeoutMs,
+      operation: () => messaging.send({
+        token: fcmToken,
+        data: payload,
+        android: {priority: "high"},
+        apns: {
+          headers: {
+            "apns-priority": "5",
+            "apns-push-type": "background",
+            "apns-topic": bundleId,
+          },
+          payload: {
+            aps: {"content-available": 1},
+          },
         },
-        payload: {
-          aps: {"content-available": 1},
-        },
-      },
+      }),
     });
     return {sent: true, channel: "fcm"};
   } catch (error) {
@@ -654,6 +790,16 @@ exports.stopSearch = functions
     const requesterRef = db.collection("users").doc(userId);
     const serverTimestamp = admin.firestore.FieldValue.serverTimestamp();
     const fieldDelete = admin.firestore.FieldValue.delete();
+    const cancellationIntentRef = requestId ?
+      searchCancellationIntentRef(db, userId, requestId) :
+      null;
+    const cancellationIntentData = requestId ?
+      buildSearchCancellationIntentData({
+        userId,
+        requestId,
+        serverTimestamp,
+      }) :
+      null;
 
     const txResult = await db.runTransaction(async (transaction) => {
       const searchSnapshot = await transaction.get(searchRequestRef);
@@ -715,6 +861,7 @@ exports.stopSearch = functions
         responderCurrentSessionId: normalizeNonEmptyString(
           responderSnapshot?.data()?.currentSessionId,
         ),
+        explicitSessionIdProvided: Boolean(sessionId),
         serverTimestamp,
         fieldDelete,
       });
@@ -731,8 +878,20 @@ exports.stopSearch = functions
             sessionData,
             serverTimestamp,
             fieldDelete,
+            stoppedBy: userId,
           }),
         );
+        if (Number(sessionData.matchProtocolVersion) >= 2) {
+          cancelProtocolV2NotificationsInTransaction({
+            db,
+            transaction,
+            sessionId: sessionIdForStop,
+            pairAttemptId: sessionData.pairAttemptId,
+            participantStates: sessionData.participantStates || {},
+            cancelReason: "manual_stop_search",
+            serverTimestamp,
+          });
+        }
       }
       if (searchDecision.update) {
         transaction.update(searchRequestRef, searchDecision.update);
@@ -746,14 +905,27 @@ exports.stopSearch = functions
       if (sessionDecision.responderUpdate && responderRef) {
         transaction.update(responderRef, sessionDecision.responderUpdate);
       }
+      if (cancellationIntentRef && cancellationIntentData) {
+        transaction.set(
+          cancellationIntentRef,
+          cancellationIntentData,
+          {merge: true},
+        );
+      }
 
-      return buildResponse({
+      const response = buildResponse({
         userId,
         sessionId: sessionIdForStop,
         requestId,
         searchDecision,
         sessionDecision,
       });
+      return cancellationIntentRef && response.stopped !== true ? {
+        ...response,
+        status: "stopped",
+        stopped: true,
+        reason: "cancellation_intent_recorded",
+      } : response;
     });
 
     if (txResult.cancelledSessionId) {
@@ -780,7 +952,15 @@ exports.stopSearch = functions
     const cancelledResponderUserId = normalizeNonEmptyString(
       txResult.videoSession?.responderUserId,
     );
-    if (txResult.cancelledSessionId && cancelledResponderUserId) {
+    if (
+      txResult.cancelledSessionId &&
+      Number(txResult.matchProtocolVersion) >= 2
+    ) {
+      txResult.callCancellationDelivery = {
+        sent: false,
+        reason: "protocol_v2_recovery_owned",
+      };
+    } else if (txResult.cancelledSessionId && cancelledResponderUserId) {
       try {
         txResult.callCancellationDelivery =
           await sendCallCancellationToResponder({
@@ -804,6 +984,20 @@ exports.stopSearch = functions
         sent: false,
         reason: "skipped",
       };
+    }
+
+    if (
+      txResult.cancelledSessionId &&
+      Number(txResult.matchProtocolVersion) >= 2
+    ) {
+      const {
+        reconcileReleasedProtocolV2Match,
+      } = require("./start_search").__private__;
+      await reconcileReleasedProtocolV2Match({
+        db,
+        sessionId: txResult.cancelledSessionId,
+        pairAttemptId: txResult.pairAttemptId,
+      }).catch(() => {});
     }
 
     if (txResult.cancelledSessionId && txResult.dailyRoomName) {
@@ -831,6 +1025,7 @@ exports.stopSearch = functions
   });
 
 exports.__private__ = {
+  CALL_CANCELLATION_DELIVERY_TIMEOUT_MS,
   STOPPABLE_SESSION_STATUSES,
   TERMINAL_SEARCH_REQUEST_STATUSES,
   TERMINAL_SESSION_STATUSES,
@@ -842,6 +1037,7 @@ exports.__private__ = {
   cancelSentNotificationsForSession,
   buildCallCancellationPayload,
   sendCallCancellationToResponder,
+  runBoundedCancellationDelivery,
   getAssignedResponderId,
   normalizeRequestId,
   normalizeSessionId,

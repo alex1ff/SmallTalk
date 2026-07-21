@@ -10,6 +10,9 @@ const {
   logCallLifecycleError,
   logCallLifecycleEvent,
 } = require("./call_lifecycle_logs");
+const {
+  SEARCH_CANCELLATION_INTENT_COLLECTION,
+} = require("./search_cancellation_intents");
 
 const STALE_CLEANUP_STATUSES = Object.freeze([
   SEARCH_REQUEST_STATUS.ACTIVE,
@@ -33,6 +36,7 @@ const STALE_SEARCH_CLEANUP_LIMIT = 200;
 const STALE_SEARCH_FALLBACK_CLEANUP_LIMIT = 200;
 const EXPIRED_SEARCH_CLEANUP_LIMIT = 200;
 const BACKGROUND_EXPIRED_SEARCH_CLEANUP_LIMIT = 200;
+const EXPIRED_CANCELLATION_INTENT_CLEANUP_LIMIT = 200;
 
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -392,12 +396,19 @@ exports.cleanupStaleSearchRequests = functions.pubsub
         .orderBy("backgroundExpiresAt")
         .limit(BACKGROUND_EXPIRED_SEARCH_CLEANUP_LIMIT)
         .get();
+      const expiredCancellationIntentQuery = await db
+        .collection(SEARCH_CANCELLATION_INTENT_COLLECTION)
+        .where("expiresAt", "<=", expiresCutoff)
+        .orderBy("expiresAt")
+        .limit(EXPIRED_CANCELLATION_INTENT_CLEANUP_LIMIT)
+        .get();
 
       if (
         staleQuery.empty &&
         staleFallbackQuery.empty &&
         expiredQuery.empty &&
-        backgroundExpiredQuery.empty
+        backgroundExpiredQuery.empty &&
+        expiredCancellationIntentQuery.empty
       ) {
         console.log("📭 No stale search requests found");
         logCallLifecycleEvent({
@@ -409,6 +420,7 @@ exports.cleanupStaleSearchRequests = functions.pubsub
             staleFallbackFound: 0,
             backgroundExpiredFound: 0,
             expiredFound: 0,
+            expiredCancellationIntentsFound: 0,
             cleaned: 0,
           },
         });
@@ -454,6 +466,12 @@ exports.cleanupStaleSearchRequests = functions.pubsub
         cleanedByFallback +
         cleanedByBackgroundExpiry +
         cleanedByExpiry;
+      if (!expiredCancellationIntentQuery.empty) {
+        const intentBatch = db.batch();
+        expiredCancellationIntentQuery.docs.forEach((doc) =>
+          intentBatch.delete(doc.ref));
+        await intentBatch.commit();
+      }
 
       console.log(`✅ Search requests marked expired: ${cleanedCount}`);
       logCallLifecycleEvent({
@@ -469,6 +487,7 @@ exports.cleanupStaleSearchRequests = functions.pubsub
           staleFallbackCleaned: cleanedByFallback,
           backgroundExpiredCleaned: cleanedByBackgroundExpiry,
           expiredCleaned: cleanedByExpiry,
+          cancellationIntentsDeleted: expiredCancellationIntentQuery.size,
           cleaned: cleanedCount,
         },
       });
@@ -490,6 +509,7 @@ exports.__private__ = {
   BACKGROUND_EXPIRED_SEARCH_CLEANUP_LIMIT,
   EXPIRED_CLEANUP_STATUSES,
   EXPIRED_SEARCH_CLEANUP_LIMIT,
+  EXPIRED_CANCELLATION_INTENT_CLEANUP_LIMIT,
   STALE_CLEANUP_STATUSES,
   STALE_SEARCH_FALLBACK_CLEANUP_LIMIT,
   STALE_SEARCH_CLEANUP_LIMIT,

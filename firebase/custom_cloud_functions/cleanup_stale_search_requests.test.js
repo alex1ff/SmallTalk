@@ -808,5 +808,5 @@ test("deploy script includes stale cleanup indexes", () => {
   ));
   const deployScript = packageJson.scripts["deploy:readiness-functions"];
 
-  assert.match(deployScript, /--only firestore:indexes,/);
+  assert.match(deployScript, /--only firestore:rules,firestore:indexes,/);
 });
