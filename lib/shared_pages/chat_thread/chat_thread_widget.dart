@@ -144,8 +144,6 @@ class ChatThreadMessageBubble extends StatelessWidget {
     this.onRetry,
   });
 
-  static const double _shortTimestampSlotWidth = 60.0;
-  static const double _twelveHourTimestampSlotWidth = 92.0;
   static const double _metadataHeight = 24.0;
   static const double _statusSlotSize = 14.0;
 
@@ -164,9 +162,11 @@ class ChatThreadMessageBubble extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
+        final hasRetryAction =
+            localStatus == ChatLocalMessageStatus.failed && onRetry != null;
         final maxBubbleWidth = math.min(
           320.0,
-          constraints.maxWidth * 0.76,
+          constraints.maxWidth * (hasRetryAction ? 1.0 : 0.76),
         );
 
         return Align(
@@ -201,30 +201,27 @@ class ChatThreadMessageBubble extends StatelessWidget {
               ExpatlioDesign.space16,
               ExpatlioDesign.space8,
             ),
-            child: Column(
-              crossAxisAlignment: isCurrentUser
-                  ? CrossAxisAlignment.end
-                  : CrossAxisAlignment.start,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  text,
-                  style: FlutterFlowTheme.of(context).bodyMedium.override(
-                        fontFamily: 'sf pro display',
-                        color: textColor,
-                        fontSize: 15.0,
-                        letterSpacing: 0.0,
-                      ),
-                ),
-                if (isCurrentUser || timestampText != null)
-                  Padding(
-                    padding: const EdgeInsetsDirectional.only(
-                      top: ExpatlioDesign.space4,
-                    ),
-                    child: isCurrentUser
-                        ? _buildOutgoingMetadata(context, textColor)
-                        : _buildIncomingTimestamp(context, textColor),
+                Flexible(
+                  child: Text(
+                    text,
+                    style: FlutterFlowTheme.of(context).bodyMedium.override(
+                          fontFamily: 'sf pro display',
+                          color: textColor,
+                          fontSize: 15.0,
+                          letterSpacing: 0.0,
+                        ),
                   ),
+                ),
+                if (isCurrentUser || timestampText != null) ...[
+                  const SizedBox(width: ExpatlioDesign.space8),
+                  isCurrentUser
+                      ? _buildOutgoingMetadata(context, textColor)
+                      : _buildIncomingTimestamp(context, textColor),
+                ],
               ],
             ),
           ),
@@ -236,28 +233,21 @@ class ChatThreadMessageBubble extends StatelessWidget {
   Widget _buildOutgoingMetadata(BuildContext context, Color textColor) {
     final canRetry =
         localStatus == ChatLocalMessageStatus.failed && onRetry != null;
-    final timestampSlotWidth = FFLocalizations.of(context).languageCode == 'en'
-        ? _twelveHourTimestampSlotWidth
-        : _shortTimestampSlotWidth;
 
     return SizedBox(
       height: _metadataHeight,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          SizedBox(
+          KeyedSubtree(
             key: chatThreadMessageTimestampSlotKey(messageKey),
-            width: timestampSlotWidth,
-            child: Align(
-              alignment: AlignmentDirectional.centerEnd,
-              child: Text(
-                timestampText ?? '',
-                key: chatThreadMessageTimestampTextKey(messageKey),
-                maxLines: 1,
-                overflow: TextOverflow.clip,
-                textScaler: TextScaler.noScaling,
-                style: _timestampStyle(context, textColor),
-              ),
+            child: Text(
+              timestampText ?? '',
+              key: chatThreadMessageTimestampTextKey(messageKey),
+              maxLines: 1,
+              overflow: TextOverflow.clip,
+              textScaler: TextScaler.noScaling,
+              style: _timestampStyle(context, textColor),
             ),
           ),
           const SizedBox(width: ExpatlioDesign.space4),
@@ -279,20 +269,16 @@ class ChatThreadMessageBubble extends StatelessWidget {
                     size: _statusSlotSize,
                   ),
           ),
-          const SizedBox(width: ExpatlioDesign.space4),
-          SizedBox(
-            key: chatThreadMessageRetrySlotKey(messageKey),
-            child: Visibility(
-              visible: canRetry,
-              maintainState: true,
-              maintainAnimation: true,
-              maintainSize: true,
+          if (canRetry) ...[
+            const SizedBox(width: ExpatlioDesign.space4),
+            SizedBox(
+              key: chatThreadMessageRetrySlotKey(messageKey),
               child: _buildRetryMessageButton(
                 context,
-                canRetry ? onRetry : null,
+                onRetry!,
               ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -322,7 +308,7 @@ class ChatThreadMessageBubble extends StatelessWidget {
 
   Widget _buildRetryMessageButton(
     BuildContext context,
-    VoidCallback? onRetry,
+    VoidCallback onRetry,
   ) {
     return TextButton(
       key: chatThreadMessageRetryButtonKey(messageKey),

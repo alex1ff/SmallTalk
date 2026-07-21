@@ -22,7 +22,6 @@ typedef _BubbleGeometry = ({
   Rect targetBubble,
   Rect timestampSlot,
   Rect statusSlot,
-  Rect retrySlot,
   Rect nextItem,
   Rect nextBubble,
 });
@@ -164,9 +163,6 @@ _BubbleGeometry _captureGeometry(WidgetTester tester) {
     statusSlot: tester.getRect(
       find.byKey(chatThreadMessageStatusSlotKey(_targetMessageKey)),
     ),
-    retrySlot: tester.getRect(
-      find.byKey(chatThreadMessageRetrySlotKey(_targetMessageKey)),
-    ),
     nextItem:
         tester.getRect(find.byKey(chatThreadMessageItemKey(_nextMessageKey))),
     nextBubble:
@@ -217,7 +213,7 @@ void main() {
     ),
   ]) {
     testWidgets(
-      'message bubble and neighbors stay fixed across optimistic states '
+      'message bubble stays compact and vertically stable across states '
       '(${configuration.name})',
       (tester) async {
         tester.view.devicePixelRatio = configuration.devicePixelRatio;
@@ -250,14 +246,15 @@ void main() {
           final timestampText = find.byKey(
             chatThreadMessageTimestampTextKey(_targetMessageKey),
           );
-          expect(retryButton, findsOneWidget);
           expect(timestampText, findsOneWidget);
           expect(
             tester
                 .renderObject<RenderParagraph>(timestampText)
                 .didExceedMaxLines,
             isFalse,
+            reason: 'timestamp size: ${tester.getSize(timestampText)}',
           );
+          expect(retryButton, findsNothing);
           expect(retryButton.hitTestable(), findsNothing);
           expect(find.bySemanticsLabel(configuration.retryLabel), findsNothing);
           expect(
@@ -271,14 +268,16 @@ void main() {
 
           final baseline = _captureGeometry(tester);
           expect(baseline.statusSlot.size, const Size.square(14));
+          expect(baseline.timestampSlot.width, greaterThan(0));
           expect(
             baseline.timestampSlot.width,
-            configuration.locale.languageCode == 'en' ? 92 : 60,
+            lessThan(configuration.locale.languageCode == 'en' ? 92 : 60),
           );
-          expect(baseline.retrySlot.width, greaterThan(0));
+          expect(baseline.targetBubble.width, lessThan(190));
 
           harnessKey.currentState!.showStatus(ChatLocalMessageStatus.sent);
           await tester.pump();
+          expect(retryButton, findsNothing);
           expect(retryButton.hitTestable(), findsNothing);
           expect(
             find.descendant(
@@ -291,6 +290,7 @@ void main() {
 
           harnessKey.currentState!.showStatus(ChatLocalMessageStatus.failed);
           await tester.pump();
+          expect(retryButton, findsOneWidget);
           expect(retryButton.hitTestable(), findsOneWidget);
           expect(
             find.bySemanticsLabel(configuration.retryLabel),
@@ -303,11 +303,22 @@ void main() {
             ),
             findsOneWidget,
           );
-          _expectGeometry(tester, baseline);
+          final failed = _captureGeometry(tester);
+          expect(failed.previousItem, baseline.previousItem);
+          expect(failed.previousBubble, baseline.previousBubble);
+          expect(failed.targetItem, baseline.targetItem);
+          expect(failed.targetBubble.top, baseline.targetBubble.top);
+          expect(failed.targetBubble.right, baseline.targetBubble.right);
+          expect(failed.targetBubble.bottom, baseline.targetBubble.bottom);
+          expect(failed.targetBubble.width,
+              greaterThan(baseline.targetBubble.width));
+          expect(failed.nextItem, baseline.nextItem);
+          expect(failed.nextBubble, baseline.nextBubble);
 
           await tester.tap(retryButton);
           await tester.pump();
           expect(harnessKey.currentState!.retryCount, 1);
+          expect(retryButton, findsNothing);
           expect(retryButton.hitTestable(), findsNothing);
           expect(
             find.descendant(
@@ -320,6 +331,7 @@ void main() {
 
           harnessKey.currentState!.showConfirmed(withTimestamp: true);
           await tester.pump();
+          expect(retryButton, findsNothing);
           expect(retryButton.hitTestable(), findsNothing);
           expect(
             find.descendant(
@@ -332,8 +344,27 @@ void main() {
 
           harnessKey.currentState!.showConfirmed(withTimestamp: false);
           await tester.pump();
+          expect(retryButton, findsNothing);
           expect(retryButton.hitTestable(), findsNothing);
-          _expectGeometry(tester, baseline);
+          final withoutTimestamp = _captureGeometry(tester);
+          expect(withoutTimestamp.previousItem, baseline.previousItem);
+          expect(withoutTimestamp.previousBubble, baseline.previousBubble);
+          expect(withoutTimestamp.targetItem, baseline.targetItem);
+          expect(withoutTimestamp.targetBubble.top, baseline.targetBubble.top);
+          expect(
+            withoutTimestamp.targetBubble.right,
+            baseline.targetBubble.right,
+          );
+          expect(
+            withoutTimestamp.targetBubble.bottom,
+            baseline.targetBubble.bottom,
+          );
+          expect(
+            withoutTimestamp.targetBubble.width,
+            lessThan(baseline.targetBubble.width),
+          );
+          expect(withoutTimestamp.nextItem, baseline.nextItem);
+          expect(withoutTimestamp.nextBubble, baseline.nextBubble);
         } finally {
           semantics.dispose();
         }
