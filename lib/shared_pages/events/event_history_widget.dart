@@ -24,12 +24,8 @@ const ValueKey<String> eventHistoryErrorKey =
     ValueKey<String>('event_history_error');
 const ValueKey<String> eventHistoryListKey =
     ValueKey<String>('event_history_list');
-const ValueKey<String> eventHistoryRefreshButtonKey =
-    ValueKey<String>('event_history_refresh_button');
 const ValueKey<String> eventHistoryErrorRetryButtonKey =
     ValueKey<String>('event_history_error_retry_button');
-const ValueKey<String> eventHistoryRefreshingKey =
-    ValueKey<String>('event_history_refreshing');
 
 ValueKey<String> eventHistoryItemKey(String eventId) =>
     ValueKey<String>('event_history_item_$eventId');
@@ -115,7 +111,6 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
   Future<EventHistoryResult>? _historyFuture;
   EventHistoryResult? _lastLoadedResult;
   bool _hasAuthoritativeResult = false;
-  Object? _historyError;
   late Stream<_EventHistoryAuthEmission> _authSessionStream;
   String _latestAuthStreamUserId = '';
   String? _lastObservedSessionCacheOwnerUid;
@@ -243,8 +238,7 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
     }
     if (_historyOwnerUserId.isEmpty &&
         _historyFuture == null &&
-        !_hasAuthoritativeResult &&
-        _historyError == null) {
+        !_hasAuthoritativeResult) {
       return;
     }
     setState(
@@ -268,7 +262,6 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
     _historyOwnerEpoch = ownerEpoch;
     _lastLoadedResult = cachedResult;
     _hasAuthoritativeResult = cachedResult != null;
-    _historyError = null;
     _historyRequestSerial += 1;
     _historyFuture = ownerUserId.isEmpty
         ? null
@@ -336,7 +329,6 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
         limit: result.limit,
         generatedAt: result.generatedAt,
       );
-      _historyError = null;
       _lastLoadedResult = normalizedResult;
       _hasAuthoritativeResult = true;
       EventHistoryWidget._cacheHistory(
@@ -361,7 +353,6 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
         _invalidateForAuthBoundaryMismatch();
         throw const _StaleEventHistoryRequest();
       }
-      _historyError = error;
       if (_hasAuthoritativeResult) {
         return _lastLoadedResult!;
       }
@@ -407,23 +398,6 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
         ruText: 'Мои события',
         enText: 'My events',
       ),
-      trailing: SizedBox(
-        width: 44.0,
-        height: 44.0,
-        child: IconButton(
-          key: eventHistoryRefreshButtonKey,
-          tooltip: FFLocalizations.of(context).getVariableText(
-            ruText: 'Обновить',
-            enText: 'Refresh',
-          ),
-          onPressed: _reloadHistory,
-          icon: const Icon(
-            Icons.refresh_rounded,
-            color: ExpatlioDesign.text,
-            size: 22.0,
-          ),
-        ),
-      ),
     );
   }
 
@@ -465,46 +439,36 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
         if (snapshot.connectionState != ConnectionState.done) {
           if (_hasAuthoritativeResult) {
             final items = _lastLoadedResult!.items;
-            final content = items.isEmpty
+            return items.isEmpty
                 ? _buildHistoryEmpty(context)
                 : _buildHistoryList(
                     context,
                     items,
                     ownerUserId: historyOwnerUserId,
                     ownerEpoch: historyOwnerEpoch,
-                    refreshing: true,
                   );
-            return items.isEmpty
-                ? _buildRefreshingHistory(context, content)
-                : content;
           }
           return _buildLoadingState(context);
         }
 
         if (snapshot.hasError) {
           if (_hasAuthoritativeResult) {
-            return _buildPreviousHistoryWithError(
-              context,
-              items: _lastLoadedResult!.items,
-              ownerUserId: historyOwnerUserId,
-              ownerEpoch: historyOwnerEpoch,
-            );
+            final items = _lastLoadedResult!.items;
+            return items.isEmpty
+                ? _buildHistoryEmpty(context)
+                : _buildHistoryList(
+                    context,
+                    items,
+                    ownerUserId: historyOwnerUserId,
+                    ownerEpoch: historyOwnerEpoch,
+                  );
           }
           return _EventHistoryErrorState(onRetry: _reloadHistory);
         }
 
         final items = snapshot.data?.items ?? const <EventHistoryItem>[];
-        final shouldShowInlineError = _historyError != null && items.isNotEmpty;
         if (items.isEmpty) {
-          return _buildHistoryEmpty(
-            context,
-            leading: _historyError == null
-                ? null
-                : _EventHistoryErrorState(
-                    onRetry: _reloadHistory,
-                    compact: true,
-                  ),
-          );
+          return _buildHistoryEmpty(context);
         }
 
         return _buildHistoryList(
@@ -512,79 +476,13 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
           items,
           ownerUserId: historyOwnerUserId,
           ownerEpoch: historyOwnerEpoch,
-          leading: shouldShowInlineError
-              ? _EventHistoryErrorState(
-                  onRetry: _reloadHistory,
-                  compact: true,
-                )
-              : null,
         );
       },
     );
   }
 
-  Widget _buildPreviousHistoryWithError(
-    BuildContext context, {
-    required List<EventHistoryItem> items,
-    required String ownerUserId,
-    required int ownerEpoch,
-  }) {
-    final errorState = _EventHistoryErrorState(
-      onRetry: _reloadHistory,
-      compact: true,
-    );
-    if (items.isEmpty) {
-      return _buildHistoryEmpty(context, leading: errorState);
-    }
-    return _buildHistoryList(
-      context,
-      items,
-      ownerUserId: ownerUserId,
-      ownerEpoch: ownerEpoch,
-      leading: errorState,
-    );
-  }
-
-  Widget _buildRefreshingHistory(BuildContext context, Widget content) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        content,
-        _buildHistoryRefreshingOverlay(context),
-      ],
-    );
-  }
-
-  Widget _buildHistoryRefreshingOverlay(BuildContext context) {
-    final label = FFLocalizations.of(context).getVariableText(
-      ruText: 'Обновление истории событий',
-      enText: 'Refreshing event history',
-    );
-    return PositionedDirectional(
-      start: ExpatlioDesign.pagePadding,
-      end: ExpatlioDesign.pagePadding,
-      top: MediaQuery.paddingOf(context).top + BasicPageHeader.height,
-      child: Semantics(
-        key: eventHistoryRefreshingKey,
-        container: true,
-        liveRegion: true,
-        label: label,
-        child: const ExcludeSemantics(
-          child: LinearProgressIndicator(
-            minHeight: 2.0,
-            color: ExpatlioDesign.primary,
-            backgroundColor: Colors.transparent,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHistoryEmpty(
-    BuildContext context, {
-    Widget? leading,
-  }) {
-    final emptyState = Center(
+  Widget _buildHistoryEmpty(BuildContext context) {
+    return Center(
       key: eventHistoryEmptyKey,
       child: SizedBox(
         height: 500.0,
@@ -597,18 +495,6 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
         ),
       ),
     );
-
-    if (leading == null) {
-      return emptyState;
-    }
-
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        emptyState,
-        _buildHistoryErrorOverlay(context, leading),
-      ],
-    );
   }
 
   Widget _buildHistoryList(
@@ -616,8 +502,6 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
     List<EventHistoryItem> items, {
     required String ownerUserId,
     required int ownerEpoch,
-    Widget? leading,
-    bool refreshing = false,
   }) {
     final contentTopPadding = MediaQuery.paddingOf(context).top +
         BasicPageHeader.height +
@@ -646,28 +530,7 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
       },
     );
 
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        list,
-        if (leading != null) _buildHistoryErrorOverlay(context, leading),
-        if (refreshing) _buildHistoryRefreshingOverlay(context),
-      ],
-    );
-  }
-
-  Widget _buildHistoryErrorOverlay(BuildContext context, Widget errorState) {
-    return PositionedDirectional(
-      start: ExpatlioDesign.pagePadding,
-      end: ExpatlioDesign.pagePadding,
-      bottom: MediaQuery.viewPaddingOf(context).bottom + ExpatlioDesign.space16,
-      child: Material(
-        color: Colors.transparent,
-        elevation: 4.0,
-        borderRadius: BorderRadius.circular(ExpatlioDesign.cardRadius),
-        child: errorState,
-      ),
-    );
+    return list;
   }
 
   @override
@@ -709,11 +572,9 @@ Stream<String> _watchEventHistoryOwnerIds() => FirebaseAuth.instance
 class _EventHistoryErrorState extends StatelessWidget {
   const _EventHistoryErrorState({
     required this.onRetry,
-    this.compact = false,
   });
 
   final VoidCallback onRetry;
-  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -733,60 +594,6 @@ class _EventHistoryErrorState extends StatelessWidget {
       ruText: 'Повторить загрузку событий',
       enText: 'Retry loading events',
     );
-
-    if (compact) {
-      return Semantics(
-        key: eventHistoryErrorKey,
-        container: true,
-        explicitChildNodes: true,
-        liveRegion: true,
-        label: '$title. $message',
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 56.0),
-          padding: const EdgeInsetsDirectional.fromSTEB(
-            ExpatlioDesign.space12,
-            ExpatlioDesign.space8,
-            ExpatlioDesign.space8,
-            ExpatlioDesign.space8,
-          ),
-          decoration: BoxDecoration(
-            color: ExpatlioDesign.card,
-            borderRadius: BorderRadius.circular(ExpatlioDesign.cardRadius),
-            border: Border.all(color: ExpatlioDesign.danger),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: ExcludeSemantics(
-                  child: Text(
-                    title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: ExpatlioDesign.textStyle(
-                      context,
-                      size: 14.0,
-                      weight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: ExpatlioDesign.space8),
-              Semantics(
-                button: true,
-                label: retrySemanticsLabel,
-                onTap: onRetry,
-                excludeSemantics: true,
-                child: TextButton(
-                  key: eventHistoryErrorRetryButtonKey,
-                  onPressed: onRetry,
-                  child: Text(retryLabel),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
 
     final state = UxErrorState(
       stateKey: eventHistoryErrorKey,
@@ -813,6 +620,16 @@ class _EventHistoryErrorState extends StatelessWidget {
   }
 }
 
+const double _eventHistoryCardRadius = 15.0;
+const double _eventHistoryCardPadding = 16.0;
+const double _eventHistoryTitleFontSize = 15.0;
+const double _eventHistoryTitleTextHeight = 1.22;
+const double _eventHistoryMetaFontSize = 12.0;
+const double _eventHistoryPlaceFontSize = 13.0;
+const double _eventHistoryActionHeight = 36.0;
+const double _eventHistoryActionRadius = 14.0;
+const Color _eventHistoryBorderColor = Color(0xFFEBEBEB);
+
 class _EventHistoryCard extends StatelessWidget {
   const _EventHistoryCard({
     required this.item,
@@ -824,49 +641,32 @@ class _EventHistoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final metaRows = <Widget>[
-      _EventHistoryMetaRow(
-        icon: Icons.calendar_today_rounded,
-        text: _eventHistoryDateTimeLabel(context, item),
-      ),
-    ];
+    final localDateTime = _eventHistoryLocalDateTime(item);
+    final locale = FFLocalizations.of(context).languageCode;
     final locationLabel = _eventHistoryLocationLabel(context, item);
-    if (locationLabel.isNotEmpty) {
-      metaRows.add(
-        _EventHistoryMetaRow(
-          icon: Icons.place_outlined,
-          text: locationLabel,
-        ),
-      );
-    }
-
-    final detailChips = <Widget>[
-      if (_eventHistoryLevelLabel(item).isNotEmpty)
-        _EventHistorySmallChip(
-          icon: Icons.school_outlined,
-          label: _eventHistoryLevelLabel(item),
-        ),
-      if (_eventHistoryLanguageLabel(context, item).isNotEmpty)
-        _EventHistorySmallChip(
-          icon: Icons.translate_rounded,
-          label: _eventHistoryLanguageLabel(context, item),
-        ),
-    ];
+    final levelLabel = _eventHistoryLevelLabel(item);
+    final languageLabel = _eventHistoryLanguageLabel(context, item);
+    final title = item.title.trim();
+    final borderRadius = BorderRadius.circular(_eventHistoryCardRadius);
 
     return Material(
       color: Colors.transparent,
+      borderRadius: borderRadius,
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         key: eventHistoryItemKey(item.eventId),
-        borderRadius: BorderRadius.circular(ExpatlioDesign.cardRadius),
+        borderRadius: borderRadius,
         onTap: onTap,
         child: Ink(
           decoration: ExpatlioDesign.cardDecoration(
-            borderColor: ExpatlioDesign.border,
+            color: Colors.white,
+            radius: _eventHistoryCardRadius,
+            borderColor: _eventHistoryBorderColor,
           ),
           child: Padding(
-            padding: const EdgeInsets.all(ExpatlioDesign.space16),
+            padding: const EdgeInsets.all(_eventHistoryCardPadding),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Wrap(
                   spacing: ExpatlioDesign.space8,
@@ -874,30 +674,63 @@ class _EventHistoryCard extends StatelessWidget {
                   children: [
                     _EventHistoryStatusChip(item: item),
                     _EventHistoryRoleChip(item: item),
+                    if (levelLabel.isNotEmpty)
+                      _EventHistoryLevelBadge(label: levelLabel),
                   ],
                 ),
-                const SizedBox(height: ExpatlioDesign.space12),
+                const SizedBox(height: 14.0),
                 Text(
-                  item.title,
+                  title.isEmpty
+                      ? FFLocalizations.of(context).getVariableText(
+                          ruText: 'Без названия',
+                          enText: 'Untitled',
+                        )
+                      : title,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: ExpatlioDesign.textStyle(
                     context,
-                    size: 18.0,
+                    size: _eventHistoryTitleFontSize,
                     weight: FontWeight.w700,
-                    height: 1.18,
+                    height: _eventHistoryTitleTextHeight,
                   ),
                 ),
-                const SizedBox(height: ExpatlioDesign.space12),
-                ...metaRows,
-                if (detailChips.isNotEmpty) ...[
-                  const SizedBox(height: ExpatlioDesign.space12),
-                  Wrap(
-                    spacing: ExpatlioDesign.space8,
-                    runSpacing: ExpatlioDesign.space8,
-                    children: detailChips,
+                const SizedBox(height: ExpatlioDesign.space8),
+                Wrap(
+                  spacing: ExpatlioDesign.space8,
+                  runSpacing: ExpatlioDesign.space8,
+                  children: [
+                    _EventHistoryInfoChip(
+                      icon: Icons.calendar_month_outlined,
+                      label: dateTimeFormat(
+                        'd MMM y',
+                        localDateTime,
+                        locale: locale,
+                      ),
+                    ),
+                    _EventHistoryInfoChip(
+                      icon: Icons.schedule_rounded,
+                      label: dateTimeFormat(
+                        'Hm',
+                        localDateTime,
+                        locale: locale,
+                      ),
+                    ),
+                  ],
+                ),
+                if (locationLabel.isNotEmpty) ...[
+                  const SizedBox(height: 13.0),
+                  _EventHistoryLocationRow(label: locationLabel),
+                ],
+                if (languageLabel.isNotEmpty) ...[
+                  const SizedBox(height: 14.0),
+                  Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: _EventHistoryLanguageBadge(label: languageLabel),
                   ),
                 ],
+                const SizedBox(height: 14.0),
+                const _EventHistoryOpenAction(),
               ],
             ),
           ),
@@ -967,9 +800,10 @@ class _EventHistoryPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      constraints: const BoxConstraints(minHeight: 30.0),
       padding: const EdgeInsets.symmetric(
         horizontal: 10.0,
-        vertical: 6.0,
+        vertical: 4.0,
       ),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
@@ -978,7 +812,7 @@ class _EventHistoryPill extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 15.0, color: color),
+          Icon(icon, size: 14.0, color: color),
           const SizedBox(width: ExpatlioDesign.space4),
           Text(
             label,
@@ -987,8 +821,9 @@ class _EventHistoryPill extends StatelessWidget {
             style: ExpatlioDesign.textStyle(
               context,
               color: color,
-              size: 13.0,
+              size: _eventHistoryMetaFontSize,
               weight: FontWeight.w700,
+              height: 1.28,
             ),
           ),
         ],
@@ -997,43 +832,8 @@ class _EventHistoryPill extends StatelessWidget {
   }
 }
 
-class _EventHistoryMetaRow extends StatelessWidget {
-  const _EventHistoryMetaRow({
-    required this.icon,
-    required this.text,
-  });
-
-  final IconData icon;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6.0),
-      child: Row(
-        children: [
-          Icon(icon, size: 18.0, color: ExpatlioDesign.muted),
-          const SizedBox(width: ExpatlioDesign.space8),
-          Expanded(
-            child: Text(
-              text,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: ExpatlioDesign.textStyle(
-                context,
-                color: ExpatlioDesign.muted,
-                size: 15.0,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _EventHistorySmallChip extends StatelessWidget {
-  const _EventHistorySmallChip({
+class _EventHistoryInfoChip extends StatelessWidget {
+  const _EventHistoryInfoChip({
     required this.icon,
     required this.label,
   });
@@ -1043,30 +843,196 @@ class _EventHistorySmallChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final maxWidth =
+        (MediaQuery.sizeOf(context).width - 72).clamp(96.0, 220.0).toDouble();
+    return ConstrainedBox(
+      constraints: BoxConstraints(minHeight: 30.0, maxWidth: maxWidth),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsetsDirectional.symmetric(
+              horizontal: 10.0,
+              vertical: 4.0,
+            ),
+            decoration: BoxDecoration(
+              color: ExpatlioDesign.secondarySystemBackground,
+              borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 14.0, color: ExpatlioDesign.primary),
+                const SizedBox(width: 6.0),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: ExpatlioDesign.textStyle(
+                      context,
+                      size: _eventHistoryMetaFontSize,
+                      weight: FontWeight.w600,
+                      height: 1.28,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EventHistoryLocationRow extends StatelessWidget {
+  const _EventHistoryLocationRow({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Icon(
+          Icons.location_on_outlined,
+          color: ExpatlioDesign.inactive,
+          size: 14.0,
+        ),
+        const SizedBox(width: 6.0),
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: ExpatlioDesign.textStyle(
+              context,
+              color: ExpatlioDesign.inactive,
+              size: _eventHistoryPlaceFontSize,
+              weight: FontWeight.w400,
+              height: 1.28,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _EventHistoryLevelBadge extends StatelessWidget {
+  const _EventHistoryLevelBadge({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(
+      constraints: const BoxConstraints(minHeight: 30.0),
+      alignment: Alignment.center,
+      padding: const EdgeInsetsDirectional.symmetric(horizontal: 10.0),
+      decoration: BoxDecoration(
+        color: ExpatlioDesign.primary.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: ExpatlioDesign.textStyle(
+          context,
+          color: ExpatlioDesign.primary,
+          size: _eventHistoryMetaFontSize,
+          weight: FontWeight.w700,
+          height: 1.18,
+        ),
+      ),
+    );
+  }
+}
+
+class _EventHistoryLanguageBadge extends StatelessWidget {
+  const _EventHistoryLanguageBadge({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minHeight: 30.0),
+      padding: const EdgeInsetsDirectional.symmetric(
         horizontal: 10.0,
-        vertical: 6.0,
+        vertical: 4.0,
       ),
       decoration: BoxDecoration(
-        color: ExpatlioDesign.secondarySystemFill,
+        color: ExpatlioDesign.secondarySystemBackground,
         borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 15.0, color: ExpatlioDesign.text),
-          const SizedBox(width: ExpatlioDesign.space4),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: ExpatlioDesign.textStyle(
-              context,
-              color: ExpatlioDesign.text,
-              size: 13.0,
-              weight: FontWeight.w600,
+          const Icon(
+            Icons.translate_rounded,
+            size: 14.0,
+            color: ExpatlioDesign.primary,
+          ),
+          const SizedBox(width: 6.0),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: ExpatlioDesign.textStyle(
+                context,
+                size: _eventHistoryMetaFontSize,
+                weight: FontWeight.w600,
+                height: 1.28,
+              ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EventHistoryOpenAction extends StatelessWidget {
+  const _EventHistoryOpenAction();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: _eventHistoryActionHeight,
+      padding: const EdgeInsetsDirectional.symmetric(horizontal: 12.0),
+      decoration: BoxDecoration(
+        color: ExpatlioDesign.primary.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(_eventHistoryActionRadius),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              FFLocalizations.of(context).getVariableText(
+                ruText: 'Открыть событие',
+                enText: 'Open event',
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: ExpatlioDesign.textStyle(
+                context,
+                color: ExpatlioDesign.primary,
+                size: 13.0,
+                weight: FontWeight.w700,
+                height: 1.0,
+              ),
+            ),
+          ),
+          const Icon(
+            Icons.chevron_right_rounded,
+            color: ExpatlioDesign.primary,
+            size: 18.0,
           ),
         ],
       ),
@@ -1109,16 +1075,6 @@ Color _eventHistoryStatusColor(EventHistoryTimelineStatus status) {
     EventHistoryTimelineStatus.canceled => ExpatlioDesign.danger,
     EventHistoryTimelineStatus.left => ExpatlioDesign.orange,
   };
-}
-
-String _eventHistoryDateTimeLabel(
-  BuildContext context,
-  EventHistoryItem item,
-) {
-  final localDateTime = _eventHistoryLocalDateTime(item);
-  final locale = FFLocalizations.of(context).languageCode;
-  return '${dateTimeFormat('d MMM y', localDateTime, locale: locale)} · '
-      '${dateTimeFormat('Hm', localDateTime, locale: locale)}';
 }
 
 DateTime _eventHistoryLocalDateTime(EventHistoryItem item) {
