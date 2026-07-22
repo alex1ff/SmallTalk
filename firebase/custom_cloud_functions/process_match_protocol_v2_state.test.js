@@ -1,9 +1,23 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+process.env.GCLOUD_PROJECT ||= "smalltalk-2109b";
 const {
+  processMatchProtocolV2State,
+  __private__,
+} = require("./process_match_protocol_v2_state");
+const {
+  FIRESTORE_TRIGGER_REGION,
   processProtocolV2SessionState,
   recoverPendingProtocolV2States,
-} = require("./process_match_protocol_v2_state").__private__;
+} = __private__;
+
+test("protocol v2 Firestore trigger is colocated with eur3", () => {
+  assert.equal(FIRESTORE_TRIGGER_REGION, "europe-west1");
+  assert.deepEqual(
+    processMatchProtocolV2State.__trigger.regions,
+    [FIRESTORE_TRIGGER_REGION],
+  );
+});
 
 function stagedTeacherSession(overrides = {}) {
   return {

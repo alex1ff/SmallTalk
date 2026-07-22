@@ -33,6 +33,7 @@ const {
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
+const FIRESTORE_TRIGGER_REGION = "europe-west1";
 const RECOVERABLE_STAGES = Object.freeze([
   MATCH_STAGE.AWAITING_INITIAL_DISPATCH,
   MATCH_STAGE.AWAITING_STUDENT_DISPATCH,
@@ -422,6 +423,7 @@ exports.processMatchProtocolV2State = functions
     failurePolicy: true,
     secrets: [...apnsSecrets, ...dailySecrets],
   })
+  .region(FIRESTORE_TRIGGER_REGION)
   .firestore
   .document("videoSessions/{sessionId}")
   .onWrite(processMatchProtocolV2Write);
@@ -433,6 +435,7 @@ exports.recoverMatchProtocolV2State = functions
   .onRun(() => recoverPendingProtocolV2States());
 
 exports.__private__ = {
+  FIRESTORE_TRIGGER_REGION,
   RECOVERABLE_STAGES,
   finishRouteFailure,
   processMatchProtocolV2Write,
