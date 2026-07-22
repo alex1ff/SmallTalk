@@ -1,6 +1,5 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-process.env.GCLOUD_PROJECT ||= "smalltalk-2109b";
 const {
   processMatchProtocolV2State,
   __private__,
@@ -13,9 +12,14 @@ const {
 
 test("protocol v2 Firestore trigger is colocated with eur3", () => {
   assert.equal(FIRESTORE_TRIGGER_REGION, "europe-west1");
+  assert.equal(processMatchProtocolV2State.__endpoint.platform, "gcfv2");
   assert.deepEqual(
-    processMatchProtocolV2State.__trigger.regions,
+    processMatchProtocolV2State.__endpoint.region,
     [FIRESTORE_TRIGGER_REGION],
+  );
+  assert.equal(
+    processMatchProtocolV2State.__endpoint.eventTrigger.retry,
+    true,
   );
 });
 

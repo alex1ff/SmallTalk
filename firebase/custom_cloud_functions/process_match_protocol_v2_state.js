@@ -1,4 +1,7 @@
 const functions = require("firebase-functions/v1");
+const {
+  onDocumentWritten,
+} = require("firebase-functions/v2/firestore");
 const admin = require("firebase-admin");
 const {
   acceptCallCallable,
@@ -418,15 +421,19 @@ async function recoverPendingProtocolV2States(options = {}) {
   ));
 }
 
-exports.processMatchProtocolV2State = functions
-  .runWith({
-    failurePolicy: true,
-    secrets: [...apnsSecrets, ...dailySecrets],
-  })
-  .region(FIRESTORE_TRIGGER_REGION)
-  .firestore
-  .document("videoSessions/{sessionId}")
-  .onWrite(processMatchProtocolV2Write);
+exports.processMatchProtocolV2State = onDocumentWritten({
+  document: "videoSessions/{sessionId}",
+  region: FIRESTORE_TRIGGER_REGION,
+  retry: true,
+  secrets: [...apnsSecrets, ...dailySecrets],
+}, (event) => {
+  if (!event.data) {
+    return {processed: false, reason: "event_data_missing"};
+  }
+  return processMatchProtocolV2Write(event.data, {
+    params: event.params,
+  });
+});
 
 exports.recoverMatchProtocolV2State = functions
   .runWith({secrets: [...apnsSecrets, ...dailySecrets]})
