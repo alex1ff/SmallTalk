@@ -222,6 +222,46 @@ void main() {
       expect(actions.single['action'], 'claim_in_app');
     });
 
+    test('retries a claim rejected before the server stage catches up',
+        () async {
+      await coordinator.stop();
+      coordinator = MatchCoordinator.forTesting(
+        initialLifecycleState: AppLifecycleState.resumed,
+        userStream: (_) => userController.stream,
+        searchStream: (_) => searchController.stream,
+        sessionStream: (_) => sessionController.stream,
+        respondInvoker: (payload) async {
+          actions.add(Map<String, dynamic>.from(payload));
+          if (actions.length == 1) {
+            return const <String, dynamic>{
+              'ok': false,
+              'stale': false,
+              'reason': 'student_stage_not_ready',
+            };
+          }
+          return const <String, dynamic>{'ok': true};
+        },
+      );
+
+      await coordinator.startForUser('student-a');
+      searchController.add(const {'matchedSessionId': 'session-a'});
+      await flushCoordinator();
+      final session = v2Session(
+        scenario: 'student_teacher',
+        peerRole: 'native_speaker',
+        peerSurface: 'callkit',
+        peerDelivery: 'sent',
+        matchStage: 'awaiting_student_dispatch',
+      );
+      sessionController.add(session);
+      await flushCoordinator();
+      sessionController.add(session);
+      await flushCoordinator();
+
+      expect(actions, hasLength(2));
+      expect(actions.map((value) => value['action']).toSet(), {'claim_in_app'});
+    });
+
     test('only definitive failed CallKit delivery may recover in app',
         () async {
       await start();
@@ -1142,6 +1182,70 @@ void main() {
 
     await coordinator.stop();
     await searchController.close();
+  });
+
+  test('foreground claim waits for matched-search heartbeat', () async {
+    final searchController =
+        StreamController<Map<String, dynamic>?>.broadcast();
+    final sessionController =
+        StreamController<Map<String, dynamic>?>.broadcast();
+    final heartbeatGate = Completer<void>();
+    final heartbeats = <Map<String, dynamic>>[];
+    final actions = <Map<String, dynamic>>[];
+    var foregroundHeartbeatStored = false;
+    final coordinator = MatchCoordinator.forTesting(
+      initialLifecycleState: AppLifecycleState.resumed,
+      heartbeatInterval: const Duration(hours: 1),
+      userStream: (_) => const Stream<Map<String, dynamic>?>.empty(),
+      searchStream: (_) => searchController.stream,
+      sessionStream: (_) => sessionController.stream,
+      heartbeatInvoker: (payload) async {
+        heartbeats.add(Map<String, dynamic>.from(payload));
+        await heartbeatGate.future;
+        foregroundHeartbeatStored = true;
+        return const <String, dynamic>{'heartbeat': true};
+      },
+      respondInvoker: (payload) async {
+        actions.add(Map<String, dynamic>.from(payload));
+        if (!foregroundHeartbeatStored) {
+          return const <String, dynamic>{
+            'ok': false,
+            'stale': true,
+            'reason': 'claim_requires_fresh_foreground',
+          };
+        }
+        return const <String, dynamic>{'ok': true};
+      },
+    );
+    addTearDown(() async {
+      if (!heartbeatGate.isCompleted) heartbeatGate.complete();
+      await coordinator.stop();
+      await searchController.close();
+      await sessionController.close();
+    });
+
+    await coordinator.startForUser('student-a');
+    searchController.add(const {
+      'userId': 'student-a',
+      'requestId': 'matched-request',
+      'status': 'matched',
+      'matchProtocolVersion': 2,
+      'currentSessionId': 'session-a',
+      'pairAttemptId': 'pair-a',
+    });
+    await flushCoordinator();
+    expect(heartbeats, hasLength(1));
+
+    sessionController.add(v2Session());
+    await flushCoordinator();
+
+    expect(actions, isEmpty);
+
+    heartbeatGate.complete();
+    await flushCoordinator();
+
+    expect(actions, hasLength(1));
+    expect(actions.single['action'], 'claim_in_app');
   });
 
   test('navigation retries transient token failures for the exact v2 pair',

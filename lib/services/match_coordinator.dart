@@ -625,6 +625,7 @@ class MatchCoordinator extends ChangeNotifier with WidgetsBindingObserver {
     }
 
     _searchHeartbeatInFlight = true;
+    var heartbeatStored = false;
     final payload = <String, dynamic>{
       'requestId': requestId,
       'appState': _searchAppState,
@@ -633,12 +634,15 @@ class MatchCoordinator extends ChangeNotifier with WidgetsBindingObserver {
     try {
       final override = heartbeatInvoker;
       if (override != null) {
-        await override(payload).timeout(heartbeatTimeout);
+        final response = await override(payload).timeout(heartbeatTimeout);
+        heartbeatStored =
+            response['heartbeat'] == true || response['ok'] == true;
       } else {
-        await FirebaseFunctions.instance
+        final response = await FirebaseFunctions.instance
             .httpsCallable('heartbeatSearch')
             .call(payload)
             .timeout(heartbeatTimeout);
+        heartbeatStored = _matchMap(response.data)['heartbeat'] == true;
       }
     } catch (error) {
       debugPrint('MatchCoordinator: search heartbeat failed: $error');
@@ -648,6 +652,9 @@ class MatchCoordinator extends ChangeNotifier with WidgetsBindingObserver {
         if (_searchHeartbeatPending) {
           _searchHeartbeatPending = false;
           unawaited(_sendSearchHeartbeat(requestId));
+        }
+        if (heartbeatStored) {
+          unawaited(_evaluateSession());
         }
       }
     }
@@ -750,15 +757,20 @@ class MatchCoordinator extends ChangeNotifier with WidgetsBindingObserver {
       lifecycleState: _lifecycleState,
       locallyLockedToCallKit: _callKitLockedPairs.contains(pairKey),
     )) {
+      // A matched request must have a fresh foreground heartbeat before the
+      // server can atomically grant the in-app surface. Let the heartbeat
+      // finish first; its success re-evaluates this exact session below.
+      if (_searchHeartbeatInFlight) return;
       if (!_claimedPairs.contains(pairKey) && _claimInFlight.add(pairKey)) {
         try {
           final response = await _respond(
             session: session,
             action: 'claim_in_app',
           );
+          final ok = response['ok'] == true;
           final stale = response['stale'] == true;
           final reason = _matchString(response['reason']);
-          if (!stale && reason != 'surface_locked') {
+          if (ok && !stale && reason != 'surface_locked') {
             _claimedPairs.add(pairKey);
           }
         } catch (error) {
