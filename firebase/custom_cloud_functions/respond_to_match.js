@@ -1,9 +1,6 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const {
-  acceptCallCallable,
-} = require("./accept_call").__private__;
-const {
   releaseSessionPairLocksInTransaction,
 } = require("./match_pair_lock");
 const {
@@ -136,13 +133,6 @@ function isMatchTimeoutReached({
 } = {}) {
   return Number.isFinite(deadlineMillis) &&
     deadlineMillis - nowMillis <= clockSkewMillis;
-}
-
-function readAssignedResponderId(sessionData = {}) {
-  return normalizeString(sessionData.currentResponderId) ||
-    normalizeString(sessionData.currentTutorId) ||
-    normalizeString(sessionData.responderId) ||
-    normalizeString(sessionData.tutorId);
 }
 
 function buildLateTerminalSearchSuppression({
@@ -641,7 +631,6 @@ async function respondToMatchCallable(data, context, options = {}) {
       cancelled: false,
       shouldFinalize,
       lifecycleEscalated: lifecycleEscalationParticipantIds.length > 0,
-      responderId: readAssignedResponderId(sessionData),
       routeParticipantId: shouldRouteStudentAfterTeacherAccept ?
         counterpartId :
         "",
@@ -751,30 +740,14 @@ async function respondToMatchCallable(data, context, options = {}) {
   }
   if (!result.shouldFinalize) return result.response;
 
-  try {
-    await acceptCallCallable({
-      sessionId: input.sessionId,
-      pairAttemptId: input.pairAttemptId,
-    }, context, {
-      responderId: result.responderId,
-      protocolV2Finalization: true,
-    });
-    return {
-      ...result.response,
-      status: VIDEO_SESSION_STATUS.CONNECTING,
-      reason: "all_participants_accepted",
-    };
-  } catch (error) {
-    console.warn("Protocol v2 finalization deferred", {
-      sessionId: input.sessionId,
-      pairAttemptId: input.pairAttemptId,
-      error: normalizeString(error?.message) || "finalization_deferred",
-    });
-    return {
-      ...result.response,
-      reason: "finalization_in_progress",
-    };
-  }
+  // The colocated Firestore trigger owns protocol-v2 finalization. Calling
+  // acceptCall inline here races the trigger for the same session lock and can
+  // force the final Firestore transaction to retry. The scheduled recovery
+  // function remains the durable fallback if trigger delivery is delayed.
+  return {
+    ...result.response,
+    reason: "finalization_in_progress",
+  };
 }
 
 exports.respondToMatch = functions
@@ -789,7 +762,6 @@ exports.__private__ = {
   cancelNativeMatchSurfaces,
   normalizeRespondToMatchInput,
   isMatchTimeoutReached,
-  readAssignedResponderId,
   readResponseDeadlineMillis,
   resumeRestoredStudentSearch,
   respondToMatchCallable,

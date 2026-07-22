@@ -310,6 +310,10 @@ function isPendingSessionAssignedToResponder(
     normalizeSessionId(responderId);
 }
 
+function shouldIssueAcceptResponseMeetingToken(internalOptions = {}) {
+  return internalOptions.protocolV2Finalization !== true;
+}
+
 async function acceptCallCallable(data, context, internalOptions = {}) {
     console.log("✅ Tutor accepting call (updated version)...");
 
@@ -524,18 +528,6 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
         language: sessionData.language,
       });
 
-      const tutorDoc = await admin
-        .firestore()
-        .collection("users")
-        .doc(tutorId)
-        .get();
-      if (!tutorDoc.exists) {
-        console.log("❌ Tutor not found:", tutorId);
-        throw new functions.https.HttpsError("not-found", "Tutor not found");
-      }
-      const tutorData = tutorDoc.data();
-      validateResponderLanguageOrThrow(tutorId, tutorData, sessionData);
-
       const requesterId = getRequesterId(sessionData);
       if (!requesterId) {
         throw new functions.https.HttpsError(
@@ -544,6 +536,20 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
         );
       }
 
+      const usersCollection = admin.firestore().collection("users");
+      const [tutorDoc, studentDoc] = await Promise.all([
+        usersCollection.doc(tutorId).get(),
+        initialSessionState.alreadyAccepted ?
+          Promise.resolve(null) :
+          usersCollection.doc(requesterId).get(),
+      ]);
+      if (!tutorDoc.exists) {
+        console.log("❌ Tutor not found:", tutorId);
+        throw new functions.https.HttpsError("not-found", "Tutor not found");
+      }
+      const tutorData = tutorDoc.data();
+      validateResponderLanguageOrThrow(tutorId, tutorData, sessionData);
+
       if (initialSessionState.alreadyAccepted) {
         console.log(
           "ℹ️ Session already active for this tutor, returning existing room",
@@ -551,10 +557,12 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
         let existingRoomName =
           sessionData.dailyRoomName || getRoomNameFromUrl(sessionData.dailyRoomUrl);
         let existingMeetingToken = null;
-        const existingCredentialTtlSeconds =
-          getDailyCredentialTtlOrThrow(sessionData);
-
-        if (existingRoomName) {
+        if (
+          existingRoomName &&
+          shouldIssueAcceptResponseMeetingToken(internalOptions)
+        ) {
+          const existingCredentialTtlSeconds =
+            getDailyCredentialTtlOrThrow(sessionData);
           try {
             existingMeetingToken = await createMeetingToken({
               roomName: existingRoomName,
@@ -602,14 +610,6 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
           sessionData: buildAcceptCallResponseSessionData(sessionData),
         };
       }
-
-      // === 3. ПОЛУЧЕНИЕ ДАННЫХ РЕСПОНДЕРА И ИНИЦИАТОРА (ПАРАЛЛЕЛЬНО) ===
-      console.log("👥 Fetching requester data...");
-      const studentDoc = await admin
-        .firestore()
-        .collection("users")
-        .doc(requesterId)
-        .get();
 
       if (!isSupportedSessionRole(tutorData.role)) {
         console.log("❌ User role cannot accept calls:", tutorData.role);
@@ -665,7 +665,7 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
         );
       }
 
-      if (!studentDoc.exists) {
+      if (!studentDoc || !studentDoc.exists) {
         console.log("❌ Requester not found:", requesterId);
         throw new functions.https.HttpsError("not-found", "Requester not found");
       }
@@ -877,8 +877,8 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
           const usersCollection = admin.firestore().collection("users");
           const requesterUserRef = usersCollection.doc(requesterId);
           const responderUserRef = usersCollection.doc(tutorId);
-          const requesterUserSnap = await transaction.get(requesterUserRef);
-          const responderUserSnap = await transaction.get(responderUserRef);
+          const [requesterUserSnap, responderUserSnap] =
+            await transaction.getAll(requesterUserRef, responderUserRef);
           if (!requesterUserSnap.exists) {
             throw new functions.https.HttpsError(
               "not-found",
@@ -996,9 +996,12 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
         const existingRoomName =
           existing.dailyRoomName || getRoomNameFromUrl(existingRoomUrl);
         let existingMeetingToken = null;
-        const existingCredentialTtlSeconds =
-          getDailyCredentialTtlOrThrow(existing);
-        if (existingRoomName) {
+        if (
+          existingRoomName &&
+          shouldIssueAcceptResponseMeetingToken(internalOptions)
+        ) {
+          const existingCredentialTtlSeconds =
+            getDailyCredentialTtlOrThrow(existing);
           try {
             existingMeetingToken = await createMeetingToken({
               roomName: existingRoomName,
@@ -1064,21 +1067,23 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
           "Accepted room is not ready",
         );
       }
-      const acceptedCredentialTtlSeconds =
-        getDailyCredentialTtlOrThrow(acceptedLiveSession);
-      try {
-        meetingToken = await createMeetingToken({
-          roomName,
-          expSeconds: acceptedCredentialTtlSeconds,
-          isOwner: false,
-          userId: tutorId,
-          userName: tutorData.display_name || "Partner",
-        });
-      } catch (tokenError) {
-        console.error(
-          "⚠️ Failed to create meeting token for accepted room:",
-          tokenError.message,
-        );
+      if (shouldIssueAcceptResponseMeetingToken(internalOptions)) {
+        const acceptedCredentialTtlSeconds =
+          getDailyCredentialTtlOrThrow(acceptedLiveSession);
+        try {
+          meetingToken = await createMeetingToken({
+            roomName,
+            expSeconds: acceptedCredentialTtlSeconds,
+            isOwner: false,
+            userId: tutorId,
+            userName: tutorData.display_name || "Partner",
+          });
+        } catch (tokenError) {
+          console.error(
+            "⚠️ Failed to create meeting token for accepted room:",
+            tokenError.message,
+          );
+        }
       }
 
       // 🔔 === ОТПРАВКА PUSH + ОБНОВЛЕНИЕ УВЕДОМЛЕНИЙ (ПАРАЛЛЕЛЬНО) ===
@@ -1488,5 +1493,6 @@ exports.__private__ = {
   isPendingSessionAssignedToResponder,
   normalizeSessionId,
   readAcceptedSessionStillCurrentOrThrow,
+  shouldIssueAcceptResponseMeetingToken,
   timestampToMillis,
 };

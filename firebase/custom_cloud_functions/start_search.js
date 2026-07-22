@@ -2653,6 +2653,11 @@ async function routeProtocolV2InitialMatch({
   return {results, failedResult, retryPending};
 }
 
+function shouldRouteProtocolV2InitialMatch(lockResult = {}) {
+  return Number(lockResult.matchProtocolVersion) === MATCH_PROTOCOL_VERSION &&
+    lockResult.finalizationRequested !== true;
+}
+
 async function readProtocolV2PostRouteOutcome({
   db,
   sessionId,
@@ -3145,25 +3150,31 @@ async function tryCreateStudentPairForSearchRequest({
       if (
         Number(lockResult.matchProtocolVersion) === MATCH_PROTOCOL_VERSION
       ) {
-        let protocolV2RouteResult;
-        try {
-          protocolV2RouteResult = await routeProtocolV2InitialMatch({
-            db,
-            lockResult,
-            requesterId: userId,
-            responderRole,
-            studentPushSender: backgroundStudentResponderPushSender,
-            teacherPushSender: teacherResponderPushSender,
-            studentPreDispatchWait:
-              backgroundStudentResponderPrePushWait,
-          });
-        } catch (error) {
-          protocolV2RouteResult = {
-            results: [],
-            failedResult: null,
-            retryPending: true,
-            error: readErrorMessage(error, "route_failed"),
-          };
+        let protocolV2RouteResult = {
+          results: [],
+          failedResult: null,
+          retryPending: false,
+        };
+        if (shouldRouteProtocolV2InitialMatch(lockResult)) {
+          try {
+            protocolV2RouteResult = await routeProtocolV2InitialMatch({
+              db,
+              lockResult,
+              requesterId: userId,
+              responderRole,
+              studentPushSender: backgroundStudentResponderPushSender,
+              teacherPushSender: teacherResponderPushSender,
+              studentPreDispatchWait:
+                backgroundStudentResponderPrePushWait,
+            });
+          } catch (error) {
+            protocolV2RouteResult = {
+              results: [],
+              failedResult: null,
+              retryPending: true,
+              error: readErrorMessage(error, "route_failed"),
+            };
+          }
         }
 
         if (protocolV2RouteResult.failedResult) {
@@ -3901,6 +3912,7 @@ exports.__private__ = {
   shouldFailUnboundStartSearchRequest,
   shouldRetryBackgroundStudentMatchAfterNotifyResult,
   shouldRetryTeacherMatchAfterNotifyResult,
+  shouldRouteProtocolV2InitialMatch,
   timestampToMillis,
   tryReadCurrentMatchedStartSearchResponse,
   tryCreateStudentPairForSearchRequest,

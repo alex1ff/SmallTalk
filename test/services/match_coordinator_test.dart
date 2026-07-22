@@ -198,6 +198,30 @@ void main() {
       expect(actions, isEmpty);
     });
 
+    test('server-preaccepted foreground match waits for connecting', () async {
+      await start();
+      sessionController.add(v2Session(
+        surface: 'in_app',
+        decision: 'accepted',
+        matchStage: 'finalization_requested',
+      ));
+      await flushCoordinator();
+
+      expect(actions, isEmpty);
+      expect(navigations, isEmpty);
+
+      sessionController.add(v2Session(
+        status: 'connecting',
+        surface: 'in_app',
+        decision: 'accepted',
+        matchStage: 'connecting',
+      ));
+      await flushCoordinator();
+
+      expect(actions, isEmpty);
+      expect(navigations, hasLength(1));
+    });
+
     test('student waits for teacher accept before claiming in app', () async {
       await start();
       sessionController.add(v2Session(

@@ -1,5 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const admin = require("firebase-admin");
 const {
   MATCH_ACTION,
@@ -664,6 +666,40 @@ test("student can claim teacher match after staged dispatch begins", async () =>
       .participantStates["student-a"].surface,
     MATCH_SURFACE.IN_APP,
   );
+});
+
+test("last in-app accept queues durable finalization without inline accept", async () => {
+  const session = v2Session();
+  session.matchStage = "awaiting_acceptance";
+  session.participantStates["student-a"] = {
+    role: "student",
+    surface: MATCH_SURFACE.IN_APP,
+    decision: MATCH_DECISION.ACCEPTED,
+    delivery: MATCH_DELIVERY.NOT_REQUIRED,
+  };
+  const {db, store} = createFakeFirestore(seedForSession(session));
+
+  const response = await respondToMatchCallable({
+    sessionId: "session-a",
+    pairAttemptId: "pair-a",
+    action: MATCH_ACTION.CLAIM_IN_APP,
+    actionId: "accept-student-b",
+  }, {auth: {uid: "student-b"}}, {db});
+
+  assert.equal(response.reason, "finalization_in_progress");
+  const updated = store.get("videoSessions/session-a");
+  assert.equal(updated.matchStage, "finalization_requested");
+  assert.equal(updated.matchFinalization.status, "requested");
+  assert.equal(
+    updated.participantStates["student-b"].decision,
+    MATCH_DECISION.ACCEPTED,
+  );
+
+  const source = fs.readFileSync(
+    path.join(__dirname, "respond_to_match.js"),
+    "utf8",
+  );
+  assert.doesNotMatch(source, /acceptCallCallable/);
 });
 
 test("delayed in-app claim cannot override a background heartbeat", async () => {

@@ -130,6 +130,60 @@ test("post-commit second accept is recovered by idempotent finalization", async 
   assert.equal(result.reason, "finalized");
 });
 
+test("foreground student fast path skips initial routing", async () => {
+  const finalized = [];
+  const sessionData = stagedTeacherSession({
+    matchStage: "finalization_requested",
+    responderId: "student-b",
+    currentResponderId: "student-b",
+    currentResponderRole: "student",
+    participantIds: ["student-a", "student-b"],
+    participantRoles: {
+      "student-a": "student",
+      "student-b": "student",
+    },
+    participantStates: {
+      "student-a": {
+        role: "student",
+        surface: "in_app",
+        decision: "accepted",
+        delivery: "not_required",
+      },
+      "student-b": {
+        role: "student",
+        surface: "in_app",
+        decision: "accepted",
+        delivery: "not_required",
+      },
+    },
+  });
+  const result = await processProtocolV2SessionState({
+    db: {
+      collection: () => ({
+        doc: () => ({
+          get: async () => ({
+            exists: true,
+            data: () => sessionData,
+          }),
+        }),
+      }),
+    },
+    sessionId: "session-fast",
+    sessionData,
+    initialRouter: async () => {
+      throw new Error("initial routing must be skipped");
+    },
+    finalizer: async (data, context, options) => {
+      finalized.push({data, context, options});
+      return {status: "connected"};
+    },
+  });
+
+  assert.equal(finalized.length, 1);
+  assert.equal(finalized[0].options.responderId, "student-b");
+  assert.equal(result.reason, "finalized");
+});
+
 test("initial durable stage retries both-student routing", async () => {
   const calls = [];
   const sessionData = stagedTeacherSession({

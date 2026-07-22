@@ -56,6 +56,7 @@ const {
     shouldFailUnboundStartSearchRequest,
     shouldRetryBackgroundStudentMatchAfterNotifyResult,
     shouldRetryTeacherMatchAfterNotifyResult,
+    shouldRouteProtocolV2InitialMatch,
     shouldUseTeacherResponderForIncomingCall,
     startSearchCallable,
     teacherResponderPushStillCurrent,
@@ -201,6 +202,21 @@ test("start search source keeps teachers in unified candidate loop", () => {
   assert.match(source, /const matchCandidates = candidatePool\.candidates/);
   assert.match(source, /MATCH_CANDIDATE_SOURCE\.TEACHER_AVAILABILITY/);
   assert.match(source, /maybeNotifyTeacherResponder/);
+});
+
+test("foreground auto-finalization skips initial protocol v2 routing", () => {
+  assert.equal(shouldRouteProtocolV2InitialMatch({
+    matchProtocolVersion: 2,
+    finalizationRequested: true,
+  }), false);
+  assert.equal(shouldRouteProtocolV2InitialMatch({
+    matchProtocolVersion: 2,
+    finalizationRequested: false,
+  }), true);
+  assert.equal(shouldRouteProtocolV2InitialMatch({
+    matchProtocolVersion: 1,
+    finalizationRequested: false,
+  }), false);
 });
 
 test("start search error message helper never throws", () => {

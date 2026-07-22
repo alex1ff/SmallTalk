@@ -34,16 +34,20 @@ const {
   buildCallKitIdForMatchParticipant,
 } = require("./call_notifications");
 const {
+  MATCH_ACTION,
   MATCH_PROTOCOL_VERSION,
   MATCH_STAGE,
   buildInitialParticipantStates,
   supportsMatchProtocolV2,
+  transitionParticipantState,
 } = require("./match_protocol_v2");
 
 const USER_COLLECTION = "users";
 const PRIVATE_TOKEN_COLLECTION = "userPrivateTokens";
 const VIDEO_SESSION_COLLECTION = "videoSessions";
 const MATCH_PAIR_LOCK_TTL_SECONDS = 45;
+const FOREGROUND_AUTO_ACCEPT_FRESHNESS_MS = 40 * 1000;
+const MATCH_FINALIZATION_GUARD_MS = 90 * 1000;
 
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -79,6 +83,26 @@ function timestampToMillis(value) {
   }
   const millis = Number(value);
   return Number.isFinite(millis) ? millis : null;
+}
+
+function isFreshForegroundSearchForAutoAccept({
+  requestData = {},
+  nowMillis = Date.now(),
+} = {}) {
+  if (
+    requestData[SEARCH_REQUEST_FIELD.APP_STATE] !==
+      SEARCH_REQUEST_APP_STATE.FOREGROUND
+  ) {
+    return false;
+  }
+  const lifecycleMillis = Math.max(
+    timestampToMillis(
+      requestData[SEARCH_REQUEST_FIELD.APP_STATE_UPDATED_AT],
+    ) || 0,
+    timestampToMillis(requestData[SEARCH_REQUEST_FIELD.HEARTBEAT_AT]) || 0,
+  );
+  return lifecycleMillis > 0 &&
+    nowMillis - lifecycleMillis <= FOREGROUND_AUTO_ACCEPT_FRESHNESS_MS;
 }
 
 function readReferenceId(value) {
@@ -438,7 +462,9 @@ function buildVideoSessionPairLockData({
   participantInfos = {},
   serverTimestamp,
   lockExpiresAt,
+  finalizationExpiresAt = null,
   matchProtocolVersion = 1,
+  autoAcceptForegroundStudents = false,
 }) {
   const participantIds = buildParticipantIds(requesterId, responderId);
   const scenario = responderRole === "student" ?
@@ -462,7 +488,7 @@ function buildVideoSessionPairLockData({
     [requesterId]: requesterRole,
     [responderId]: responderRole,
   };
-  const participantStates = protocolVersion === MATCH_PROTOCOL_VERSION ?
+  let participantStates = protocolVersion === MATCH_PROTOCOL_VERSION ?
     buildInitialParticipantStates({
       participantIds,
       participantRoles,
@@ -476,6 +502,27 @@ function buildVideoSessionPairLockData({
       ])),
     }) :
     null;
+  const shouldAutoFinalize =
+    protocolVersion === MATCH_PROTOCOL_VERSION &&
+    scenario === "student_student" &&
+    autoAcceptForegroundStudents === true;
+  if (shouldAutoFinalize) {
+    participantStates = Object.fromEntries(
+      participantIds.map((participantId) => [
+        participantId,
+        transitionParticipantState({
+          state: participantStates[participantId],
+          role: participantRoles[participantId],
+          action: MATCH_ACTION.CLAIM_IN_APP,
+          actionId: `pair_lock:${pairAttemptId}:${participantId}`,
+          updatedAt: serverTimestamp,
+        }).state,
+      ]),
+    );
+  }
+  const sessionDeadline = shouldAutoFinalize ?
+    finalizationExpiresAt || lockExpiresAt :
+    lockExpiresAt;
 
   return {
     ...sessionData,
@@ -505,8 +552,8 @@ function buildVideoSessionPairLockData({
       buildLegacySessionUserInfo(responderInfo, "Partner"),
     scenario,
     pairAttemptId,
-    responseExpiresAt: lockExpiresAt,
-    confirmationExpiresAt: lockExpiresAt,
+    responseExpiresAt: sessionDeadline,
+    confirmationExpiresAt: sessionDeadline,
     searchRequestIds: {
       requester: normalizeString(requesterSearchRequestId) || null,
       responder: normalizeString(responderSearchRequestId) || null,
@@ -517,13 +564,25 @@ function buildVideoSessionPairLockData({
     updatedAt: serverTimestamp,
     matchLock: {
       owner: pairAttemptId,
-      expiresAt: lockExpiresAt,
+      expiresAt: sessionDeadline,
       participantIds,
     },
     ...(protocolVersion === MATCH_PROTOCOL_VERSION ? {
       matchProtocolVersion: MATCH_PROTOCOL_VERSION,
-      matchStage: MATCH_STAGE.AWAITING_INITIAL_DISPATCH,
+      matchStage: shouldAutoFinalize ?
+        MATCH_STAGE.FINALIZATION_REQUESTED :
+        MATCH_STAGE.AWAITING_INITIAL_DISPATCH,
       participantStates,
+      ...(shouldAutoFinalize ? {
+        matchFinalization: {
+          status: "requested",
+          pairAttemptId,
+          requestedBy: requesterId,
+          actionId: `pair_lock:${pairAttemptId}`,
+          requestedAt: serverTimestamp,
+          expiresAt: sessionDeadline,
+        },
+      } : {}),
     } : {}),
   };
 }
@@ -1335,6 +1394,7 @@ async function reserveMatchPairInTransaction({
   nowMillis = Date.now(),
   serverTimestamp,
   lockExpiresAt,
+  finalizationExpiresAt,
   pairAttemptId = "",
 }) {
   const normalizedRequesterId = normalizeDocumentId(requesterId);
@@ -1498,6 +1558,18 @@ async function reserveMatchPairInTransaction({
     return buildPairLockFailure("responder_protocol_incompatible");
   }
 
+  const autoAcceptForegroundStudents =
+    matchProtocolVersion === MATCH_PROTOCOL_VERSION &&
+    normalizedResponderRole === "student" &&
+    isFreshForegroundSearchForAutoAccept({
+      requestData: requesterSearchSnapshot.data() || {},
+      nowMillis,
+    }) &&
+    isFreshForegroundSearchForAutoAccept({
+      requestData: responderSearchSnapshot?.data?.() || {},
+      nowMillis,
+    });
+
   const sessionId = sessionRef.id;
   const finalPairAttemptId = normalizeDocumentId(pairAttemptId) ||
     buildPairAttemptId({
@@ -1529,7 +1601,9 @@ async function reserveMatchPairInTransaction({
     },
     serverTimestamp,
     lockExpiresAt,
+    finalizationExpiresAt,
     matchProtocolVersion,
+    autoAcceptForegroundStudents,
   });
   const requesterLockUpdate = buildSearchRequestPairLockUpdate({
     sessionId,
@@ -1573,6 +1647,7 @@ async function reserveMatchPairInTransaction({
     responderId: normalizedResponderId,
     responderRole: normalizedResponderRole,
     matchProtocolVersion,
+    finalizationRequested: autoAcceptForegroundStudents,
   };
 }
 
@@ -1765,6 +1840,9 @@ async function reserveMatchPair({
   const lockExpiresAt = timestampFromMillis(
     nowMillis + lockTtlSeconds * 1000,
   );
+  const finalizationExpiresAt = timestampFromMillis(
+    nowMillis + MATCH_FINALIZATION_GUARD_MS,
+  );
 
   return db.runTransaction((transaction) => reserveMatchPairInTransaction({
     db,
@@ -1780,6 +1858,7 @@ async function reserveMatchPair({
     nowMillis,
     serverTimestamp,
     lockExpiresAt,
+    finalizationExpiresAt,
     pairAttemptId,
   }));
 }

@@ -22,6 +22,7 @@ const {
     getPendingAssignedResponderId,
     isPendingSessionAssignedToResponder,
     normalizeSessionId,
+    shouldIssueAcceptResponseMeetingToken,
   },
 } = require("./accept_call");
 
@@ -102,6 +103,25 @@ test("acceptCall room join timeout metadata uses the same start moment", () => {
   assert.equal(
     fields.joinDeadlineAt.toDate().toISOString(),
     "2026-04-14T10:01:00.000Z",
+  );
+});
+
+test("protocol-v2 trigger finalization skips unused response token", () => {
+  assert.equal(
+    shouldIssueAcceptResponseMeetingToken({protocolV2Finalization: true}),
+    false,
+  );
+  assert.equal(
+    shouldIssueAcceptResponseMeetingToken({protocolV2Finalization: false}),
+    true,
+  );
+  assert.equal(shouldIssueAcceptResponseMeetingToken(), true);
+
+  const source = readFunctionSource("accept_call.js");
+  assert.equal(
+    source.match(/shouldIssueAcceptResponseMeetingToken\(internalOptions\)/g)
+      ?.length,
+    3,
   );
 });
 
@@ -650,17 +670,13 @@ test("acceptCall final transaction reads user locks before participant writes", 
   const finalTransactionIndex = source.indexOf(
     "const txnResult = await admin",
   );
-  const requesterReadIndex = source.indexOf(
-    "const requesterUserSnap = await transaction.get(requesterUserRef);",
-    finalTransactionIndex,
-  );
-  const responderReadIndex = source.indexOf(
-    "const responderUserSnap = await transaction.get(responderUserRef);",
+  const parallelReadIndex = source.indexOf(
+    "await transaction.getAll(requesterUserRef, responderUserRef)",
     finalTransactionIndex,
   );
   const requesterGuardIndex = source.indexOf(
     "assertUserCanJoinAcceptedSessionOrThrow(",
-    responderReadIndex,
+    parallelReadIndex,
   );
   const participantUpdateIndex = source.indexOf(
     "const participantUserUpdate = buildAcceptedParticipantUserUpdate({",
@@ -668,10 +684,28 @@ test("acceptCall final transaction reads user locks before participant writes", 
   );
 
   assert.notEqual(finalTransactionIndex, -1);
-  assert.ok(requesterReadIndex > finalTransactionIndex);
-  assert.ok(responderReadIndex > requesterReadIndex);
-  assert.ok(requesterGuardIndex > responderReadIndex);
+  assert.ok(parallelReadIndex > finalTransactionIndex);
+  assert.ok(requesterGuardIndex > parallelReadIndex);
   assert.ok(participantUpdateIndex > requesterGuardIndex);
+});
+
+test("acceptCall loads ordinary participant profiles in parallel", () => {
+  const source = readFunctionSource("accept_call.js");
+  const parallelReadIndex = source.indexOf(
+    "const [tutorDoc, studentDoc] = await Promise.all([",
+  );
+  const tutorReadIndex = source.indexOf(
+    "usersCollection.doc(tutorId).get()",
+    parallelReadIndex,
+  );
+  const requesterReadIndex = source.indexOf(
+    "usersCollection.doc(requesterId).get()",
+    tutorReadIndex,
+  );
+
+  assert.notEqual(parallelReadIndex, -1);
+  assert.ok(tutorReadIndex > parallelReadIndex);
+  assert.ok(requesterReadIndex > tutorReadIndex);
 });
 
 test("acceptCall validates accepted session before push and response", () => {

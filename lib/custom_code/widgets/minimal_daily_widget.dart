@@ -4346,9 +4346,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       return 'Соединяемся...';
     }
 
-    return isStudent
-        ? 'Ожидаем подключение собеседника...'
-        : 'Ожидаем подключение студента...';
+    return 'Ожидаем подключение собеседника...';
   }
 
   Widget _buildPrimaryVideo({bool? showRemoteParticipant}) {

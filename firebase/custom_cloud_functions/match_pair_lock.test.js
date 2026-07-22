@@ -18,6 +18,7 @@ const {
   applyPreparedPairLockWrites,
   buildPairAttemptId,
   buildSearchRequestActiveRestoreUpdate,
+  buildVideoSessionPairLockData,
   canRestoreSearchRequestToActive,
   prepareExistingSessionNextResponderPairLockInTransaction,
   releaseSessionPairLocksInTransaction,
@@ -65,6 +66,16 @@ function activeSearchRequest(userId, overrides = {}) {
     version: 1,
     ...overrides,
   };
+}
+
+function activeV2SearchRequest(userId, overrides = {}) {
+  return activeSearchRequest(userId, {
+    matchProtocolVersion: 2,
+    appState: "foreground",
+    appStateUpdatedAt: timestampFromMillis(fixedNowMillis),
+    heartbeatAt: timestampFromMillis(fixedNowMillis),
+    ...overrides,
+  });
 }
 
 function studentUser(overrides = {}) {
@@ -659,6 +670,168 @@ test("reserveMatchPair atomically locks two student participants", async () => {
   assert.equal(store.get("users/student-a").currentSessionId, "session-ab");
   assert.equal(store.get("users/student-b").currentSessionId, "session-ab");
 });
+
+test("fresh v2 foreground students auto-accept in pair lock", async () => {
+  const {db, store} = createFakeFirestore({
+    "users/student-a": studentUser(),
+    "users/student-b": studentUser(),
+    "searchRequests/student-a": activeV2SearchRequest("student-a"),
+    "searchRequests/student-b": activeV2SearchRequest("student-b", {
+      appStateUpdatedAt: timestampFromMillis(fixedNowMillis - 40_000),
+      heartbeatAt: timestampFromMillis(fixedNowMillis - 40_000),
+    }),
+  });
+
+  const result = await reserveMatchPair({
+    db,
+    requesterId: "student-a",
+    responderId: "student-b",
+    responderRole: "student",
+    requesterSearchRequestId: "request-student-a",
+    responderSearchRequestId: "request-student-b",
+    sessionId: "session-v2-fast",
+    sessionData: {language: "en", matchProtocolVersion: 2},
+    nowMillis: fixedNowMillis,
+    serverTimestamp,
+    timestampFromMillis,
+  });
+
+  assert.equal(result.locked, true);
+  assert.equal(result.finalizationRequested, true);
+  const session = store.get("videoSessions/session-v2-fast");
+  assert.equal(session.matchStage, "finalization_requested");
+  assert.equal(session.responseExpiresAt.toMillis(), fixedNowMillis + 90_000);
+  assert.equal(
+    session.matchFinalization.expiresAt.toMillis(),
+    fixedNowMillis + 90_000,
+  );
+  assert.equal(session.matchFinalization.status, "requested");
+  for (const participantId of ["student-a", "student-b"]) {
+    assert.equal(session.participantStates[participantId].surface, "in_app");
+    assert.equal(session.participantStates[participantId].decision, "accepted");
+    assert.equal(
+      session.participantStates[participantId].delivery,
+      "not_required",
+    );
+  }
+});
+
+for (const [caseName, responderOverrides] of [
+  ["background", {
+    appState: "background",
+    backgroundExpiresAt: timestampFromMillis(fixedNowMillis + 60_000),
+  }],
+  ["stale foreground", {
+    appStateUpdatedAt: timestampFromMillis(fixedNowMillis - 40_001),
+    heartbeatAt: timestampFromMillis(fixedNowMillis - 40_001),
+  }],
+]) {
+  test(`v2 pair keeps initial routing for ${caseName} student`, async () => {
+    const {db, store} = createFakeFirestore({
+      "users/student-a": studentUser(),
+      "users/student-b": studentUser(),
+      "searchRequests/student-a": activeV2SearchRequest("student-a"),
+      "searchRequests/student-b": activeV2SearchRequest(
+        "student-b",
+        responderOverrides,
+      ),
+    });
+
+    const result = await reserveMatchPair({
+      db,
+      requesterId: "student-a",
+      responderId: "student-b",
+      responderRole: "student",
+      requesterSearchRequestId: "request-student-a",
+      responderSearchRequestId: "request-student-b",
+      sessionId: `session-v2-${caseName.replaceAll(" ", "-")}`,
+      sessionData: {language: "en", matchProtocolVersion: 2},
+      nowMillis: fixedNowMillis,
+      serverTimestamp,
+      timestampFromMillis,
+    });
+
+    assert.equal(result.locked, true);
+    assert.equal(result.finalizationRequested, false);
+    const session = store.get(`videoSessions/${result.sessionId}`);
+    assert.equal(session.matchStage, "awaiting_initial_dispatch");
+    assert.equal(session.matchFinalization, undefined);
+    assert.equal(session.participantStates["student-a"].decision, "pending");
+    assert.equal(session.participantStates["student-b"].decision, "pending");
+  });
+}
+
+test("teacher pair never uses foreground student auto-accept", () => {
+  const session = buildVideoSessionPairLockData({
+    sessionData: {language: "en"},
+    requesterId: "student-a",
+    responderId: "teacher-a",
+    requesterRole: "student",
+    responderRole: "native_speaker",
+    sessionId: "session-teacher-v2",
+    pairAttemptId: "pair-teacher-v2",
+    serverTimestamp,
+    lockExpiresAt: timestampFromMillis(fixedNowMillis + 45_000),
+    finalizationExpiresAt: timestampFromMillis(fixedNowMillis + 90_000),
+    matchProtocolVersion: 2,
+    autoAcceptForegroundStudents: true,
+  });
+
+  assert.equal(session.matchStage, "awaiting_initial_dispatch");
+  assert.equal(session.matchFinalization, undefined);
+  assert.equal(session.participantStates["student-a"].decision, "pending");
+  assert.equal(session.participantStates["teacher-a"].surface, "callkit");
+  assert.equal(session.participantStates["teacher-a"].decision, "pending");
+});
+
+test("background heartbeat during pair lock disables foreground auto-accept",
+    async () => {
+      let injected = false;
+      const {db, store, versions} = createFakeFirestore({
+        "users/student-a": studentUser(),
+        "users/student-b": studentUser(),
+        "searchRequests/student-a": activeV2SearchRequest("student-a"),
+        "searchRequests/student-b": activeV2SearchRequest("student-b"),
+      }, {
+        retryOnConcurrentModification: true,
+        onBeforeCommit: async ({attempt, store: currentStore}) => {
+          if (attempt !== 1 || injected) return;
+          injected = true;
+          currentStore.set("searchRequests/student-b", {
+            ...currentStore.get("searchRequests/student-b"),
+            appState: "background",
+            appStateUpdatedAt: timestampFromMillis(fixedNowMillis),
+            backgroundExpiresAt: timestampFromMillis(
+              fixedNowMillis + 60_000,
+            ),
+          });
+          versions.set(
+            "searchRequests/student-b",
+            (versions.get("searchRequests/student-b") || 0) + 1,
+          );
+        },
+      });
+
+      const result = await reserveMatchPair({
+        db,
+        requesterId: "student-a",
+        responderId: "student-b",
+        responderRole: "student",
+        requesterSearchRequestId: "request-student-a",
+        responderSearchRequestId: "request-student-b",
+        sessionId: "session-v2-lifecycle-race",
+        sessionData: {language: "en", matchProtocolVersion: 2},
+        nowMillis: fixedNowMillis,
+        serverTimestamp,
+        timestampFromMillis,
+      });
+
+      assert.equal(result.locked, true);
+      assert.equal(result.finalizationRequested, false);
+      const session = store.get("videoSessions/session-v2-lifecycle-race");
+      assert.equal(session.matchStage, "awaiting_initial_dispatch");
+      assert.equal(session.participantStates["student-b"].decision, "pending");
+    });
 
 test("reserveMatchPair locks teacher through user document", async () => {
   const {db, store, writes} = createFakeFirestore({

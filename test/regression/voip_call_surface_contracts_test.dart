@@ -646,6 +646,16 @@ void main() {
       );
     });
 
+    test('MinimalDailyWidget uses a role-neutral connection status', () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final statusSource =
+          _curlyBlockSource(source, 'String? _statusMessage()');
+
+      expect(statusSource, contains('Ожидаем подключение собеседника...'));
+      expect(statusSource, isNot(contains('Ожидаем подключение студента...')));
+    });
+
     test('session limit warning stays inside timer badge', () {
       final source =
           _source('lib/custom_code/widgets/minimal_daily_widget.dart');
