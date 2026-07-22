@@ -51,20 +51,9 @@ const ALLOWED_DURATIONS = new Set([
   "lifetime",
 ]);
 
-function firebaseRuntimeConfig() {
-  try {
-    return functions.config?.() || {};
-  } catch (_) {
-    return {};
-  }
-}
-
 function getRevenueCatSecretKey() {
-  const runtimeConfig = firebaseRuntimeConfig();
   return process.env.REVENUECAT_SECRET_KEY ||
     revenueCatSecretKey.value() ||
-    runtimeConfig.revenuecat?.secret_key ||
-    runtimeConfig.revenuecat?.api_key ||
     "";
 }
 

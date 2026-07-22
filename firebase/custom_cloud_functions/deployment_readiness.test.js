@@ -318,6 +318,17 @@ test("readiness deployment includes rules and indexes atomically", () => {
   );
 });
 
+test("deployment source does not depend on retired Runtime Config", () => {
+  const legacyConfigUsers = fs.readdirSync(__dirname)
+    .filter((name) => name.endsWith(".js") && !name.endsWith(".test.js"))
+    .filter((name) => {
+      const source = fs.readFileSync(path.join(__dirname, name), "utf8");
+      return /functions\.config(?:\?\.)?\s*\(/.test(source);
+    });
+
+  assert.deepEqual(legacyConfigUsers, []);
+});
+
 test("deployment readiness rejects wrong triggers and missing secrets", () => {
   const functionsList = completeDeployment().map((fn) => ({...fn}));
   const webhook = functionsList.find((fn) => fn.id === "dailyWebhook");
