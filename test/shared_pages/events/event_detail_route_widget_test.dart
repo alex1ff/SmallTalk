@@ -13,6 +13,7 @@ import 'package:small_talk/backend/backend.dart';
 import 'package:small_talk/components/ux_refreshing_indicator_overlay.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/flutter_flow/nav/nav.dart';
+import 'package:small_talk/shared_pages/chat_thread/open_chat_thread.dart';
 import 'package:small_talk/shared_pages/design/expatlio_design.dart';
 import 'package:small_talk/shared_pages/events/event_detail_route_widget.dart';
 import 'package:small_talk/shared_pages/events/event_detail_widget.dart';
@@ -1989,8 +1990,10 @@ void main() {
             context, {
             required conversationRef,
             initialConversation,
-          }) async {
+            preparation,
+          }) {
             openedConversationPath = conversationRef?.path;
+            return preparation!();
           },
         ),
       ),
@@ -2008,7 +2011,7 @@ void main() {
     expect(openedConversationPath, 'conversations/organizer-1_student-1');
   });
 
-  testWidgets('opens organizer private chat optimistically while callable runs',
+  testWidgets('opens organizer chat route while callable runs in background',
       (tester) async {
     currentUser = _TestAuthUser('student-1');
     final openCompleter = Completer<Map<String, dynamic>>();
@@ -2039,8 +2042,10 @@ void main() {
             context, {
             required conversationRef,
             initialConversation,
-          }) async {
+            preparation,
+          }) {
             openedConversationPath = conversationRef?.path;
+            return preparation!();
           },
         ),
       ),
@@ -2058,7 +2063,74 @@ void main() {
       'conversationPath': 'conversations/organizer-1_student-1',
     });
     await tester.pumpAndSettle();
+
+    expect(openedConversationPath, 'conversations/organizer-1_student-1');
   });
+
+  for (final mismatch in const [
+    (
+      name: 'id',
+      conversationId: 'wrong-conversation',
+      conversationPath: 'conversations/organizer-1_student-1',
+    ),
+    (
+      name: 'path',
+      conversationId: 'organizer-1_student-1',
+      conversationPath: 'conversations/wrong-conversation',
+    ),
+  ]) {
+    testWidgets('rejects organizer conversation ${mismatch.name} mismatch',
+        (tester) async {
+      currentUser = _TestAuthUser('student-1');
+      ChatConversationPreparation? capturedPreparation;
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventDetailRouteWidget(
+            eventId: 'event-1',
+            snapshotStream: (eventRef) => Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: eventRef,
+                data: _eventData(organizerId: 'organizer-1'),
+              ),
+            ),
+            participantSnapshotStream: (participantRef) =>
+                Stream<DocumentSnapshot>.value(
+              _FakeEventDocumentSnapshot(
+                reference: participantRef,
+                data: _participantData(
+                  userId: 'student-1',
+                  status: 'left',
+                ),
+              ),
+            ),
+            openOrganizerChatInvoker: (_, __) async => <String, dynamic>{
+              'conversationId': mismatch.conversationId,
+              'conversationPath': mismatch.conversationPath,
+            },
+            chatThreadOpener: (
+              context, {
+              required conversationRef,
+              initialConversation,
+              preparation,
+            }) async {
+              capturedPreparation = preparation;
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(eventDetailOrganizerMessageButtonKey));
+      await tester.pump();
+
+      expect(capturedPreparation, isNotNull);
+      await expectLater(
+        capturedPreparation!(),
+        throwsA(isA<StateError>()),
+      );
+    });
+  }
 
   testWidgets('non-organizer reports event through callable', (tester) async {
     currentUser = _TestAuthUser('student-1');

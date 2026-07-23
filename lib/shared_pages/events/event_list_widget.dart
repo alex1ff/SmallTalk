@@ -5543,11 +5543,15 @@ class _EventCardActionsShell extends StatelessWidget {
       primaryAction = _EventCardPillPlaceholder(height: metrics.actionHeight);
       secondaryAction = _EventCardPillPlaceholder(height: metrics.actionHeight);
     } else {
-      final canOpenChat = event.chatCtaState == EventListChatCtaState.enabled &&
+      final chatAccessPending =
+          event.joinCtaState == EventListJoinCtaState.joining ||
+              event.joinCtaState == EventListJoinCtaState.leaving;
+      final canOpenChat = !chatAccessPending &&
+          event.chatCtaState == EventListChatCtaState.enabled &&
           onChatPressed != null;
-      final canShowParticipantRequiredHint =
+      final canShowParticipantRequiredHint = !chatAccessPending &&
           event.chatCtaState == EventListChatCtaState.participantOnly &&
-              onChatParticipantRequiredPressed != null;
+          onChatParticipantRequiredPressed != null;
       primaryAction = _EventCardPrimaryCta(
         state: event.joinCtaState,
         membershipState: event.membershipState,
@@ -5558,6 +5562,7 @@ class _EventCardActionsShell extends StatelessWidget {
       secondaryAction = _EventCardChatCta(
         state: event.chatCtaState,
         membershipState: event.membershipState,
+        accessPending: chatAccessPending,
         height: metrics.actionHeight,
         maxLines: metrics.actionMaxLines,
         onPressed: canOpenChat ? onChatPressed : null,
@@ -5723,6 +5728,7 @@ class _EventCardChatCta extends StatelessWidget {
   const _EventCardChatCta({
     required this.state,
     required this.membershipState,
+    required this.accessPending,
     required this.height,
     required this.maxLines,
     required this.onPressed,
@@ -5731,6 +5737,7 @@ class _EventCardChatCta extends StatelessWidget {
 
   final EventListChatCtaState state;
   final EventListMembershipState membershipState;
+  final bool accessPending;
   final double height;
   final int maxLines;
   final VoidCallback? onPressed;
@@ -5741,9 +5748,10 @@ class _EventCardChatCta extends StatelessWidget {
     final membershipResolved =
         membershipState == EventListMembershipState.resolved;
     final enabled = membershipResolved &&
+        !accessPending &&
         state == EventListChatCtaState.enabled &&
         onPressed != null;
-    final effectiveOnPressed = !membershipResolved
+    final effectiveOnPressed = !membershipResolved || accessPending
         ? null
         : enabled
             ? onPressed
@@ -5778,11 +5786,14 @@ class _EventCardChatCta extends StatelessWidget {
       container: true,
       button: true,
       enabled: enabled,
-      label: switch (membershipState) {
-        EventListMembershipState.pending => pendingLabel,
-        EventListMembershipState.lookupFailed => failedLabel,
-        EventListMembershipState.resolved => enabled ? label : disabledLabel,
-      },
+      label: accessPending
+          ? pendingLabel
+          : switch (membershipState) {
+              EventListMembershipState.pending => pendingLabel,
+              EventListMembershipState.lookupFailed => failedLabel,
+              EventListMembershipState.resolved =>
+                enabled ? label : disabledLabel,
+            },
       onTap: enabled ? onPressed : null,
       child: ExcludeSemantics(
         child: Material(

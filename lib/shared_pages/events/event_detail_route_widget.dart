@@ -57,6 +57,7 @@ typedef EventChatThreadOpener = Future<void> Function(
   BuildContext context, {
   required DocumentReference? conversationRef,
   ConversationsRecord? initialConversation,
+  ChatConversationPreparation? preparation,
 });
 typedef EventDetailPublicProfilesLoader = Future<UserPublicProfilePreloadResult>
     Function(
@@ -684,32 +685,32 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       return;
     }
 
-    final optimisticConversationRef =
-        _eventDetailOrganizerConversationRef(event);
+    final conversationRef = _eventDetailOrganizerConversationRef(event);
+    if (conversationRef == null) {
+      return;
+    }
+    final eventId = event.reference.id;
+    final organizerChatInvoker = widget.openOrganizerChatInvoker;
+    Future<void> prepareConversation() async {
+      final result = await EventActionsRepository.openEventOrganizerChat(
+        eventId: eventId,
+        invoker: organizerChatInvoker,
+      );
+      if (result.conversationId != conversationRef.id ||
+          result.conversationPath != conversationRef.path) {
+        throw StateError('Organizer conversation identity mismatch.');
+      }
+    }
+
     setState(() {
       _isOpeningOrganizerChat = true;
     });
-    if (optimisticConversationRef != null) {
-      _openChatThreadInBackground(optimisticConversationRef);
-    }
     try {
-      final result = await EventActionsRepository.openEventOrganizerChat(
-        eventId: event.reference.id,
-        invoker: widget.openOrganizerChatInvoker,
+      await (widget.chatThreadOpener ?? openChatThread)(
+        context,
+        conversationRef: conversationRef,
+        preparation: prepareConversation,
       );
-      if (!mounted) {
-        return;
-      }
-      final conversationRef = FirebaseFirestore.instance.doc(
-        result.conversationPath,
-      );
-      if (optimisticConversationRef == null ||
-          optimisticConversationRef.path != conversationRef.path) {
-        await (widget.chatThreadOpener ?? openChatThread)(
-          context,
-          conversationRef: conversationRef,
-        );
-      }
     } catch (error) {
       if (!mounted) {
         return;
@@ -745,17 +746,6 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
     } on ArgumentError {
       return null;
     }
-  }
-
-  void _openChatThreadInBackground(DocumentReference conversationRef) {
-    try {
-      unawaited(
-        (widget.chatThreadOpener ?? openChatThread)(
-          context,
-          conversationRef: conversationRef,
-        ).catchError((Object error, StackTrace stackTrace) {}),
-      );
-    } catch (_) {}
   }
 
   Future<void> _showReportEventDialog(EventsRecord event) async {

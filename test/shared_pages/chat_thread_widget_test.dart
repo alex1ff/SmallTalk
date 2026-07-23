@@ -10,6 +10,7 @@ import 'package:small_talk/auth/firebase_auth/auth_util.dart';
 import 'package:small_talk/backend/backend.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/shared_pages/chat_thread/chat_thread_widget.dart';
+import 'package:small_talk/shared_pages/chat_thread/open_chat_thread.dart';
 import 'package:small_talk/services/ux_session_cache_lifecycle.dart';
 
 const _supportedLocales = <Locale>[
@@ -53,6 +54,76 @@ void main() {
     UxSessionCacheLifecycle.debugResetForTesting();
     currentUser = null;
     currentUserDocument = null;
+  });
+
+  testWidgets('deferred chat starts its listener after preparation succeeds',
+      (tester) async {
+    final preparation = Completer<void>();
+    var calls = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: DeferredChatThreadWidget(
+          conversationRef: null,
+          preparation: () {
+            calls += 1;
+            return preparation.future;
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(calls, 1);
+    expect(find.byKey(deferredChatThreadLoadingKey), findsOneWidget);
+    expect(find.byType(ChatThreadWidget), findsNothing);
+
+    preparation.complete();
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(deferredChatThreadLoadingKey), findsNothing);
+    expect(find.byType(ChatThreadWidget), findsOneWidget);
+  });
+
+  testWidgets('deferred chat retries preparation without concurrent attempts',
+      (tester) async {
+    final retryPreparation = Completer<void>();
+    var calls = 0;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: DeferredChatThreadWidget(
+          conversationRef: null,
+          preparation: () {
+            calls += 1;
+            if (calls == 1) {
+              return Future<void>.error(StateError('offline'));
+            }
+            return retryPreparation.future;
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(calls, 1);
+    expect(find.byKey(deferredChatThreadErrorKey), findsOneWidget);
+
+    await tester.tap(find.byKey(deferredChatThreadRetryButtonKey));
+    await tester.pump();
+
+    expect(calls, 2);
+    expect(find.byKey(deferredChatThreadLoadingKey), findsOneWidget);
+    expect(find.byKey(deferredChatThreadRetryButtonKey), findsNothing);
+
+    retryPreparation.complete();
+    await tester.pump();
+    await tester.pump();
+
+    expect(calls, 2);
+    expect(find.byType(ChatThreadWidget), findsOneWidget);
   });
 
   testWidgets(

@@ -8785,6 +8785,13 @@ void main() {
       final pendingChat =
           tester.getSemantics(find.byKey(eventListCardChatCtaKey));
       expect(pendingChat.flagsCollection.isEnabled, isFalse);
+      expect(pendingChat.label, contains('Проверяем доступ к чату'));
+      await tester.tap(find.byKey(eventListCardChatCtaKey));
+      await tester.pump();
+      expect(
+        find.byKey(eventListChatParticipantRequiredSnackBarKey),
+        findsNothing,
+      );
       expect(_eventCardGeometry(tester), beforeGeometry);
       expect(
         tester.getRect(find.byKey(eventListParticipantAvatarStackKey)),
