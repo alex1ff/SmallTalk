@@ -7554,6 +7554,54 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets(
+      'student dashboard notifies after two minutes and keeps searching',
+      (tester) async {
+    setActiveStudent('student-search-notice-test');
+    final stoppedSessionIds = <String?>[];
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          stopSearchRequest: (sessionId) async {
+            stoppedSessionIds.add(sessionId);
+            return <String, dynamic>{'stopped': true};
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.ancestor(
+        of: find.text('Начать поиск'),
+        matching: find.byType(InkWell),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Осталось 02:00'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(find.text('Осталось 01:59'), findsOneWidget);
+
+    await tester.pump(const Duration(minutes: 1, seconds: 59));
+
+    expect(
+      find.text(
+        'Все собеседники заняты. Вы можете свернуть приложение, мы уведомим вас.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Ищем собеседника'), findsOneWidget);
+    expect(find.textContaining('Осталось '), findsNothing);
+    expect(find.text('Остановить поиск'), findsOneWidget);
+    expect(stoppedSessionIds, isEmpty);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('student dashboard stop cancels no match timeout',
       (tester) async {
     setActiveStudent('student-stop-before-timeout-test');

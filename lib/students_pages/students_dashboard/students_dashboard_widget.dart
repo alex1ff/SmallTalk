@@ -128,6 +128,8 @@ class StudentsDashboardWidget extends StatefulWidget {
   static const Duration acceptCallRequestTimeout = Duration(seconds: 20);
   static const Duration activeSearchRecoveryRetryDelay = Duration(seconds: 2);
   static const int activeSearchRecoveryMaxAttemptsAfterFailure = 3;
+  static const Duration foregroundSearchNoticeDelay = Duration(minutes: 2);
+  static const Duration searchDuration = Duration(minutes: 10);
 
   static String routeName = 'Students_Dashboard';
   static String routePath = '/studentsDashboard';
@@ -165,6 +167,8 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
   String? _suppressedActiveSearchUserId;
   String? _lastActiveSessionId;
   Timer? _searchTimeoutTimer;
+  Timer? _foregroundSearchNoticeTimer;
+  Timer? _foregroundSearchCountdownTimer;
   Timer? _searchHeartbeatTimer;
   Timer? _activeSearchRecoveryRetryTimer;
   String? _activeSearchRequestId;
@@ -177,6 +181,9 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
   bool _pendingLifecycleSearchHeartbeat = false;
   bool _searchHeartbeatOwnedByCoordinator = false;
   String _searchAppState = 'foreground';
+  Duration? _foregroundSearchCountdownRemaining;
+  bool _foregroundSearchNoticePending = false;
+  bool _foregroundSearchNoticeShown = false;
   String? _autoOpenedSessionId;
   final Set<String> _terminalV2SessionReconciliations = <String>{};
   final Set<String> _foregroundAcceptStartedSessionIds = <String>{};
@@ -362,6 +369,110 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     _searchTimeoutTimer = null;
   }
 
+  void _clearForegroundSearchNoticeTimer() {
+    _foregroundSearchNoticeTimer?.cancel();
+    _foregroundSearchNoticeTimer = null;
+    _foregroundSearchCountdownTimer?.cancel();
+    _foregroundSearchCountdownTimer = null;
+    _foregroundSearchCountdownRemaining = null;
+    _foregroundSearchNoticePending = false;
+    _foregroundSearchNoticeShown = false;
+  }
+
+  void _startForegroundSearchNoticeTimer({
+    Duration elapsed = Duration.zero,
+  }) {
+    _clearForegroundSearchNoticeTimer();
+    final remaining =
+        StudentsDashboardWidget.foregroundSearchNoticeDelay - elapsed;
+    if (remaining <= Duration.zero) {
+      _handleForegroundSearchNoticeDue();
+      return;
+    }
+
+    _foregroundSearchCountdownRemaining = remaining;
+    _foregroundSearchCountdownTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) {
+        final currentRemaining = _foregroundSearchCountdownRemaining;
+        if (currentRemaining == null) return;
+        final nextRemaining = currentRemaining - const Duration(seconds: 1);
+        if (nextRemaining <= Duration.zero) {
+          _handleForegroundSearchNoticeDue();
+          return;
+        }
+        if (mounted && _searchState == StudentDashboardSearchState.searching) {
+          safeSetState(() {
+            _foregroundSearchCountdownRemaining = nextRemaining;
+          });
+        }
+      },
+    );
+    _foregroundSearchNoticeTimer = Timer(
+      remaining,
+      _handleForegroundSearchNoticeDue,
+    );
+    if (mounted) {
+      safeSetState(() {});
+    }
+  }
+
+  void _handleForegroundSearchNoticeDue() {
+    _foregroundSearchNoticeTimer?.cancel();
+    _foregroundSearchNoticeTimer = null;
+    _foregroundSearchCountdownTimer?.cancel();
+    _foregroundSearchCountdownTimer = null;
+    if (_searchState != StudentDashboardSearchState.searching) {
+      _foregroundSearchCountdownRemaining = null;
+      return;
+    }
+
+    _foregroundSearchCountdownRemaining = null;
+    _foregroundSearchNoticePending = true;
+    if (mounted) {
+      safeSetState(() {});
+    }
+    _showForegroundSearchNoticeIfNeeded();
+  }
+
+  void _showForegroundSearchNoticeIfNeeded() {
+    if (!mounted ||
+        _foregroundSearchNoticeShown ||
+        !_foregroundSearchNoticePending ||
+        _searchAppState != 'foreground' ||
+        _searchState != StudentDashboardSearchState.searching) {
+      return;
+    }
+
+    _foregroundSearchNoticeShown = true;
+    _foregroundSearchNoticePending = false;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        content: Text(
+          FFLocalizations.of(context).getVariableText(
+            ruText:
+                'Все собеседники заняты. Вы можете свернуть приложение, мы уведомим вас.',
+            enText:
+                'All partners are busy. You can minimize the app and we will notify you.',
+          ),
+        ),
+      ),
+    );
+  }
+
+  String? _foregroundSearchCountdownText() {
+    final remaining = _foregroundSearchCountdownRemaining;
+    if (remaining == null ||
+        _searchState != StudentDashboardSearchState.searching) {
+      return null;
+    }
+    final totalSeconds = remaining.inSeconds.clamp(0, 99 * 60 + 59).toInt();
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
   void _clearSearchHeartbeatTimer() {
     _searchHeartbeatTimer?.cancel();
     _searchHeartbeatTimer = null;
@@ -378,6 +489,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
 
   void _setSearchError(StudentDashboardSearchErrorReason reason) {
     _clearSearchTimeoutTimer();
+    _clearForegroundSearchNoticeTimer();
     _clearSearchHeartbeatTimer();
     safeSetState(() {
       _searchState = StudentDashboardSearchState.error;
@@ -389,7 +501,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
   }
 
   void _startSearchTimeoutTimer([
-    Duration duration = const Duration(minutes: 10),
+    Duration duration = StudentsDashboardWidget.searchDuration,
     String? activeSearchRequestId,
   ]) {
     _clearSearchTimeoutTimer();
@@ -397,6 +509,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       if (mounted && _searchState == StudentDashboardSearchState.searching) {
         final expiredRequestId =
             activeSearchRequestId ?? _activeSearchRequestId;
+        _clearForegroundSearchNoticeTimer();
         _clearSearchHeartbeatTimer();
         safeSetState(() {
           _searchState = StudentDashboardSearchState.noMatchFound;
@@ -415,6 +528,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       }
 
       final expiredRequestId = activeSearchRequestId ?? _activeSearchRequestId;
+      _clearForegroundSearchNoticeTimer();
       _clearSearchHeartbeatTimer();
       safeSetState(() {
         _searchState = StudentDashboardSearchState.noMatchFound;
@@ -636,6 +750,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
 
         _clearActiveSearchRecoveryRetryTimer();
         _clearSearchTimeoutTimer();
+        _clearForegroundSearchNoticeTimer();
         _clearSearchHeartbeatTimer();
         safeSetState(() {
           _searchState = StudentDashboardSearchState.connecting;
@@ -682,6 +797,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     final remainingSearchDuration = state.remainingSearchDuration();
     _clearActiveSearchRecoveryRetryTimer();
     _clearSearchTimeoutTimer();
+    _clearForegroundSearchNoticeTimer();
     _clearSearchHeartbeatTimer();
     safeSetState(() {
       _searchState = StudentDashboardSearchState.searching;
@@ -697,6 +813,15 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       return;
     }
     _startSearchTimeoutTimer(remainingSearchDuration);
+    final elapsedSearchDuration =
+        StudentsDashboardWidget.searchDuration - remainingSearchDuration;
+    _startForegroundSearchNoticeTimer(
+      elapsed: elapsedSearchDuration.isNegative
+          ? Duration.zero
+          : elapsedSearchDuration > StudentsDashboardWidget.searchDuration
+              ? StudentsDashboardWidget.searchDuration
+              : elapsedSearchDuration,
+    );
     final protocolV2 = _responseInt(state.data, 'matchProtocolVersion') >=
         matchProtocolVersion;
     _startSearchHeartbeatTimer(requestId, protocolV2: protocolV2);
@@ -931,6 +1056,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
 
     _searchAppState = nextSearchAppState;
     _sendLifecycleSearchHeartbeat();
+    _showForegroundSearchNoticeIfNeeded();
     if (mounted) {
       safeSetState(() {});
     }
@@ -1044,6 +1170,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       }
 
       _clearSearchTimeoutTimer();
+      _clearForegroundSearchNoticeTimer();
       _clearSearchHeartbeatTimer();
       _clearActiveSearchRecoveryRetryTimer();
       safeSetState(() {
@@ -1118,6 +1245,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     final sessionId = session?.reference.id;
     if (_isActiveCallSession(session)) {
       _clearSearchTimeoutTimer();
+      _clearForegroundSearchNoticeTimer();
       _clearSearchHeartbeatTimer();
       _recoveredConnectionSessionId = null;
       if (_searchState == StudentDashboardSearchState.searching ||
@@ -1159,6 +1287,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
               _searchState == StudentDashboardSearchState.noMatchFound;
       if (pairFound && staleLocalResult) {
         _clearSearchTimeoutTimer();
+        _clearForegroundSearchNoticeTimer();
         _clearSearchHeartbeatTimer();
         _searchState = StudentDashboardSearchState.idle;
       }
@@ -2211,6 +2340,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
 
     _foregroundAcceptStartedSessionIds.add(sessionId);
     _clearSearchTimeoutTimer();
+    _clearForegroundSearchNoticeTimer();
     _clearSearchHeartbeatTimer();
     unawaited(_acceptForegroundStudentSession(sessionId));
   }
@@ -2271,6 +2401,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
 
     _autoOpenedSessionId = sessionId;
     _clearSearchTimeoutTimer();
+    _clearForegroundSearchNoticeTimer();
     _clearSearchHeartbeatTimer();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _autoOpenedSessionId != sessionId) {
@@ -2550,6 +2681,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
         _ignoreStartSearchUntilNextFrame = true;
       });
       _clearSearchTimeoutTimer();
+      _clearForegroundSearchNoticeTimer();
       _clearSearchHeartbeatTimer();
       if (!shouldSuppressLateStartResult || canStopImmediately) {
         unawaited(_stopActiveSearchRequest(
@@ -2589,6 +2721,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       _suppressedActiveSearchUserId = null;
     });
     _clearSearchTimeoutTimer();
+    _clearForegroundSearchNoticeTimer();
 
     var startSearchRequestSent = false;
     var startSearchResponseReceived = false;
@@ -2653,6 +2786,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       });
       if (nextSearchState == StudentDashboardSearchState.searching) {
         _startSearchTimeoutTimer();
+        _startForegroundSearchNoticeTimer();
         final protocolV2 =
             _responseInt(startSearchData, 'matchProtocolVersion') >=
                 matchProtocolVersion;
@@ -2662,6 +2796,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
         }
       } else {
         _clearSearchTimeoutTimer();
+        _clearForegroundSearchNoticeTimer();
         _clearSearchHeartbeatTimer();
       }
     } on Exception catch (error, stackTrace) {
@@ -2777,6 +2912,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       StudentDashboardSearchState.idle => '',
     };
     final showProgress = _isStopSearchState(searchState);
+    final countdown = _foregroundSearchCountdownText();
 
     return Padding(
       padding: const EdgeInsets.only(top: ExpatlioDesign.itemSpacing),
@@ -2800,38 +2936,58 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
               horizontal: ExpatlioDesign.space12,
               vertical: ExpatlioDesign.space8,
             ),
-            child: Row(
+            child: Column(
               mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                if (showProgress) ...[
-                  SizedBox(
-                    width: 16.0,
-                    height: 16.0,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.0,
-                      color: ExpatlioDesign.primary,
-                      backgroundColor:
-                          ExpatlioDesign.primary.withValues(alpha: 0.12),
-                    ),
-                  ),
-                  const SizedBox(width: ExpatlioDesign.space8),
-                ],
-                Flexible(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      style: ExpatlioDesign.textStyle(
-                        context,
-                        color: ExpatlioDesign.text,
-                        size: 14.0,
-                        weight: FontWeight.w600,
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (showProgress) ...[
+                      SizedBox(
+                        width: 16.0,
+                        height: 16.0,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.0,
+                          color: ExpatlioDesign.primary,
+                          backgroundColor:
+                              ExpatlioDesign.primary.withValues(alpha: 0.12),
+                        ),
+                      ),
+                      const SizedBox(width: ExpatlioDesign.space8),
+                    ],
+                    Flexible(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          label,
+                          maxLines: 1,
+                          style: ExpatlioDesign.textStyle(
+                            context,
+                            color: ExpatlioDesign.text,
+                            size: 14.0,
+                            weight: FontWeight.w600,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
+                  ],
                 ),
+                if (countdown != null) ...[
+                  const SizedBox(height: ExpatlioDesign.space4),
+                  Text(
+                    FFLocalizations.of(context).getVariableText(
+                      ruText: 'Осталось $countdown',
+                      enText: '$countdown remaining',
+                    ),
+                    style: ExpatlioDesign.textStyle(
+                      context,
+                      color: ExpatlioDesign.muted,
+                      size: 12.0,
+                      weight: FontWeight.w500,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -3125,6 +3281,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _clearSearchTimeoutTimer();
+    _clearForegroundSearchNoticeTimer();
     _clearSearchHeartbeatTimer();
     _clearActiveSearchRecoveryRetryTimer();
     _model.dispose();
