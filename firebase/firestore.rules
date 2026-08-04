@@ -54,7 +54,10 @@ service cloud.firestore {
         'eventChats',
         'eventReports',
         'chatMessageReports',
-        'searchRequests'
+        'searchRequests',
+        'translationCache',
+        'translationRateLimits',
+        'aiFeedbackRateLimits'
       ];
     }
 
@@ -1347,6 +1350,29 @@ service cloud.firestore {
           );
         allow delete: if false;
       }
+
+      match /aiFeedback/{feedbackUserId} {
+        allow get: if isSelf(feedbackUserId) &&
+          isSessionParticipant(videoSessionData(sessionId));
+        allow list, create, update, delete: if false;
+      }
+    }
+
+    match /translationCache/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /translationRateLimits/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /aiFeedbackRateLimits/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /users/{userId}/translationLookups/{lookupId} {
+      allow get, list: if isSelf(userId);
+      allow create, update, delete: if false;
     }
 
     match /conversationUnlockEvents/{sessionId} {

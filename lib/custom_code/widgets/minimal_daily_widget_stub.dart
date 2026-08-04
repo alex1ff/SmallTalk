@@ -20,6 +20,7 @@ class MinimalDailyWidget extends StatelessWidget {
     this.enableDeepgram = true,
     required this.deepgramLanguage,
     this.actionCallback,
+    this.translationCallback,
     this.endCallCallback,
     this.username,
     this.participantLeftCallback,
@@ -44,6 +45,7 @@ class MinimalDailyWidget extends StatelessWidget {
   final String deepgramLanguage;
   final Future Function(String word, String sentence, String contextText)?
       actionCallback;
+  final Future<void> Function()? translationCallback;
   final Future<void> Function(String? endReason)? endCallCallback;
   final String? username;
   final Future Function()? participantLeftCallback;

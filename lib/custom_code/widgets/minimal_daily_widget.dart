@@ -373,6 +373,7 @@ class MinimalDailyWidget extends StatefulWidget {
     this.enableDeepgram = true,
     required this.deepgramLanguage,
     this.actionCallback,
+    this.translationCallback,
     this.endCallCallback,
     this.username,
     this.participantLeftCallback,
@@ -398,6 +399,7 @@ class MinimalDailyWidget extends StatefulWidget {
   final String deepgramLanguage;
   final Future Function(String word, String sentence, String contextText)?
       actionCallback;
+  final Future<void> Function()? translationCallback;
   final Future<void> Function(String? endReason)? endCallCallback;
   final String? username;
   final Future Function()? participantLeftCallback;
@@ -5207,6 +5209,16 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
           isEndCall: false,
           badgeCount: _state.unreadChatCount,
         ),
+        if (widget.translationCallback != null)
+          _buildControlButton(
+            icon: Icons.translate_rounded,
+            isActive: true,
+            tooltip: 'Быстрый перевод',
+            semanticLabel: 'Открыть быстрый перевод',
+            semanticHint: 'Переводит слово или фразу во время звонка',
+            onPressed: () => unawaited(widget.translationCallback!.call()),
+            isEndCall: false,
+          ),
         _buildControlButton(
           icon: Icons.call_end,
           isActive: true,

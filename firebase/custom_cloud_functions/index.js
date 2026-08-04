@@ -50,6 +50,16 @@ const dailyWebhook = require("./daily_webhook.js");
 exports.dailyWebhook = dailyWebhook.dailyWebhook;
 const getDeepgramToken = require("./get_deepgram_token.js");
 exports.getDeepgramToken = getDeepgramToken.getDeepgramToken;
+const translateTerm = require("./translate_term.js");
+exports.translateTerm = translateTerm.translateTerm;
+exports.saveTranslatedTerm = translateTerm.saveTranslatedTerm;
+const callFeedback = require("./call_feedback.js");
+exports.generateCallFeedback = callFeedback.generateCallFeedback;
+const cleanupUserCallIntegrations = require(
+  "./cleanup_user_call_integrations.js",
+);
+exports.cleanupUserCallIntegrationsOnDelete =
+  cleanupUserCallIntegrations.cleanupUserCallIntegrationsOnDelete;
 const registerVoipToken = require("./register_voip_token.js");
 exports.registerVoipToken = registerVoipToken.registerVoipToken;
 const legacyVoipTokenMigration = require("./migrate_legacy_voip_tokens.js");

@@ -37,6 +37,10 @@ function deployedFunction({
     fn.eventTrigger = {
       eventType: "providers/cloud.firestore/eventTypes/document.write",
     };
+  } else if (trigger === "auth") {
+    fn.eventTrigger = {
+      eventType: "providers/firebase.auth/eventTypes/user.delete",
+    };
   }
 
   return fn;
@@ -46,7 +50,9 @@ function completeDeployment() {
   return REQUIRED_FUNCTIONS.map((required) => deployedFunction({
     id: required.id,
     trigger: required.trigger,
+    codebase: required.codebase || "custom_cloud_functions",
     secrets: required.secrets || [],
+    environmentVariables: {...(required.environment || {})},
   }));
 }
 
@@ -90,6 +96,10 @@ test("deployment readiness fails missing critical functions", () => {
   assert.ok(missingIds.includes("submitReview"));
   assert.ok(missingIds.includes("getEventHistory"));
   assert.ok(missingIds.includes("getCallHistory"));
+  assert.ok(missingIds.includes("translateTerm"));
+  assert.ok(missingIds.includes("saveTranslatedTerm"));
+  assert.ok(missingIds.includes("generateCallFeedback"));
+  assert.ok(missingIds.includes("cleanupUserCallIntegrationsOnDelete"));
 });
 
 test("deployment readiness requires core call runtime exports", () => {
@@ -220,6 +230,82 @@ test("deployment readiness exposes call history callable", () => {
   assert.ok(functionIds.has("getCallHistory"));
   assert.match(indexSource, /exports\.getCallHistory\b/);
   assert.match(deployScript, /functions:custom_cloud_functions:getCallHistory\b/);
+});
+
+test("deployment readiness exposes translation and feedback callables", () => {
+  const functionIds = new Set(REQUIRED_FUNCTIONS.map((item) => item.id));
+  const indexSource = fs.readFileSync(
+    path.join(__dirname, "index.js"),
+    "utf8",
+  );
+  const packageJson = JSON.parse(fs.readFileSync(
+    path.join(__dirname, "package.json"),
+    "utf8",
+  ));
+  const deployScript = packageJson.scripts["deploy:readiness-functions"];
+  const focusedDeployScript = packageJson.scripts["deploy:call-integrations"];
+  const firestoreIndexes = JSON.parse(fs.readFileSync(
+    path.join(__dirname, "..", "firestore.indexes.json"),
+    "utf8",
+  ));
+  const hasCaptionFeedbackIndex = firestoreIndexes.indexes.some((index) =>
+    index.collectionGroup === "captionLogs" &&
+      index.queryScope === "COLLECTION" &&
+      JSON.stringify(index.fields) === JSON.stringify([
+        {fieldPath: "speakerId", order: "ASCENDING"},
+        {fieldPath: "writerId", order: "ASCENDING"},
+        {fieldPath: "source", order: "ASCENDING"},
+        {fieldPath: "createdAtServer", order: "DESCENDING"},
+      ]),
+  );
+  const ttlCollectionGroups = new Set(
+    firestoreIndexes.fieldOverrides
+      .filter((override) =>
+        override.fieldPath === "expiresAt" && override.ttl === true,
+      )
+      .map((override) => override.collectionGroup),
+  );
+
+  for (const id of [
+    "translateTerm",
+    "saveTranslatedTerm",
+    "generateCallFeedback",
+    "cleanupUserCallIntegrationsOnDelete",
+  ]) {
+    assert.ok(functionIds.has(id));
+    assert.match(indexSource, new RegExp(`exports\\.${id}\\b`));
+    assert.match(
+      deployScript,
+      new RegExp(`functions:custom_cloud_functions:${id}\\b`),
+    );
+    assert.match(
+      focusedDeployScript,
+      new RegExp(`functions:custom_cloud_functions:${id}\\b`),
+    );
+  }
+  assert.match(focusedDeployScript, /firestore:rules,firestore:indexes,/);
+  assert.equal(hasCaptionFeedbackIndex, true);
+  for (const collectionGroup of [
+    "aiFeedback",
+    "aiFeedbackRateLimits",
+    "translationCache",
+    "translationRateLimits",
+  ]) {
+    assert.ok(ttlCollectionGroups.has(collectionGroup));
+  }
+});
+
+test("deployment readiness requires production integration flags", () => {
+  const functionsList = completeDeployment();
+  const feedback = functionsList.find((fn) => fn.id === "generateCallFeedback");
+  delete feedback.environmentVariables.ENABLE_CALL_FEEDBACK;
+
+  const report = analyzeFunctionsDeployment(functionsList);
+  assert.equal(report.ok, false);
+  assert.ok(report.failures.some((failure) =>
+    failure.id === "generateCallFeedback" &&
+      failure.reason === "missing_required_environment",
+  ));
 });
 
 test("deployment readiness exposes startSearch queue callable", () => {

@@ -10,6 +10,7 @@ const DEEPGRAM_SECRETS = ["DEEPGRAM_API_KEY"];
 const REQUIRED_DEPLOY_TARGETS = ["firestore:rules", "firestore:indexes"];
 
 const REQUIRED_FUNCTIONS = [
+  {id: "cleanupUserCallIntegrationsOnDelete", trigger: "auth"},
   {
     id: "createVideoSession",
     trigger: "callable",
@@ -77,6 +78,21 @@ const REQUIRED_FUNCTIONS = [
     id: "getDeepgramToken",
     trigger: "callable",
     secrets: DEEPGRAM_SECRETS,
+  },
+  {
+    id: "translateTerm",
+    trigger: "callable",
+    environment: {ENABLE_CALL_TRANSLATION: "true"},
+  },
+  {
+    id: "saveTranslatedTerm",
+    trigger: "callable",
+    environment: {ENABLE_CALL_TRANSLATION: "true"},
+  },
+  {
+    id: "generateCallFeedback",
+    trigger: "callable",
+    environment: {ENABLE_CALL_FEEDBACK: "true"},
   },
   {id: "requestSessionExtension", trigger: "callable"},
   {id: "persistCallChat", trigger: "callable"},
@@ -208,6 +224,10 @@ function hasTrigger(fn = {}, expectedTrigger) {
     return Boolean(fn.eventTrigger) &&
       String(fn.eventTrigger.eventType || "").includes("firestore");
   }
+  if (expectedTrigger === "auth") {
+    return Boolean(fn.eventTrigger) &&
+      String(fn.eventTrigger.eventType || "").includes("user.delete");
+  }
   return true;
 }
 
@@ -249,7 +269,8 @@ function analyzeFunctionsDeployment(functionsList, {
       });
     }
 
-    if (deployed.codebase !== "custom_cloud_functions") {
+    const expectedCodebase = required.codebase || "custom_cloud_functions";
+    if (deployed.codebase !== expectedCodebase) {
       failures.push({
         id: required.id,
         reason: "wrong_codebase",
@@ -272,6 +293,19 @@ function analyzeFunctionsDeployment(functionsList, {
           id: required.id,
           reason: "missing_secret_binding",
           message: `${required.id} is missing ${secretKey} secret binding`,
+        });
+      }
+    }
+
+    const environment = deployed.environmentVariables || {};
+    for (const [key, expectedValue] of Object.entries(
+      required.environment || {},
+    )) {
+      if (String(environment[key] || "") !== expectedValue) {
+        failures.push({
+          id: required.id,
+          reason: "missing_required_environment",
+          message: `${required.id} requires ${key}=${expectedValue}`,
         });
       }
     }

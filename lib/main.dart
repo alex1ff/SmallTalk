@@ -19,6 +19,7 @@ import 'shared_pages/design/expatlio_design.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'services/voip_service.dart';
 import 'services/match_coordinator.dart';
+import 'services/firebase_app_check_service.dart';
 import 'services/user_presence_service.dart';
 import 'custom_code/actions/check_active_session_and_navigate.dart' as actions;
 import 'shared_pages/video_call_page/video_call_page_widget.dart';
@@ -79,6 +80,7 @@ void main() async {
   debugPrint('🔔 VoIP background handler registered');
 
   await initFirebase();
+  await initializeFirebaseAppCheck();
 
   // 💳 Configure RevenueCat as soon as Firebase is up. Safe to ignore
   // failure: the service degrades gracefully and the auth stream

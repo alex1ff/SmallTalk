@@ -735,6 +735,28 @@
       ]
     },
     {
+      "collectionGroup": "captionLogs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "speakerId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "writerId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "source",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAtServer",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "words",
       "queryScope": "COLLECTION",
       "fields": [
@@ -750,6 +772,30 @@
     }
   ],
   "fieldOverrides": [
+    {
+      "collectionGroup": "aiFeedback",
+      "fieldPath": "expiresAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "translationCache",
+      "fieldPath": "expiresAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "translationRateLimits",
+      "fieldPath": "expiresAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "aiFeedbackRateLimits",
+      "fieldPath": "expiresAt",
+      "ttl": true,
+      "indexes": []
+    },
     {
       "collectionGroup": "fcm_tokens",
       "fieldPath": "fcm_token",

@@ -8,6 +8,7 @@ import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
+import 'call_feedback_card.dart';
 import '/index.dart';
 import '/services/user_match_profile.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -870,6 +871,14 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                   ],
                                   const SizedBox(
                                       height: ExpatlioDesign.space20),
+                                  if (widget.sessionID != null) ...[
+                                    CallFeedbackCard(
+                                      sessionRef: widget.sessionID!,
+                                    ),
+                                    const SizedBox(
+                                      height: ExpatlioDesign.space20,
+                                    ),
+                                  ],
                                   _buildReviewSection(context),
                                 ],
                               ),

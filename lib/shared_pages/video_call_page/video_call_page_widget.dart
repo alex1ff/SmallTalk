@@ -10,6 +10,7 @@ import '/custom_code/widgets/session_limit_ui.dart' as session_limit_ui;
 import '/flutter_flow/custom_functions.dart' as functions;
 import '/index.dart';
 import '/shared_pages/learning/caption_word_flow.dart';
+import '/shared_pages/translation/in_call_translation_sheet.dart';
 import '/shared_pages/review_flow/review_submission_helper.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
@@ -756,6 +757,20 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                           );
                         },
                       ).then((value) => safeSetState(() {}));
+                    },
+                    translationCallback: () async {
+                      final sessionId = widget.videoDocRef?.id.trim();
+                      if (sessionId == null || sessionId.isEmpty) return;
+                      await showModalBottomSheet<void>(
+                        isScrollControlled: true,
+                        useSafeArea: true,
+                        backgroundColor: Colors.transparent,
+                        context: context,
+                        builder: (context) => InCallTranslationSheet(
+                          sessionId: sessionId,
+                          practicedLanguageCode: resolvedLanguage,
+                        ),
+                      );
                     },
                     endCallCallback: (endReason) async {
                       await _openSummaryAfterCallCallback(

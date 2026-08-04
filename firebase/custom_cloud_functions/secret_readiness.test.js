@@ -212,9 +212,10 @@ test("package deploy script is scoped to readiness-gate functions", () => {
   assert.match(deployScript, /--config \.\.\/firebase\.json/);
   assert.doesNotMatch(deployScript, /--only functions( |$)/);
   for (const required of REQUIRED_FUNCTIONS) {
+    const codebase = required.codebase || "custom_cloud_functions";
     assert.match(
       deployScript,
-      new RegExp(`functions:custom_cloud_functions:${required.id}(,|$)`),
+      new RegExp(`functions:${codebase}:${required.id}(,|$)`),
     );
   }
 });
