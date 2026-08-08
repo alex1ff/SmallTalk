@@ -20,7 +20,7 @@ The first application version originated in FlutterFlow. FlutterFlow export is n
 - Product services, Firebase integrations, custom media code, rules, Cloud Functions, and tests are actively maintained in Git.
 - Archived rollback copies are stored as text under `audit/snapshots/`, outside analyzed production source.
 
-The project does not claim that generated code is hand-written. Quality is established by explicit boundaries, reviewable changes, static analysis, backend policy tests, and reproducible CI.
+The project does not claim that generated code is hand-written. Quality is established by explicit boundaries, reviewable changes, static analysis, backend policy tests, and a reproducible local release gate.
 
 ## Local setup
 
@@ -35,7 +35,7 @@ flutter analyze
 flutter test
 ```
 
-The reproducible backend CI checks use repository-pinned dependencies:
+The backend checks use repository-pinned dependencies:
 
 ```bash
 npm ci --prefix firebase/functions
@@ -72,11 +72,12 @@ EMAIL_REPLY_TO  # optional
 
 Other external integrations follow the same rule: identifiers may be versioned when safe; credentials never are.
 
-## CI quality gate
+## Local quality gate
 
-GitHub Actions runs two independent jobs from a clean checkout:
+Run the complete release check from a clean checkout:
 
-1. pinned Flutter analysis and the complete Flutter test suite;
-2. pinned Node dependencies, backend syntax validation, and 215 event-contract tests.
+```bash
+./scripts/local_ci.sh
+```
 
-Both jobs must pass before `main` is considered releasable.
+It installs locked Flutter and Node dependencies, runs static analysis, the complete Flutter suite, backend syntax validation, and 215 event-contract tests. The command must pass before `main` is considered releasable.
