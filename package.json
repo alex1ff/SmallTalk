@@ -6,6 +6,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "backend:ci": "bash audit/scripts/run_backend_ci_checks.sh",
     "backend:checks": "bash audit/scripts/run_backend_checks.sh"
   },
   "devDependencies": {

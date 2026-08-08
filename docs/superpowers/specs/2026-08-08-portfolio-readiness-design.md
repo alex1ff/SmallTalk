@@ -14,7 +14,7 @@ FlutterFlow exports are retired. The GitHub codebase is now authoritative. The l
 - Replace the generic README with product scope, architecture, ownership boundaries, local setup, backend setup, and verification commands.
 - State clearly which areas originated from FlutterFlow and which layers contain maintained application, backend, security, VoIP, matchmaking, translation, and test code.
 - Ensure production custom code is analyzed; remove or isolate stale backup/snapshot sources instead of broadly excluding maintained code.
-- Add GitHub Actions jobs pinned to Flutter 3.35.3 / Dart 3.9.2 for Flutter analysis/tests and Firebase backend checks.
+- Add GitHub Actions jobs pinned to Flutter 3.35.3 / Dart 3.9.2 for Flutter analysis/tests and deterministic backend contract checks.
 - Improve repository description and topics while preserving private visibility.
 
 ## Non-goals
@@ -29,9 +29,12 @@ FlutterFlow exports are retired. The GitHub codebase is now authoritative. The l
 - `flutter analyze`
 - `flutter test`
 - Preserve Flutter test discovery: the full suite must report at least the current baseline of 1,972 passing tests.
-- `npm ci`
-- `npm run backend:checks`
+- `npm ci --prefix firebase/functions`
+- `npm ci --prefix firebase/custom_cloud_functions`
+- `npm run backend:ci`
 - Both CI jobs pass from a clean checkout.
+
+The broader emulator-backed `backend:checks` harness is retained as diagnostic evidence rather than a release gate: its checked-in baseline already contains environment-dependent failures, so treating it as green CI would be misleading.
 
 ## Publishing
 
