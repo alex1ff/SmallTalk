@@ -9,4 +9,6 @@ flutter test
 
 npm ci --prefix firebase/functions
 npm ci --prefix firebase/custom_cloud_functions
+npm audit --prefix firebase/functions --omit=dev --audit-level=high
+npm audit --prefix firebase/custom_cloud_functions --omit=dev --audit-level=high
 npm run backend:ci

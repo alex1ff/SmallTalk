@@ -80,4 +80,4 @@ Run the complete release check from a clean checkout:
 ./scripts/local_ci.sh
 ```
 
-It installs locked Flutter and Node dependencies, runs static analysis, the complete Flutter suite, backend syntax validation, and 215 event-contract tests. The command must pass before `main` is considered releasable.
+It installs locked Flutter and Node dependencies, audits runtime packages for high-severity advisories, runs static analysis, the complete Flutter suite, backend syntax validation, and 215 event-contract tests. The command must pass before `main` is considered releasable.
