@@ -7,6 +7,10 @@ const DEFAULT_PROJECT_ID = "smalltalk-2109b";
 const APNS_SECRETS = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const DAILY_SECRETS = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 const DEEPGRAM_SECRETS = ["DEEPGRAM_API_KEY"];
+const IOS_PUSH_ENVIRONMENT = {
+  IOS_BUNDLE_ID: "com.appwave.expatlio",
+  IOS_VOIP_TOPIC: "com.appwave.expatlio.voip",
+};
 const REQUIRED_DEPLOY_TARGETS = ["firestore:rules", "firestore:indexes"];
 
 const REQUIRED_FUNCTIONS = [
@@ -15,42 +19,54 @@ const REQUIRED_FUNCTIONS = [
     id: "createVideoSession",
     trigger: "callable",
     secrets: [...APNS_SECRETS, ...DAILY_SECRETS],
+    environment: IOS_PUSH_ENVIRONMENT,
   },
   {
     id: "acceptCall",
     trigger: "callable",
     secrets: [...APNS_SECRETS, ...DAILY_SECRETS],
+    environment: IOS_PUSH_ENVIRONMENT,
   },
   {
     id: "declineCall",
     trigger: "callable",
     secrets: [...APNS_SECRETS, ...DAILY_SECRETS],
+    environment: IOS_PUSH_ENVIRONMENT,
   },
   {
     id: "cancelCall",
     trigger: "callable",
     secrets: DAILY_SECRETS,
   },
-  {id: "startSearch", trigger: "callable", secrets: APNS_SECRETS},
+  {
+    id: "startSearch",
+    trigger: "callable",
+    secrets: APNS_SECRETS,
+    environment: IOS_PUSH_ENVIRONMENT,
+  },
   {
     id: "respondToMatch",
     trigger: "callable",
     secrets: [...APNS_SECRETS, ...DAILY_SECRETS],
+    environment: IOS_PUSH_ENVIRONMENT,
   },
   {
     id: "processMatchProtocolV2State",
     trigger: "firestore",
     secrets: [...APNS_SECRETS, ...DAILY_SECRETS],
+    environment: IOS_PUSH_ENVIRONMENT,
   },
   {
     id: "recoverMatchProtocolV2State",
     trigger: "scheduled",
     secrets: [...APNS_SECRETS, ...DAILY_SECRETS],
+    environment: IOS_PUSH_ENVIRONMENT,
   },
   {
     id: "stopSearch",
     trigger: "callable",
-    secrets: DAILY_SECRETS,
+    secrets: [...APNS_SECRETS, ...DAILY_SECRETS],
+    environment: IOS_PUSH_ENVIRONMENT,
   },
   {id: "heartbeatSearch", trigger: "callable"},
   {id: "cleanupStaleSearchRequests", trigger: "scheduled"},
@@ -58,16 +74,19 @@ const REQUIRED_FUNCTIONS = [
     id: "endSession",
     trigger: "callable",
     secrets: [...APNS_SECRETS, ...DAILY_SECRETS],
+    environment: IOS_PUSH_ENVIRONMENT,
   },
   {
     id: "cleanupExpiredSessions",
     trigger: "scheduled",
     secrets: [...APNS_SECRETS, ...DAILY_SECRETS],
+    environment: IOS_PUSH_ENVIRONMENT,
   },
   {
     id: "processExpiredNotifications",
     trigger: "scheduled",
     secrets: [...APNS_SECRETS, ...DAILY_SECRETS],
+    environment: IOS_PUSH_ENVIRONMENT,
   },
   {
     id: "getSessionTokens",

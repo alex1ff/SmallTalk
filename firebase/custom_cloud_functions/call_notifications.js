@@ -443,7 +443,7 @@ function buildTeacherIncomingCallApnsPayload(callData = {}) {
 function buildTeacherIncomingCallFcmMessage({
   token,
   callData = {},
-  bundleId = "com.appwave.smalltalk",
+  bundleId = "com.appwave.expatlio",
 } = {}) {
   const data = buildTeacherIncomingCallPushData(callData);
   return {

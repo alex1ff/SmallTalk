@@ -769,7 +769,7 @@ function buildStudentPairResponderPushPayload(callData = {}) {
 function buildStudentPairResponderFcmMessage({
   fcmToken = "",
   payload = {},
-  bundleId = "com.appwave.smalltalk",
+  bundleId = "com.appwave.expatlio",
 } = {}) {
   return {
     token: normalizeString(fcmToken),
@@ -2463,7 +2463,7 @@ async function sendVoipPushToStudentResponder(
   const apnsExpiration = Number.isFinite(callExpiresAtMillis) ?
     Math.floor(callExpiresAtMillis / 1000) :
     null;
-  const bundleId = process.env.IOS_BUNDLE_ID || "com.appwave.smalltalk";
+  const bundleId = process.env.IOS_BUNDLE_ID || "com.appwave.expatlio";
   const voipTopic =
     process.env.IOS_VOIP_TOPIC ||
     (bundleId.endsWith(".voip") ? bundleId : `${bundleId}.voip`);

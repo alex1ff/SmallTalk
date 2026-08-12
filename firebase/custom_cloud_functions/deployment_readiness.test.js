@@ -308,6 +308,20 @@ test("deployment readiness requires production integration flags", () => {
   ));
 });
 
+test("deployment readiness requires Expatlio APNs topics", () => {
+  const functionsList = completeDeployment();
+  const startSearch = functionsList.find((fn) => fn.id === "startSearch");
+  startSearch.environmentVariables.IOS_BUNDLE_ID = "com.appwave.smalltalk";
+  delete startSearch.environmentVariables.IOS_VOIP_TOPIC;
+
+  const report = analyzeFunctionsDeployment(functionsList);
+  assert.equal(report.ok, false);
+  assert.ok(report.failures.some((failure) =>
+    failure.id === "startSearch" &&
+      failure.reason === "missing_required_environment",
+  ));
+});
+
 test("deployment readiness exposes startSearch queue callable", () => {
   const functionIds = new Set(REQUIRED_FUNCTIONS.map((item) => item.id));
   const readinessEntry = REQUIRED_FUNCTIONS.find(

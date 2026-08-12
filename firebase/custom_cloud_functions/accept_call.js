@@ -1265,7 +1265,7 @@ async function sendVoipPushToStudent(studentId, callData) {
     }
 
     const studentData = studentDoc.data();
-    const bundleId = process.env.IOS_BUNDLE_ID || "com.appwave.smalltalk";
+    const bundleId = process.env.IOS_BUNDLE_ID || "com.appwave.expatlio";
     const voipTopic =
       process.env.IOS_VOIP_TOPIC ||
       (bundleId.endsWith(".voip") ? bundleId : `${bundleId}.voip`);

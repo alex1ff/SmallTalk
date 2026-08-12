@@ -370,7 +370,10 @@ test("student dashboard partner count reads public profiles", () => {
   );
   assert.match(nativeSpeakerSource, /httpsCallable\('getDirectCallStatus'\)/);
   assert.match(nativeSpeakerSource, /_ensureDirectCallStatus/);
-  assert.match(nativeSpeakerSource, /canStartCall\(currentUserDocument\)/);
+  assert.match(
+    nativeSpeakerSource,
+    /canStartCall\(_currentOwnerDocument\(ownerUid\)\)/,
+  );
   assert.doesNotMatch(
     nativeSpeakerSource,
     /UsersRecord\.getDocument\(widget\.nsUserDocRef!\)/,
