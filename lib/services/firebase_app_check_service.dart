@@ -32,7 +32,7 @@ Future<void> initializeFirebaseAppCheck() async {
           kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
       appleProvider: kDebugMode
           ? AppleProvider.debug
-          : AppleProvider.appAttestWithDeviceCheckFallback,
+          : AppleProvider.deviceCheck,
     );
   } catch (error) {
     debugPrint('Firebase App Check activation failed: $error');
