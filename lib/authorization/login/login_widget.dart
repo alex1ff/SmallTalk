@@ -1,6 +1,7 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/components/native_speaker_entry_toggle.dart';
 import '/authorization/shared/social_auth_entry_logic.dart';
+import '/authorization/shared/social_auth_progress_overlay.dart';
 import '/components/button/button_widget.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/custom_code/actions/index.dart' as actions;
@@ -27,6 +28,33 @@ class _LoginWidgetState extends State<LoginWidget> {
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
   bool _isSubmittingSocialAuth = false;
+  OverlayEntry? _socialAuthProgressEntry;
+
+  void _showSocialAuthProgress() {
+    final entry = OverlayEntry(
+      builder: (context) => Positioned.fill(
+        child: SocialAuthProgressOverlay(
+          title: FFLocalizations.of(context).getVariableText(
+            ruText: 'Завершаем вход…',
+            enText: 'Finishing sign-in…',
+          ),
+          message: FFLocalizations.of(context).getVariableText(
+            ruText: 'Загружаем ваш профиль. Это займет несколько секунд.',
+            enText: 'Loading your profile. This may take a few seconds.',
+          ),
+        ),
+      ),
+    );
+    Overlay.of(context, rootOverlay: true).insert(entry);
+    _socialAuthProgressEntry = entry;
+  }
+
+  void _hideSocialAuthProgress() {
+    final entry = _socialAuthProgressEntry;
+    _socialAuthProgressEntry = null;
+    entry?.remove();
+    entry?.dispose();
+  }
 
   Future<void> _handleSocialAuth({
     required Future<BaseAuthUser?> Function() signInAction,
@@ -37,7 +65,9 @@ class _LoginWidgetState extends State<LoginWidget> {
     }
 
     _isSubmittingSocialAuth = true;
+    var navigationStarted = false;
     try {
+      _showSocialAuthProgress();
       beginPendingSocialAuthContext(
         providerId: providerId,
         sourceScreen: LoginWidget.routeName,
@@ -93,6 +123,7 @@ class _LoginWidgetState extends State<LoginWidget> {
       switch (decision.destination) {
         case SocialAuthEntryDestination.loading:
           context.goNamedAuth(LoadingWidget.routeName, context.mounted);
+          navigationStarted = true;
           return;
         case SocialAuthEntryDestination.acquaintanceNativeSpeaker:
           context.goNamedAuth(
@@ -102,6 +133,7 @@ class _LoginWidgetState extends State<LoginWidget> {
               'index': serializeParam(0, ParamType.int),
             }.withoutNulls,
           );
+          navigationStarted = true;
           return;
         case SocialAuthEntryDestination.acquaintanceStudent:
           context.goNamedAuth(
@@ -111,18 +143,24 @@ class _LoginWidgetState extends State<LoginWidget> {
               'index': serializeParam(0, ParamType.int),
             }.withoutNulls,
           );
+          navigationStarted = true;
           return;
       }
     } catch (_) {
       clearPendingSocialAuthContext();
-      await actions.showTopNotification(
-        context,
-        'Не удалось завершить вход',
-        '',
-        true,
-      );
+      if (mounted) {
+        await actions.showTopNotification(
+          context,
+          'Не удалось завершить вход',
+          '',
+          true,
+        );
+      }
     } finally {
-      _isSubmittingSocialAuth = false;
+      if (!navigationStarted) {
+        _hideSocialAuthProgress();
+        _isSubmittingSocialAuth = false;
+      }
     }
   }
 
@@ -141,6 +179,7 @@ class _LoginWidgetState extends State<LoginWidget> {
 
   @override
   void dispose() {
+    _hideSocialAuthProgress();
     _model.dispose();
 
     super.dispose();

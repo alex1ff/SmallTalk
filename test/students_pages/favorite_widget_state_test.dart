@@ -11,6 +11,7 @@ import 'package:small_talk/components/empty/empty_widget.dart';
 import 'package:small_talk/components/ux_error_state.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/services/event_group_chat_repository.dart';
+import 'package:small_talk/services/new_account_inbox_bootstrap.dart';
 import 'package:small_talk/services/ux_session_cache_lifecycle.dart';
 import 'package:small_talk/students_pages/favorite/favorite_chat_source_state.dart';
 import 'package:small_talk/students_pages/favorite/favorite_widget.dart';
@@ -294,9 +295,14 @@ Future<void> _mount(
   FavoriteConversationOpener? conversationOpener,
   FavoriteEventChatOpener? eventChatOpener,
   bool useDebugEventChatsSource = true,
+  bool seedNewAccountInbox = false,
 }) async {
   FavoriteWidget.debugClearSessionCache();
+  if (seedNewAccountInbox) {
+    NewAccountInboxBootstrap.markAccountCreated(sources.initialUid);
+  }
   addTearDown(FavoriteWidget.debugClearSessionCache);
+  addTearDown(NewAccountInboxBootstrap.debugResetForTesting);
   addTearDown(sources.dispose);
   await tester.pumpWidget(
     _testApp(
@@ -691,6 +697,24 @@ void main() {
     } finally {
       semantics.dispose();
     }
+  });
+
+  testWidgets('new account shows an empty inbox while sources sync',
+      (tester) async {
+    final sources = _FavoriteSources();
+    await _mount(
+      tester,
+      sources,
+      seedNewAccountInbox: true,
+    );
+
+    expect(find.text('У вас пока нет сообщений.'), findsOneWidget);
+    expect(find.byKey(favoriteMessagesInitialLoadingKey), findsNothing);
+
+    await _selectFriendsTab(tester);
+
+    expect(find.text('У вас пока нет чатов с друзьями.'), findsOneWidget);
+    expect(find.byKey(favoriteFriendsInitialLoadingKey), findsNothing);
   });
 
   for (final pendingConversations in <bool>[true, false]) {

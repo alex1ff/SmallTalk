@@ -16,6 +16,7 @@ import '/shared_pages/design/expatlio_design.dart';
 import '/shared_pages/chat_thread/open_chat_thread.dart';
 import '/shared_pages/events/event_group_chat_widget.dart';
 import '/services/event_group_chat_repository.dart';
+import '/services/new_account_inbox_bootstrap.dart';
 import '/services/ux_loading_state.dart';
 import '/services/ux_session_cache_lifecycle.dart';
 import '/services/ux_session_loaded_result_cache.dart';
@@ -2995,17 +2996,35 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
   }
 
   FavoriteFriendsLoadState? _initialFriendsStateForUser(String currentUid) =>
-      _cachedFriendsStateForUser(currentUid);
+      _cachedFriendsStateForUser(currentUid) ??
+      (NewAccountInboxBootstrap.shouldSeedEmptyInbox(currentUid)
+          ? FavoriteFriendsLoadState(
+              ownerUid: currentUid,
+              rawHiddenChatKeys: const <String>[],
+            )
+          : null);
 
   FavoriteConversationsLoadState? _initialConversationsStateForUser(
     String currentUid,
   ) =>
-      _cachedConversationsStateForUser(currentUid);
+      _cachedConversationsStateForUser(currentUid) ??
+      (NewAccountInboxBootstrap.shouldSeedEmptyInbox(currentUid)
+          ? FavoriteConversationsLoadState(
+              ownerUid: currentUid,
+              isAuthoritative: true,
+            )
+          : null);
 
   FavoriteEventChatsLoadState? _initialEventChatsStateForUser(
     String currentUid,
   ) =>
-      _cachedEventChatsStateForUser(currentUid);
+      _cachedEventChatsStateForUser(currentUid) ??
+      (NewAccountInboxBootstrap.shouldSeedEmptyInbox(currentUid)
+          ? FavoriteEventChatsLoadState(
+              ownerUid: currentUid,
+              isAuthoritative: true,
+            )
+          : null);
 
   Widget _buildNeutralOwnerShell(BuildContext context) {
     return Stack(
