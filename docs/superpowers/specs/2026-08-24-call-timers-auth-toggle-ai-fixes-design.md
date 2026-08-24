@@ -63,25 +63,43 @@ unrelated project-wide dependency change.
 ### 3. App Check provider selection
 
 `firebase_app_check_service.dart` will select the Apple provider from the
-runtime device type:
+runtime device type. Provider selection is a pure mapping; device inspection
+and activation stay in the service wrapper:
 
 - physical iPhone/iPad: `AppleProvider.deviceCheck` in debug and release;
 - iOS simulator: `AppleProvider.debug`;
-- macOS and Android retain their current platform-appropriate behavior unless
-  the existing code requires a small compatibility adjustment.
+- macOS: debug provider in debug builds and DeviceCheck in release builds;
+- Android: debug provider in debug builds and Play Integrity in release builds;
+- web: the current reCAPTCHA provider when its site key is configured.
 
 `device_info_plus`, already present in the project, supplies
-`IosDeviceInfo.isPhysicalDevice`. Provider selection will be extracted into a
-small independently testable helper.
+`IosDeviceInfo.isPhysicalDevice`. If the iOS device lookup fails, debug builds
+fall back to the debug provider and release builds fall back to DeviceCheck,
+and the lookup error is logged without aborting startup.
+
+Before physical-device QA, the Firebase App Check configuration for app
+`1:1024626146715:ios:7438f350d2c09ff86bf53e` must be confirmed to have
+DeviceCheck enabled. This is an operational prerequisite; client provider
+selection alone cannot register the provider in Firebase.
 
 Simulator debug tokens remain credentials: they are registered in Firebase
 from the locally generated Xcode token and are never committed. If no token is
-registered, debug logging must make the App Check failure explicit. Server-side
-App Check enforcement stays enabled.
+registered, debug logging must make the App Check failure explicit. After
+activation, debug builds make one forced `FirebaseAppCheck.getToken(true)`
+readiness request. They log only whether a non-empty token was obtained or the
+sanitized exception; the token value is never logged by Dart code. The probe is
+non-fatal and is not repeated during normal feature calls. Server-side App
+Check enforcement stays enabled.
 
-The translation and feedback UIs will map callable `unauthenticated` failures
-to the existing app-verification message so App Check failures are not
-misreported as network failures.
+Callable `unauthenticated` failures are classified at the UI boundary. If
+`currentUserUid` is empty, the UI reports that sign-in is required. If it is
+non-empty on these auth-gated in-call/post-call surfaces, the UI reports an app
+verification failure; Firebase Auth already owns token refresh before the
+callable request. Translation uses its existing localized app-verification
+copy. Feedback adds the localized non-retry state “Не удалось подтвердить
+приложение. Перезапустите его.” / “The app could not be verified. Restart it.”
+This state does not show the retry button because an unregistered debug token
+cannot recover by repeating the same callable.
 
 ### 4. Limited-call countdown
 
@@ -106,9 +124,10 @@ extension policy do not change.
 - A failed `startSearch` clears the early countdown through `_setSearchError`.
 - A quick match cancels the countdown immediately on the `connecting`
   transition.
-- App Check activation remains non-fatal for general app startup, but debug
-  output identifies token acquisition failures. Paid callables still reject
-  missing or invalid attestation.
+- App Check activation and the debug readiness probe remain non-fatal for
+  general app startup, but debug output identifies provider lookup, activation,
+  and token acquisition failures. Paid callables still reject missing or
+  invalid attestation.
 - Translation and feedback retain their existing retry/quota/provider error
   handling; only App Check error classification changes.
 - Missing or malformed session policy data continues to fall back to elapsed
@@ -120,8 +139,9 @@ extension policy do not change.
   `startSearch` future completes and is cancelled for immediate matches.
 - Add a widget/contract test ensuring the shared entry toggle uses a visible
   Flutter adaptive switch and updates its value.
-- Add unit tests for Apple App Check provider selection on physical and
-  simulated devices and for callable error mapping.
+- Add unit tests for the pure App Check provider mapping across iOS physical,
+  iOS simulator, macOS, Android, debug, and release inputs; test lookup-failure
+  fallbacks and authenticated/unauthenticated callable error mapping.
 - Update session-limit tests so `connecting` policy-backed sessions use the
   countdown while `searching` and terminal sessions do not.
 - Add/adjust a video-call surface test that prevents an elapsed-to-countdown
@@ -129,9 +149,10 @@ extension policy do not change.
 - Run relevant targeted tests, `flutter test`, and `flutter analyze`.
 - Run the existing Functions tests for translation, feedback, and deployment
   readiness because these features cross the client/server boundary.
-- Perform live QA on a physical iPhone build and inspect Functions logs for
-  valid App Check verification. Simulator QA additionally requires a locally
-  registered debug token.
+- Confirm DeviceCheck is enabled for the Firebase iOS app, perform live QA on a
+  physical iPhone build, and inspect Functions logs for valid App Check
+  verification. Simulator QA additionally requires a locally registered debug
+  token.
 
 ## Non-goals
 
