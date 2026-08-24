@@ -164,6 +164,52 @@ void main() {
         299,
       );
     });
+
+    test('active rejoin uses expiry before and after server clock sync', () {
+      final serverNow = DateTime.utc(2026, 8, 24, 10);
+      final deviceNow = serverNow.subtract(const Duration(seconds: 30));
+      final expiresAt = serverNow.add(const Duration(minutes: 2));
+      const policy = <String, dynamic>{'effectiveLimitSeconds': 300};
+
+      final beforeSync = resolveSessionLimitNow(
+        sessionStatus: 'active',
+        serverClockOffset: null,
+        expiresAt: expiresAt,
+        sessionPolicy: policy,
+        elapsedSeconds: 0,
+        deviceNow: deviceNow,
+      );
+      final afterSync = resolveSessionLimitNow(
+        sessionStatus: 'active',
+        serverClockOffset: const Duration(seconds: 30),
+        expiresAt: expiresAt,
+        sessionPolicy: policy,
+        elapsedSeconds: 0,
+        deviceNow: deviceNow,
+      );
+
+      expect(beforeSync, deviceNow);
+      expect(
+        resolveSessionLimitDisplaySeconds(
+          expiresAt: expiresAt,
+          sessionPolicy: policy,
+          elapsedSeconds: 0,
+          useProvisionalCountdown: false,
+          now: beforeSync,
+        ),
+        150,
+      );
+      expect(
+        resolveSessionLimitDisplaySeconds(
+          expiresAt: expiresAt,
+          sessionPolicy: policy,
+          elapsedSeconds: 0,
+          useProvisionalCountdown: false,
+          now: afterSync,
+        ),
+        120,
+      );
+    });
   });
 
   group('resolveSessionLimitDisplaySeconds', () {
@@ -201,6 +247,33 @@ void main() {
         ),
         299,
       );
+    });
+
+    test('allows time to grow only when the approved limit grows', () {
+      final now = DateTime.utc(2026, 8, 24, 10);
+
+      final beforeExtension = resolveSessionLimitDisplaySeconds(
+        expiresAt: now.add(const Duration(minutes: 2)),
+        sessionPolicy: const <String, dynamic>{
+          'effectiveLimitSeconds': 300,
+        },
+        elapsedSeconds: 180,
+        useProvisionalCountdown: false,
+        now: now,
+      );
+      final afterExtension = resolveSessionLimitDisplaySeconds(
+        expiresAt: now.add(const Duration(minutes: 7)),
+        sessionPolicy: const <String, dynamic>{
+          'effectiveLimitSeconds': 600,
+          'extensionApproved': true,
+        },
+        elapsedSeconds: 180,
+        useProvisionalCountdown: false,
+        now: now,
+      );
+
+      expect(beforeExtension, 120);
+      expect(afterExtension, 420);
     });
   });
 

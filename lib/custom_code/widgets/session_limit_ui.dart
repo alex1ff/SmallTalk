@@ -37,7 +37,7 @@ DateTime resolveSessionLimitNow({
 }) {
   final currentDeviceTime = deviceNow ?? DateTime.now();
   final normalizedStatus = (sessionStatus ?? '').trim().toLowerCase();
-  if (normalizedStatus == 'active' && serverClockOffset != null) {
+  if (normalizedStatus == 'active') {
     return resolveServerAlignedNow(
       serverClockOffset,
       deviceNow: currentDeviceTime,
