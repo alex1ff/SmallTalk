@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '/auth/firebase_auth/auth_util.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/services/translation_repository.dart';
 import '/shared_pages/design/expatlio_design.dart';
@@ -158,7 +159,11 @@ class _InCallTranslationSheetState extends State<InCallTranslationSheet> {
   }
 
   String _errorMessage(TranslationFailure failure) {
-    switch (failure.code) {
+    final code = classifyCallIntegrationFailure(
+      failure.code,
+      isAuthenticated: currentUserUid.trim().isNotEmpty,
+    );
+    switch (code) {
       case 'translation_daily_limit':
         return FFLocalizations.of(context).getVariableText(
           ruText: 'Лимит переводов на сегодня исчерпан.',
@@ -173,6 +178,11 @@ class _InCallTranslationSheetState extends State<InCallTranslationSheet> {
         return FFLocalizations.of(context).getVariableText(
           ruText: 'Не удалось подтвердить приложение. Перезапустите его.',
           enText: 'The app could not be verified. Please restart it.',
+        );
+      case 'auth_required':
+        return FFLocalizations.of(context).getVariableText(
+          ruText: 'Войдите в аккаунт и повторите.',
+          enText: 'Sign in and try again.',
         );
       case 'translation_pending':
       case 'translation_retry_later':

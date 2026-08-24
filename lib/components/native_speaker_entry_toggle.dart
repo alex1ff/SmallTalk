@@ -1,4 +1,3 @@
-import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/material.dart';
 
 import '/shared_pages/design/expatlio_design.dart';
@@ -29,10 +28,10 @@ class NativeSpeakerEntryToggle extends StatelessWidget {
               ),
             ),
           ),
-          AdaptiveSwitch(
+          Switch.adaptive(
             value: value,
             onChanged: onChanged,
-            activeColor: ExpatlioDesign.success,
+            activeTrackColor: ExpatlioDesign.success,
           ),
         ],
       ),

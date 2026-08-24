@@ -3,6 +3,31 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:small_talk/services/translation_repository.dart';
 
 void main() {
+  test('classifies unauthenticated integration failures by local auth state',
+      () {
+    expect(
+      classifyCallIntegrationFailure(
+        'unauthenticated',
+        isAuthenticated: false,
+      ),
+      'auth_required',
+    );
+    expect(
+      classifyCallIntegrationFailure(
+        'unauthenticated',
+        isAuthenticated: true,
+      ),
+      'app_check_required',
+    );
+    expect(
+      classifyCallIntegrationFailure(
+        'translation_daily_limit',
+        isAuthenticated: true,
+      ),
+      'translation_daily_limit',
+    );
+  });
+
   test('translate calls the regional backend contract and decodes result',
       () async {
     String? calledFunction;

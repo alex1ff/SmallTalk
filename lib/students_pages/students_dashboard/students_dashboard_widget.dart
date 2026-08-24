@@ -2744,6 +2744,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
         _suppressedActiveSessionId = null;
         _suppressedActiveSearchUserId = null;
       });
+      _startForegroundSearchNoticeTimer();
 
       startOperationRequestId = const Uuid().v4();
       _pendingStartSearchRequestId = startOperationRequestId;
@@ -2786,7 +2787,6 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       });
       if (nextSearchState == StudentDashboardSearchState.searching) {
         _startSearchTimeoutTimer();
-        _startForegroundSearchNoticeTimer();
         final protocolV2 =
             _responseInt(startSearchData, 'matchProtocolVersion') >=
                 matchProtocolVersion;

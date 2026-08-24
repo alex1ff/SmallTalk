@@ -7,6 +7,16 @@ typedef TranslationCallableInvoker = Future<Object?> Function(
 
 const callIntegrationsRegion = 'us-central1';
 
+String classifyCallIntegrationFailure(
+  String code, {
+  required bool isAuthenticated,
+}) {
+  if (code != 'unauthenticated') {
+    return code;
+  }
+  return isAuthenticated ? 'app_check_required' : 'auth_required';
+}
+
 enum TranslationLanguage {
   russian('ru'),
   english('en');

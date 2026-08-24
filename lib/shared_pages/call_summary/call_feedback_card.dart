@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import '/auth/firebase_auth/auth_util.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/services/call_feedback_repository.dart';
+import '/services/translation_repository.dart'
+    show classifyCallIntegrationFailure;
 import '/shared_pages/design/expatlio_design.dart';
 
 class CallFeedbackCard extends StatefulWidget {
@@ -113,6 +115,10 @@ class _CallFeedbackCardState extends State<CallFeedbackCard> {
       _applyResponse(response, generation);
     } on CallFeedbackFailure catch (failure) {
       if (!mounted || generation != _scopeGeneration) return;
+      final failureCode = classifyCallIntegrationFailure(
+        failure.code,
+        isAuthenticated: currentUserUid.trim().isNotEmpty,
+      );
       setState(() {
         if (failure.isRetryable) {
           _response = CallFeedbackResponse(
@@ -121,7 +127,7 @@ class _CallFeedbackCardState extends State<CallFeedbackCard> {
             errorCode: failure.code,
           );
         } else {
-          _unavailableCode = failure.code;
+          _unavailableCode = failureCode;
         }
       });
     } on FormatException {
@@ -385,25 +391,39 @@ class _CallFeedbackCardState extends State<CallFeedbackCard> {
       final featureDisabled = _unavailableCode == 'feature_disabled';
       final dailyLimit = _unavailableCode == 'feedback_daily_limit';
       final windowExpired = _unavailableCode == 'feedback_window_expired';
+      final appCheckRequired = _unavailableCode == 'app_check_required';
+      final authRequired = _unavailableCode == 'auth_required';
       return _buildMessage(
         icon: Icons.info_outline_rounded,
         text: _text(
-          ru: featureDisabled
-              ? 'AI-разбор временно недоступен.'
-              : dailyLimit
-                  ? 'Лимит AI-разборов на сегодня исчерпан.'
-                  : windowExpired
-                      ? 'Срок создания разбора для этого звонка истёк.'
-                      : 'Не удалось загрузить AI-разбор.',
-          en: featureDisabled
-              ? 'AI feedback is temporarily unavailable.'
-              : dailyLimit
-                  ? 'Today’s AI feedback limit has been reached.'
-                  : windowExpired
-                      ? 'The feedback window for this call has expired.'
-                      : 'AI feedback could not be loaded.',
+          ru: appCheckRequired
+              ? 'Не удалось подтвердить приложение. Перезапустите его.'
+              : authRequired
+                  ? 'Войдите в аккаунт и повторите.'
+                  : featureDisabled
+                      ? 'AI-разбор временно недоступен.'
+                      : dailyLimit
+                          ? 'Лимит AI-разборов на сегодня исчерпан.'
+                          : windowExpired
+                              ? 'Срок создания разбора для этого звонка истёк.'
+                              : 'Не удалось загрузить AI-разбор.',
+          en: appCheckRequired
+              ? 'The app could not be verified. Restart it.'
+              : authRequired
+                  ? 'Sign in and try again.'
+                  : featureDisabled
+                      ? 'AI feedback is temporarily unavailable.'
+                      : dailyLimit
+                          ? 'Today’s AI feedback limit has been reached.'
+                          : windowExpired
+                              ? 'The feedback window for this call has expired.'
+                              : 'AI feedback could not be loaded.',
         ),
-        showRetry: !featureDisabled && !dailyLimit && !windowExpired,
+        showRetry: !appCheckRequired &&
+            !authRequired &&
+            !featureDisabled &&
+            !dailyLimit &&
+            !windowExpired,
       );
     }
     if (response == null || response.status == CallFeedbackStatus.pending) {

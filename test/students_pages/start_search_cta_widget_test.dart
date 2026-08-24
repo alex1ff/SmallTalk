@@ -1357,8 +1357,12 @@ void main() {
 
     expect(startPayloads, hasLength(1));
     expect(find.text('Ищем собеседника'), findsOneWidget);
+    expect(find.text('Осталось 02:00'), findsOneWidget);
     expect(find.text('Остановить поиск'), findsOneWidget);
     expect(find.text('Начать поиск'), findsNothing);
+
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('Осталось 01:59'), findsOneWidget);
 
     startCompleter.complete(<String, dynamic>{
       'requestId': 'request-optimistic-start-test',
@@ -1366,6 +1370,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('Ищем собеседника'), findsOneWidget);
+    expect(find.text('Осталось 01:59'), findsOneWidget);
     expect(find.text('Остановить поиск'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -3176,6 +3181,7 @@ void main() {
 
     expect(router.getCurrentLocation(), StudentsDashboardWidget.routePath);
     expect(find.text('Соединяем'), findsOneWidget);
+    expect(find.textContaining('Осталось '), findsNothing);
     expect(find.byType(WaitingForTeacherPageWidget), findsNothing);
     expect(find.byKey(const Key('video-call-route')), findsNothing);
 

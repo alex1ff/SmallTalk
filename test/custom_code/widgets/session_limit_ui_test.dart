@@ -135,7 +135,7 @@ void main() {
       );
     });
 
-    test('uses countdown only for active calls with policy', () {
+    test('uses countdown for connecting and active calls with policy', () {
       final now = DateTime.utc(2026, 4, 14, 12, 0, 0);
 
       expect(
@@ -149,6 +149,14 @@ void main() {
       expect(
         shouldUseSessionLimitCountdown(
           sessionStatus: 'connecting',
+          expiresAt: now.add(const Duration(minutes: 5)),
+          sessionPolicy: sessionPolicy,
+        ),
+        isTrue,
+      );
+      expect(
+        shouldUseSessionLimitCountdown(
+          sessionStatus: 'searching',
           expiresAt: now.add(const Duration(minutes: 5)),
           sessionPolicy: sessionPolicy,
         ),
