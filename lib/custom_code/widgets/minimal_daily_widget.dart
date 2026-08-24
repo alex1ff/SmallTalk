@@ -363,6 +363,7 @@ class MinimalDailyWidget extends StatefulWidget {
     this.sessionStatus,
     this.sessionExpiresAt,
     this.sessionPolicy,
+    this.provisionalSessionLimitCountdown = false,
     this.isStudent,
     this.deepgramCredential,
     @Deprecated(
@@ -390,6 +391,7 @@ class MinimalDailyWidget extends StatefulWidget {
   final String? sessionStatus;
   final DateTime? sessionExpiresAt;
   final Map<String, dynamic>? sessionPolicy;
+  final bool provisionalSessionLimitCountdown;
   final bool? isStudent;
   final String? deepgramCredential;
   @Deprecated('Use deepgramCredential for both temporary tokens and API keys.')
@@ -3671,14 +3673,18 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   }
 
   bool get _hasSessionLimitCountdown {
-    return widget.sessionExpiresAt != null &&
-        widget.sessionPolicy != null &&
-        widget.sessionPolicy!.isNotEmpty;
+    return widget.provisionalSessionLimitCountdown ||
+        (widget.sessionExpiresAt != null &&
+            widget.sessionPolicy != null &&
+            widget.sessionPolicy!.isNotEmpty);
   }
 
   int _remainingSessionLimitSeconds([DateTime? now]) {
-    return session_limit_ui.resolveSessionLimitRemainingSeconds(
-      widget.sessionExpiresAt,
+    return session_limit_ui.resolveSessionLimitDisplaySeconds(
+      expiresAt: widget.sessionExpiresAt,
+      sessionPolicy: widget.sessionPolicy,
+      elapsedSeconds: _callDurationStopwatch.elapsed.inSeconds,
+      useProvisionalCountdown: widget.provisionalSessionLimitCountdown,
       now: now ?? _serverAlignedNow(),
     );
   }

@@ -166,6 +166,44 @@ void main() {
     });
   });
 
+  group('resolveSessionLimitDisplaySeconds', () {
+    test('keeps provisional and authoritative countdown monotonic', () {
+      final deviceNow = DateTime.utc(2026, 8, 24, 10);
+      const policy = <String, dynamic>{'effectiveLimitSeconds': 300};
+
+      expect(
+        resolveSessionLimitDisplaySeconds(
+          expiresAt: null,
+          sessionPolicy: null,
+          elapsedSeconds: 0,
+          useProvisionalCountdown: true,
+          now: deviceNow,
+        ),
+        300,
+      );
+      expect(
+        resolveSessionLimitDisplaySeconds(
+          expiresAt: null,
+          sessionPolicy: null,
+          elapsedSeconds: 1,
+          useProvisionalCountdown: true,
+          now: deviceNow.add(const Duration(seconds: 1)),
+        ),
+        299,
+      );
+      expect(
+        resolveSessionLimitDisplaySeconds(
+          expiresAt: deviceNow.add(const Duration(minutes: 5)),
+          sessionPolicy: policy,
+          elapsedSeconds: 1,
+          useProvisionalCountdown: false,
+          now: deviceNow,
+        ),
+        299,
+      );
+    });
+  });
+
   group('resolveSessionPolicyEffectiveLimitSeconds', () {
     test('reads the server policy and falls back for malformed values', () {
       expect(
@@ -240,6 +278,48 @@ void main() {
         ),
         isFalse,
       );
+    });
+  });
+
+  group('shouldUseProvisionalSessionLimitCountdown', () {
+    test('covers null and stale searching snapshots until policy is ready', () {
+      for (final status in const <String?>[null, 'searching']) {
+        expect(
+          shouldUseProvisionalSessionLimitCountdown(
+            hasJoinCredentials: true,
+            hasAuthoritativeCountdown: false,
+            sessionStatus: status,
+          ),
+          isTrue,
+        );
+      }
+      expect(
+        shouldUseProvisionalSessionLimitCountdown(
+          hasJoinCredentials: true,
+          hasAuthoritativeCountdown: true,
+          sessionStatus: 'connecting',
+        ),
+        isFalse,
+      );
+    });
+
+    test('does not mask authoritative or legacy final states', () {
+      for (final status in const <String>[
+        'active',
+        'connected',
+        'ended',
+        'cancelled',
+        'expired',
+      ]) {
+        expect(
+          shouldUseProvisionalSessionLimitCountdown(
+            hasJoinCredentials: true,
+            hasAuthoritativeCountdown: false,
+            sessionStatus: status,
+          ),
+          isFalse,
+        );
+      }
     });
   });
 

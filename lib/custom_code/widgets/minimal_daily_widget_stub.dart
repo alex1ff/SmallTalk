@@ -13,6 +13,7 @@ class MinimalDailyWidget extends StatelessWidget {
     this.sessionStatus,
     this.sessionExpiresAt,
     this.sessionPolicy,
+    this.provisionalSessionLimitCountdown = false,
     this.isStudent,
     this.deepgramCredential,
     this.deepgramApiKey,
@@ -37,6 +38,7 @@ class MinimalDailyWidget extends StatelessWidget {
   final String? sessionStatus;
   final DateTime? sessionExpiresAt;
   final Map<String, dynamic>? sessionPolicy;
+  final bool provisionalSessionLimitCountdown;
   final bool? isStudent;
   final String? deepgramCredential;
   final String? deepgramApiKey;

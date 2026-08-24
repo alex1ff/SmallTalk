@@ -543,15 +543,6 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
       builder: (context, snapshot) {
         final videoCallPageVideoSessionsRecord = snapshot.data;
         String? _nonEmpty(String? value) => _nonEmptyValue(value);
-        final hasInitialJoinCredentials =
-            _nonEmpty(widget.initialRoomUrl) != null &&
-                _nonEmpty(widget.initialMeetingToken) != null;
-
-        if (videoCallPageVideoSessionsRecord == null &&
-            !hasInitialJoinCredentials) {
-          return _buildMediaPermissionState(context, isLoading: true);
-        }
-
         final resolvedRoomUrl = _nonEmpty(_freshRoomUrl) ??
             _nonEmpty(videoCallPageVideoSessionsRecord?.dailyRoomUrl) ??
             _nonEmpty(widget.initialRoomUrl) ??
@@ -561,6 +552,13 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
         final resolvedRoomName = _nonEmpty(_freshRoomName) ??
             _nonEmpty(videoCallPageVideoSessionsRecord?.dailyRoomName) ??
             _nonEmpty(widget.initialRoomName);
+        final hasJoinCredentials =
+            resolvedRoomUrl.isNotEmpty && resolvedMeetingToken != null;
+
+        if (videoCallPageVideoSessionsRecord == null && !hasJoinCredentials) {
+          return _buildMediaPermissionState(context, isLoading: true);
+        }
+
         final resolvedLanguage = _nonEmpty(
               videoCallPageVideoSessionsRecord?.language,
             ) ??
@@ -577,6 +575,12 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
           sessionStatus: sessionStatus,
           expiresAt: videoCallPageVideoSessionsRecord?.expiresAt,
           sessionPolicy: sessionPolicy,
+        );
+        final useProvisionalSessionLimitCountdown =
+            session_limit_ui.shouldUseProvisionalSessionLimitCountdown(
+          hasJoinCredentials: hasJoinCredentials,
+          hasAuthoritativeCountdown: useSessionLimitCountdown,
+          sessionStatus: sessionStatus,
         );
         final isStudent = currentUserUid ==
             _nonEmpty(videoCallPageVideoSessionsRecord?.studentId);
@@ -722,6 +726,8 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                         : null,
                     sessionPolicy:
                         useSessionLimitCountdown ? sessionPolicy : null,
+                    provisionalSessionLimitCountdown:
+                        useProvisionalSessionLimitCountdown,
                     deepgramTokenRefreshCallback: () async {
                       return await _fetchDeepgramToken(
                         force: true,

@@ -738,6 +738,21 @@ void main() {
         timerSource,
         contains('session_limit_ui.resolveSessionLimitNow('),
       );
+      expect(
+        pageSource,
+        contains('useProvisionalSessionLimitCountdown'),
+      );
+      expect(
+        pageSource,
+        contains(
+          'provisionalSessionLimitCountdown:\n'
+          '                        useProvisionalSessionLimitCountdown',
+        ),
+      );
+      expect(
+        timerSource,
+        contains('session_limit_ui.resolveSessionLimitDisplaySeconds('),
+      );
     });
 
     test('call chat keyboard layout keeps composer clear of overlays', () {

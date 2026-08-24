@@ -76,6 +76,33 @@ int resolveSessionLimitRemainingSeconds(
   return remaining < 0 ? 0 : remaining;
 }
 
+int resolveSessionLimitDisplaySeconds({
+  required DateTime? expiresAt,
+  required Map<String, dynamic>? sessionPolicy,
+  required int elapsedSeconds,
+  required bool useProvisionalCountdown,
+  DateTime? now,
+}) {
+  final effectiveLimitSeconds = resolveSessionPolicyEffectiveLimitSeconds(
+    sessionPolicy,
+  );
+  final safeElapsedSeconds = elapsedSeconds < 0 ? 0 : elapsedSeconds;
+  final elapsedRemainingSeconds = effectiveLimitSeconds - safeElapsedSeconds;
+  final safeElapsedRemaining =
+      elapsedRemainingSeconds < 0 ? 0 : elapsedRemainingSeconds;
+  if (expiresAt == null) {
+    return useProvisionalCountdown ? safeElapsedRemaining : 0;
+  }
+
+  final deadlineRemaining = resolveSessionLimitRemainingSeconds(
+    expiresAt,
+    now: now,
+  );
+  return deadlineRemaining < safeElapsedRemaining
+      ? deadlineRemaining
+      : safeElapsedRemaining;
+}
+
 bool shouldUseSessionLimitCountdown({
   required String? sessionStatus,
   required DateTime? expiresAt,
@@ -86,6 +113,21 @@ bool shouldUseSessionLimitCountdown({
     return false;
   }
   return expiresAt != null && sessionPolicy != null && sessionPolicy.isNotEmpty;
+}
+
+bool shouldUseProvisionalSessionLimitCountdown({
+  required bool hasJoinCredentials,
+  required bool hasAuthoritativeCountdown,
+  required String? sessionStatus,
+}) {
+  if (!hasJoinCredentials || hasAuthoritativeCountdown) {
+    return false;
+  }
+  final normalizedStatus = (sessionStatus ?? '').trim().toLowerCase();
+  return normalizedStatus.isEmpty ||
+      normalizedStatus == 'searching' ||
+      normalizedStatus == 'pending_confirmation' ||
+      normalizedStatus == 'connecting';
 }
 
 int _readPositiveInt(
