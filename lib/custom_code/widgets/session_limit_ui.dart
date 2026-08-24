@@ -27,6 +27,36 @@ DateTime resolveServerAlignedNow(
   );
 }
 
+DateTime resolveSessionLimitNow({
+  required String? sessionStatus,
+  required Duration? serverClockOffset,
+  required DateTime? expiresAt,
+  required Map<String, dynamic>? sessionPolicy,
+  required int elapsedSeconds,
+  DateTime? deviceNow,
+}) {
+  final currentDeviceTime = deviceNow ?? DateTime.now();
+  final normalizedStatus = (sessionStatus ?? '').trim().toLowerCase();
+  if (normalizedStatus == 'active' && serverClockOffset != null) {
+    return resolveServerAlignedNow(
+      serverClockOffset,
+      deviceNow: currentDeviceTime,
+    );
+  }
+  if (expiresAt == null) {
+    return currentDeviceTime;
+  }
+
+  final effectiveLimitSeconds = resolveSessionPolicyEffectiveLimitSeconds(
+    sessionPolicy,
+  );
+  final safeElapsedSeconds = elapsedSeconds < 0 ? 0 : elapsedSeconds;
+  final remainingSeconds = effectiveLimitSeconds - safeElapsedSeconds;
+  return expiresAt.subtract(
+    Duration(seconds: remainingSeconds < 0 ? 0 : remainingSeconds),
+  );
+}
+
 String formatCallTimerDuration(int totalSeconds) {
   final safeSeconds = totalSeconds < 0 ? 0 : totalSeconds;
   final minutes = safeSeconds ~/ 60;

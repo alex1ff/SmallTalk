@@ -3684,25 +3684,13 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   }
 
   DateTime _serverAlignedNow() {
-    final serverClockOffset = _sessionClockOffset;
-    if (serverClockOffset != null) {
-      return session_limit_ui.resolveServerAlignedNow(serverClockOffset);
-    }
-
-    final expiresAt = widget.sessionExpiresAt;
-    if (expiresAt == null) {
-      return DateTime.now();
-    }
-
-    final effectiveLimitSeconds =
-        session_limit_ui.resolveSessionPolicyEffectiveLimitSeconds(
-      widget.sessionPolicy,
+    return session_limit_ui.resolveSessionLimitNow(
+      sessionStatus: widget.sessionStatus,
+      serverClockOffset: _sessionClockOffset,
+      expiresAt: widget.sessionExpiresAt,
+      sessionPolicy: widget.sessionPolicy,
+      elapsedSeconds: _callDurationStopwatch.elapsed.inSeconds,
     );
-    final remainingSeconds = math.max(
-      0,
-      effectiveLimitSeconds - _callDurationStopwatch.elapsed.inSeconds,
-    );
-    return expiresAt.subtract(Duration(seconds: remainingSeconds));
   }
 
   bool get _currentUserRequestedSessionExtension {

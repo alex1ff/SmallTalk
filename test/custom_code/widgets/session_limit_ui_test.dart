@@ -112,6 +112,60 @@ void main() {
     });
   });
 
+  group('resolveSessionLimitNow', () {
+    test('ignores server clock offset until the session becomes active', () {
+      final deviceNow = DateTime.utc(2026, 8, 24, 10);
+      final staleConnectingExpiry = deviceNow.add(
+        const Duration(minutes: 4, seconds: 10),
+      );
+      final activeExpiry = deviceNow.add(const Duration(minutes: 5));
+      const policy = <String, dynamic>{'effectiveLimitSeconds': 300};
+
+      final connectingNow = resolveSessionLimitNow(
+        sessionStatus: 'connecting',
+        serverClockOffset: Duration.zero,
+        expiresAt: staleConnectingExpiry,
+        sessionPolicy: policy,
+        elapsedSeconds: 0,
+        deviceNow: deviceNow,
+      );
+      final activeNow = resolveSessionLimitNow(
+        sessionStatus: 'active',
+        serverClockOffset: Duration.zero,
+        expiresAt: activeExpiry,
+        sessionPolicy: policy,
+        elapsedSeconds: 0,
+        deviceNow: deviceNow,
+      );
+
+      expect(
+        resolveSessionLimitRemainingSeconds(
+          staleConnectingExpiry,
+          now: connectingNow,
+        ),
+        300,
+      );
+      expect(
+        resolveSessionLimitRemainingSeconds(activeExpiry, now: activeNow),
+        300,
+      );
+      expect(
+        resolveSessionLimitRemainingSeconds(
+          activeExpiry,
+          now: resolveSessionLimitNow(
+            sessionStatus: 'active',
+            serverClockOffset: Duration.zero,
+            expiresAt: activeExpiry,
+            sessionPolicy: policy,
+            elapsedSeconds: 1,
+            deviceNow: deviceNow.add(const Duration(seconds: 1)),
+          ),
+        ),
+        299,
+      );
+    });
+  });
+
   group('resolveSessionPolicyEffectiveLimitSeconds', () {
     test('reads the server policy and falls back for malformed values', () {
       expect(
