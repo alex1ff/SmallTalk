@@ -8,8 +8,8 @@ model.
 
 Success means:
 
-- the search screen shows a `2:00` countdown as soon as the searching state is
-  visible;
+- the search screen shows the existing two-minute countdown (`02:00` in the
+  current `mm:ss` UI format) as soon as the searching state is visible;
 - login and registration show an interactive native-speaker switch on iOS;
 - quick translation and post-call AI feedback receive a valid App Check token
   on a physical iPhone development build;
@@ -43,6 +43,9 @@ Success means:
 checks succeed and the UI changes to `searching`, it starts the existing
 two-minute foreground notice countdown in the same transition, before awaiting
 `startSearch`.
+
+Only the start timing changes. The existing zero-padded `mm:ss` formatter and
+the initial visible text `Осталось 02:00` remain unchanged.
 
 The callable response must not restart the countdown. A transition to
 `connecting`, cancellation, failure, or disposal cancels it through the
