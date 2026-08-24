@@ -3829,9 +3829,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   }
 
   String _formatDuration(int totalSeconds) {
-    final minutes = totalSeconds ~/ 60;
-    final seconds = totalSeconds % 60;
-    return '$minutes:${seconds.toString().padLeft(2, '0')}';
+    return session_limit_ui.formatCallTimerDuration(totalSeconds);
   }
 
   void _maybeShowCallCheckpointNotice(int totalSeconds) {

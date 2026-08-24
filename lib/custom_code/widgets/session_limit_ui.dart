@@ -27,6 +27,13 @@ DateTime resolveServerAlignedNow(
   );
 }
 
+String formatCallTimerDuration(int totalSeconds) {
+  final safeSeconds = totalSeconds < 0 ? 0 : totalSeconds;
+  final minutes = safeSeconds ~/ 60;
+  final seconds = safeSeconds % 60;
+  return '$minutes:${seconds.toString().padLeft(2, '0')}';
+}
+
 int resolveSessionLimitRemainingSeconds(
   DateTime? expiresAt, {
   DateTime? now,

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:small_talk/custom_code/widgets/session_limit_ui.dart';
 
 String _source(String path) => File(path).readAsStringSync();
 
@@ -690,6 +691,49 @@ void main() {
       final badgeSource = source.substring(badgeStart, noticeOverlayStart);
       expect(badgeSource, contains("'Осталась 1 минута до лимита'"));
       expect(badgeSource, contains(": 'до лимита'"));
+    });
+
+    test('policy-backed connecting call stays in countdown timer mode', () {
+      final pageSource = _source(
+          'lib/shared_pages/video_call_page/video_call_page_widget.dart');
+      final timerSource =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      const policy = <String, dynamic>{'effectiveLimitSeconds': 300};
+      final now = DateTime.utc(2026, 8, 24, 10);
+      final expiresAt = now.add(const Duration(minutes: 5));
+
+      for (final status in const <String>['connecting', 'active']) {
+        expect(
+          shouldUseSessionLimitCountdown(
+            sessionStatus: status,
+            expiresAt: expiresAt,
+            sessionPolicy: policy,
+          ),
+          isTrue,
+        );
+      }
+      expect(resolveSessionLimitRemainingSeconds(expiresAt, now: now), 300);
+      expect(formatCallTimerDuration(300), '5:00');
+      expect(formatCallTimerDuration(296), '4:56');
+
+      expect(
+        pageSource,
+        contains('sessionExpiresAt: useSessionLimitCountdown'),
+      );
+      expect(
+        pageSource,
+        contains('useSessionLimitCountdown ? sessionPolicy : null'),
+      );
+      expect(
+        timerSource,
+        contains(
+          'final displaySeconds = hasCountdown ? remainingSeconds : totalSeconds;',
+        ),
+      );
+      expect(
+        timerSource,
+        contains('session_limit_ui.formatCallTimerDuration(totalSeconds)'),
+      );
     });
 
     test('call chat keyboard layout keeps composer clear of overlays', () {

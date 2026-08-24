@@ -7,6 +7,10 @@ typedef CallFeedbackCallableInvoker = Future<Object?> Function(
   String functionName,
   Map<String, dynamic> payload,
 );
+typedef CallFeedbackWatcher = Stream<CallFeedbackResponse?> Function({
+  required DocumentReference sessionRef,
+  required String userId,
+});
 
 enum CallFeedbackStatus {
   pending,
@@ -93,9 +97,10 @@ class CallFeedbackFailure implements Exception {
 }
 
 class CallFeedbackRepository {
-  const CallFeedbackRepository({this.invoker});
+  const CallFeedbackRepository({this.invoker, this.watcher});
 
   final CallFeedbackCallableInvoker? invoker;
+  final CallFeedbackWatcher? watcher;
 
   Future<CallFeedbackResponse> generate({
     required String sessionId,
@@ -125,6 +130,10 @@ class CallFeedbackRepository {
     required DocumentReference sessionRef,
     required String userId,
   }) {
+    final customWatcher = watcher;
+    if (customWatcher != null) {
+      return customWatcher(sessionRef: sessionRef, userId: userId);
+    }
     return sessionRef
         .collection('aiFeedback')
         .doc(userId)

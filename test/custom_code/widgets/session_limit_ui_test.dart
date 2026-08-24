@@ -104,6 +104,14 @@ void main() {
     });
   });
 
+  group('formatCallTimerDuration', () {
+    test('formats the initial limit and clamps negative values', () {
+      expect(formatCallTimerDuration(300), '5:00');
+      expect(formatCallTimerDuration(296), '4:56');
+      expect(formatCallTimerDuration(-1), '0:00');
+    });
+  });
+
   group('resolveSessionPolicyEffectiveLimitSeconds', () {
     test('reads the server policy and falls back for malformed values', () {
       expect(
