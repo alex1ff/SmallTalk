@@ -138,7 +138,7 @@ extension policy do not change.
 
 ## Validation
 
-- Add/update dashboard tests to prove the `2:00` timer starts before the
+- Add/update dashboard tests to prove the `02:00` timer starts before the
   `startSearch` future completes and is cancelled for immediate matches.
 - Add a widget/contract test ensuring the shared entry toggle uses a visible
   Flutter adaptive switch and updates its value.
