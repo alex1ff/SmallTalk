@@ -115,6 +115,21 @@ native speakers signing in with email and social providers. The routing matrix
 explicitly covers approved, pending, rejected, and legacy native-speaker records
 for both provider families.
 
+For `role=native_speaker`, email and social login use the same matrix:
+
+| Stored state | `acquaintance=false` | `acquaintance=true` |
+| --- | --- | --- |
+| explicit `approved` | Native Speaker onboarding | Native Speaker dashboard |
+| explicit `pending` | Native Speaker onboarding | Native Speaker dashboard |
+| explicit `rejected` | Native Speaker onboarding | Student dashboard; profile exposes reapply path |
+| legacy `verif_NS=true`, no explicit status | Native Speaker onboarding | Native Speaker dashboard |
+| legacy without explicit status or `verif_NS` approval | Native Speaker onboarding | Student dashboard |
+
+The change must preserve this current routing rather than reinterpret teacher
+approval. The removed toggle is not reintroduced on the loading recovery screen;
+records with no resolvable role fail closed to the existing account-recovery
+path instead of offering new Native Speaker selection during sign-in.
+
 ### 3. Localized deadlines
 
 Introduce a locale-aware gift-expiry formatter that returns:
@@ -151,6 +166,10 @@ state, behind an injectable SDK adapter for deterministic tests:
 - cache offerings and customer info; offering loads are single-flight,
   generation-scoped to the current uid, invalidated on identity change, and
   discard late responses from an older generation;
+- apply the same uid generation to startup `getCustomerInfo`, SDK listener
+  events, login, refresh, purchase, and restore results. Clear offering and
+  entitlement caches on identity change and discard every late result belonging
+  to a prior uid, so one user's entitlement cannot render for another user;
 - separate one-time SDK configuration from independently retryable customer
   info and offering loads;
 - prefer the explicit `subscriptions` offering, then current/all offerings;
@@ -191,16 +210,29 @@ Before accepting the billing fix, verify in App Store Connect and RevenueCat:
 
 If the products were created under the old bundle's App Store app, code changes
 are insufficient. Product IDs cannot be reused across App Store app records, so
-new subscriptions with new IDs must be created for the current app. The same
-atomic release change must update `SubscriptionProductIds`, RevenueCat offering
-packages, `revenue_cat_webhook.js` `PRODUCT_PERIOD_MONTHS`, transaction/schema
-comments, and all product-mapping tests. The embedded public SDK key and
-RevenueCat In-App Purchase Key are revalidated against the current app.
+new subscriptions with new IDs must be created for the current app. Migration
+is additive and two-phase: first add the new IDs to client selection, RevenueCat
+packages, webhook allowlists/`PRODUCT_PERIOD_MONTHS`, schemas, and tests while
+retaining old IDs for renewals, cancellations, and expirations; only remove old
+IDs after RevenueCat proves no remaining lifecycle events depend on them. The
+embedded public SDK key and RevenueCat In-App Purchase Key are revalidated
+against the current app.
 
-Acceptance also includes deleting/reinstalling the TestFlight app (or using a
-clean device), signing into the same Firebase uid, restoring the sandbox
-purchase, and observing the same CustomerInfo → RevenueCat → webhook → unlock
-chain without creating a duplicate entitlement.
+Webhook projection accepts only allowlisted RevenueCat app IDs, old/new product
+IDs from the migration set, and events granting `Expatlio Pro`; unrelated app,
+product, or entitlement events are ignored and recorded only as safe metadata.
+The current Apple agreement label, `Paid Apps Agreement`, must be active.
+
+The project explicitly uses RevenueCat `Keep with original App User ID` restore
+behavior, including the sandbox override, because every purchaser must sign in
+and Firestore entitlements are bound to one Firebase uid. Acceptance includes
+deleting/reinstalling the TestFlight app (or using a clean device), signing into
+the same Firebase uid, restoring the sandbox purchase, receiving active
+`CustomerInfo`, and unlocking from the already persisted webhook state without
+requiring a new webhook event or duplicate entitlement. A second Firebase uid
+on the same store account must receive the configured restore error and no
+access. Unexpected `TRANSFER` events are rejected/alerted rather than projected;
+the handler must not write an `unknown` product subscription from them.
 
 ### 6. Password recovery
 
@@ -226,11 +258,16 @@ existence and Resend success cannot be inferred from the callable response:
 - make the at-least-once trigger idempotent with persisted
   `queued|processing|retry|sent|discarded` status, transactionally acquired
   lease, attempt count, `retryAt`, maximum age, and terminal status;
-- classify transient and permanent Firebase/Resend errors. Retry-enabled trigger
-  invocations stop immediately once attempts or max age are exhausted;
+- configure the Firestore `onCreate` trigger with retry/failure policy. Classify
+  transient and permanent Firebase/Resend errors; for a transient failure write
+  `status=retry`, release/expire the lease, then rethrow so the platform invokes
+  the same event again. Stop before sending once attempts or a 12-hour maximum
+  age are exhausted. Never return success from a retry state that still needs
+  processing;
 - send a stable Resend `Idempotency-Key` derived only from `requestId`, so a
   crash after provider acceptance but before Firestore completion cannot send a
-  second email;
+  second email. The 12-hour processing window remains below Resend's 24-hour
+  idempotency retention;
 - canonicalize the Firebase Admin reset link through the existing hosted-handler
   link builder: copy only allowlisted `mode`, `oobCode`, `apiKey` parameters,
   add allowlisted `lang=ru|en` and the Expatlio `continueUrl`, and place this
@@ -250,12 +287,21 @@ existence and Resend success cannot be inferred from the callable response:
 Both functions are exported from `index.js`, added to the scoped deploy script
 and deployment-readiness `REQUIRED_FUNCTIONS`; `RESEND_API_KEY` remains bound
 only to the processing trigger. Secret readiness includes the dedicated HMAC
-secret. Firestore rules explicitly deny every client, including authenticated
-and app-admin users, from `passwordResetRequests` and
-`passwordResetRateLimits`; only Admin SDK functions bypass the rules. Both
-collections configure real Firestore TTL field overrides on `expiresAt`. The
-rollout explicitly deploys rules, indexes/TTL configuration, functions, and
-Firebase Hosting because the current function deploy script does not publish
+secret. Production readiness also requires non-empty `EMAIL_FROM` on a verified
+Resend domain, exact
+`EMAIL_ACTION_HANDLER_URL=https://smalltalk-2109b.firebaseapp.com/auth/action`,
+and allowlisted `APP_DEEP_LINK=smalltalk://smalltalk.com/`.
+
+Firestore rules explicitly deny every client, including authenticated and
+app-admin users, from `passwordResetRequests` and
+`passwordResetRateLimits`; both collection names are added to
+`isEventProtectedFromAdminFallback` so the broad admin read match cannot
+override the deny. Only Admin SDK functions bypass the rules. Both collections
+configure real Firestore TTL field overrides on `expiresAt`. On `sent` or
+`discarded`, the processor immediately deletes the raw email field; TTL is a
+delayed document-cleanup backstop, not the PII-removal mechanism. The rollout
+explicitly deploys rules, indexes/TTL configuration, functions, and Firebase
+Hosting because the current function deploy script does not publish
 `/auth/action`.
 
 ## Error handling
@@ -286,6 +332,8 @@ Firebase Hosting because the current function deploy script does not publish
 - Focused tests, then full `flutter test`.
 - `node --check` and targeted backend tests.
 - Firebase deployment-readiness validation.
+- Post-deploy fetch of the exact canonical Hosting reset URL and a real email
+  assertion that its HTML/text href points to that allowlisted handler.
 - Completed TestFlight sandbox purchase, active RevenueCat entitlement,
   RevenueCat transaction, webhook projection, and in-app unlock.
 - Real password-reset email with canonical hosted-handler href and completed
