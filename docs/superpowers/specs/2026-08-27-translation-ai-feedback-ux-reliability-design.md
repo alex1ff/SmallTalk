@@ -163,6 +163,11 @@ model response is malformed or truncated.
 - If completion metadata is not normal, output is empty, JSON parsing fails, or
   strict result validation fails, make exactly one internal provider retry with
   the same schema and a concise reminder to return only the schema.
+- A first transport timeout, network interruption, or provider `5xx` is also
+  eligible for that same single internal retry. Explicit permanent provider
+  `4xx` responses, including invalid request/auth/permission and `429` quota or
+  rate-limit responses, are not internally retried and enter the existing safe
+  user-facing failure flow immediately.
 - Both provider calls belong to one logical user/session attempt and one
   Firestore lease. The internal retry does not increment the user-facing daily
   or session attempt counters again.
@@ -276,6 +281,8 @@ artifact visible behind the rounded button.
 - Verify `CallFeedbackCard` is placed before subtitle logs in call details.
 - Verify ready, insufficient, retryable, and terminal feedback states remain
   usable from both placements.
+- Test that the client automatically invokes one legacy recovery without watch
+  loops, while current-version terminal failure remains final.
 - Widget/contract-test the show/hide button shape and absence of its old shadow
   or square decoration.
 
@@ -287,15 +294,15 @@ artifact visible behind the rounded button.
 - Test empty text and each non-`STOP`/missing finish-reason category as retry
   triggers.
 - Test two malformed responses produce the expected safe failure.
-- Test two provider timeouts fit the 80-second provider budget and the
-  115-second lease/callable budget contract.
+- Test a first provider timeout followed by success, and two provider timeouts;
+  both sequences must fit the 80-second provider budget and the 115-second
+  lease/callable budget contract.
+- Test that permanent provider `4xx`/`429` errors are not internally retried.
 - Assert internal retry does not double-count the logical user attempt.
 - Test current-version failure cooldown and terminal limits.
 - Test migration/reclaim of old failed and failed-terminal documents.
 - Test that ready documents from older versions are still reused.
 - Test that old `insufficient_text` remains final and is not regenerated.
-- Test that the client automatically invokes one legacy recovery without watch
-  loops, while current-version terminal failure remains final.
 - Test safe diagnostic metadata without model or transcript text.
 
 ### Validation commands
