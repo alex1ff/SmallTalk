@@ -81,6 +81,11 @@ backend state. It keeps:
 - entitlement `Expatlio Pro`;
 - RevenueCat webhook as the persistent entitlement authority.
 
+These identifiers are the preferred configuration, not an assumption that can
+override App Store ownership. The embedded public SDK key and RevenueCat App
+Store In-App Purchase Key must both belong to the RevenueCat app connected to
+the `com.appwave.expatlio` App Store record.
+
 The iOS bundle changed from `com.appwave.smalltalk` to
 `com.appwave.expatlio` on 2026-08-11. Apple StoreKit requires the TestFlight
 bundle ID, App Store Connect app record, In-App Purchase capability, and the
@@ -106,7 +111,9 @@ the authenticated loading resolver. The resolver remains responsible for
 restoring existing native-speaker accounts from persisted user state. Direct
 profile-based teacher onboarding remains available to the existing approved
 product path and is not deleted. Tests cover approved and unapproved existing
-native speakers signing in with email and social providers.
+native speakers signing in with email and social providers. The routing matrix
+explicitly covers approved, pending, rejected, and legacy native-speaker records
+for both provider families.
 
 ### 3. Localized deadlines
 
@@ -127,15 +134,23 @@ state, behind an injectable SDK adapter for deterministic tests:
 
 - call `Purchases.configure` at most once, guard with `Purchases.isConfigured`,
   and register the customer-info listener at most once;
-- preserve a pending Firebase uid until SDK configuration completes and
-  serialize later login/logout/user-switch operations;
-- expose an identity-ready future and require purchase/restore to wait until
-  `Purchases.appUserID` equals the current Firebase uid; never purchase as an
+- use one operation coordinator to serialize login, logout, user switch,
+  purchase, and restore; acquire an identity lease for the full purchase sheet
+  or restore operation so identity cannot change between the precondition check
+  and completion;
+- preserve a pending Firebase uid until SDK configuration completes, expose an
+  identity-ready future with timeout/retry semantics, and require the leased
+  `Purchases.appUserID` to equal the current Firebase uid; never purchase as an
   anonymous RevenueCat user because the webhook intentionally rejects
   `$RCAnonymousID`;
+- block duplicate purchases, purchase+restore overlap, and identity changes
+  while a commerce operation owns the lease; queue or reject later operations
+  with a typed busy result;
 - expose `waitForInitialization()` / `ensureOfferingsLoaded()` equivalents;
 - load customer info and offerings on startup;
-- cache offerings and customer info;
+- cache offerings and customer info; offering loads are single-flight,
+  generation-scoped to the current uid, invalidated on identity change, and
+  discard late responses from an older generation;
 - separate one-time SDK configuration from independently retryable customer
   info and offering loads;
 - prefer the explicit `subscriptions` offering, then current/all offerings;
@@ -147,8 +162,9 @@ state, behind an injectable SDK adapter for deterministic tests:
   after success.
 
 Race tests cover uid arrival before, during, and after configuration, duplicate
-configure calls, logout, switching Firebase uid, and purchase/restore attempted
-before identity synchronization.
+configure calls, logout/switch during commerce, stale offering completion,
+double purchase, purchase+restore overlap, and operations attempted before
+identity synchronization or after its timeout.
 
 The paywall remains usable during retries and shows an actionable localized
 message instead of only `Unavailable`. A purchase button is enabled only when a
@@ -174,8 +190,17 @@ Before accepting the billing fix, verify in App Store Connect and RevenueCat:
 - the application unlocks the paid entitlement from the persisted state.
 
 If the products were created under the old bundle's App Store app, code changes
-are insufficient: equivalent subscriptions must be created for the current app
-record and attached to the Expatlio RevenueCat app.
+are insufficient. Product IDs cannot be reused across App Store app records, so
+new subscriptions with new IDs must be created for the current app. The same
+atomic release change must update `SubscriptionProductIds`, RevenueCat offering
+packages, `revenue_cat_webhook.js` `PRODUCT_PERIOD_MONTHS`, transaction/schema
+comments, and all product-mapping tests. The embedded public SDK key and
+RevenueCat In-App Purchase Key are revalidated against the current app.
+
+Acceptance also includes deleting/reinstalling the TestFlight app (or using a
+clean device), signing into the same Firebase uid, restoring the sandbox
+purchase, and observing the same CustomerInfo → RevenueCat → webhook → unlock
+chain without creating a duplicate entitlement.
 
 ### 6. Password recovery
 
@@ -192,11 +217,24 @@ existence and Resend success cannot be inferred from the callable response:
   asks Firebase Admin for the password-reset link when it exists, and sends the
   localized Expatlio HTML/text email through Resend;
 - rate-limit the callable by HMAC(email) and HMAC(client IP), never raw email/IP,
-  with server-secret key material, bounded windows, and TTL cleanup;
+  with dedicated `PASSWORD_RESET_RATE_LIMIT_HMAC_KEY`, bounded windows, and TTL
+  cleanup. Bind this secret only to `requestPasswordReset`; bind
+  `RESEND_API_KEY` only to the processing trigger;
 - keep the queued raw email only in the locked server-only request document for
   the minimum processing TTL; never log email, reset link, OOB code, IP, or
   request payload;
-- retry transient provider delivery in the background with bounded attempts;
+- make the at-least-once trigger idempotent with persisted
+  `queued|processing|retry|sent|discarded` status, transactionally acquired
+  lease, attempt count, `retryAt`, maximum age, and terminal status;
+- classify transient and permanent Firebase/Resend errors. Retry-enabled trigger
+  invocations stop immediately once attempts or max age are exhausted;
+- send a stable Resend `Idempotency-Key` derived only from `requestId`, so a
+  crash after provider acceptance but before Firestore completion cannot send a
+  second email;
+- canonicalize the Firebase Admin reset link through the existing hosted-handler
+  link builder: copy only allowlisted `mode`, `oobCode`, `apiKey` parameters,
+  add allowlisted `lang=ru|en` and the Expatlio `continueUrl`, and place this
+  canonical `/auth/action` URL in both HTML and text email;
 - the hosted `/auth/action` handler accepts `mode=resetPassword`, verifies the
   OOB code with `verifyPasswordResetCode`, lets the user enter a new password
   twice, and applies it with `confirmPasswordReset`;
@@ -211,8 +249,14 @@ existence and Resend success cannot be inferred from the callable response:
 
 Both functions are exported from `index.js`, added to the scoped deploy script
 and deployment-readiness `REQUIRED_FUNCTIONS`; `RESEND_API_KEY` remains bound
-only to the processing trigger. The rollout explicitly deploys Firebase Hosting
-because the current function deploy script does not publish `/auth/action`.
+only to the processing trigger. Secret readiness includes the dedicated HMAC
+secret. Firestore rules explicitly deny every client, including authenticated
+and app-admin users, from `passwordResetRequests` and
+`passwordResetRateLimits`; only Admin SDK functions bypass the rules. Both
+collections configure real Firestore TTL field overrides on `expiresAt`. The
+rollout explicitly deploys rules, indexes/TTL configuration, functions, and
+Firebase Hosting because the current function deploy script does not publish
+`/auth/action`.
 
 ## Error handling
 
@@ -231,17 +275,21 @@ because the current function deploy script does not publish `/auth/action`.
   localized deadline output, RevenueCat lifecycle/race behavior, price mapping,
   paywall states, password-reset callable, and hosted action handler contract.
 - Node tests for queueing, HMAC rate limits, privacy, link generation, trigger
-  retries, Resend errors, index exports, deploy targets, and TTL fields.
+  retries, duplicate/concurrent triggers, crash-after-send idempotency,
+  exhausted attempts, expired requests, Resend errors, index exports, deploy
+  targets, secret bindings, and real TTL field overrides.
 - Firebase Auth/Firestore emulator tests plus behavioral browser tests for both
   `verifyEmail` and `resetPassword`; source-regex checks alone are insufficient.
+- Firestore emulator tests prove anonymous, authenticated, and app-admin client
+  reads/writes are denied for reset request and rate-limit collections.
 - `flutter analyze`.
 - Focused tests, then full `flutter test`.
 - `node --check` and targeted backend tests.
 - Firebase deployment-readiness validation.
 - Completed TestFlight sandbox purchase, active RevenueCat entitlement,
   RevenueCat transaction, webhook projection, and in-app unlock.
-- Real password-reset email and completed password change on a disposable test
-  account.
+- Real password-reset email with canonical hosted-handler href and completed
+  password change on a disposable test account.
 
 ## Rollout
 
