@@ -92,11 +92,16 @@ Add a pure helper that accepts text and a fallback source language, and returns
 
 ### Rules
 
-- Count Cyrillic letters, including `Ё/ё`, and basic Latin letters.
+- Count Russian letters with `[А-Яа-яЁё]` and English letters with
+  `[A-Za-z]`. Other Cyrillic/Latin-script letters are ignored in v1.
 - More Cyrillic letters selects Russian to English.
 - More Latin letters selects English to Russian.
-- A tie or text without letters uses the initial fallback derived from the
-  practiced language and app locale.
+- A tie or text without counted letters uses one immutable initial fallback:
+  practiced language beginning with `en` selects Russian input, practiced
+  language beginning with `ru` selects English input, and any other/missing
+  practiced language selects Russian input when the app locale is `ru` and
+  English input otherwise. The practiced language always takes precedence over
+  app locale.
 - Detection updates the visible direction label while typing.
 - Submission recomputes direction from the final trimmed text so the label and
   request cannot diverge.
@@ -134,20 +139,30 @@ model response is malformed or truncated.
 ### Provider configuration
 
 - Replace `responseSchema` with `responseJsonSchema` while retaining
-  `responseMimeType: application/json`.
+  `responseMimeType: application/json`. Define it as literal standard JSON
+  Schema using lowercase `object`, `array`, `string`, and `integer` type values;
+  do not reuse the SDK `Type.*` enum. Preserve `required`, bounds,
+  `additionalProperties: false`, and add deterministic `propertyOrdering`.
 - Disable Gemini 2.5 thinking for this task with a zero thinking budget.
-- Increase the structured response token allowance to leave adequate room for
-  the complete object.
+- Set `maxOutputTokens` to 4096.
 - Keep temperature low and the existing strict result validator.
-- Require a normal completion/finish reason before parsing when that metadata
-  is available.
+- Treat only first-candidate `finishReason == STOP` as a normal completion.
+  Missing candidates, missing/empty text, missing or unspecified finish reason,
+  `MAX_TOKENS`, safety/content stops, and every other non-`STOP` reason are
+  structured-generation failures eligible for the one internal retry.
+- Set each provider call timeout to 40 seconds, the Firestore lease to 115
+  seconds, and preserve the 120-second callable timeout. Two worst-case
+  provider calls therefore consume at most 80 seconds, leaving at least 35
+  seconds for Firestore reads, validation, writes, and callable teardown before
+  lease expiry.
 
 ### Parsing and retry
 
 - Trim `response.text` and parse it as JSON.
 - Do not heuristically invent or repair missing fields.
-- If parsing or result validation fails, make exactly one internal provider
-  retry with the same schema and a concise reminder to return only the schema.
+- If completion metadata is not normal, output is empty, JSON parsing fails, or
+  strict result validation fails, make exactly one internal provider retry with
+  the same schema and a concise reminder to return only the schema.
 - Both provider calls belong to one logical user/session attempt and one
   Firestore lease. The internal retry does not increment the user-facing daily
   or session attempt counters again.
@@ -158,13 +173,24 @@ model response is malformed or truncated.
 
 ### Recovery of already failed sessions
 
-Introduce a generation format/version on feedback documents.
+Introduce integer `generationVersion` with current value `2` on feedback
+documents and responses.
 
 - Existing `ready` feedback remains reusable regardless of version.
-- A missing/older version with `failed` or `failed_terminal` may be reclaimed
-  once by the new implementation instead of remaining permanently broken.
-- The reclaimed attempt writes the current generation version and resets only
-  the per-session generation state needed for the new format.
+- Existing `insufficient_text` remains reusable regardless of version because
+  it describes transcript sufficiency, not provider format.
+- A missing/older `generationVersion` with `failed` or `failed_terminal` is
+  eligible for exactly one version-2 recovery cycle. In the same Firestore
+  transaction that claims the new provider lease, treat its effective
+  per-session `attemptCount` as zero, delete the legacy `retryAt`, replace stale
+  lease fields, set `generationVersion: 2`, and claim attempt 1. It then has the
+  normal version-2 maximum of three logical attempts; because the version is
+  already 2, it can never receive another migration reset.
+- A current-version `failed` must obey its `retryAt`; a current-version
+  `failed_terminal` remains final.
+- Reclaim still increments the existing daily counter once for each logical
+  version-2 attempt. The internal malformed-output retry never increments it a
+  second time.
 - Daily quota protection remains in force.
 - New `pending`, `ready`, and failure writes carry the current generation
   version.
@@ -186,20 +212,31 @@ details without making the user wait on either page.
   lease/result.
 - Short transcripts show the existing insufficient-text state as an expected
   outcome, not a generic error.
+- When a watched legacy `failed` or `failed_terminal` response has missing/old
+  `generationVersion`, the card automatically invokes the callable exactly once
+  per mounted session/user scope to enter the server recovery path. A local
+  guard prevents watch updates from creating invocation loops.
 
 ### Call details
 
 - Place `CallFeedbackCard` above the subtitle-log section.
 - The card watches the same private
   `videoSessions/{sessionId}/aiFeedback/{uid}` document.
-- If no document exists, it may start generation; if one is pending, it keeps
+- If no document exists, it always starts generation using the same guarded
+  behavior as the summary; if one is pending, it keeps
   watching; if ready, it renders the persisted result; if retryable, it exposes
   the existing retry action.
+- It uses the same one-time automatic legacy recovery rule as the summary.
 - Pending copy on this page says that the result will appear here, rather than
   directing the user to another screen.
 
 Add a small presentation enum/parameter to the shared card instead of
-duplicating its state machine.
+duplicating its state machine. It has exactly two values, `summary` and
+`details`, and changes copy only; generation/watch/recovery behavior is shared.
+Extend `CallFeedbackResponse` with integer `generationVersion`; stored or
+callable responses without it parse as legacy version 1. Both server callable
+responses and stored document parsing expose the version so the card can make
+the one-time recovery decision deterministically.
 
 ## Unit 5: Subtitle Toggle Visual Fix
 
@@ -213,8 +250,8 @@ artifact visible behind the rounded button.
 - Replace the transparent `Material` plus decorated `Ink` and shadow with one
   shaped, clipped `Material` and `InkWell`.
 - Use the white card color, rounded border, and no box shadow.
-- Preserve the minimum touch target, centered placement, labels, and collapsed
-  fade over the next subtitle item.
+- Preserve a minimum 44-by-44 point touch target, centered placement, labels,
+  and collapsed fade over the next subtitle item.
 - Ensure the fade is not used as the button's own background.
 
 ## Error Handling
@@ -247,11 +284,18 @@ artifact visible behind the rounded button.
 - Test valid structured output on the first attempt.
 - Test malformed JSON followed by valid JSON on the internal retry.
 - Test validation failure followed by valid JSON.
+- Test empty text and each non-`STOP`/missing finish-reason category as retry
+  triggers.
 - Test two malformed responses produce the expected safe failure.
+- Test two provider timeouts fit the 80-second provider budget and the
+  115-second lease/callable budget contract.
 - Assert internal retry does not double-count the logical user attempt.
 - Test current-version failure cooldown and terminal limits.
 - Test migration/reclaim of old failed and failed-terminal documents.
 - Test that ready documents from older versions are still reused.
+- Test that old `insufficient_text` remains final and is not regenerated.
+- Test that the client automatically invokes one legacy recovery without watch
+  loops, while current-version terminal failure remains final.
 - Test safe diagnostic metadata without model or transcript text.
 
 ### Validation commands
@@ -271,4 +315,3 @@ artifact visible behind the rounded button.
   and no response content.
 - Confirm the result is visible after leaving the summary and reopening call
   details.
-
