@@ -24,16 +24,23 @@ Map<String, dynamic> feedbackResult() => <String, dynamic>{
     };
 
 void main() {
+  test('callable timeout exceeds the server generation budget', () {
+    expect(callFeedbackCallableTimeout, const Duration(seconds: 125));
+  });
+
   test('generate sends the session and locale and decodes ready feedback',
       () async {
     String? calledFunction;
     Map<String, dynamic>? calledPayload;
+    Duration? calledTimeout;
     final repository = CallFeedbackRepository(
-      invoker: (functionName, payload) async {
+      invoker: (functionName, payload, {required timeout}) async {
         calledFunction = functionName;
         calledPayload = payload;
+        calledTimeout = timeout;
         return <String, dynamic>{
           'status': 'ready',
+          'generationVersion': 3,
           'feedback': feedbackResult(),
         };
       },
@@ -49,9 +56,11 @@ void main() {
       'sessionId': 'session-a',
       'outputLocale': 'ru',
     });
+    expect(calledTimeout, callFeedbackCallableTimeout);
     expect(response.status, CallFeedbackStatus.ready);
     expect(response.feedback?.score, 82);
     expect(response.feedback?.corrections.single.better, 'I went yesterday.');
+    expect(response.generationVersion, 3);
   });
 
   test('pending, insufficient and terminal callable states are decoded', () {
@@ -101,6 +110,30 @@ void main() {
     expect(failed.retryAfterMs, greaterThanOrEqualTo(1000));
     expect(pending.status, CallFeedbackStatus.pending);
     expect(pending.retryAfterMs, greaterThanOrEqualTo(1000));
+  });
+
+  test('older failures are recoverable once and current failures are not', () {
+    final legacy = parseStoredCallFeedback(<String, dynamic>{
+      'status': 'failed_terminal',
+      'errorCode': 'feedback_generation_failed',
+    });
+    final previous = parseStoredCallFeedback(<String, dynamic>{
+      'status': 'failed_terminal',
+      'generationVersion': 2,
+      'errorCode': 'feedback_generation_failed',
+    });
+    final current = parseStoredCallFeedback(<String, dynamic>{
+      'status': 'failed_terminal',
+      'generationVersion': 3,
+      'errorCode': 'feedback_generation_failed',
+    });
+
+    expect(legacy.generationVersion, 1);
+    expect(legacy.isLegacyRecoverableFailure, isTrue);
+    expect(previous.generationVersion, 2);
+    expect(previous.isLegacyRecoverableFailure, isTrue);
+    expect(current.generationVersion, 3);
+    expect(current.isLegacyRecoverableFailure, isFalse);
   });
 
   test('malformed structured feedback is rejected', () {

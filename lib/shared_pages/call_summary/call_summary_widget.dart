@@ -874,6 +874,8 @@ class _CallSummaryWidgetState extends State<CallSummaryWidget> {
                                   if (widget.sessionID != null) ...[
                                     CallFeedbackCard(
                                       sessionRef: widget.sessionID!,
+                                      presentation:
+                                          CallFeedbackPresentation.summary,
                                     ),
                                     const SizedBox(
                                       height: ExpatlioDesign.space20,

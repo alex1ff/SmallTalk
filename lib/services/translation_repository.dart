@@ -26,6 +26,58 @@ enum TranslationLanguage {
   final String code;
 }
 
+TranslationLanguage resolveTranslationFallbackLanguage({
+  required String practicedLanguageCode,
+  required String appLocaleLanguageCode,
+}) {
+  final practiced = practicedLanguageCode.trim().toLowerCase();
+  if (practiced.startsWith('en')) {
+    return TranslationLanguage.russian;
+  }
+  if (practiced.startsWith('ru')) {
+    return TranslationLanguage.english;
+  }
+  return appLocaleLanguageCode.trim().toLowerCase() == 'ru'
+      ? TranslationLanguage.russian
+      : TranslationLanguage.english;
+}
+
+TranslationLanguage detectTranslationSourceLanguage(
+  String text, {
+  required TranslationLanguage fallback,
+}) {
+  var russianLetters = 0;
+  var englishLetters = 0;
+  for (final rune in text.runes) {
+    final isRussian =
+        (rune >= 0x0410 && rune <= 0x044F) || rune == 0x0401 || rune == 0x0451;
+    if (isRussian) {
+      russianLetters += 1;
+      continue;
+    }
+    final isEnglish = (rune >= 0x0041 && rune <= 0x005A) ||
+        (rune >= 0x0061 && rune <= 0x007A);
+    if (isEnglish) {
+      englishLetters += 1;
+    }
+  }
+  if (russianLetters > englishLetters) {
+    return TranslationLanguage.russian;
+  }
+  if (englishLetters > russianLetters) {
+    return TranslationLanguage.english;
+  }
+  return fallback;
+}
+
+TranslationLanguage oppositeTranslationLanguage(
+  TranslationLanguage language,
+) {
+  return language == TranslationLanguage.russian
+      ? TranslationLanguage.english
+      : TranslationLanguage.russian;
+}
+
 class TranslationResult {
   const TranslationResult({
     required this.sourceText,

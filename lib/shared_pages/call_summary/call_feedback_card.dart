@@ -10,15 +10,19 @@ import '/services/translation_repository.dart'
     show classifyCallIntegrationFailure;
 import '/shared_pages/design/expatlio_design.dart';
 
+enum CallFeedbackPresentation { summary, details }
+
 class CallFeedbackCard extends StatefulWidget {
   const CallFeedbackCard({
     super.key,
     required this.sessionRef,
     this.repository = const CallFeedbackRepository(),
+    this.presentation = CallFeedbackPresentation.summary,
   });
 
   final DocumentReference sessionRef;
   final CallFeedbackRepository repository;
+  final CallFeedbackPresentation presentation;
 
   @override
   State<CallFeedbackCard> createState() => _CallFeedbackCardState();
@@ -32,6 +36,7 @@ class _CallFeedbackCardState extends State<CallFeedbackCard> {
   String? _activeScope;
   String _outputLocale = 'ru';
   bool _initialInvocationStarted = false;
+  bool _legacyRecoveryStarted = false;
   bool _callInFlight = false;
   int _scopeGeneration = 0;
 
@@ -73,6 +78,7 @@ class _CallFeedbackCardState extends State<CallFeedbackCard> {
     _response = null;
     _unavailableCode = null;
     _initialInvocationStarted = false;
+    _legacyRecoveryStarted = false;
     _callInFlight = false;
 
     final userId = currentUserUid.trim();
@@ -90,6 +96,20 @@ class _CallFeedbackCardState extends State<CallFeedbackCard> {
             _initialInvocationStarted = true;
             unawaited(_invoke(generation));
           }
+          return;
+        }
+        if (response.isLegacyRecoverableFailure) {
+          if (_legacyRecoveryStarted) return;
+          _legacyRecoveryStarted = true;
+          _initialInvocationStarted = true;
+          setState(() {
+            _response = const CallFeedbackResponse(
+              status: CallFeedbackStatus.pending,
+              generationVersion: callFeedbackGenerationVersion,
+            );
+            _unavailableCode = null;
+          });
+          unawaited(_invoke(generation));
           return;
         }
         _applyResponse(response, generation);
@@ -137,7 +157,10 @@ class _CallFeedbackCardState extends State<CallFeedbackCard> {
       if (!mounted || generation != _scopeGeneration) return;
       setState(() => _unavailableCode = 'unexpected_error');
     } finally {
-      if (generation == _scopeGeneration) _callInFlight = false;
+      if (generation == _scopeGeneration) {
+        _callInFlight = false;
+        if (mounted) setState(() {});
+      }
     }
   }
 
@@ -225,6 +248,7 @@ class _CallFeedbackCardState extends State<CallFeedbackCard> {
   }
 
   Widget _buildProgress() {
+    final isSummary = widget.presentation == CallFeedbackPresentation.summary;
     return Row(
       children: [
         const SizedBox(
@@ -236,8 +260,12 @@ class _CallFeedbackCardState extends State<CallFeedbackCard> {
         Expanded(
           child: Text(
             _text(
-              ru: 'Анализируем вашу речь. Обычно это занимает меньше минуты.',
-              en: 'Analyzing your speech. This usually takes under a minute.',
+              ru: isSummary
+                  ? 'AI-разбор готовится. Ждать не нужно — он появится на странице информации о звонке.'
+                  : 'AI-разбор готовится. Он появится на этой странице автоматически.',
+              en: isSummary
+                  ? 'AI feedback is being prepared. You do not need to wait — it will appear on the call information page.'
+                  : 'AI feedback is being prepared. It will appear on this page automatically.',
             ),
           ),
         ),

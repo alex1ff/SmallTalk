@@ -26,12 +26,13 @@ Files:
 
 Steps:
 1. Replace SDK `responseSchema` with lowercase literal `responseJsonSchema`.
-2. Set thinking budget 0, `maxOutputTokens: 4096`, provider timeout 40 seconds,
-   lease 115 seconds, and keep SDK retry attempts at 1.
+2. Use validated model-specific thinking config, `maxOutputTokens: 4096`,
+   provider timeout 40 seconds, lease 115 seconds, and keep SDK retry attempts
+   at 1.
 3. Classify finish reason, empty output, parse, validation, transport, and
    provider failures; perform at most one application-level retry.
 4. Log safe generation metadata only.
-5. Add `generationVersion: 2` to current writes/responses.
+5. Add `generationVersion: 3` to current writes/responses.
 6. Transactionally reclaim legacy failed documents once while preserving ready
    and insufficient-text results and daily quota.
 7. Cover successful retry, terminal failure, timeout budget, permanent errors,
@@ -76,4 +77,3 @@ Steps:
 6. Commit focused implementation changes.
 7. Report that `generateCallFeedback` requires deployment; deploy only within
    the user's approved release workflow.
-

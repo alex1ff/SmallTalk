@@ -3,6 +3,80 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:small_talk/services/translation_repository.dart';
 
 void main() {
+  group('translation language detection', () {
+    test('uses practiced language before locale for fallback', () {
+      expect(
+        resolveTranslationFallbackLanguage(
+          practicedLanguageCode: 'en-US',
+          appLocaleLanguageCode: 'en',
+        ),
+        TranslationLanguage.russian,
+      );
+      expect(
+        resolveTranslationFallbackLanguage(
+          practicedLanguageCode: 'ru',
+          appLocaleLanguageCode: 'ru',
+        ),
+        TranslationLanguage.english,
+      );
+      expect(
+        resolveTranslationFallbackLanguage(
+          practicedLanguageCode: 'de',
+          appLocaleLanguageCode: 'ru',
+        ),
+        TranslationLanguage.russian,
+      );
+    });
+
+    test('detects Russian and English letters while ignoring other input', () {
+      expect(
+        detectTranslationSourceLanguage(
+          'Привет, hello!',
+          fallback: TranslationLanguage.english,
+        ),
+        TranslationLanguage.russian,
+      );
+      expect(
+        detectTranslationSourceLanguage(
+          'hello мир',
+          fallback: TranslationLanguage.russian,
+        ),
+        TranslationLanguage.english,
+      );
+      expect(
+        detectTranslationSourceLanguage(
+          'Ёжик 123 😊',
+          fallback: TranslationLanguage.english,
+        ),
+        TranslationLanguage.russian,
+      );
+    });
+
+    test('uses fallback for ties and text without counted letters', () {
+      expect(
+        detectTranslationSourceLanguage(
+          'аa',
+          fallback: TranslationLanguage.english,
+        ),
+        TranslationLanguage.english,
+      );
+      expect(
+        detectTranslationSourceLanguage(
+          '123 😊!',
+          fallback: TranslationLanguage.russian,
+        ),
+        TranslationLanguage.russian,
+      );
+      expect(
+        detectTranslationSourceLanguage(
+          'її',
+          fallback: TranslationLanguage.english,
+        ),
+        TranslationLanguage.english,
+      );
+    });
+  });
+
   test('classifies unauthenticated integration failures by local auth state',
       () {
     expect(

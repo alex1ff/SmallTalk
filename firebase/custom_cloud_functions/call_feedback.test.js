@@ -369,28 +369,83 @@ test("strictly validates Gemini feedback at every nesting level", () => {
   );
 });
 
-test("returns settling pending without reading captions or creating feedback", async () => {
-  const nowMillis = Date.UTC(2026, 7, 4, 12);
-  const db = new FakeFirestore({
-    "videoSessions/session-a": terminalSession(nowMillis, {
+test("keeps generation alive through the caption settling period", async () => {
+  let nowMillis = Date.UTC(2026, 7, 4, 12);
+  const text = Array.from({length: 25}, (_, index) => `word${index}`).join(" ");
+  const db = seededDb(nowMillis, text);
+  db.documents.set(
+    "videoSessions/session-a",
+    terminalSession(nowMillis, {
       endedAt: admin.firestore.Timestamp.fromMillis(nowMillis - 5000),
     }),
-  });
+  );
   let providerCalls = 0;
+  const waits = [];
   const handler = createGenerateCallFeedbackHandler({
     db,
     now: () => nowMillis,
     isFeatureEnabled: () => true,
+    wait: async (delayMs) => {
+      waits.push(delayMs);
+      nowMillis += delayMs;
+    },
     generateFeedback: async () => {
       providerCalls += 1;
       return validFeedback();
     },
   });
   const result = await handler(payload(), callableContext());
-  assert.equal(result.status, "pending");
-  assert.equal(result.retryAfterMs, 10000);
-  assert.equal(providerCalls, 0);
-  assert.equal(db.read("videoSessions/session-a/aiFeedback/user-a"), undefined);
+  assert.equal(result.status, "ready");
+  assert.deepEqual(waits, [10000]);
+  assert.equal(providerCalls, 1);
+  assert.equal(
+    db.read("videoSessions/session-a/aiFeedback/user-a").status,
+    "ready",
+  );
+});
+
+test("caps settling when the terminal timestamp is in the future", async () => {
+  let nowMillis = Date.UTC(2026, 7, 4, 12);
+  const text = Array.from({length: 25}, (_, index) => `word${index}`).join(" ");
+  const db = seededDb(nowMillis, text);
+  db.documents.set(
+    "videoSessions/session-a",
+    terminalSession(nowMillis, {
+      endedAt: admin.firestore.Timestamp.fromMillis(nowMillis + 60000),
+    }),
+  );
+  const waits = [];
+  let providerCalls = 0;
+  const handler = createGenerateCallFeedbackHandler({
+    db,
+    now: () => nowMillis,
+    isFeatureEnabled: () => true,
+    logProviderFailure: () => {},
+    wait: async (delayMs) => {
+      waits.push(delayMs);
+      nowMillis += delayMs;
+    },
+    generateFeedback: async () => {
+      providerCalls += 1;
+      if (providerCalls === 1) {
+        const error = new Error("provider timeout");
+        error.name = "TimeoutError";
+        throw error;
+      }
+      return validFeedback();
+    },
+  });
+
+  const result = await handler(payload(), callableContext());
+  assert.equal(result.status, "ready");
+  assert.deepEqual(waits, [15000]);
+  assert.equal(providerCalls, 2);
+  assert.ok(
+    15000 +
+      __private__.MAX_PROVIDER_CALLS_PER_ATTEMPT *
+        __private__.PROVIDER_TIMEOUT_MS <
+      __private__.FEEDBACK_TIMEOUT_SECONDS * 1000,
+  );
 });
 
 test("persists insufficient text without consuming Gemini quota", async () => {
@@ -405,7 +460,10 @@ test("persists insufficient text without consuming Gemini quota", async () => {
     },
   });
   const result = await handler(payload(), callableContext());
-  assert.deepEqual(result, {status: "insufficient_text"});
+  assert.deepEqual(result, {
+    status: "insufficient_text",
+    generationVersion: 3,
+  });
   assert.equal(
     db.read("videoSessions/session-a/aiFeedback/user-a").status,
     "insufficient_text",
@@ -443,6 +501,7 @@ test("generates once, stores private structured feedback, and reuses it", async 
   assert.equal(providerCalls, 1);
   assert.equal(stored.ownerUid, "user-a");
   assert.equal(stored.status, "ready");
+  assert.equal(stored.generationVersion, 3);
   assert.equal(stored.leaseId, undefined);
   assert.equal(stored.result.score, 82);
   assert.equal(db.read("aiFeedbackRateLimits/user-a").attemptCount, 1);
@@ -478,6 +537,7 @@ test("failed provider attempts become terminal after three tries", async () => {
   assert.deepEqual(terminal, {
     status: "failed_terminal",
     errorCode: "feedback_generation_failed",
+    generationVersion: 3,
   });
   assert.equal(providerCalls, 3);
   assert.equal(
@@ -506,4 +566,329 @@ test("daily provider limit is enforced before a lease is acquired", async () => 
     (error) => assertDomainError(error, "feedback_daily_limit"),
   );
   assert.equal(db.read("videoSessions/session-a/aiFeedback/user-a"), undefined);
+});
+
+test("retries the production GenAI boundary after malformed JSON", async () => {
+  const requests = [];
+  const responses = [
+    {
+      text: "{",
+      candidates: [{finishReason: "STOP"}],
+    },
+    {
+      text: JSON.stringify(validFeedback()),
+      candidates: [{finishReason: "STOP"}],
+    },
+  ];
+  const client = {
+    models: {
+      generateContent: async (request) => {
+        requests.push(request);
+        return responses.shift();
+      },
+    },
+  };
+  const logged = [];
+  const result = await __private__.generateValidatedFeedback({
+    generateFeedback: (request) => __private__.defaultGenerateFeedback({
+      ...request,
+      client,
+    }),
+    transcript: [{role: "learner", text: "A useful transcript."}],
+    outputLocale: "ru",
+    analyzedLanguage: "en",
+    modelId: "test-model",
+    logProviderFailure: (metadata) => logged.push(metadata),
+  });
+
+  assert.deepEqual(result, validFeedback());
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].model, "test-model");
+  assert.equal(requests[0].config.maxOutputTokens, 4096);
+  assert.deepEqual(requests[0].config.thinkingConfig, {
+    thinkingLevel: "MINIMAL",
+  });
+  assert.equal(requests[0].config.responseMimeType, "application/json");
+  assert.equal(
+    requests[0].config.responseJsonSchema,
+    __private__.feedbackResponseJsonSchema,
+  );
+  assert.deepEqual(requests[0].config.httpOptions, {
+    timeout: 40000,
+    retryOptions: {attempts: 1},
+  });
+  assert.match(
+    requests[1].contents[0].parts[0].text,
+    /Return only one complete JSON object/u,
+  );
+  assert.deepEqual(logged, [{
+    errorType: "FeedbackProviderOutputError",
+    providerAttempt: 1,
+    responseCharacterCount: 1,
+    finishReason: "STOP",
+  }]);
+});
+
+test("internal provider retry consumes one logical session attempt", async () => {
+  const nowMillis = Date.UTC(2026, 7, 4, 12);
+  const text = Array.from({length: 25}, (_, index) => `word${index}`).join(" ");
+  const db = seededDb(nowMillis, text);
+  let providerCalls = 0;
+  const handler = createGenerateCallFeedbackHandler({
+    db,
+    now: () => nowMillis,
+    leaseIdFactory: () => "single-logical-attempt",
+    isFeatureEnabled: () => true,
+    logProviderFailure: () => {},
+    generateFeedback: async () => {
+      providerCalls += 1;
+      if (providerCalls === 1) {
+        throw new __private__.FeedbackProviderOutputError("invalid_json", {
+          responseCharacterCount: 50,
+          finishReason: "STOP",
+        });
+      }
+      return validFeedback();
+    },
+  });
+
+  const result = await handler(payload(), callableContext());
+  const stored = db.read("videoSessions/session-a/aiFeedback/user-a");
+  assert.equal(result.status, "ready");
+  assert.equal(providerCalls, 2);
+  assert.equal(stored.attemptCount, 1);
+  assert.equal(db.read("aiFeedbackRateLimits/user-a").attemptCount, 1);
+});
+
+test("retries transient provider failures but not provider 4xx", async () => {
+  let transientCalls = 0;
+  const transient = await __private__.generateValidatedFeedback({
+    generateFeedback: async () => {
+      transientCalls += 1;
+      if (transientCalls === 1) {
+        const error = new Error("upstream unavailable");
+        error.status = 503;
+        throw error;
+      }
+      return validFeedback();
+    },
+    transcript: [],
+    outputLocale: "ru",
+    analyzedLanguage: "en",
+    modelId: "test-model",
+    logProviderFailure: () => {},
+  });
+  assert.deepEqual(transient, validFeedback());
+  assert.equal(transientCalls, 2);
+
+  let clientErrorCalls = 0;
+  await assert.rejects(__private__.generateValidatedFeedback({
+    generateFeedback: async () => {
+      clientErrorCalls += 1;
+      const error = new Error("quota exceeded");
+      error.status = 429;
+      throw error;
+    },
+    transcript: [],
+    outputLocale: "ru",
+    analyzedLanguage: "en",
+    modelId: "test-model",
+    logProviderFailure: () => {},
+  }));
+  assert.equal(clientErrorCalls, 1);
+});
+
+test("retries production-shaped Node fetch socket failures", async () => {
+  let providerCalls = 0;
+  const result = await __private__.generateValidatedFeedback({
+    generateFeedback: async () => {
+      providerCalls += 1;
+      if (providerCalls === 1) {
+        const cause = new Error("other side closed");
+        cause.code = "UND_ERR_SOCKET";
+        throw new TypeError("fetch failed", {cause});
+      }
+      return validFeedback();
+    },
+    transcript: [],
+    outputLocale: "ru",
+    analyzedLanguage: "en",
+    modelId: __private__.DEFAULT_FEEDBACK_MODEL_ID,
+    logProviderFailure: () => {},
+  });
+
+  assert.deepEqual(result, validFeedback());
+  assert.equal(providerCalls, 2);
+});
+
+test("retries Node fetch failures even without a transport cause code", async () => {
+  let providerCalls = 0;
+  const result = await __private__.generateValidatedFeedback({
+    generateFeedback: async () => {
+      providerCalls += 1;
+      if (providerCalls === 1) throw new TypeError("fetch failed");
+      return validFeedback();
+    },
+    transcript: [],
+    outputLocale: "ru",
+    analyzedLanguage: "en",
+    modelId: __private__.DEFAULT_FEEDBACK_MODEL_ID,
+    logProviderFailure: () => {},
+  });
+
+  assert.deepEqual(result, validFeedback());
+  assert.equal(providerCalls, 2);
+});
+
+test("accepts only complete STOP JSON responses", () => {
+  assert.deepEqual(
+    __private__.safeJsonText({
+      text: '{"summary":"ok"}',
+      candidates: [{finishReason: "STOP"}],
+    }),
+    {text: '{"summary":"ok"}', finishReason: "STOP"},
+  );
+  assert.throws(
+    () => __private__.safeJsonText({
+      text: "{",
+      candidates: [{finishReason: "MAX_TOKENS"}],
+    }),
+    (error) => error instanceof __private__.FeedbackProviderOutputError &&
+      error.finishReason === "MAX_TOKENS",
+  );
+  assert.throws(
+    () => __private__.safeJsonText({
+      text: "",
+      candidates: [{finishReason: "STOP"}],
+    }),
+    (error) => error instanceof __private__.FeedbackProviderOutputError,
+  );
+});
+
+test("uses the structured response contract and bounded provider budget", () => {
+  assert.equal(__private__.FEEDBACK_GENERATION_VERSION, 3);
+  assert.equal(
+    __private__.DEFAULT_FEEDBACK_MODEL_ID,
+    "gemini-3.1-flash-lite",
+  );
+  assert.equal(__private__.MAX_PROVIDER_CALLS_PER_ATTEMPT, 2);
+  assert.equal(__private__.PROVIDER_MAX_OUTPUT_TOKENS, 4096);
+  assert.equal(__private__.PROVIDER_TIMEOUT_MS, 40000);
+  assert.equal(__private__.LEASE_DURATION_MS, 115000);
+  assert.equal(__private__.feedbackResponseJsonSchema.type, "object");
+  assert.equal(
+    __private__.feedbackResponseJsonSchema.properties.corrections.type,
+    "array",
+  );
+  assert.equal(
+    __private__.feedbackResponseJsonSchema
+      .properties.corrections.items.type,
+    "object",
+  );
+});
+
+test("uses only model-specific validated feedback configurations", () => {
+  const previousModel = process.env.GEMINI_FEEDBACK_MODEL;
+  try {
+    delete process.env.GEMINI_FEEDBACK_MODEL;
+    assert.equal(
+      __private__.feedbackModelId(),
+      "gemini-3.1-flash-lite",
+    );
+    assert.deepEqual(
+      __private__.feedbackThinkingConfig("gemini-3.1-flash-lite"),
+      {thinkingLevel: "MINIMAL"},
+    );
+
+    process.env.GEMINI_FEEDBACK_MODEL = "gemini-2.5-flash";
+    assert.equal(__private__.feedbackModelId(), "gemini-2.5-flash");
+    assert.deepEqual(
+      __private__.feedbackThinkingConfig("gemini-2.5-flash"),
+      {thinkingBudget: 0},
+    );
+
+    process.env.GEMINI_FEEDBACK_MODEL = "unsupported-model";
+    assert.equal(
+      __private__.feedbackModelId(),
+      "gemini-3.1-flash-lite",
+    );
+  } finally {
+    if (previousModel === undefined) {
+      delete process.env.GEMINI_FEEDBACK_MODEL;
+    } else {
+      process.env.GEMINI_FEEDBACK_MODEL = previousModel;
+    }
+  }
+});
+
+test("migrates one older terminal failure into the version-three flow", async () => {
+  const nowMillis = Date.UTC(2026, 7, 4, 12);
+  const text = Array.from({length: 25}, (_, index) => `word${index}`).join(" ");
+  const db = seededDb(nowMillis, text);
+  db.documents.set("videoSessions/session-a/aiFeedback/user-a", {
+    ownerUid: "user-a",
+    status: "failed_terminal",
+    generationVersion: 2,
+    attemptCount: 3,
+    errorCode: "feedback_generation_failed",
+    updatedAt: admin.firestore.Timestamp.fromMillis(nowMillis - 60000),
+  });
+  let providerCalls = 0;
+  const handler = createGenerateCallFeedbackHandler({
+    db,
+    now: () => nowMillis,
+    leaseIdFactory: () => "migration-lease",
+    isFeatureEnabled: () => true,
+    generateFeedback: async () => {
+      providerCalls += 1;
+      return validFeedback();
+    },
+  });
+
+  const result = await handler(payload(), callableContext());
+  const stored = db.read("videoSessions/session-a/aiFeedback/user-a");
+  assert.equal(result.status, "ready");
+  assert.equal(result.generationVersion, 3);
+  assert.equal(providerCalls, 1);
+  assert.equal(stored.status, "ready");
+  assert.equal(stored.attemptCount, 1);
+  assert.equal(stored.generationVersion, 3);
+});
+
+test("reuses legacy completed results and current terminal failures", async () => {
+  const nowMillis = Date.UTC(2026, 7, 4, 12);
+  const readyDb = seededDb(nowMillis, "Too short to regenerate.");
+  readyDb.documents.set("videoSessions/session-a/aiFeedback/user-a", {
+    status: "ready",
+    result: validFeedback(),
+  });
+  const readyHandler = createGenerateCallFeedbackHandler({
+    db: readyDb,
+    now: () => nowMillis,
+    isFeatureEnabled: () => true,
+    generateFeedback: async () => {
+      throw new Error("must not regenerate ready feedback");
+    },
+  });
+  const ready = await readyHandler(payload(), callableContext());
+  assert.equal(ready.status, "ready");
+  assert.equal(ready.generationVersion, 1);
+
+  const terminalDb = seededDb(nowMillis, "Too short to regenerate.");
+  terminalDb.documents.set("videoSessions/session-a/aiFeedback/user-a", {
+    status: "failed_terminal",
+    generationVersion: 3,
+    errorCode: "feedback_generation_failed",
+  });
+  const terminalHandler = createGenerateCallFeedbackHandler({
+    db: terminalDb,
+    now: () => nowMillis,
+    isFeatureEnabled: () => true,
+  });
+  const terminal = await terminalHandler(payload(), callableContext());
+  assert.deepEqual(terminal, {
+    status: "failed_terminal",
+    errorCode: "feedback_generation_failed",
+    generationVersion: 3,
+  });
 });

@@ -66,6 +66,26 @@ DateTime? resolveSessionStartedAt(VideoSessionsRecord session) {
   return session.startedAt ?? session.createdAt;
 }
 
+bool isCallFeedbackEligibleSession(VideoSessionsRecord session) {
+  final status = session.status.trim().toLowerCase();
+  if (status == 'ended' || status == 'completed') {
+    return true;
+  }
+  if (status != 'cancelled' && status != 'expired') {
+    return false;
+  }
+
+  final sessionMetadata = session.snapshotData['sessionMetadata'];
+  if (sessionMetadata is! Map) {
+    return false;
+  }
+  return <Object?>[
+    sessionMetadata['callConnectedAt'],
+    sessionMetadata['callConnectedAtTimestamp'],
+    sessionMetadata['dailyWebhookConnectedAt'],
+  ].any((value) => resolveCallConnectedAtMetadata(value) != null);
+}
+
 int resolveSessionDurationSeconds(VideoSessionsRecord session) {
   if (session.duration > 0) {
     return session.duration;

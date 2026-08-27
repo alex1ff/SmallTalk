@@ -147,6 +147,42 @@ void main() {
       expect(resolveCallConnectedAtMetadata('connected'), isNull);
     });
 
+    test('AI feedback eligibility excludes unconnected terminal sessions', () {
+      expect(
+        isCallFeedbackEligibleSession(_session('ended', {'status': 'ended'})),
+        isTrue,
+      );
+      expect(
+        isCallFeedbackEligibleSession(
+          _session('cancelled', {'status': 'cancelled'}),
+        ),
+        isFalse,
+      );
+      expect(
+        isCallFeedbackEligibleSession(
+          _session('expired', {'status': 'expired'}),
+        ),
+        isFalse,
+      );
+      expect(
+        isCallFeedbackEligibleSession(
+          _session('connected-expired', {
+            'status': 'expired',
+            'sessionMetadata': {
+              'dailyWebhookConnectedAt': DateTime.utc(2026, 5, 12, 9),
+            },
+          }),
+        ),
+        isTrue,
+      );
+      expect(
+        isCallFeedbackEligibleSession(
+          _session('active', {'status': 'active'}),
+        ),
+        isFalse,
+      );
+    });
+
     test('history participant filter ignores stale legacy participant fields',
         () {
       expect(

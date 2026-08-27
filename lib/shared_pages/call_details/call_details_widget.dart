@@ -12,6 +12,7 @@ import '/shared_pages/design/expatlio_design.dart';
 import '/shared_pages/call_history/call_participant_display_utils.dart';
 import '/shared_pages/call_history/call_language_utils.dart';
 import '/shared_pages/call_history/call_history_utils.dart';
+import '/shared_pages/call_summary/call_feedback_card.dart';
 import '/shared_pages/learning/caption_word_flow.dart';
 import '/components/interactive_caption_text.dart';
 import '/shared_pages/review_flow/review_submission_helper.dart';
@@ -486,41 +487,35 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     final theme = FlutterFlowTheme.of(context);
 
     return Material(
-      color: Colors.transparent,
+      color: ExpatlioDesign.card,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
+        side: const BorderSide(color: ExpatlioDesign.border),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
         onTap: () => _setCaptionLogsExpanded(!isExpanded),
-        child: Ink(
-          decoration: BoxDecoration(
-            color: theme.primaryBackground.withValues(alpha: 0.94),
-            borderRadius: BorderRadius.circular(ExpatlioDesign.buttonRadius),
-            border: Border.all(
-              color: ExpatlioDesign.border,
-              width: 1.0,
-            ),
-            boxShadow: const [
-              BoxShadow(
-                blurRadius: 16.0,
-                color: Color(0x1A000000),
-                offset: Offset(0.0, 6.0),
-              ),
-            ],
-          ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 44.0),
           child: Padding(
             padding: const EdgeInsets.symmetric(
               horizontal: ExpatlioDesign.space16,
-              vertical: ExpatlioDesign.space12,
+              vertical: ExpatlioDesign.space8,
             ),
-            child: Text(
-              _captionLogsToggleLabel(
-                context,
-                isExpanded: isExpanded,
-              ),
-              style: theme.bodyMedium.override(
-                fontFamily: 'sf pro display',
-                fontSize: 15.0,
-                letterSpacing: 0.0,
-                fontWeight: FontWeight.w600,
+            child: Center(
+              widthFactor: 1.0,
+              child: Text(
+                _captionLogsToggleLabel(
+                  context,
+                  isExpanded: isExpanded,
+                ),
+                style: theme.bodyMedium.override(
+                  fontFamily: 'sf pro display',
+                  fontSize: 15.0,
+                  letterSpacing: 0.0,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ),
@@ -1495,6 +1490,13 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
                             durationLabel: durationLabel,
                           ),
                           const SizedBox(height: ExpatlioDesign.space32),
+                          if (isCallFeedbackEligibleSession(session)) ...[
+                            CallFeedbackCard(
+                              sessionRef: session.reference,
+                              presentation: CallFeedbackPresentation.details,
+                            ),
+                            const SizedBox(height: ExpatlioDesign.space24),
+                          ],
                           Padding(
                             padding: const EdgeInsetsDirectional.only(
                                 bottom: ExpatlioDesign.space16),

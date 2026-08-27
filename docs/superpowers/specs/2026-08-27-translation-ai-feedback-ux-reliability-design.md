@@ -143,7 +143,10 @@ model response is malformed or truncated.
   Schema using lowercase `object`, `array`, `string`, and `integer` type values;
   do not reuse the SDK `Type.*` enum. Preserve `required`, bounds,
   `additionalProperties: false`, and add deterministic `propertyOrdering`.
-- Disable Gemini 2.5 thinking for this task with a zero thinking budget.
+- Default to `gemini-3.1-flash-lite` with `thinkingLevel: MINIMAL`. Permit only
+  explicitly validated model overrides: the default model or the temporary
+  `gemini-2.5-flash` fallback with `thinkingBudget: 0`. Unknown environment
+  values fall back to the default instead of sending an incompatible request.
 - Set `maxOutputTokens` to 4096.
 - Keep temperature low and the existing strict result validator.
 - Treat only first-candidate `finishReason == STOP` as a normal completion.
@@ -178,23 +181,23 @@ model response is malformed or truncated.
 
 ### Recovery of already failed sessions
 
-Introduce integer `generationVersion` with current value `2` on feedback
+Introduce integer `generationVersion` with current value `3` on feedback
 documents and responses.
 
 - Existing `ready` feedback remains reusable regardless of version.
 - Existing `insufficient_text` remains reusable regardless of version because
   it describes transcript sufficiency, not provider format.
 - A missing/older `generationVersion` with `failed` or `failed_terminal` is
-  eligible for exactly one version-2 recovery cycle. In the same Firestore
+  eligible for exactly one version-3 recovery cycle. In the same Firestore
   transaction that claims the new provider lease, treat its effective
   per-session `attemptCount` as zero, delete the legacy `retryAt`, replace stale
-  lease fields, set `generationVersion: 2`, and claim attempt 1. It then has the
-  normal version-2 maximum of three logical attempts; because the version is
-  already 2, it can never receive another migration reset.
+  lease fields, set `generationVersion: 3`, and claim attempt 1. It then has the
+  normal version-3 maximum of three logical attempts; because the version is
+  already 3, it can never receive another migration reset.
 - A current-version `failed` must obey its `retryAt`; a current-version
   `failed_terminal` remains final.
 - Reclaim still increments the existing daily counter once for each logical
-  version-2 attempt. The internal malformed-output retry never increments it a
+  version-3 attempt. The internal malformed-output retry never increments it a
   second time.
 - Daily quota protection remains in force.
 - New `pending`, `ready`, and failure writes carry the current generation

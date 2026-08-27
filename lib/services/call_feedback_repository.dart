@@ -3,10 +3,14 @@ import 'package:cloud_functions/cloud_functions.dart';
 
 import 'translation_repository.dart' show callIntegrationsRegion;
 
+const callFeedbackCallableTimeout = Duration(seconds: 125);
+const callFeedbackGenerationVersion = 3;
+
 typedef CallFeedbackCallableInvoker = Future<Object?> Function(
   String functionName,
-  Map<String, dynamic> payload,
-);
+  Map<String, dynamic> payload, {
+  required Duration timeout,
+});
 typedef CallFeedbackWatcher = Stream<CallFeedbackResponse?> Function({
   required DocumentReference sessionRef,
   required String userId,
@@ -68,17 +72,24 @@ class CallFeedbackResponse {
     this.feedback,
     this.retryAfterMs,
     this.errorCode,
+    this.generationVersion = 1,
   });
 
   final CallFeedbackStatus status;
   final CallFeedbackResult? feedback;
   final int? retryAfterMs;
   final String? errorCode;
+  final int generationVersion;
 
   bool get isFinal =>
       status == CallFeedbackStatus.ready ||
       status == CallFeedbackStatus.insufficientText ||
       status == CallFeedbackStatus.terminalFailure;
+
+  bool get isLegacyRecoverableFailure =>
+      generationVersion < callFeedbackGenerationVersion &&
+      (status == CallFeedbackStatus.retryableFailure ||
+          status == CallFeedbackStatus.terminalFailure);
 }
 
 class CallFeedbackFailure implements Exception {
@@ -149,10 +160,19 @@ class CallFeedbackRepository {
     Map<String, dynamic> payload,
   ) async {
     final customInvoker = invoker;
-    if (customInvoker != null) return customInvoker(functionName, payload);
+    if (customInvoker != null) {
+      return customInvoker(
+        functionName,
+        payload,
+        timeout: callFeedbackCallableTimeout,
+      );
+    }
     final callable =
         FirebaseFunctions.instanceFor(region: callIntegrationsRegion)
-            .httpsCallable(functionName);
+            .httpsCallable(
+      functionName,
+      options: HttpsCallableOptions(timeout: callFeedbackCallableTimeout),
+    );
     final response = await callable.call<Object?>(payload);
     return response.data;
   }
@@ -166,20 +186,24 @@ CallFeedbackResponse parseCallFeedbackResponse(Object? rawValue) {
       return CallFeedbackResponse(
         status: CallFeedbackStatus.pending,
         retryAfterMs: _optionalInt(data, 'retryAfterMs') ?? 15000,
+        generationVersion: _generationVersion(data),
       );
     case 'ready':
       return CallFeedbackResponse(
         status: CallFeedbackStatus.ready,
         feedback: _feedbackResult(data['feedback']),
+        generationVersion: _generationVersion(data),
       );
     case 'insufficient_text':
-      return const CallFeedbackResponse(
+      return CallFeedbackResponse(
         status: CallFeedbackStatus.insufficientText,
+        generationVersion: _generationVersion(data),
       );
     case 'failed_terminal':
       return CallFeedbackResponse(
         status: CallFeedbackStatus.terminalFailure,
         errorCode: _optionalString(data, 'errorCode'),
+        generationVersion: _generationVersion(data),
       );
     default:
       throw FormatException('Unsupported feedback status "$status".');
@@ -194,26 +218,31 @@ CallFeedbackResponse parseStoredCallFeedback(Object? rawValue) {
       return CallFeedbackResponse(
         status: CallFeedbackStatus.ready,
         feedback: _feedbackResult(data['result']),
+        generationVersion: _generationVersion(data),
       );
     case 'insufficient_text':
-      return const CallFeedbackResponse(
+      return CallFeedbackResponse(
         status: CallFeedbackStatus.insufficientText,
+        generationVersion: _generationVersion(data),
       );
     case 'failed_terminal':
       return CallFeedbackResponse(
         status: CallFeedbackStatus.terminalFailure,
         errorCode: _optionalString(data, 'errorCode'),
+        generationVersion: _generationVersion(data),
       );
     case 'failed':
       return CallFeedbackResponse(
         status: CallFeedbackStatus.retryableFailure,
         retryAfterMs: _remainingMilliseconds(data['retryAt']),
         errorCode: _optionalString(data, 'errorCode'),
+        generationVersion: _generationVersion(data),
       );
     case 'pending':
       return CallFeedbackResponse(
         status: CallFeedbackStatus.pending,
         retryAfterMs: _remainingMilliseconds(data['leaseExpiresAt']),
+        generationVersion: _generationVersion(data),
       );
     default:
       throw FormatException('Unsupported stored feedback status "$status".');
@@ -281,6 +310,11 @@ int _int(Map<String, dynamic> data, String field) {
 int? _optionalInt(Map<String, dynamic> data, String field) {
   final value = data[field];
   return value is num ? value.toInt() : null;
+}
+
+int _generationVersion(Map<String, dynamic> data) {
+  final version = _optionalInt(data, 'generationVersion');
+  return version != null && version > 0 ? version : 1;
 }
 
 int _remainingMilliseconds(Object? value) {

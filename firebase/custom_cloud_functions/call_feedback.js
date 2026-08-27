@@ -2,20 +2,32 @@ const crypto = require("node:crypto");
 
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
-const {GoogleGenAI, Type} = require("@google/genai");
+const {GoogleGenAI} = require("@google/genai");
 
 const {isSessionParticipant} = require("./video_sessions_shared");
 
 const FEEDBACK_REGION = "us-central1";
 const FEEDBACK_TIMEOUT_SECONDS = 120;
 const FEEDBACK_MEMORY = "512MB";
+const DEFAULT_FEEDBACK_MODEL_ID = "gemini-3.1-flash-lite";
+const FEEDBACK_MODEL_CONFIGS = Object.freeze({
+  "gemini-3.1-flash-lite": Object.freeze({
+    thinkingConfig: Object.freeze({thinkingLevel: "MINIMAL"}),
+  }),
+  "gemini-2.5-flash": Object.freeze({
+    thinkingConfig: Object.freeze({thinkingBudget: 0}),
+  }),
+});
+const FEEDBACK_GENERATION_VERSION = 3;
 const CAPTION_SETTLING_MS = 15000;
 const FEEDBACK_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
-const LEASE_DURATION_MS = 130000;
+const LEASE_DURATION_MS = 115000;
 const FAILURE_RETRY_MS = 60000;
 const RATE_LIMIT_TTL_MS = 3 * 24 * 60 * 60 * 1000;
 const FEEDBACK_TTL_MS = 180 * 24 * 60 * 60 * 1000;
-const PROVIDER_TIMEOUT_MS = 105000;
+const PROVIDER_TIMEOUT_MS = 40000;
+const PROVIDER_MAX_OUTPUT_TOKENS = 4096;
+const MAX_PROVIDER_CALLS_PER_ATTEMPT = 2;
 const MAX_DAILY_ATTEMPTS = 10;
 const MAX_SESSION_ATTEMPTS = 3;
 const MAX_CAPTIONS = 200;
@@ -258,12 +270,32 @@ function projectIdFromEnvironment() {
 }
 
 function feedbackModelId() {
-  return String(process.env.GEMINI_FEEDBACK_MODEL || "gemini-2.5-flash").trim();
+  const configured = String(process.env.GEMINI_FEEDBACK_MODEL || "").trim();
+  return Object.hasOwn(FEEDBACK_MODEL_CONFIGS, configured) ?
+    configured : DEFAULT_FEEDBACK_MODEL_ID;
 }
 
-const feedbackResponseSchema = {
-  type: Type.OBJECT,
+function feedbackThinkingConfig(modelId) {
+  const modelConfig = FEEDBACK_MODEL_CONFIGS[modelId] ||
+    FEEDBACK_MODEL_CONFIGS[DEFAULT_FEEDBACK_MODEL_ID];
+  return {...modelConfig.thinkingConfig};
+}
+
+function defaultWait(delayMs) {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+const feedbackResponseJsonSchema = {
+  type: "object",
   additionalProperties: false,
+  propertyOrdering: [
+    "summary",
+    "score",
+    "strengths",
+    "corrections",
+    "vocabulary",
+    "nextPractice",
+  ],
   required: [
     "summary",
     "score",
@@ -273,55 +305,78 @@ const feedbackResponseSchema = {
     "nextPractice",
   ],
   properties: {
-    summary: {type: Type.STRING},
-    score: {type: Type.INTEGER, minimum: 0, maximum: 100},
+    summary: {type: "string"},
+    score: {type: "integer", minimum: 0, maximum: 100},
     strengths: {
-      type: Type.ARRAY,
+      type: "array",
       minItems: 1,
       maxItems: 3,
-      items: {type: Type.STRING},
+      items: {type: "string"},
     },
     corrections: {
-      type: Type.ARRAY,
+      type: "array",
       minItems: 1,
       maxItems: 7,
       items: {
-        type: Type.OBJECT,
+        type: "object",
         additionalProperties: false,
+        propertyOrdering: ["original", "better", "explanation"],
         required: ["original", "better", "explanation"],
         properties: {
-          original: {type: Type.STRING},
-          better: {type: Type.STRING},
-          explanation: {type: Type.STRING},
+          original: {type: "string"},
+          better: {type: "string"},
+          explanation: {type: "string"},
         },
       },
     },
     vocabulary: {
-      type: Type.ARRAY,
+      type: "array",
       minItems: 0,
       maxItems: 7,
       items: {
-        type: Type.OBJECT,
+        type: "object",
         additionalProperties: false,
+        propertyOrdering: ["term", "translation", "example"],
         required: ["term", "translation", "example"],
         properties: {
-          term: {type: Type.STRING},
-          translation: {type: Type.STRING},
-          example: {type: Type.STRING},
+          term: {type: "string"},
+          translation: {type: "string"},
+          example: {type: "string"},
         },
       },
     },
-    nextPractice: {type: Type.STRING},
+    nextPractice: {type: "string"},
   },
 };
+
+class FeedbackProviderOutputError extends Error {
+  constructor(reason, {responseCharacterCount = 0, finishReason = ""} = {}) {
+    super(reason);
+    this.name = "FeedbackProviderOutputError";
+    this.responseCharacterCount = responseCharacterCount;
+    this.finishReason = finishReason;
+  }
+}
 
 function safeJsonText(response) {
   const rawText = typeof response?.text === "function" ?
     response.text() : response?.text;
-  if (typeof rawText !== "string" || !rawText.trim()) {
-    throw new Error("Gemini returned no structured feedback");
+  const text = typeof rawText === "string" ? rawText.trim() : "";
+  const finishReason = String(
+    response?.candidates?.[0]?.finishReason || "",
+  ).trim();
+  if (finishReason !== "STOP") {
+    throw new FeedbackProviderOutputError("invalid_finish_reason", {
+      responseCharacterCount: text.length,
+      finishReason,
+    });
   }
-  return rawText;
+  if (!text) {
+    throw new FeedbackProviderOutputError("empty_response", {
+      finishReason,
+    });
+  }
+  return {text, finishReason};
 }
 
 async function defaultGenerateFeedback({
@@ -329,18 +384,26 @@ async function defaultGenerateFeedback({
   outputLocale,
   analyzedLanguage,
   modelId,
+  providerAttempt = 1,
+  client,
 }) {
   const project = projectIdFromEnvironment();
-  if (!project) throw new Error("Google Cloud project ID is not configured");
-  if (!genAIClient) {
-    genAIClient = new GoogleGenAI({
-      vertexai: true,
-      project,
-      location: String(process.env.GEMINI_VERTEX_LOCATION || "global").trim(),
-    });
+  let resolvedClient = client;
+  if (!resolvedClient) {
+    if (!project) throw new Error("Google Cloud project ID is not configured");
+    if (!genAIClient) {
+      genAIClient = new GoogleGenAI({
+        vertexai: true,
+        project,
+        location: String(
+          process.env.GEMINI_VERTEX_LOCATION || "global",
+        ).trim(),
+      });
+    }
+    resolvedClient = genAIClient;
   }
 
-  const response = await genAIClient.models.generateContent({
+  const response = await resolvedClient.models.generateContent({
     model: modelId,
     contents: [{
       role: "user",
@@ -350,21 +413,33 @@ async function defaultGenerateFeedback({
         `Write all feedback in locale: ${outputLocale}.`,
         `The practiced language is: ${analyzedLanguage}.`,
         "Be concise, supportive, specific, and do not invent quotations.",
+        providerAttempt > 1
+          ? "Return only one complete JSON object matching the supplied schema."
+          : null,
         `Transcript JSON: ${JSON.stringify(transcript)}`,
-      ].join("\n")}],
+      ].filter(Boolean).join("\n")}],
     }],
     config: {
       temperature: 0.2,
-      maxOutputTokens: 2048,
+      maxOutputTokens: PROVIDER_MAX_OUTPUT_TOKENS,
+      thinkingConfig: feedbackThinkingConfig(modelId),
       responseMimeType: "application/json",
-      responseSchema: feedbackResponseSchema,
+      responseJsonSchema: feedbackResponseJsonSchema,
       httpOptions: {
         timeout: PROVIDER_TIMEOUT_MS,
         retryOptions: {attempts: 1},
       },
     },
   });
-  return JSON.parse(safeJsonText(response));
+  const {text, finishReason} = safeJsonText(response);
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    throw new FeedbackProviderOutputError("invalid_json", {
+      responseCharacterCount: text.length,
+      finishReason,
+    });
+  }
 }
 
 function assertOnlyKeys(value, allowedKeys) {
@@ -464,6 +539,109 @@ function validateFeedbackResult(rawResult) {
   };
 }
 
+function providerStatusCode(error) {
+  const candidates = [
+    error?.status,
+    error?.statusCode,
+    error?.response?.status,
+    error?.cause?.status,
+  ];
+  for (const candidate of candidates) {
+    const status = Number(candidate);
+    if (Number.isInteger(status) && status >= 100 && status <= 599) {
+      return status;
+    }
+  }
+  return null;
+}
+
+function isRetryableProviderFailure(error) {
+  if (error instanceof FeedbackProviderOutputError) return true;
+  if (error?.retryable === true) return true;
+  const status = providerStatusCode(error);
+  if (status !== null) {
+    return status === 408 || status >= 500;
+  }
+  const name = String(error?.name || "").toLowerCase();
+  const message = String(error?.message || "").trim().toLowerCase();
+  const code = String(error?.code || error?.cause?.code || "").toUpperCase();
+  return name.includes("timeout") ||
+    name === "aborterror" ||
+    (name === "typeerror" && message === "fetch failed") ||
+    [
+      "ETIMEDOUT",
+      "ENOTFOUND",
+      "ECONNRESET",
+      "ECONNREFUSED",
+      "EPIPE",
+      "EAI_AGAIN",
+      "ENETDOWN",
+      "ENETUNREACH",
+      "UND_ERR_BODY_TIMEOUT",
+      "UND_ERR_CONNECT_TIMEOUT",
+      "UND_ERR_HEADERS_TIMEOUT",
+      "UND_ERR_SOCKET",
+    ].includes(code);
+}
+
+function safeProviderFailureMetadata(error, providerAttempt) {
+  const status = providerStatusCode(error);
+  return {
+    errorType: String(error?.name || "Error"),
+    providerAttempt,
+    responseCharacterCount:
+      Number(error?.responseCharacterCount || 0) || 0,
+    finishReason: String(error?.finishReason || ""),
+    ...(status === null ? {} : {status}),
+  };
+}
+
+async function generateValidatedFeedback({
+  generateFeedback,
+  transcript,
+  outputLocale,
+  analyzedLanguage,
+  modelId,
+  logProviderFailure = (metadata) => {
+    console.error("generateCallFeedback provider failure", metadata);
+  },
+}) {
+  let lastError;
+  for (
+    let providerAttempt = 1;
+    providerAttempt <= MAX_PROVIDER_CALLS_PER_ATTEMPT;
+    providerAttempt += 1
+  ) {
+    try {
+      const rawResult = await generateFeedback({
+        transcript,
+        outputLocale,
+        analyzedLanguage,
+        modelId,
+        providerAttempt,
+      });
+      try {
+        return validateFeedbackResult(rawResult);
+      } catch (error) {
+        throw new FeedbackProviderOutputError("invalid_result", {
+          responseCharacterCount: 0,
+          finishReason: "STOP",
+        });
+      }
+    } catch (error) {
+      lastError = error;
+      logProviderFailure(safeProviderFailureMetadata(error, providerAttempt));
+      if (
+        providerAttempt >= MAX_PROVIDER_CALLS_PER_ATTEMPT ||
+        !isRetryableProviderFailure(error)
+      ) {
+        throw error;
+      }
+    }
+  }
+  throw lastError || new Error("Feedback provider failed");
+}
+
 function toTimestamp(ms) {
   return admin.firestore.Timestamp.fromMillis(ms);
 }
@@ -476,17 +654,30 @@ function randomLeaseId() {
   return crypto.randomUUID();
 }
 
+function feedbackGenerationVersion(data) {
+  const version = Number(data?.generationVersion);
+  return Number.isInteger(version) && version > 0 ? version : 1;
+}
+
+function isLegacyRecoverableFailure(data) {
+  return feedbackGenerationVersion(data) < FEEDBACK_GENERATION_VERSION &&
+    (data?.status === "failed" || data?.status === "failed_terminal");
+}
+
 function existingFeedbackResponse(data, nowMillis) {
+  const generationVersion = feedbackGenerationVersion(data);
   if (data.status === "ready") {
-    return {status: "ready", feedback: data.result};
+    return {status: "ready", feedback: data.result, generationVersion};
   }
   if (data.status === "insufficient_text") {
-    return {status: "insufficient_text"};
+    return {status: "insufficient_text", generationVersion};
   }
   if (data.status === "failed_terminal") {
+    if (isLegacyRecoverableFailure(data)) return null;
     return {
       status: "failed_terminal",
       errorCode: String(data.errorCode || "feedback_generation_failed"),
+      generationVersion,
     };
   }
   if (
@@ -496,6 +687,7 @@ function existingFeedbackResponse(data, nowMillis) {
     return {
       status: "pending",
       retryAfterMs: CAPTION_SETTLING_MS,
+      generationVersion,
     };
   }
   return null;
@@ -516,6 +708,7 @@ async function markFeedbackFailed({
     if (data.status !== "pending" || data.leaseId !== leaseId) return;
     transaction.update(feedbackRef, {
       status: terminal ? "failed_terminal" : "failed",
+      generationVersion: FEEDBACK_GENERATION_VERSION,
       errorCode: "feedback_generation_failed",
       retryAt: terminal ?
         admin.firestore.FieldValue.delete() :
@@ -534,6 +727,8 @@ function createGenerateCallFeedbackHandler({
   leaseIdFactory = randomLeaseId,
   isFeatureEnabled = defaultFeedbackFeatureEnabled,
   requireAppCheck = true,
+  logProviderFailure,
+  wait = defaultWait,
 } = {}) {
   return async (data, context) => {
     if (!isFeatureEnabled()) {
@@ -542,7 +737,7 @@ function createGenerateCallFeedbackHandler({
     const uid = requireCallableIdentity(context, {requireAppCheck});
     const request = normalizeFeedbackRequest(data);
     const firestore = db || admin.firestore();
-    const nowMillis = Number(now());
+    let nowMillis = Number(now());
     const sessionRef = firestore.collection("videoSessions").doc(request.sessionId);
     const sessionSnap = await sessionRef.get();
     const {sessionData, terminalAt} = assertFeedbackEligibility(
@@ -551,10 +746,13 @@ function createGenerateCallFeedbackHandler({
       nowMillis,
     );
     if (nowMillis - terminalAt < CAPTION_SETTLING_MS) {
-      return {
-        status: "pending",
-        retryAfterMs: Math.max(1000, CAPTION_SETTLING_MS - (nowMillis - terminalAt)),
-      };
+      const elapsedSinceTerminal = Math.max(0, nowMillis - terminalAt);
+      const settlingDelayMs = Math.max(
+        0,
+        CAPTION_SETTLING_MS - elapsedSinceTerminal,
+      );
+      await wait(settlingDelayMs);
+      nowMillis = Number(now());
     }
 
     const feedbackRef = sessionRef.collection("aiFeedback").doc(uid);
@@ -583,9 +781,11 @@ function createGenerateCallFeedbackHandler({
         transaction.set(feedbackRef, {
           ownerUid: uid,
           status: "insufficient_text",
+          generationVersion: FEEDBACK_GENERATION_VERSION,
           outputLocale: request.outputLocale,
           analyzedLanguage,
-          attemptCount: Number(currentData.attemptCount || 0),
+          attemptCount: isLegacyRecoverableFailure(currentData) ?
+            0 : Number(currentData.attemptCount || 0),
           createdAt: currentData.createdAt || toTimestamp(nowMillis),
           updatedAt: toTimestamp(nowMillis),
           expiresAt: toTimestamp(nowMillis + FEEDBACK_TTL_MS),
@@ -594,7 +794,10 @@ function createGenerateCallFeedbackHandler({
           errorCode: admin.firestore.FieldValue.delete(),
           retryAt: admin.firestore.FieldValue.delete(),
         }, {merge: true});
-        return {status: "insufficient_text"};
+        return {
+          status: "insufficient_text",
+          generationVersion: FEEDBACK_GENERATION_VERSION,
+        };
       });
       return result;
     }
@@ -612,16 +815,23 @@ function createGenerateCallFeedbackHandler({
       const response = existingFeedbackResponse(currentData, nowMillis);
       if (response) return {kind: "response", response};
 
+      const reclaimLegacyFailure = isLegacyRecoverableFailure(currentData);
       const retryAt = timestampMillis(currentData.retryAt);
-      if (currentData.status === "failed" && retryAt > nowMillis) {
+      if (
+        !reclaimLegacyFailure &&
+        currentData.status === "failed" &&
+        retryAt > nowMillis
+      ) {
         throwDomainError("unavailable", "feedback_retry_later", {
           retryAfterMs: Math.max(1000, retryAt - nowMillis),
         });
       }
-      const attemptCount = Number(currentData.attemptCount || 0);
+      const attemptCount = reclaimLegacyFailure ?
+        0 : Number(currentData.attemptCount || 0);
       if (attemptCount >= MAX_SESSION_ATTEMPTS) {
         transaction.set(feedbackRef, {
           status: "failed_terminal",
+          generationVersion: FEEDBACK_GENERATION_VERSION,
           errorCode: "feedback_generation_failed",
           updatedAt: toTimestamp(nowMillis),
           leaseId: admin.firestore.FieldValue.delete(),
@@ -633,6 +843,7 @@ function createGenerateCallFeedbackHandler({
           response: {
             status: "failed_terminal",
             errorCode: "feedback_generation_failed",
+            generationVersion: FEEDBACK_GENERATION_VERSION,
           },
         };
       }
@@ -654,6 +865,7 @@ function createGenerateCallFeedbackHandler({
       transaction.set(feedbackRef, {
         ownerUid: uid,
         status: "pending",
+        generationVersion: FEEDBACK_GENERATION_VERSION,
         outputLocale: request.outputLocale,
         analyzedLanguage,
         modelId,
@@ -673,17 +885,15 @@ function createGenerateCallFeedbackHandler({
 
     let validatedResult;
     try {
-      const rawResult = await generateFeedback({
+      validatedResult = await generateValidatedFeedback({
+        generateFeedback,
         transcript: transcript.entries,
         outputLocale: request.outputLocale,
         analyzedLanguage,
         modelId,
+        logProviderFailure,
       });
-      validatedResult = validateFeedbackResult(rawResult);
     } catch (error) {
-      console.error("generateCallFeedback provider failure", {
-        errorType: String(error?.name || "Error"),
-      });
       await markFeedbackFailed({
         db: firestore,
         feedbackRef,
@@ -695,6 +905,7 @@ function createGenerateCallFeedbackHandler({
         return {
           status: "failed_terminal",
           errorCode: "feedback_generation_failed",
+          generationVersion: FEEDBACK_GENERATION_VERSION,
         };
       }
       throwDomainError("unavailable", "feedback_generation_failed", {
@@ -712,6 +923,7 @@ function createGenerateCallFeedbackHandler({
       }
       transaction.update(feedbackRef, {
         status: "ready",
+        generationVersion: FEEDBACK_GENERATION_VERSION,
         result: validatedResult,
         updatedAt: toTimestamp(completedAt),
         completedAt: toTimestamp(completedAt),
@@ -724,9 +936,17 @@ function createGenerateCallFeedbackHandler({
       return true;
     });
     if (!stored) {
-      return {status: "pending", retryAfterMs: CAPTION_SETTLING_MS};
+      return {
+        status: "pending",
+        retryAfterMs: CAPTION_SETTLING_MS,
+        generationVersion: FEEDBACK_GENERATION_VERSION,
+      };
     }
-    return {status: "ready", feedback: validatedResult};
+    return {
+      status: "ready",
+      feedback: validatedResult,
+      generationVersion: FEEDBACK_GENERATION_VERSION,
+    };
   };
 }
 
@@ -744,13 +964,30 @@ module.exports = {
   generateCallFeedback,
   createGenerateCallFeedbackHandler,
   __private__: {
+    FEEDBACK_GENERATION_VERSION,
+    DEFAULT_FEEDBACK_MODEL_ID,
+    FEEDBACK_TIMEOUT_SECONDS,
+    LEASE_DURATION_MS,
+    MAX_PROVIDER_CALLS_PER_ATTEMPT,
+    PROVIDER_MAX_OUTPUT_TOKENS,
+    PROVIDER_TIMEOUT_MS,
+    FeedbackProviderOutputError,
     assertFeedbackEligibility,
     buildTranscript,
     connectedTimestampMillis,
+    defaultGenerateFeedback,
     existingFeedbackResponse,
-    feedbackResponseSchema,
+    feedbackGenerationVersion,
+    feedbackModelId,
+    feedbackResponseJsonSchema,
+    feedbackThinkingConfig,
+    generateValidatedFeedback,
+    isLegacyRecoverableFailure,
+    isRetryableProviderFailure,
     normalizeAnalyzedLanguage,
     normalizeFeedbackRequest,
+    safeJsonText,
+    safeProviderFailureMetadata,
     terminalTimestampMillis,
     validateFeedbackResult,
   },

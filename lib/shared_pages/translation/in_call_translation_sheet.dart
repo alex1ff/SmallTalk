@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '/auth/firebase_auth/auth_util.dart';
 import '/flutter_flow/flutter_flow_util.dart';
@@ -25,36 +24,35 @@ class InCallTranslationSheet extends StatefulWidget {
 class _InCallTranslationSheetState extends State<InCallTranslationSheet> {
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
-  TranslationLanguage _sourceLanguage = TranslationLanguage.russian;
+  TranslationLanguage _fallbackSourceLanguage = TranslationLanguage.russian;
   TranslationResult? _result;
   TranslationFailure? _failure;
   bool _isTranslating = false;
   bool _isSaving = false;
   bool _saved = false;
+  int _translationGeneration = 0;
+
+  TranslationLanguage get _sourceLanguage => detectTranslationSourceLanguage(
+        _controller.text,
+        fallback: _fallbackSourceLanguage,
+      );
 
   TranslationLanguage get _targetLanguage =>
-      _sourceLanguage == TranslationLanguage.russian
-          ? TranslationLanguage.english
-          : TranslationLanguage.russian;
+      oppositeTranslationLanguage(_sourceLanguage);
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_controller.text.isNotEmpty || _result != null) return;
-    final practiced = widget.practicedLanguageCode.trim().toLowerCase();
-    if (practiced.startsWith('en')) {
-      _sourceLanguage = TranslationLanguage.russian;
-    } else if (practiced.startsWith('ru')) {
-      _sourceLanguage = TranslationLanguage.english;
-    } else {
-      _sourceLanguage = Localizations.localeOf(context).languageCode == 'ru'
-          ? TranslationLanguage.russian
-          : TranslationLanguage.english;
-    }
+    _fallbackSourceLanguage = resolveTranslationFallbackLanguage(
+      practicedLanguageCode: widget.practicedLanguageCode,
+      appLocaleLanguageCode: Localizations.localeOf(context).languageCode,
+    );
   }
 
   @override
   void dispose() {
+    _translationGeneration += 1;
     _controller.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -69,19 +67,15 @@ class _InCallTranslationSheetState extends State<InCallTranslationSheet> {
     }
   }
 
-  void _swapLanguages() {
-    if (_isTranslating) return;
-    setState(() {
-      _sourceLanguage = _targetLanguage;
-      _result = null;
-      _failure = null;
-      _saved = false;
-    });
-  }
-
   Future<void> _translate() async {
     final text = _controller.text.trim();
     if (text.isEmpty || _isTranslating) return;
+    final sourceLanguage = detectTranslationSourceLanguage(
+      text,
+      fallback: _fallbackSourceLanguage,
+    );
+    final targetLanguage = oppositeTranslationLanguage(sourceLanguage);
+    final generation = ++_translationGeneration;
     setState(() {
       _isTranslating = true;
       _result = null;
@@ -92,21 +86,25 @@ class _InCallTranslationSheetState extends State<InCallTranslationSheet> {
       final result = await widget.repository.translate(
         sessionId: widget.sessionId,
         text: text,
-        sourceLanguage: _sourceLanguage,
-        targetLanguage: _targetLanguage,
+        sourceLanguage: sourceLanguage,
+        targetLanguage: targetLanguage,
       );
-      if (!mounted) return;
+      if (!mounted ||
+          generation != _translationGeneration ||
+          _controller.text.trim() != text) {
+        return;
+      }
       setState(() => _result = result);
     } on TranslationFailure catch (failure) {
-      if (!mounted) return;
+      if (!mounted || generation != _translationGeneration) return;
       setState(() => _failure = failure);
     } on FormatException {
-      if (!mounted) return;
+      if (!mounted || generation != _translationGeneration) return;
       setState(() => _failure = const TranslationFailure(
             code: 'invalid_server_response',
           ));
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || generation != _translationGeneration) return;
       setState(() => _failure = const TranslationFailure(
             code: 'unexpected_error',
           ));
@@ -115,19 +113,13 @@ class _InCallTranslationSheetState extends State<InCallTranslationSheet> {
     }
   }
 
-  Future<void> _copyResult() async {
-    final result = _result;
-    if (result == null) return;
-    await Clipboard.setData(ClipboardData(text: result.translatedText));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(FFLocalizations.of(context).getVariableText(
-          ruText: 'Перевод скопирован',
-          enText: 'Translation copied',
-        )),
-      ),
-    );
+  void _handleTextChanged(String _) {
+    _translationGeneration += 1;
+    setState(() {
+      _result = null;
+      _failure = null;
+      _saved = false;
+    });
   }
 
   Future<void> _saveResult() async {
@@ -239,7 +231,7 @@ class _InCallTranslationSheetState extends State<InCallTranslationSheet> {
                     ),
                   ),
                 ),
-                const SizedBox(height: ExpatlioDesign.space16),
+                const SizedBox(height: ExpatlioDesign.space12),
                 Text(
                   FFLocalizations.of(context).getVariableText(
                     ruText: 'Быстрый перевод',
@@ -250,26 +242,19 @@ class _InCallTranslationSheetState extends State<InCallTranslationSheet> {
                         color: ExpatlioDesign.text,
                       ),
                 ),
-                const SizedBox(height: ExpatlioDesign.space12),
+                const SizedBox(height: ExpatlioDesign.space8),
                 Row(
                   children: [
                     Expanded(
                       child: Text(
                         '${_languageName(_sourceLanguage)} → '
-                        '${_languageName(_targetLanguage)}',
-                        style:
-                            Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                ),
+                        '${_languageName(_targetLanguage)} · '
+                        '${FFLocalizations.of(context).getVariableText(ruText: 'авто', enText: 'auto')}',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: ExpatlioDesign.muted,
+                              fontWeight: FontWeight.w600,
+                            ),
                       ),
-                    ),
-                    IconButton(
-                      onPressed: _isTranslating ? null : _swapLanguages,
-                      tooltip: FFLocalizations.of(context).getVariableText(
-                        ruText: 'Поменять языки',
-                        enText: 'Swap languages',
-                      ),
-                      icon: const Icon(Icons.swap_horiz_rounded),
                     ),
                   ],
                 ),
@@ -278,15 +263,11 @@ class _InCallTranslationSheetState extends State<InCallTranslationSheet> {
                   controller: _controller,
                   focusNode: _focusNode,
                   autofocus: true,
-                  minLines: 2,
-                  maxLines: 4,
+                  minLines: 1,
+                  maxLines: 3,
                   maxLength: 250,
                   textInputAction: TextInputAction.done,
-                  onChanged: (_) => setState(() {
-                    _result = null;
-                    _failure = null;
-                    _saved = false;
-                  }),
+                  onChanged: _handleTextChanged,
                   onSubmitted: (_) => _translate(),
                   decoration: InputDecoration(
                     hintText: FFLocalizations.of(context).getVariableText(
@@ -295,6 +276,11 @@ class _InCallTranslationSheetState extends State<InCallTranslationSheet> {
                     ),
                     filled: true,
                     fillColor: ExpatlioDesign.card,
+                    counterText: '',
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: ExpatlioDesign.space16,
+                      vertical: ExpatlioDesign.space12,
+                    ),
                     border: OutlineInputBorder(
                       borderRadius:
                           BorderRadius.circular(ExpatlioDesign.radiusMedium),
@@ -317,6 +303,13 @@ class _InCallTranslationSheetState extends State<InCallTranslationSheet> {
                     ruText: _isTranslating ? 'Переводим…' : 'Перевести',
                     enText: _isTranslating ? 'Translating…' : 'Translate',
                   )),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: ExpatlioDesign.space16,
+                      vertical: ExpatlioDesign.space12,
+                    ),
+                  ),
                 ),
                 if (_failure != null) ...[
                   const SizedBox(height: ExpatlioDesign.space12),
@@ -327,65 +320,60 @@ class _InCallTranslationSheetState extends State<InCallTranslationSheet> {
                   ),
                 ],
                 if (result != null) ...[
-                  const SizedBox(height: ExpatlioDesign.space16),
+                  const SizedBox(height: ExpatlioDesign.space12),
                   Container(
-                    padding: const EdgeInsets.all(ExpatlioDesign.space16),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: ExpatlioDesign.space16,
+                      vertical: ExpatlioDesign.space12,
+                    ),
                     decoration: BoxDecoration(
                       color: ExpatlioDesign.card,
                       borderRadius:
                           BorderRadius.circular(ExpatlioDesign.radiusMedium),
                       border: Border.all(color: ExpatlioDesign.border),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        SelectableText(
-                          result.translatedText,
-                          style:
-                              Theme.of(context).textTheme.titleLarge?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                        Expanded(
+                          child: SelectableText(
+                            result.translatedText,
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
                         ),
-                        const SizedBox(height: ExpatlioDesign.space12),
-                        Wrap(
-                          spacing: ExpatlioDesign.space8,
-                          runSpacing: ExpatlioDesign.space8,
-                          children: [
-                            OutlinedButton.icon(
-                              onPressed: _copyResult,
-                              icon: const Icon(Icons.copy_rounded, size: 18),
-                              label: Text(
-                                FFLocalizations.of(context).getVariableText(
-                                  ruText: 'Копировать',
-                                  enText: 'Copy',
-                                ),
-                              ),
+                        const SizedBox(width: ExpatlioDesign.space8),
+                        TextButton.icon(
+                          onPressed: _isSaving || _saved ? null : _saveResult,
+                          style: TextButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: ExpatlioDesign.space12,
+                              vertical: ExpatlioDesign.space8,
                             ),
-                            OutlinedButton.icon(
-                              onPressed:
-                                  _isSaving || _saved ? null : _saveResult,
-                              icon: _isSaving
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : Icon(
-                                      _saved
-                                          ? Icons.check_rounded
-                                          : Icons.bookmark_add_outlined,
-                                      size: 18,
-                                    ),
-                              label: Text(
-                                FFLocalizations.of(context).getVariableText(
-                                  ruText: _saved ? 'Сохранено' : 'В словарь',
-                                  enText: _saved ? 'Saved' : 'Save',
+                          ),
+                          icon: _isSaving
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : Icon(
+                                  _saved
+                                      ? Icons.check_rounded
+                                      : Icons.bookmark_add_outlined,
+                                  size: 18,
                                 ),
-                              ),
+                          label: Text(
+                            FFLocalizations.of(context).getVariableText(
+                              ruText: _saved ? 'Сохранено' : 'В словарь',
+                              enText: _saved ? 'Saved' : 'Save',
                             ),
-                          ],
+                          ),
                         ),
                       ],
                     ),
