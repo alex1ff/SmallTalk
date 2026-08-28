@@ -270,7 +270,11 @@ class _ProfileWidgetState extends State<ProfileWidget> {
       ruText: 'мин доступно',
       enText: 'min available',
     );
-    final deadline = formatGiftExpiry(expiresAt, now: now ?? _profileNow);
+    final deadline = formatGiftExpiry(
+      expiresAt,
+      now: now ?? _profileNow,
+      languageCode: FFLocalizations.of(context).languageCode,
+    );
     if (deadline.isEmpty) {
       return '${formatGiftMinutes(minutes)} $availableText';
     }

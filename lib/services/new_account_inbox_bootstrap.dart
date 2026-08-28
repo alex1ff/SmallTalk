@@ -23,6 +23,12 @@ final class NewAccountInboxBootstrap {
   static bool shouldSeedEmptyInbox(String uid) =>
       _newAccountUid == uid.trim() && uid.trim().isNotEmpty;
 
+  /// True only when this authenticated session created the canonical user
+  /// document. Auth entry uses this to distinguish a genuinely new social
+  /// account from an older role-less profile that must fail closed.
+  static bool wasAccountCreatedInCurrentSession(String uid) =>
+      shouldSeedEmptyInbox(uid);
+
   static void _ensureLifecycleRegistered() {
     if (_lifecycleRegistered) {
       return;

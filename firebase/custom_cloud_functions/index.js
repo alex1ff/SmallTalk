@@ -93,6 +93,10 @@ exports.syncTeacherVerificationRequest =
 const emailVerification = require("./email_verification.js");
 exports.sendCustomEmailVerification =
   emailVerification.sendCustomEmailVerification;
+const passwordReset = require("./password_reset.js");
+exports.requestPasswordReset = passwordReset.requestPasswordReset;
+exports.processPasswordResetRequest =
+  passwordReset.processPasswordResetRequest;
 const persistCallChat = require("./persist_call_chat.js");
 exports.persistCallChat = persistCallChat.persistCallChat;
 const revenueCatWebhook = require("./revenue_cat_webhook.js");

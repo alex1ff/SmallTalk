@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import '/auth/firebase_auth/auth_util.dart';
-import '/components/native_speaker_entry_toggle.dart';
 import '/authorization/shared/social_auth_entry_logic.dart';
 import '/authorization/shared/social_auth_progress_overlay.dart';
 import '/backend/backend.dart';
@@ -73,8 +72,6 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
 
     _model.passTextController ??= TextEditingController();
     _model.passFocusNode ??= FocusNode();
-
-    _model.switchValue = false;
   }
 
   @override
@@ -158,28 +155,6 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
 
       unawaited(_sendInitialEmailVerification());
 
-      if (_model.switchValue == true) {
-        await UsersRecord.collection.doc(user.uid).update(createUsersRecordData(
-              role: UserRole.native_speaker,
-            ));
-
-        if (!mounted) {
-          return;
-        }
-
-        context.goNamedAuth(
-          AcquaintanceNSWidget.routeName,
-          context.mounted,
-          queryParameters: {
-            'index': serializeParam(
-              0,
-              ParamType.int,
-            ),
-          }.withoutNulls,
-        );
-        return;
-      }
-
       final studentRoleUpdate = createUsersRecordData(
         role: UserRole.student,
       );
@@ -245,7 +220,7 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
       beginPendingSocialAuthContext(
         providerId: providerId,
         sourceScreen: RegistrationWidget.routeName,
-        nativeSpeakerIntent: _model.switchValue ?? false,
+        nativeSpeakerIntent: false,
       );
       GoRouter.of(context).prepareAuthEvent();
       final user = await signInAction();
@@ -270,7 +245,7 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
 
       attachPendingSocialAuthUid(resolvedUserUid);
       final decision = await resolveAndPersistSocialAuthEntry(
-        nativeSpeakerIntent: _model.switchValue ?? false,
+        nativeSpeakerIntent: false,
         authUserUid: resolvedUserUid,
       );
       if (!mounted) {
@@ -532,15 +507,6 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
                                         size: 20.0,
                                       ),
                                     ),
-                                  ),
-                                  const SizedBox(
-                                      height: ExpatlioDesign.space12),
-                                  NativeSpeakerEntryToggle(
-                                    value: _model.switchValue ?? false,
-                                    onChanged: (newValue) async {
-                                      safeSetState(
-                                          () => _model.switchValue = newValue);
-                                    },
                                   ),
                                 ],
                               ),

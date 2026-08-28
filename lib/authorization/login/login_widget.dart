@@ -1,5 +1,4 @@
 import '/auth/firebase_auth/auth_util.dart';
-import '/components/native_speaker_entry_toggle.dart';
 import '/authorization/shared/social_auth_entry_logic.dart';
 import '/authorization/shared/social_auth_progress_overlay.dart';
 import '/components/button/button_widget.dart';
@@ -71,7 +70,7 @@ class _LoginWidgetState extends State<LoginWidget> {
       beginPendingSocialAuthContext(
         providerId: providerId,
         sourceScreen: LoginWidget.routeName,
-        nativeSpeakerIntent: _model.switchValue ?? false,
+        nativeSpeakerIntent: false,
       );
       GoRouter.of(context).prepareAuthEvent();
       final user = await signInAction();
@@ -96,7 +95,7 @@ class _LoginWidgetState extends State<LoginWidget> {
 
       attachPendingSocialAuthUid(resolvedUserUid);
       final decision = await resolveAndPersistSocialAuthEntry(
-        nativeSpeakerIntent: _model.switchValue ?? false,
+        nativeSpeakerIntent: false,
         authUserUid: resolvedUserUid,
       );
       if (!mounted) {
@@ -174,7 +173,6 @@ class _LoginWidgetState extends State<LoginWidget> {
 
     _model.passTextController ??= TextEditingController();
     _model.passFocusNode ??= FocusNode();
-    _model.switchValue = false;
   }
 
   @override
@@ -403,15 +401,6 @@ class _LoginWidgetState extends State<LoginWidget> {
                                         size: 20.0,
                                       ),
                                     ),
-                                  ),
-                                  const SizedBox(
-                                      height: ExpatlioDesign.space12),
-                                  NativeSpeakerEntryToggle(
-                                    value: _model.switchValue ?? false,
-                                    onChanged: (newValue) async {
-                                      safeSetState(
-                                          () => _model.switchValue = newValue);
-                                    },
                                   ),
                                 ],
                               ),

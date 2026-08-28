@@ -84,6 +84,16 @@ void main() {
   });
 
   group('formatGiftExpiry', () {
+    test('calendar day difference does not depend on elapsed hours', () {
+      expect(
+        calendarDayDifference(
+          DateTime(2026, 3, 28, 23, 30),
+          DateTime(2026, 3, 29, 0, 15),
+        ),
+        1,
+      );
+    });
+
     test('"сегодня в HH:MM" when expiry is later today', () {
       // Use a stable local DateTime to avoid TZ-shift flakes.
       final reference = DateTime(2026, 5, 12, 9, 0);
@@ -101,12 +111,40 @@ void main() {
         'завтра в 09:00',
       );
     });
+    test('localizes today and tomorrow in English', () {
+      final reference = DateTime(2026, 5, 12, 23, 45);
+
+      expect(
+        formatGiftExpiry(
+          DateTime(2026, 5, 12, 23, 59),
+          now: reference,
+          languageCode: 'en',
+        ),
+        'today at 23:59',
+      );
+      expect(
+        formatGiftExpiry(
+          DateTime(2026, 5, 13),
+          now: reference,
+          languageCode: 'en-US',
+        ),
+        'tomorrow at 00:00',
+      );
+    });
     test('falls back to DD.MM further out', () {
       final reference = DateTime(2026, 5, 12, 9, 0);
       final expiry = DateTime(2026, 5, 20, 8, 15);
       expect(
         formatGiftExpiry(expiry, now: reference),
         '20.05 в 08:15',
+      );
+    });
+    test('uses English connector for a later date', () {
+      final reference = DateTime(2026, 5, 12, 9);
+      final expiry = DateTime(2026, 5, 20, 8, 15);
+      expect(
+        formatGiftExpiry(expiry, now: reference, languageCode: 'en'),
+        '20.05 at 08:15',
       );
     });
     test('empty string for null', () {

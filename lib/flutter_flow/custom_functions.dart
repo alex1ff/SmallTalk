@@ -476,6 +476,7 @@ List<CountryStruct> countriesList() {
   ];
 
   const referenceCountryCodes = [
+    'US',
     'DE',
     'ES',
     'FR',

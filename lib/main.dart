@@ -17,6 +17,7 @@ import 'shared_pages/design/expatlio_design.dart';
 
 // 🔔 VoIP imports
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'services/voip_service.dart';
 import 'services/match_coordinator.dart';
 import 'services/firebase_app_check_service.dart';
@@ -85,7 +86,9 @@ void main() async {
   // 💳 Configure RevenueCat as soon as Firebase is up. Safe to ignore
   // failure: the service degrades gracefully and the auth stream
   // (firebase_user_provider.dart) will retry logInUser on next signal.
-  unawaited(SubscriptionService.instance.configure().catchError((Object e) {
+  unawaited(SubscriptionService.instance
+      .configure(initialAppUserId: FirebaseAuth.instance.currentUser?.uid)
+      .catchError((Object e) {
     debugPrint('⚠️ main: SubscriptionService.configure failed: $e');
   }));
 

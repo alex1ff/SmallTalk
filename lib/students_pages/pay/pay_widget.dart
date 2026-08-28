@@ -124,7 +124,10 @@ class _PayWidgetState extends State<PayWidget> {
       } catch (e, st) {
         debugPrint('⚠️ PayWidget._loadPackages failed: $e\n$st');
         if (mounted) {
-          _showSnackBar('Не удалось загрузить тарифы. Попробуйте еще раз.');
+          _showSnackBar(_localized(
+            'Не удалось загрузить тарифы. Попробуйте ещё раз.',
+            'Could not load plans. Please try again.',
+          ));
         }
       }
       if (!mounted) {
@@ -137,26 +140,30 @@ class _PayWidgetState extends State<PayWidget> {
       return;
     }
 
-    List<Package> packages;
+    List<Package> packages = const [];
     List<StoreProduct> storeProducts = const [];
+    SubscriptionCatalogResult catalogResult;
     try {
-      packages = await SubscriptionService.instance
-          .fetchSubscriptionPackages()
-          .timeout(const Duration(seconds: 20), onTimeout: () => const []);
-      storeProducts = packages.map((package) => package.storeProduct).toList();
-      final productsByProductId =
-          mapSubscriptionStoreProductsByProductId(storeProducts);
-      if (productsByProductId.length < SubscriptionProductIds.all.length) {
-        storeProducts = await SubscriptionService.instance
-            .fetchSubscriptionStoreProducts()
-            .timeout(const Duration(seconds: 20), onTimeout: () => const []);
-      }
+      catalogResult =
+          await SubscriptionService.instance.loadSubscriptionCatalog().timeout(
+                const Duration(seconds: 25),
+                onTimeout: () => const SubscriptionCatalogResult(
+                  status: SubscriptionCatalogStatus.timedOut,
+                ),
+              );
+      packages = catalogResult.packages;
+      storeProducts = catalogResult.storeProducts;
     } catch (e, st) {
       debugPrint('⚠️ PayWidget._loadPackages failed: $e\n$st');
-      packages = const [];
-      storeProducts = const [];
+      catalogResult = SubscriptionCatalogResult(
+        status: SubscriptionCatalogStatus.failed,
+        error: e,
+      );
       if (mounted) {
-        _showSnackBar('Не удалось загрузить тарифы. Попробуйте еще раз.');
+        _showSnackBar(_localized(
+          'Не удалось загрузить тарифы. Попробуйте ещё раз.',
+          'Could not load plans. Please try again.',
+        ));
       }
     }
 
@@ -170,7 +177,49 @@ class _PayWidgetState extends State<PayWidget> {
           mapSubscriptionStoreProductsByProductId(storeProducts);
       _isLoadingPackages = false;
     });
+
+    if (!catalogResult.hasAnyProduct && mounted) {
+      _showSnackBar(_catalogFailureMessage(catalogResult.status));
+    }
   }
+
+  String _catalogFailureMessage(SubscriptionCatalogStatus status) {
+    return switch (status) {
+      SubscriptionCatalogStatus.identityUnavailable => _localized(
+          'Войдите в аккаунт и повторите загрузку тарифов.',
+          'Sign in and reload the plans.',
+        ),
+      SubscriptionCatalogStatus.configurationUnavailable => _localized(
+          'Покупки не настроены для этой версии приложения.',
+          'Purchases are not configured for this app version.',
+        ),
+      SubscriptionCatalogStatus.noProducts => _localized(
+          'App Store не вернул цены. Проверьте продукты для этого приложения.',
+          'The App Store did not return prices for this app.',
+        ),
+      SubscriptionCatalogStatus.networkUnavailable => _localized(
+          'Не удалось подключиться к App Store. Проверьте интернет.',
+          'Could not connect to the App Store. Check your connection.',
+        ),
+      SubscriptionCatalogStatus.timedOut => _localized(
+          'Загрузка тарифов заняла слишком много времени. Повторите.',
+          'Loading plans took too long. Please try again.',
+        ),
+      SubscriptionCatalogStatus.failed => _localized(
+          'Не удалось загрузить тарифы. Повторите ещё раз.',
+          'Could not load plans. Please try again.',
+        ),
+      SubscriptionCatalogStatus.ready ||
+      SubscriptionCatalogStatus.partial =>
+        _localized(
+          'Не удалось загрузить выбранный тариф.',
+          'Could not load the selected plan.',
+        ),
+    };
+  }
+
+  String _localized(String ru, String en) =>
+      FFLocalizations.of(context).getVariableText(ruText: ru, enText: en);
 
   String _priceFor(StudentPayPlan plan) {
     final injectedPrice = _injectedPricesByProductId[plan.productId];
@@ -185,7 +234,9 @@ class _PayWidgetState extends State<PayWidget> {
     if (storeProduct != null) {
       return storeProduct.priceString;
     }
-    return _isLoadingPackages ? 'Загрузка...' : 'Недоступно';
+    return _isLoadingPackages
+        ? _localized('Загрузка...', 'Loading...')
+        : _localized('Недоступно', 'Unavailable');
   }
 
   bool _hasPackageFor(StudentPayPlan plan) =>
@@ -205,7 +256,11 @@ class _PayWidgetState extends State<PayWidget> {
       }
       if (!mounted || !_hasPackageFor(_selectedPlan)) {
         _showSnackBar(
-            'Покупки пока недоступны. Проверьте продукты RevenueCat.');
+          _localized(
+            'Покупки пока недоступны. Повторите загрузку тарифов.',
+            'Purchases are unavailable. Reload the plans.',
+          ),
+        );
         return;
       }
 
@@ -216,7 +271,10 @@ class _PayWidgetState extends State<PayWidget> {
         await purchaseHandler(_selectedPlan.productId);
       } catch (_) {
         if (mounted) {
-          _showSnackBar('Не удалось оформить подписку. Попробуйте еще раз.');
+          _showSnackBar(_localized(
+            'Не удалось оформить подписку. Попробуйте ещё раз.',
+            'Could not complete the subscription. Please try again.',
+          ));
         }
       } finally {
         if (mounted) {
@@ -240,7 +298,10 @@ class _PayWidgetState extends State<PayWidget> {
     }
 
     if (package == null && storeProduct == null) {
-      _showSnackBar('Покупки пока недоступны. Проверьте продукты RevenueCat.');
+      _showSnackBar(_localized(
+        'Покупки пока недоступны. Повторите загрузку тарифов.',
+        'Purchases are unavailable. Reload the plans.',
+      ));
       return;
     }
 
@@ -261,12 +322,15 @@ class _PayWidgetState extends State<PayWidget> {
       final hasPro =
           info.entitlements.active.containsKey(kSubscriptionProEntitlementId);
       if (hasPro) {
-        _showSnackBar('Подписка активна.');
+        _showSnackBar(_localized('Подписка активна.', 'Subscription active.'));
         context.safePop();
       }
     } catch (_) {
       if (mounted) {
-        _showSnackBar('Не удалось оформить подписку. Попробуйте еще раз.');
+        _showSnackBar(_localized(
+          'Не удалось оформить подписку. Попробуйте ещё раз.',
+          'Could not complete the subscription. Please try again.',
+        ));
       }
     } finally {
       if (mounted) {
@@ -295,15 +359,21 @@ class _PayWidgetState extends State<PayWidget> {
           info.entitlements.active.containsKey(kSubscriptionProEntitlementId);
       _showSnackBar(
         hasPro
-            ? 'Покупки восстановлены.'
-            : 'Активных покупок для восстановления не найдено.',
+            ? _localized('Покупки восстановлены.', 'Purchases restored.')
+            : _localized(
+                'Активных покупок для восстановления не найдено.',
+                'No active purchases were found to restore.',
+              ),
       );
       if (hasPro) {
         context.safePop();
       }
     } catch (_) {
       if (mounted) {
-        _showSnackBar('Не удалось восстановить покупки. Попробуйте еще раз.');
+        _showSnackBar(_localized(
+          'Не удалось восстановить покупки. Попробуйте ещё раз.',
+          'Could not restore purchases. Please try again.',
+        ));
       }
     } finally {
       if (mounted) {
@@ -333,7 +403,7 @@ class _PayWidgetState extends State<PayWidget> {
         body: Column(
           children: [
             BasicPageHeader(
-              title: 'Тарифы',
+              title: _localized('Тарифы', 'Plans'),
               onBack: () => context.safePop(),
             ),
             Expanded(

@@ -517,7 +517,7 @@ void main() {
     expect(find.text('Русский'), findsNothing);
   });
 
-  testWidgets('country widget uses reduced reference country set',
+  testWidgets('country widget includes US in the reference country set',
       (tester) async {
     final appState = await _buildTestAppState(
       languages: _languagesCatalog(),
@@ -527,6 +527,7 @@ void main() {
       functions.countriesList().map((country) => country.nameRu).toList(),
       equals(
         const [
+          'США',
           'Германия',
           'Испания',
           'Франция',
@@ -552,7 +553,7 @@ void main() {
 
     expect(find.text('Германия'), findsOneWidget);
     expect(find.text('Португалия'), findsOneWidget);
-    expect(find.text('США'), findsNothing);
+    expect(find.text('США'), findsOneWidget);
 
     await tester.enterText(find.byType(TextFormField), 'Порт');
     await tester.pump();

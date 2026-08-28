@@ -797,6 +797,18 @@
       "indexes": []
     },
     {
+      "collectionGroup": "passwordResetRequests",
+      "fieldPath": "expiresAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "passwordResetRateLimits",
+      "fieldPath": "expiresAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
       "collectionGroup": "fcm_tokens",
       "fieldPath": "fcm_token",
       "ttl": false,

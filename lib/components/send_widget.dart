@@ -71,8 +71,11 @@ class _SendWidgetState extends State<SendWidget> {
                           ExpatlioDesign.space16,
                           ExpatlioDesign.space0),
                       child: AutoSizeText(
-                        FFLocalizations.of(context).getText(
-                          '72up7lns' /* Письм с инструкцей по восстано... */,
+                        FFLocalizations.of(context).getVariableText(
+                          ruText:
+                              'Если аккаунт с таким e-mail существует, проверьте почту в ближайшее время.',
+                          enText:
+                              'If an account with this email exists, check your inbox shortly.',
                         ),
                         textAlign: TextAlign.center,
                         style: FlutterFlowTheme.of(context).bodyMedium.override(

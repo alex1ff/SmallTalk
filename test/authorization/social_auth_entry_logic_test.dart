@@ -72,6 +72,32 @@ void main() {
       expect(decision.roleToAssign, UserRole.student);
       expect(decision.grantStudentBonus, isFalse);
     });
+
+    test('preserves an inferred legacy native speaker over student intent', () {
+      final decision = resolveSocialAuthEntryDecision(
+        hasAssignedRole: false,
+        nativeSpeakerIntent: false,
+        hasStudentBalance: false,
+        inferredRole: UserRole.native_speaker,
+        allowNewAccountRoleIntent: false,
+      );
+
+      expect(decision.destination, SocialAuthEntryDestination.loading);
+      expect(decision.roleToAssign, UserRole.native_speaker);
+      expect(decision.grantStudentBonus, isFalse);
+    });
+
+    test('fails closed for an ambiguous existing role-less profile', () {
+      final decision = resolveSocialAuthEntryDecision(
+        hasAssignedRole: false,
+        nativeSpeakerIntent: false,
+        hasStudentBalance: false,
+        allowNewAccountRoleIntent: false,
+      );
+
+      expect(decision.destination, SocialAuthEntryDestination.loading);
+      expect(decision.roleToAssign, isNull);
+    });
   });
 
   group('inferRoleFromProfileShape', () {
@@ -174,7 +200,7 @@ void main() {
       expect(decision.grantStudentBonus, isTrue);
     });
 
-    test('shows manual chooser for ambiguous role-less profiles', () {
+    test('fails closed for ambiguous role-less profiles', () {
       final decision = resolveLoadingRecoveryDecisionFromState(
         resolutionStatus:
             AuthenticatedUserProfileResolutionStatus.resolvedCanonical,
@@ -184,8 +210,8 @@ void main() {
         inferredRole: null,
       );
 
-      expect(decision.action, LoadingRecoveryAction.showManualRoleChoice);
-      expect(decision.recoverySource, UserRoleRecoverySource.manualRecovery);
+      expect(decision.action, LoadingRecoveryAction.fatalError);
+      expect(decision.failure, LoadingRecoveryFailure.ambiguousProfile);
     });
 
     test('returns fatal error for duplicate legacy profiles', () {
@@ -199,7 +225,7 @@ void main() {
       );
 
       expect(decision.action, LoadingRecoveryAction.fatalError);
-      expect(decision.errorMessage, isNotEmpty);
+      expect(decision.failure, LoadingRecoveryFailure.duplicateProfiles);
     });
   });
 }

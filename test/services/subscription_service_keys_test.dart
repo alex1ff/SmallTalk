@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:small_talk/services/subscription_service.dart';
@@ -164,7 +167,7 @@ void main() {
       );
     });
 
-    test('matches FlutterFlow package identifiers when product ids differ', () {
+    test('rejects package identifiers when store product ids differ', () {
       final monthly = _package(
         packageId: SubscriptionProductIds.monthly,
         productId: 'app_store_monthly_product',
@@ -178,15 +181,15 @@ void main() {
 
       expect(
         subscriptionProductIdForPackage(monthly),
-        SubscriptionProductIds.monthly,
+        isNull,
       );
       expect(
         subscriptionProductIdForPackage(quarterly),
-        SubscriptionProductIds.quarterly,
+        isNull,
       );
     });
 
-    test('maps packages by plan id even when store product ids differ', () {
+    test('does not map packages with unapproved store product ids', () {
       final monthly = _package(
         packageId: SubscriptionProductIds.monthly,
         productId: 'app_store_monthly_product',
@@ -201,19 +204,7 @@ void main() {
       final packagesByProductId =
           mapSubscriptionPackagesByProductId([monthly, quarterly]);
 
-      expect(
-        packagesByProductId.keys,
-        [
-          SubscriptionProductIds.monthly,
-          SubscriptionProductIds.quarterly,
-        ],
-      );
-      expect(
-        packagesByProductId[SubscriptionProductIds.monthly]
-            ?.storeProduct
-            .identifier,
-        'app_store_monthly_product',
-      );
+      expect(packagesByProductId, isEmpty);
     });
 
     test('maps direct StoreKit products by product id', () {
@@ -234,6 +225,208 @@ void main() {
           SubscriptionProductIds.quarterly,
         ],
       );
+    });
+  });
+
+  group('RevenueCat catalog error classification', () {
+    test('classifies timeout and network failures separately', () {
+      expect(
+        subscriptionCatalogStatusForError(TimeoutException('slow')),
+        SubscriptionCatalogStatus.timedOut,
+      );
+      expect(
+        subscriptionCatalogStatusForError(PlatformException(
+          code: PurchasesErrorCode.networkError.index.toString(),
+        )),
+        SubscriptionCatalogStatus.networkUnavailable,
+      );
+    });
+  });
+
+  group('SubscriptionService identity coordinator', () {
+    test('configures once with Firebase uid and eagerly loads customer info',
+        () async {
+      final sdk = _FakeRevenueCatSdk();
+      final service = SubscriptionService.forTesting(
+        sdk: sdk,
+        apiKey: 'appl_test',
+      );
+
+      final first = service.logInUser(' uid-1 ');
+      final second = service.logInUser('uid-1');
+      await Future.wait([first, second]);
+      await Future<void>.delayed(const Duration(milliseconds: 1));
+
+      expect(sdk.configureCalls, 1);
+      expect(sdk.configuredUserId, 'uid-1');
+      expect(sdk.currentUserId, 'uid-1');
+      expect(sdk.offeringsCalls, 1);
+      expect(sdk.productsCalls, 1);
+      expect(sdk.customerInfoCalls, greaterThanOrEqualTo(1));
+    });
+
+    test('deduplicates concurrent offering loads and retries after failure',
+        () async {
+      final sdk = _FakeRevenueCatSdk();
+      final service = SubscriptionService.forTesting(
+        sdk: sdk,
+        apiKey: 'appl_test',
+      );
+      await service.logInUser('uid-1');
+      sdk.offeringsGate = Completer<void>();
+
+      final first = service.ensureOfferingsLoaded();
+      final second = service.ensureOfferingsLoaded();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(sdk.offeringsCalls, 1);
+      sdk.offeringsGate!.complete();
+      expect(identical(await first, await second), isTrue);
+      expect(sdk.offeringsCalls, 1);
+
+      await service.logInUser('uid-2');
+      sdk.offeringsError = StateError('temporary');
+      await expectLater(service.ensureOfferingsLoaded(), throwsStateError);
+      sdk.offeringsError = null;
+      await service.ensureOfferingsLoaded();
+      expect(sdk.offeringsCalls, 3);
+    });
+
+    test('uses direct StoreKit products when offerings fail', () async {
+      final sdk = _FakeRevenueCatSdk()
+        ..offeringsError = StateError('offerings unavailable');
+      final service = SubscriptionService.forTesting(
+        sdk: sdk,
+        apiKey: 'appl_test',
+      );
+      await service.logInUser('uid-1');
+
+      final catalog = await service.loadSubscriptionCatalog();
+
+      expect(catalog.status, SubscriptionCatalogStatus.ready);
+      expect(catalog.packages, isEmpty);
+      expect(
+        catalog.storeProducts.map((product) => product.identifier).toSet(),
+        SubscriptionProductIds.all.toSet(),
+      );
+      expect(sdk.productsCalls, 1);
+    });
+
+    test('times out a hung offering request without blocking restore or retry',
+        () async {
+      final sdk = _FakeRevenueCatSdk()..offeringsGate = Completer<void>();
+      final service = SubscriptionService.forTesting(
+        sdk: sdk,
+        apiKey: 'appl_test',
+        catalogRequestTimeout: const Duration(milliseconds: 20),
+      );
+      await service.logInUser('uid-1');
+
+      final firstOfferingLoad = service.ensureOfferingsLoaded();
+      await Future<void>.delayed(Duration.zero);
+      final restored = await service
+          .restorePurchases()
+          .timeout(const Duration(milliseconds: 100));
+      expect(restored.originalAppUserId, 'uid-1');
+      await expectLater(firstOfferingLoad, throwsA(isA<TimeoutException>()));
+
+      sdk.offeringsGate = null;
+      final offerings = await service.ensureOfferingsLoaded();
+      expect(offerings, isNotNull);
+      expect(sdk.offeringsCalls, 2);
+    });
+
+    test('blocks restore while purchase owns the identity lease', () async {
+      final sdk = _FakeRevenueCatSdk();
+      final service = SubscriptionService.forTesting(
+        sdk: sdk,
+        apiKey: 'appl_test',
+      );
+      await service.logInUser('uid-1');
+      sdk.purchaseGate = Completer<void>();
+      final purchase = service.purchasePackage(_package(
+        packageId: r'$rc_monthly',
+        productId: SubscriptionProductIds.monthly,
+        packageType: PackageType.monthly,
+      ));
+      await sdk.purchaseStarted.future;
+
+      await expectLater(
+        service.restorePurchases(),
+        throwsA(isA<SubscriptionCommerceBusyException>()),
+      );
+
+      sdk.purchaseGate!.complete();
+      await purchase;
+    });
+
+    test('defers Firebase uid changes until purchase releases identity lease',
+        () async {
+      final sdk = _FakeRevenueCatSdk();
+      final service = SubscriptionService.forTesting(
+        sdk: sdk,
+        apiKey: 'appl_test',
+      );
+      await service.logInUser('uid-1');
+      sdk.purchaseGate = Completer<void>();
+      final purchase = service.purchasePackage(_package(
+        packageId: r'$rc_monthly',
+        productId: SubscriptionProductIds.monthly,
+        packageType: PackageType.monthly,
+      ));
+      await sdk.purchaseStarted.future;
+
+      final switchUser = service.logInUser('uid-2');
+      await Future<void>.delayed(Duration.zero);
+      expect(sdk.currentUserId, 'uid-1');
+      sdk.purchaseGate!.complete();
+
+      final purchaseInfo = await purchase;
+      expect(purchaseInfo?.originalAppUserId, 'uid-1');
+      await switchUser;
+      expect(sdk.currentUserId, 'uid-2');
+      expect(service.customerInfo?.originalAppUserId, 'uid-2');
+    });
+
+    test('defers logout until purchase releases identity lease', () async {
+      final sdk = _FakeRevenueCatSdk();
+      final service = SubscriptionService.forTesting(
+        sdk: sdk,
+        apiKey: 'appl_test',
+      );
+      await service.logInUser('uid-1');
+      sdk.purchaseGate = Completer<void>();
+      final purchase = service.purchasePackage(_package(
+        packageId: r'$rc_monthly',
+        productId: SubscriptionProductIds.monthly,
+        packageType: PackageType.monthly,
+      ));
+      await sdk.purchaseStarted.future;
+
+      final logout = service.logOutUser();
+      await Future<void>.delayed(Duration.zero);
+      expect(sdk.currentUserId, 'uid-1');
+      sdk.purchaseGate!.complete();
+
+      expect((await purchase)?.originalAppUserId, 'uid-1');
+      await logout;
+      expect(service.customerInfo, isNull);
+    });
+
+    test('listener refresh reads current uid data instead of stale payload',
+        () async {
+      final sdk = _FakeRevenueCatSdk();
+      final service = SubscriptionService.forTesting(
+        sdk: sdk,
+        apiKey: 'appl_test',
+      );
+      await service.logInUser('uid-1');
+      await service.logInUser('uid-2');
+
+      sdk.listener?.call(_customerInfo('uid-1'));
+      await Future<void>.delayed(const Duration(milliseconds: 1));
+
+      expect(service.customerInfo?.originalAppUserId, 'uid-2');
     });
   });
 }
@@ -277,4 +470,121 @@ Offering _offering(String id, List<Package> packages) {
     const {},
     packages,
   );
+}
+
+CustomerInfo _customerInfo(String userId) => CustomerInfo.fromJson({
+      'entitlements': const <String, dynamic>{
+        'all': <String, dynamic>{},
+        'active': <String, dynamic>{},
+        'verification': 'NOT_REQUESTED',
+      },
+      'allPurchaseDates': const <String, dynamic>{},
+      'activeSubscriptions': const <String>[],
+      'allPurchasedProductIdentifiers': const <String>[],
+      'nonSubscriptionTransactions': const <Object>[],
+      'firstSeen': '2026-08-28T00:00:00Z',
+      'originalAppUserId': userId,
+      'allExpirationDates': const <String, dynamic>{},
+      'requestDate': '2026-08-28T00:00:00Z',
+    });
+
+class _FakeRevenueCatSdk implements RevenueCatSdkAdapter {
+  bool configured = false;
+  String currentUserId = '';
+  String? configuredUserId;
+  int configureCalls = 0;
+  int offeringsCalls = 0;
+  int productsCalls = 0;
+  int customerInfoCalls = 0;
+  Object? offeringsError;
+  Completer<void>? offeringsGate;
+  Completer<void>? purchaseGate;
+  Completer<void> purchaseStarted = Completer<void>();
+  void Function(CustomerInfo info)? listener;
+
+  Offerings get offerings => Offerings({
+        kSubscriptionOfferingId: _offering(
+          kSubscriptionOfferingId,
+          [
+            _package(
+              packageId: r'$rc_monthly',
+              productId: SubscriptionProductIds.monthly,
+              packageType: PackageType.monthly,
+              offeringId: kSubscriptionOfferingId,
+            ),
+            _package(
+              packageId: r'$rc_three_month',
+              productId: SubscriptionProductIds.quarterly,
+              packageType: PackageType.threeMonth,
+              offeringId: kSubscriptionOfferingId,
+            ),
+          ],
+        ),
+      });
+
+  @override
+  void addCustomerInfoUpdateListener(
+    void Function(CustomerInfo info) listener,
+  ) {
+    this.listener = listener;
+  }
+
+  @override
+  Future<void> configure({
+    required String apiKey,
+    required String appUserId,
+  }) async {
+    configureCalls += 1;
+    configured = true;
+    configuredUserId = appUserId;
+    currentUserId = appUserId;
+  }
+
+  @override
+  Future<String> currentAppUserId() async => currentUserId;
+
+  @override
+  Future<CustomerInfo> getCustomerInfo() async {
+    customerInfoCalls += 1;
+    return _customerInfo(currentUserId);
+  }
+
+  @override
+  Future<Offerings> getOfferings() async {
+    offeringsCalls += 1;
+    final error = offeringsError;
+    if (error != null) throw error;
+    final gate = offeringsGate;
+    if (gate != null) await gate.future;
+    return offerings;
+  }
+
+  @override
+  Future<List<StoreProduct>> getProducts(List<String> productIds) async {
+    productsCalls += 1;
+    return productIds.map(_storeProduct).toList();
+  }
+
+  @override
+  Future<bool> isConfigured() async => configured;
+
+  @override
+  Future<CustomerInfo> logIn(String appUserId) async {
+    currentUserId = appUserId;
+    return _customerInfo(appUserId);
+  }
+
+  @override
+  Future<CustomerInfo> purchase(PurchaseParams params) async {
+    if (!purchaseStarted.isCompleted) purchaseStarted.complete();
+    final gate = purchaseGate;
+    if (gate != null) await gate.future;
+    return _customerInfo(currentUserId);
+  }
+
+  @override
+  Future<CustomerInfo> restorePurchases() async => _customerInfo(currentUserId);
+
+  @override
+  Future<void> setLogLevel(LogLevel level) async {}
 }

@@ -21,6 +21,7 @@ import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/flutter_flow/flutter_flow_widgets.dart';
 import '/shared_pages/design/expatlio_design.dart';
+import '/utils/subscription_utils.dart';
 
 class PromoRedeemWidget extends StatefulWidget {
   const PromoRedeemWidget({super.key});
@@ -271,21 +272,15 @@ class _PromoRedeemWidgetState extends State<PromoRedeemWidget> {
     final m = info.minutesGifted;
     final total = info.remainingMinutes.toStringAsFixed(0);
     final expiryLine = info.expiresAt != null
-        ? '\n${isRu ? 'Действует до' : 'Valid until'} ${_formatExpiry(info.expiresAt!)}'
+        ? '\n${isRu ? 'Действует до' : 'Valid until'} ${formatGiftExpiry(
+            info.expiresAt,
+            languageCode: isRu ? 'ru' : 'en',
+          )}'
         : '';
     if (isRu) {
       return '+$m мин подарка\nВсего доступно: $total мин$expiryLine';
     }
     return '+$m gift minutes\nTotal available: $total min$expiryLine';
-  }
-
-  String _formatExpiry(DateTime dt) {
-    final local = dt.toLocal();
-    final d = local.day.toString().padLeft(2, '0');
-    final m = local.month.toString().padLeft(2, '0');
-    final h = local.hour.toString().padLeft(2, '0');
-    final min = local.minute.toString().padLeft(2, '0');
-    return '$d.$m в $h:$min';
   }
 }
 

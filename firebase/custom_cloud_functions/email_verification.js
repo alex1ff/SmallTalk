@@ -70,9 +70,12 @@ function buildEmailActionHandlerLink({
   const sourceUrl = new URL(firebaseLink);
   const actionUrl = new URL(handlerUrl);
 
-  sourceUrl.searchParams.forEach((value, key) => {
-    actionUrl.searchParams.set(key, value);
-  });
+  for (const key of ["mode", "oobCode", "apiKey"]) {
+    const value = sourceUrl.searchParams.get(key);
+    if (value) {
+      actionUrl.searchParams.set(key, value);
+    }
+  }
 
   actionUrl.searchParams.set("lang", normalizeLocale(locale));
   actionUrl.searchParams.set("continueUrl", appDeepLink);

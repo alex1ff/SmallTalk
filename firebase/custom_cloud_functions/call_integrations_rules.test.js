@@ -55,6 +55,11 @@ test.beforeEach(async () => {
     await db.doc("translationCache/cache-a").set({status: "ready"});
     await db.doc("translationRateLimits/user-a").set({attemptCount: 1});
     await db.doc("aiFeedbackRateLimits/user-a").set({attemptCount: 1});
+    await db.doc("passwordResetRequests/request-a").set({
+      email: "private@example.com",
+      status: "queued",
+    });
+    await db.doc("passwordResetRateLimits/email-a").set({count: 1});
   });
 });
 
@@ -115,15 +120,20 @@ test("provider caches and rate limits are inaccessible to clients and admins", a
   const owner = testEnv.authenticatedContext("user-a").firestore();
   const admin = testEnv.authenticatedContext("admin-user", {admin: true})
     .firestore();
+  const anonymous = testEnv.unauthenticatedContext().firestore();
   const paths = [
     "translationCache/cache-a",
     "translationRateLimits/user-a",
     "aiFeedbackRateLimits/user-a",
+    "passwordResetRequests/request-a",
+    "passwordResetRateLimits/email-a",
   ];
 
   for (const documentPath of paths) {
     await assertFails(owner.doc(documentPath).get());
     await assertFails(admin.doc(documentPath).get());
+    await assertFails(anonymous.doc(documentPath).get());
     await assertFails(owner.doc(documentPath).set({attemptCount: 99}));
+    await assertFails(anonymous.doc(documentPath).set({attemptCount: 99}));
   }
 });

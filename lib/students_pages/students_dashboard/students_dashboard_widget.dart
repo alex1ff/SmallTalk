@@ -3737,7 +3737,13 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
                                               mainAxisSize: MainAxisSize.min,
                                               children: [
                                                 Text(
-                                                  '${formatGiftMinutes(giftMinutes)} мин в подарок',
+                                                  FFLocalizations.of(context)
+                                                      .getVariableText(
+                                                    ruText:
+                                                        '${formatGiftMinutes(giftMinutes)} мин в подарок',
+                                                    enText:
+                                                        '${formatGiftMinutes(giftMinutes)} gift minutes',
+                                                  ),
                                                   style: FlutterFlowTheme.of(
                                                           context)
                                                       .bodyMedium
@@ -3758,7 +3764,19 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
                                                     height:
                                                         ExpatlioDesign.space4),
                                                 Text(
-                                                  'действуют ${formatGiftExpiry(giftExpiresAt)}',
+                                                  FFLocalizations.of(context)
+                                                      .getVariableText(
+                                                    ruText:
+                                                        'действуют ${formatGiftExpiry(
+                                                      giftExpiresAt,
+                                                      languageCode: 'ru',
+                                                    )}',
+                                                    enText:
+                                                        'available ${formatGiftExpiry(
+                                                      giftExpiresAt,
+                                                      languageCode: 'en',
+                                                    )}',
+                                                  ),
                                                   style: FlutterFlowTheme.of(
                                                           context)
                                                       .bodyMedium
@@ -3777,7 +3795,11 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
                                             );
                                           }
                                           return Text(
-                                            'Нет активной подписки',
+                                            FFLocalizations.of(context)
+                                                .getVariableText(
+                                              ruText: 'Нет активной подписки',
+                                              enText: 'No active subscription',
+                                            ),
                                             style: FlutterFlowTheme.of(context)
                                                 .bodyMedium
                                                 .override(

@@ -1,11 +1,8 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/authorization/acquaintance_s_t_u_d_e_n_t/student_onboarding_logic.dart';
-import '/components/native_speaker_entry_toggle.dart';
 import '/authorization/shared/social_auth_entry_logic.dart';
 import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
-import '/components/button/button_widget.dart';
-import '/components/wrapper.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
@@ -37,11 +34,34 @@ class _LoadingWidgetState extends State<LoadingWidget> {
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
   bool _isResolvingRoute = false;
+  bool _isSigningOut = false;
   String? _errorMessage;
-  bool _showRoleRecoveryChoice = false;
-  bool _recoverySwitchValue = false;
-  AuthenticatedUserProfileResolution? _latestProfileResolution;
-  UsersRecord? _latestResolvedUserDocument;
+
+  String _localized(String ru, String en) =>
+      FFLocalizations.of(context).getVariableText(ruText: ru, enText: en);
+
+  String _profileLoadError() => _localized(
+        'Не удалось загрузить профиль. Попробуйте ещё раз.',
+        'Could not load your profile. Please try again.',
+      );
+
+  String _recoveryFailureMessage(LoadingRecoveryFailure? failure) {
+    switch (failure) {
+      case LoadingRecoveryFailure.duplicateProfiles:
+        return _localized(
+          'Найдено несколько профилей для этого аккаунта. Попробуйте ещё раз позже.',
+          'Multiple profiles were found for this account. Please try again later.',
+        );
+      case LoadingRecoveryFailure.ambiguousProfile:
+        return _localized(
+          'Не удалось определить тип профиля. Обратитесь в поддержку.',
+          'Could not determine the profile type. Please contact support.',
+        );
+      case LoadingRecoveryFailure.profileUnavailable:
+      case null:
+        return _profileLoadError();
+    }
+  }
 
   bool _hasPendingVoipNavigationSafe() {
     try {
@@ -181,8 +201,7 @@ class _LoadingWidgetState extends State<LoadingWidget> {
     final userRef = resolution.canonicalUserRef;
     if (userRef == null) {
       safeSetState(() {
-        _errorMessage = 'Не удалось загрузить профиль. Попробуйте ещё раз.';
-        _showRoleRecoveryChoice = false;
+        _errorMessage = _profileLoadError();
       });
       return;
     }
@@ -195,8 +214,7 @@ class _LoadingWidgetState extends State<LoadingWidget> {
         );
     if (!mounted || baseUser == null) {
       safeSetState(() {
-        _errorMessage = 'Не удалось загрузить профиль. Попробуйте ещё раз.';
-        _showRoleRecoveryChoice = false;
+        _errorMessage = _profileLoadError();
       });
       return;
     }
@@ -212,8 +230,10 @@ class _LoadingWidgetState extends State<LoadingWidget> {
     );
     if (!mounted || updatedUser == null) {
       safeSetState(() {
-        _errorMessage = 'Не удалось сохранить профиль. Попробуйте ещё раз.';
-        _showRoleRecoveryChoice = false;
+        _errorMessage = _localized(
+          'Не удалось сохранить профиль. Попробуйте ещё раз.',
+          'Could not save your profile. Please try again.',
+        );
       });
       return;
     }
@@ -229,40 +249,15 @@ class _LoadingWidgetState extends State<LoadingWidget> {
 
     if (destination == null) {
       safeSetState(() {
-        _errorMessage = 'Не удалось загрузить профиль. Попробуйте ещё раз.';
-        _showRoleRecoveryChoice = false;
+        _errorMessage = _profileLoadError();
       });
       return;
     }
 
     safeSetState(() {
-      _latestResolvedUserDocument = updatedUser;
       _errorMessage = null;
-      _showRoleRecoveryChoice = false;
     });
     _navigateToResolvedDestination(destination);
-  }
-
-  Future<void> _continueManualRoleRecovery() async {
-    if (_isResolvingRoute) {
-      return;
-    }
-
-    final resolution =
-        _latestProfileResolution ?? await _resolveUserProfileForRouting();
-    if (!mounted) {
-      return;
-    }
-
-    final selectedRole =
-        _recoverySwitchValue ? UserRole.native_speaker : UserRole.student;
-    await _applyRoleRecoveryAndNavigate(
-      resolution: resolution,
-      role: selectedRole,
-      grantStudentBonus: selectedRole == UserRole.student &&
-          !(_latestResolvedUserDocument?.hasBalanceST() ?? false),
-      recoverySource: UserRoleRecoverySource.manualRecovery,
-    );
   }
 
   Future<void> _resolveAndNavigate() async {
@@ -292,8 +287,6 @@ class _LoadingWidgetState extends State<LoadingWidget> {
         refreshFromBackend: activeSessionUserDocument == null,
       );
       final userDocument = resolution.userDocument;
-      _latestProfileResolution = resolution;
-      _latestResolvedUserDocument = userDocument;
       if (!mounted) {
         return;
       }
@@ -313,7 +306,6 @@ class _LoadingWidgetState extends State<LoadingWidget> {
       if (destination != null) {
         safeSetState(() {
           _errorMessage = null;
-          _showRoleRecoveryChoice = false;
         });
         _navigateToResolvedDestination(destination);
         return;
@@ -344,23 +336,65 @@ class _LoadingWidgetState extends State<LoadingWidget> {
             recoverySource: recoveryDecision.recoverySource!,
           );
           return;
-        case LoadingRecoveryAction.showManualRoleChoice:
-          safeSetState(() {
-            _showRoleRecoveryChoice = true;
-            _recoverySwitchValue = recoveryDecision.suggestedNativeSpeakerValue;
-            _errorMessage = null;
-          });
-          return;
         case LoadingRecoveryAction.fatalError:
           safeSetState(() {
-            _showRoleRecoveryChoice = false;
-            _errorMessage = recoveryDecision.errorMessage ??
-                'Не удалось загрузить профиль. Попробуйте ещё раз.';
+            _errorMessage = _recoveryFailureMessage(recoveryDecision.failure);
           });
           return;
       }
     } finally {
-      _isResolvingRoute = false;
+      if (mounted) {
+        safeSetState(() {
+          _isResolvingRoute = false;
+        });
+      } else {
+        _isResolvingRoute = false;
+      }
+    }
+  }
+
+  Future<void> _retryResolution() async {
+    if (_isResolvingRoute || _isSigningOut) {
+      return;
+    }
+    safeSetState(() {
+      _errorMessage = null;
+    });
+    await _resolveAndNavigate();
+  }
+
+  Future<void> _signOutAndReturnToLogin() async {
+    if (_isSigningOut) {
+      return;
+    }
+    safeSetState(() {
+      _isSigningOut = true;
+    });
+    try {
+      GoRouter.of(context).prepareAuthEvent();
+      clearPendingSocialAuthContext();
+      unawaited(
+        VoIPService()
+            .deinitialize()
+            .timeout(const Duration(seconds: 2))
+            .catchError((Object error, StackTrace stackTrace) {
+          debugPrint(
+            '⚠️ LoadingWidget: VoIP cleanup before sign-out failed: '
+            '$error\n$stackTrace',
+          );
+        }),
+      );
+      await authManager.signOut();
+      GoRouter.of(context).clearRedirectLocation();
+      if (mounted) {
+        context.goNamedAuth(LoginWidget.routeName, context.mounted);
+      }
+    } finally {
+      if (mounted) {
+        safeSetState(() {
+          _isSigningOut = false;
+        });
+      }
     }
   }
 
@@ -421,44 +455,26 @@ class _LoadingWidgetState extends State<LoadingWidget> {
                         ),
                   ),
                 ),
-              ],
-              if (_showRoleRecoveryChoice) ...[
                 const SizedBox(height: ExpatlioDesign.space20),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: ExpatlioDesign.space20),
+                FilledButton(
+                  onPressed: _isResolvingRoute || _isSigningOut
+                      ? null
+                      : _retryResolution,
                   child: Text(
-                    'Мы нашли аккаунт, но не смогли определить тип профиля. Выберите, как продолжить вход.',
-                    textAlign: TextAlign.center,
-                    style: FlutterFlowTheme.of(context).bodyMedium.override(
-                          fontFamily: 'sf pro display',
-                          color: FlutterFlowTheme.of(context).secondaryText,
-                          letterSpacing: 0.0,
-                        ),
+                    FFLocalizations.of(context).getVariableText(
+                      ruText: 'Повторить',
+                      enText: 'Try again',
+                    ),
                   ),
                 ),
-                const SizedBox(height: ExpatlioDesign.space12),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: ExpatlioDesign.space20),
-                  child: NativeSpeakerEntryToggle(
-                    value: _recoverySwitchValue,
-                    onChanged: (newValue) {
-                      safeSetState(() => _recoverySwitchValue = newValue);
-                    },
-                  ),
-                ),
-                Wrapper(
-                  padding: const EdgeInsets.fromLTRB(
-                      ExpatlioDesign.space20,
-                      ExpatlioDesign.space12,
-                      ExpatlioDesign.space20,
-                      ExpatlioDesign.space0),
-                  child: ButtonWidget(
-                    text: 'Продолжить',
-                    loadingText: 'Сохраняем...',
-                    busyStyle: ButtonBusyStyle.spinner,
-                    action: _continueManualRoleRecovery,
+                const SizedBox(height: ExpatlioDesign.space8),
+                TextButton(
+                  onPressed: _isSigningOut ? null : _signOutAndReturnToLogin,
+                  child: Text(
+                    FFLocalizations.of(context).getVariableText(
+                      ruText: 'Выйти из аккаунта',
+                      enText: 'Sign out',
+                    ),
                   ),
                 ),
               ],

@@ -6,6 +6,7 @@
 // semantics aligned across the two.
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 import '/backend/schema/users_record.dart';
 import '/backend/schema/structs/gift_minutes_struct.dart';
@@ -152,22 +153,33 @@ String formatGiftMinutes(double minutes) {
   return minutes.toStringAsFixed(1);
 }
 
-/// Short relative time-of-day, e.g. "сегодня в 18:30" or "завтра в 12:00".
+@visibleForTesting
+int calendarDayDifference(DateTime from, DateTime to) {
+  final fromDay = DateTime.utc(from.year, from.month, from.day);
+  final toDay = DateTime.utc(to.year, to.month, to.day);
+  return toDay.difference(fromDay).inDays;
+}
+
+/// Short localized relative time-of-day.
 /// Useful for the gift-expiry badge on the dashboard.
-String formatGiftExpiry(DateTime? expiresAt, {DateTime? now}) {
+String formatGiftExpiry(
+  DateTime? expiresAt, {
+  DateTime? now,
+  String languageCode = 'ru',
+}) {
   if (expiresAt == null) return '';
-  final reference = now ?? DateTime.now();
+  final reference = (now ?? DateTime.now()).toLocal();
   final local = expiresAt.toLocal();
-  final today = DateTime(reference.year, reference.month, reference.day);
-  final expiryDay = DateTime(local.year, local.month, local.day);
-  final dayDiff = expiryDay.difference(today).inDays;
+  final dayDiff = calendarDayDifference(reference, local);
   final h = local.hour.toString().padLeft(2, '0');
   final m = local.minute.toString().padLeft(2, '0');
-  if (dayDiff == 0) return 'сегодня в $h:$m';
-  if (dayDiff == 1) return 'завтра в $h:$m';
+  final isEnglish = languageCode.trim().toLowerCase().startsWith('en');
+  final at = isEnglish ? 'at' : 'в';
+  if (dayDiff == 0) return '${isEnglish ? 'today' : 'сегодня'} $at $h:$m';
+  if (dayDiff == 1) return '${isEnglish ? 'tomorrow' : 'завтра'} $at $h:$m';
   final d = local.day.toString().padLeft(2, '0');
   final mo = local.month.toString().padLeft(2, '0');
-  return '$d.$mo в $h:$m';
+  return '$d.$mo $at $h:$m';
 }
 
 /// Read-only snapshot of the gift bucket (or null if absent / expired).

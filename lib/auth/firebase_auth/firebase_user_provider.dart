@@ -1,5 +1,7 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:rxdart/rxdart.dart';
 
 import '../base_auth_user_provider.dart';
@@ -90,9 +92,25 @@ Stream<BaseAuthUser> smallTalkFirebaseUserStream() =>
         // stays synchronous and the stream emits without delay. The
         // service guards re-entry and logs its own errors.
         if (user != null && user.uid.isNotEmpty) {
-          SubscriptionService.instance.logInUser(user.uid);
+          unawaited(
+            SubscriptionService.instance.logInUser(user.uid).catchError(
+              (Object error, StackTrace stackTrace) {
+                debugPrint(
+                  '⚠️ RevenueCat auth login sync failed: $error\n$stackTrace',
+                );
+              },
+            ),
+          );
         } else {
-          SubscriptionService.instance.logOutUser();
+          unawaited(
+            SubscriptionService.instance.logOutUser().catchError(
+              (Object error, StackTrace stackTrace) {
+                debugPrint(
+                  '⚠️ RevenueCat auth logout sync failed: $error\n$stackTrace',
+                );
+              },
+            ),
+          );
         }
         // ──────────────────────────────────────────────────────────────
         return currentUser!;

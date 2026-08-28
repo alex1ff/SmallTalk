@@ -1,4 +1,3 @@
-import '/auth/firebase_auth/auth_util.dart';
 import '/components/send_widget.dart';
 import '/components/button/button_widget.dart';
 import '/custom_code/actions/index.dart' as actions;
@@ -7,12 +6,18 @@ import '/flutter_flow/flutter_flow_util.dart';
 import '/index.dart';
 import '/components/basic_page_header.dart';
 import '/shared_pages/design/expatlio_design.dart';
+import '/services/password_reset_service.dart';
 import 'package:flutter/material.dart';
 import 'recover_pass_model.dart';
 export 'recover_pass_model.dart';
 
 class RecoverPassWidget extends StatefulWidget {
-  const RecoverPassWidget({super.key});
+  const RecoverPassWidget({
+    super.key,
+    this.passwordResetInvoker,
+  });
+
+  final PasswordResetInvoker? passwordResetInvoker;
 
   static String routeName = 'Recover_pass';
   static String routePath = '/recoverPass';
@@ -23,6 +28,7 @@ class RecoverPassWidget extends StatefulWidget {
 
 class _RecoverPassWidgetState extends State<RecoverPassWidget> {
   late RecoverPassModel _model;
+  bool _isSubmitting = false;
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -43,6 +49,9 @@ class _RecoverPassWidgetState extends State<RecoverPassWidget> {
   }
 
   Future<void> _submitPasswordReset() async {
+    if (_isSubmitting) {
+      return;
+    }
     if (_model.emailTextController.text.isEmpty) {
       await actions.showTopNotification(
         context,
@@ -58,20 +67,43 @@ class _RecoverPassWidgetState extends State<RecoverPassWidget> {
     if (!functions.isValidEmail(_model.emailTextController.text)) {
       await actions.showTopNotification(
         context,
-        'Неверный e-mail',
+        FFLocalizations.of(context).getVariableText(
+          ruText: 'Неверный e-mail',
+          enText: 'Invalid email address',
+        ),
         '',
         true,
       );
       return;
     }
 
-    await authManager.resetPassword(
-      email: _model.emailTextController.text,
-      context: context,
-    );
-    if (!mounted) {
+    _isSubmitting = true;
+    try {
+      await requestPasswordReset(
+        email: _model.emailTextController.text,
+        locale: FFLocalizations.of(context).languageCode,
+        invoker: widget.passwordResetInvoker,
+      );
+    } catch (_) {
+      if (mounted) {
+        await actions.showTopNotification(
+          context,
+          FFLocalizations.of(context).getVariableText(
+            ruText:
+                'Не удалось отправить запрос. Проверьте интернет и повторите.',
+            enText:
+                'Could not submit the request. Check your connection and try again.',
+          ),
+          '',
+          true,
+        );
+      }
       return;
+    } finally {
+      _isSubmitting = false;
     }
+
+    if (!mounted) return;
 
     await showModalBottomSheet(
       isScrollControlled: true,

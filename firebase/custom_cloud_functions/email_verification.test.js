@@ -143,7 +143,7 @@ test("custom email verification sends a Russian branded Resend email", async () 
 test("custom email verification can rewrite Firebase action links", () => {
   const link = buildEmailActionHandlerLink({
     firebaseLink:
-      "https://smalltalk-2109b.firebaseapp.com/__/auth/action?mode=verifyEmail&oobCode=code_1&apiKey=key_1&lang=en",
+      "https://smalltalk-2109b.firebaseapp.com/__/auth/action?mode=verifyEmail&oobCode=code_1&apiKey=key_1&lang=en&unexpected=private",
     locale: "en",
     handlerUrl: "https://example.com/auth/action",
     appDeepLink: "smalltalk://smalltalk.com/?emailVerified=1",
@@ -158,6 +158,7 @@ test("custom email verification can rewrite Firebase action links", () => {
   assert.equal(parsedLink.searchParams.get("oobCode"), "code_1");
   assert.equal(parsedLink.searchParams.get("apiKey"), "key_1");
   assert.equal(parsedLink.searchParams.get("lang"), "en");
+  assert.equal(parsedLink.searchParams.get("unexpected"), null);
   assert.equal(
     parsedLink.searchParams.get("continueUrl"),
     "smalltalk://smalltalk.com/?emailVerified=1",

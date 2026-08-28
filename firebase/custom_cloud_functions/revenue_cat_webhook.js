@@ -11,10 +11,11 @@
 // RevenueCat sends it in the Authorization header verbatim (no Bearer prefix
 // by default — value is whatever you configure in the dashboard).
 //
-// Idempotency: every RevenueCat event has a unique `event.id`. We refuse to
-// process the same event twice by checking `transactions` for an existing
-// record with matching `revenueCatEventId` before applying state changes.
+// Idempotency: every RevenueCat event has a unique `event.id`. Its transaction
+// document uses a deterministic hash and is claimed in the same Firestore
+// transaction as the subscription update.
 
+const crypto = require("node:crypto");
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const {defineSecret} = require("firebase-functions/params");
@@ -32,6 +33,7 @@ const PRODUCT_PERIOD_MONTHS = {
   "expatlio_1_Month": 1,
   "expatlio_3_Month": 3,
 };
+const ALLOWED_PRODUCT_IDS = new Set(Object.keys(PRODUCT_PERIOD_MONTHS));
 
 // Map RevenueCat store identifiers to internal short codes used in the
 // SubscriptionStruct.store field.
@@ -149,6 +151,7 @@ function parseEvent(rawBody) {
   const store = safeString(event.store);
   const environment = safeString(event.environment);
   const originalTransactionId = safeString(event.original_transaction_id);
+  const revenueCatAppId = safeString(event.app_id);
   const periodType = safeString(event.period_type); // TRIAL, NORMAL, INTRO, etc.
   const cancelReason = safeString(event.cancel_reason);
   const priceInPurchasedCurrency = Number.isFinite(
@@ -170,6 +173,7 @@ function parseEvent(rawBody) {
     storeShort: store && STORE_MAP[store] ? STORE_MAP[store] : "unknown",
     environment,
     originalTransactionId,
+    revenueCatAppId,
     periodType,
     cancelReason,
     priceInPurchasedCurrency,
@@ -177,15 +181,44 @@ function parseEvent(rawBody) {
   };
 }
 
-// Returns the existing transaction snapshot if one with the same
-// revenueCatEventId already exists, otherwise null. Used for idempotency.
-async function findExistingTransaction(db, eventId) {
-  const existing = await db
-      .collection("transactions")
-      .where("revenueCatEventId", "==", eventId)
-      .limit(1)
-      .get();
-  return existing.empty ? null : existing.docs[0];
+function configuredRevenueCatAppIds(env = process.env) {
+  return new Set(
+      String(env.REVENUECAT_APP_ID || "")
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean),
+  );
+}
+
+function eventAllowlistFailure(parsed, env = process.env) {
+  if (parsed.type === "TRANSFER") {
+    return "unsupported_transfer";
+  }
+  if (parsed.type === "TEST") {
+    return null;
+  }
+
+  const appIds = configuredRevenueCatAppIds(env);
+  if (appIds.size === 0) {
+    return "missing_revenuecat_app_allowlist";
+  }
+  if (!parsed.revenueCatAppId || !appIds.has(parsed.revenueCatAppId)) {
+    return "unexpected_revenuecat_app";
+  }
+  if (!parsed.productId || !ALLOWED_PRODUCT_IDS.has(parsed.productId)) {
+    return "unexpected_product";
+  }
+  if (!parsed.entitlementIds.includes(PRO_ENTITLEMENT_ID)) {
+    return "unexpected_entitlement";
+  }
+  return null;
+}
+
+function transactionDocumentIdForEvent(eventId) {
+  return `revenuecat_${crypto
+      .createHash("sha256")
+      .update(String(eventId), "utf8")
+      .digest("hex")}`;
 }
 
 // Build the SubscriptionStruct payload that mirrors RevenueCat state.
@@ -316,53 +349,37 @@ exports.revenueCatWebhook = functions
         return;
       }
 
-      const db = admin.firestore();
-
-      // Idempotency: if we've already processed this event.id, ack with 200.
-      try {
-        const existing = await findExistingTransaction(db, parsed.eventId);
-        if (existing) {
-          console.log("ℹ️ revenueCatWebhook duplicate event, acking", {
-            eventId: parsed.eventId,
-            existingTransactionId: existing.id,
-          });
-          res.status(200).send("Duplicate");
-          return;
-        }
-      } catch (err) {
-        console.error("❌ revenueCatWebhook idempotency check failed", err);
-        // Don't 500 — RevenueCat will retry. Fall through to processing;
-        // if Firestore is fully down we'll fail later and 500 there.
-      }
-
-      // Resolve the user. RevenueCat App User ID is the Firebase uid (set
-      // client-side via Purchases.logIn). Anonymous IDs ($RCAnonymousID:…)
-      // are not linked to a user and we cannot mirror state for them.
-      if (parsed.appUserId.startsWith("$RCAnonymousID:")) {
-        console.warn(
-            "⚠️ revenueCatWebhook anonymous app_user_id, skipping mirror",
-            {appUserId: parsed.appUserId, eventId: parsed.eventId},
-        );
-        // Still record the transaction (without userId) for audit.
-        try {
-          await db.collection("transactions").add({
-            ...buildTransactionPayload(parsed, null),
-            userId: null,
-            note: "anonymous_rc_user",
-          });
-        } catch (err) {
-          console.error("❌ revenueCatWebhook anon transaction write failed", err);
-        }
-        res.status(200).send("Anonymous user, no mirror");
+      const allowlistFailure = eventAllowlistFailure(parsed);
+      if (allowlistFailure) {
+        console.warn("⚠️ revenueCatWebhook ignored by allowlist", {
+          type: parsed.type,
+          eventId: parsed.eventId,
+          productId: parsed.productId,
+          reason: allowlistFailure,
+        });
+        res.status(200).send("Ignored");
         return;
       }
 
-      const userRef = db.collection("users").doc(parsed.appUserId);
+      const db = admin.firestore();
+      const isAnonymous = parsed.appUserId.startsWith("$RCAnonymousID:");
+      const userRef = isAnonymous ?
+        null :
+        db.collection("users").doc(parsed.appUserId);
+      const transactionRef = db
+          .collection("transactions")
+          .doc(transactionDocumentIdForEvent(parsed.eventId));
 
       try {
-        await db.runTransaction(async (tx) => {
-          const userSnap = await tx.get(userRef);
-          if (!userSnap.exists) {
+        const result = await db.runTransaction(async (tx) => {
+          const [transactionSnap, userSnap] = await Promise.all([
+            tx.get(transactionRef),
+            userRef ? tx.get(userRef) : Promise.resolve(null),
+          ]);
+          if (transactionSnap.exists) {
+            return {duplicate: true};
+          }
+          if (userRef && !userSnap.exists) {
             console.warn(
                 "⚠️ revenueCatWebhook user not found, recording transaction only",
                 {uid: parsed.appUserId, eventId: parsed.eventId},
@@ -391,13 +408,27 @@ exports.revenueCatWebhook = functions
             }
           }
 
-          if (userSnap.exists && Object.keys(userUpdate).length > 0) {
+          if (userRef && userSnap.exists && Object.keys(userUpdate).length > 0) {
             tx.update(userRef, userUpdate);
           }
 
-          const txDocRef = db.collection("transactions").doc();
-          tx.set(txDocRef, buildTransactionPayload(parsed, userRef));
+          const transactionPayload = buildTransactionPayload(parsed, userRef);
+          if (isAnonymous) {
+            transactionPayload.userId = null;
+            transactionPayload.note = "anonymous_rc_user";
+          }
+          tx.create(transactionRef, transactionPayload);
+          return {duplicate: false};
         });
+
+        if (result.duplicate) {
+          console.log("ℹ️ revenueCatWebhook duplicate event, acking", {
+            eventId: parsed.eventId,
+            transactionId: transactionRef.id,
+          });
+          res.status(200).send("Duplicate");
+          return;
+        }
 
         console.log("✅ revenueCatWebhook applied", {
           type: parsed.type,
@@ -415,3 +446,13 @@ exports.revenueCatWebhook = functions
         res.status(500).send("Internal error");
       }
     });
+
+exports.__private__ = {
+  ALLOWED_PRODUCT_IDS,
+  PRODUCT_PERIOD_MONTHS,
+  PRO_ENTITLEMENT_ID,
+  configuredRevenueCatAppIds,
+  eventAllowlistFailure,
+  parseEvent,
+  transactionDocumentIdForEvent,
+};

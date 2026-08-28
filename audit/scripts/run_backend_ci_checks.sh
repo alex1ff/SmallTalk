@@ -18,3 +18,6 @@ done < <(
 )
 
 npm --prefix firebase/custom_cloud_functions run test:events
+npm --prefix firebase/custom_cloud_functions run test:password-reset
+node --test \
+  firebase/custom_cloud_functions/revenue_cat_webhook.test.js

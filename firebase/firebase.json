@@ -25,6 +25,7 @@
     }
   },
   "hosting": {
+    "site": "smalltalk-2109b",
     "public": "public",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "headers": [

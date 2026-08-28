@@ -57,7 +57,9 @@ service cloud.firestore {
         'searchRequests',
         'translationCache',
         'translationRateLimits',
-        'aiFeedbackRateLimits'
+        'aiFeedbackRateLimits',
+        'passwordResetRequests',
+        'passwordResetRateLimits'
       ];
     }
 
@@ -1367,6 +1369,14 @@ service cloud.firestore {
     }
 
     match /aiFeedbackRateLimits/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /passwordResetRequests/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /passwordResetRateLimits/{document=**} {
       allow read, write: if false;
     }
 

@@ -11,7 +11,20 @@ const IOS_PUSH_ENVIRONMENT = {
   IOS_BUNDLE_ID: "com.appwave.expatlio",
   IOS_VOIP_TOPIC: "com.appwave.expatlio.voip",
 };
-const REQUIRED_DEPLOY_TARGETS = ["firestore:rules", "firestore:indexes"];
+const EMAIL_ENVIRONMENT = {
+  EMAIL_FROM: "noreply@expatlio.com",
+  EMAIL_ACTION_HANDLER_URL:
+    "https://smalltalk-2109b.firebaseapp.com/auth/action",
+  APP_DEEP_LINK: "smalltalk://smalltalk.com/",
+};
+const REVENUECAT_ENVIRONMENT = {
+  REVENUECAT_APP_ID: "app87d4dc887a",
+};
+const REQUIRED_DEPLOY_TARGETS = [
+  "firestore:rules",
+  "firestore:indexes",
+  "hosting",
+];
 
 const REQUIRED_FUNCTIONS = [
   {id: "cleanupUserCallIntegrationsOnDelete", trigger: "auth"},
@@ -152,6 +165,7 @@ const REQUIRED_FUNCTIONS = [
     id: "revenueCatWebhook",
     trigger: "https",
     secrets: ["REVENUECAT_WEBHOOK_SECRET"],
+    environment: REVENUECAT_ENVIRONMENT,
   },
   {
     id: "grantPromoEntitlement",
@@ -163,6 +177,18 @@ const REQUIRED_FUNCTIONS = [
     id: "sendCustomEmailVerification",
     trigger: "callable",
     secrets: ["RESEND_API_KEY"],
+    environment: EMAIL_ENVIRONMENT,
+  },
+  {
+    id: "requestPasswordReset",
+    trigger: "callable",
+    secrets: ["PASSWORD_RESET_RATE_LIMIT_HMAC_KEY"],
+  },
+  {
+    id: "processPasswordResetRequest",
+    trigger: "firestore",
+    secrets: ["RESEND_API_KEY"],
+    environment: EMAIL_ENVIRONMENT,
   },
   {id: "submitReview", trigger: "callable"},
 ];
@@ -180,6 +206,7 @@ const SECRET_ENV_KEYS = [
   "REVENUECAT_AUTH_HEADER",
   "REVENUECAT_WEBHOOK_SECRET",
   "RESEND_API_KEY",
+  "PASSWORD_RESET_RATE_LIMIT_HMAC_KEY",
 ];
 
 function parseArgs(argv = process.argv.slice(2)) {

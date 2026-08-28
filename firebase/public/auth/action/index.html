@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="color-scheme" content="light">
-    <title>Expatlio email verification</title>
+    <title>Expatlio account action</title>
     <style>
       :root {
         --background: #f2f2f7;
@@ -116,6 +116,49 @@
         margin-top: 24px;
       }
 
+      .reset-form {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        margin-top: 24px;
+      }
+
+      .reset-form[hidden] {
+        display: none;
+      }
+
+      label {
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+        font-size: 14px;
+        font-weight: 650;
+      }
+
+      input {
+        width: 100%;
+        min-height: 52px;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 13px 15px;
+        background: #ffffff;
+        color: var(--text);
+        font: inherit;
+        font-size: 16px;
+        outline: none;
+      }
+
+      input:focus {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(116, 48, 232, 0.12);
+      }
+
+      .field-error {
+        min-height: 20px;
+        color: var(--danger);
+        font-size: 13px;
+      }
+
       button,
       a.button {
         width: 100%;
@@ -179,7 +222,23 @@
         <h1 id="title">Подтверждаем email</h1>
         <p id="message">Проверяем ссылку. Это займёт пару секунд.</p>
 
+        <form id="resetForm" class="reset-form" hidden>
+          <label>
+            <span id="passwordLabel">Новый пароль</span>
+            <input id="password" type="password" minlength="8" autocomplete="new-password" required>
+          </label>
+          <label>
+            <span id="passwordConfirmLabel">Повторите пароль</span>
+            <input id="passwordConfirm" type="password" minlength="8" autocomplete="new-password" required>
+          </label>
+          <div id="fieldError" class="field-error" role="alert"></div>
+          <button id="resetButton" type="submit">Сохранить пароль</button>
+        </form>
+
         <div class="actions">
+          <button id="retryButton" class="secondary" type="button" hidden>
+            Повторить
+          </button>
           <button id="openAppButton" type="button" hidden>
             Открыть Expatlio
           </button>
@@ -191,10 +250,15 @@
     <script src="https://www.gstatic.com/firebasejs/12.12.0/firebase-auth-compat.js"></script>
     <script>
       (function () {
-        var fallbackAppUrl = "smalltalk://smalltalk.com/?emailVerified=1";
         var params = new URLSearchParams(window.location.search);
         var mode = params.get("mode");
         var actionCode = params.get("oobCode");
+        var language = (params.get("lang") || "ru").toLowerCase()
+          .indexOf("en") === 0 ? "en" : "ru";
+        var copy = messages()[language];
+        var fallbackAppUrl = mode === "resetPassword"
+          ? "smalltalk://smalltalk.com/?passwordReset=1"
+          : "smalltalk://smalltalk.com/?emailVerified=1";
         var apiKey = params.get("apiKey") ||
           "AIzaSyBRCxuTmxzNF973BXtuR_JT_MraioaHH34";
         var appUrl = safeAppUrl(params.get("continueUrl"));
@@ -203,14 +267,26 @@
         var message = document.getElementById("message");
         var statusIcon = document.getElementById("statusIcon");
         var openAppButton = document.getElementById("openAppButton");
+        var retryButton = document.getElementById("retryButton");
+        var resetForm = document.getElementById("resetForm");
+        var password = document.getElementById("password");
+        var passwordConfirm = document.getElementById("passwordConfirm");
+        var fieldError = document.getElementById("fieldError");
+        var resetButton = document.getElementById("resetButton");
 
+        document.documentElement.lang = language;
+        openAppButton.textContent = copy.openApp;
+        retryButton.textContent = copy.retry;
+        document.getElementById("passwordLabel").textContent = copy.password;
+        document.getElementById("passwordConfirmLabel").textContent =
+          copy.passwordConfirm;
+        resetButton.textContent = copy.savePassword;
         openAppButton.addEventListener("click", openApp);
+        retryButton.addEventListener("click", verifyResetLink);
+        resetForm.addEventListener("submit", submitNewPassword);
 
-        if (mode !== "verifyEmail" || !actionCode) {
-          showError(
-            "Ссылка не распознана",
-            "Проверьте письмо и откройте актуальную ссылку подтверждения.",
-          );
+        if (!actionCode || (mode !== "verifyEmail" && mode !== "resetPassword")) {
+          showError(copy.invalidTitle, copy.invalidMessage);
           return;
         }
 
@@ -221,35 +297,129 @@
           appId: "1:1024626146715:web:63189c0ffd3746bc6bf53e",
         });
 
+        if (mode === "resetPassword") {
+          verifyResetLink();
+          return;
+        }
+
+        title.textContent = copy.checkingEmail;
+        message.textContent = copy.checkingMessage;
         firebase.auth().applyActionCode(actionCode)
           .then(function () {
-            showSuccess();
+            showSuccess(copy.emailDoneTitle, copy.emailDoneMessage);
             if (isMobileBrowser()) {
               window.setTimeout(openApp, 900);
             }
           })
           .catch(function () {
-            showError(
-              "Не удалось подтвердить email",
-              "Ссылка уже использована или срок действия истёк. Отправьте новое письмо из профиля.",
-            );
+            showError(copy.emailErrorTitle, copy.emailErrorMessage);
           });
 
-        function showSuccess() {
+        function showResetForm() {
+          retryButton.hidden = true;
+          openAppButton.hidden = true;
+          statusIcon.innerHTML = keyIcon();
+          title.textContent = copy.resetTitle;
+          message.textContent = copy.resetMessage;
+          resetForm.hidden = false;
+          password.focus();
+        }
+
+        function verifyResetLink() {
+          retryButton.hidden = true;
+          openAppButton.hidden = true;
+          statusIcon.dataset.state = "";
+          statusIcon.innerHTML = '<div class="spinner"></div>';
+          title.textContent = copy.checkingReset;
+          message.textContent = copy.checkingMessage;
+          firebase.auth().verifyPasswordResetCode(actionCode)
+            .then(showResetForm)
+            .catch(handleResetError);
+        }
+
+        function handleResetError(error) {
+          if (error && error.code === "auth/expired-action-code") {
+            showError(copy.expiredTitle, copy.expiredMessage);
+            return;
+          }
+          if (error && error.code === "auth/invalid-action-code") {
+            showError(copy.invalidResetTitle, copy.invalidResetMessage);
+            return;
+          }
+          showRetry(copy.retryErrorTitle, copy.retryErrorMessage);
+        }
+
+        function isInvalidOrExpiredActionCode(error) {
+          return error && (
+            error.code === "auth/invalid-action-code" ||
+            error.code === "auth/expired-action-code"
+          );
+        }
+
+        function submitNewPassword(event) {
+          event.preventDefault();
+          fieldError.textContent = "";
+          if (password.value.length < 8) {
+            fieldError.textContent = copy.passwordShort;
+            return;
+          }
+          if (password.value !== passwordConfirm.value) {
+            fieldError.textContent = copy.passwordMismatch;
+            return;
+          }
+
+          resetButton.disabled = true;
+          resetButton.textContent = copy.saving;
+          firebase.auth().confirmPasswordReset(actionCode, password.value)
+            .then(function () {
+              resetForm.hidden = true;
+              showSuccess(copy.resetDoneTitle, copy.resetDoneMessage);
+            })
+            .catch(function (error) {
+              resetButton.disabled = false;
+              resetButton.textContent = copy.savePassword;
+              if (error && (
+                error.code === "auth/weak-password" ||
+                error.code === "auth/password-does-not-meet-requirements"
+              )) {
+                fieldError.textContent = copy.passwordWeak;
+                return;
+              }
+              if (isInvalidOrExpiredActionCode(error)) {
+                handleResetError(error);
+                return;
+              }
+              fieldError.textContent = copy.retryErrorMessage;
+            });
+        }
+
+        function showSuccess(nextTitle, nextMessage) {
+          retryButton.hidden = true;
           statusIcon.dataset.state = "success";
           statusIcon.innerHTML = checkIcon();
-          title.textContent = "Email подтверждён";
-          message.textContent =
-            "Сейчас попробуем открыть приложение. Если оно не открылось автоматически, нажмите кнопку ниже.";
+          title.textContent = nextTitle;
+          message.textContent = nextMessage;
           openAppButton.hidden = false;
         }
 
         function showError(nextTitle, nextMessage) {
+          resetForm.hidden = true;
+          retryButton.hidden = true;
           statusIcon.dataset.state = "error";
           statusIcon.innerHTML = errorIcon();
           title.textContent = nextTitle;
           message.textContent = nextMessage;
           openAppButton.hidden = false;
+        }
+
+        function showRetry(nextTitle, nextMessage) {
+          resetForm.hidden = true;
+          statusIcon.dataset.state = "error";
+          statusIcon.innerHTML = errorIcon();
+          title.textContent = nextTitle;
+          message.textContent = nextMessage;
+          retryButton.hidden = false;
+          openAppButton.hidden = true;
         }
 
         function openApp() {
@@ -259,13 +429,21 @@
         function safeAppUrl(rawValue) {
           try {
             var url = new URL(rawValue || fallbackAppUrl);
-            if (url.protocol === "smalltalk:" && url.hostname === "smalltalk.com") {
+            var allowedQuery = mode === "resetPassword"
+              ? url.searchParams.get("passwordReset") === "1"
+              : url.searchParams.get("emailVerified") === "1";
+            if (
+              url.protocol === "smalltalk:" &&
+              url.hostname === "smalltalk.com" &&
+              url.pathname === "/" &&
+              Array.from(url.searchParams.keys()).length === 1 &&
+              allowedQuery
+            ) {
               return url.toString();
             }
           } catch (error) {
             return fallbackAppUrl;
           }
-
           return fallbackAppUrl;
         }
 
@@ -273,8 +451,77 @@
           return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
         }
 
+        function messages() {
+          return {
+            ru: {
+              openApp: "Открыть Expatlio",
+              retry: "Повторить",
+              checkingEmail: "Подтверждаем email",
+              checkingReset: "Проверяем ссылку",
+              checkingMessage: "Это займёт пару секунд.",
+              invalidTitle: "Ссылка не распознана",
+              invalidMessage: "Проверьте письмо и откройте актуальную ссылку.",
+              emailDoneTitle: "Email подтверждён",
+              emailDoneMessage: "Адрес подтверждён. Вернитесь в приложение.",
+              emailErrorTitle: "Не удалось подтвердить email",
+              emailErrorMessage: "Ссылка уже использована или срок действия истёк.",
+              resetTitle: "Новый пароль",
+              resetMessage: "Введите новый пароль длиной не менее 8 символов.",
+              password: "Новый пароль",
+              passwordConfirm: "Повторите пароль",
+              passwordShort: "Пароль должен содержать не менее 8 символов.",
+              passwordWeak: "Пароль не соответствует требованиям безопасности.",
+              passwordMismatch: "Пароли не совпадают.",
+              savePassword: "Сохранить пароль",
+              saving: "Сохраняем…",
+              resetDoneTitle: "Пароль изменён",
+              resetDoneMessage: "Теперь можно войти с новым паролем.",
+              expiredTitle: "Срок ссылки истёк",
+              expiredMessage: "Запросите новое письмо для сброса пароля.",
+              invalidResetTitle: "Ссылка уже недействительна",
+              invalidResetMessage: "Запросите новое письмо для сброса пароля.",
+              retryErrorTitle: "Не удалось проверить ссылку",
+              retryErrorMessage: "Проверьте интернет и повторите попытку.",
+            },
+            en: {
+              openApp: "Open Expatlio",
+              retry: "Try again",
+              checkingEmail: "Confirming email",
+              checkingReset: "Checking the link",
+              checkingMessage: "This will only take a moment.",
+              invalidTitle: "Invalid link",
+              invalidMessage: "Open the latest link from your email.",
+              emailDoneTitle: "Email confirmed",
+              emailDoneMessage: "Your email is confirmed. Return to the app.",
+              emailErrorTitle: "Could not confirm email",
+              emailErrorMessage: "The link was already used or has expired.",
+              resetTitle: "New password",
+              resetMessage: "Enter a new password with at least 8 characters.",
+              password: "New password",
+              passwordConfirm: "Confirm password",
+              passwordShort: "Use at least 8 characters.",
+              passwordWeak: "This password does not meet the security requirements.",
+              passwordMismatch: "Passwords do not match.",
+              savePassword: "Save password",
+              saving: "Saving…",
+              resetDoneTitle: "Password changed",
+              resetDoneMessage: "You can now sign in with your new password.",
+              expiredTitle: "Link expired",
+              expiredMessage: "Request a new password reset email.",
+              invalidResetTitle: "Link is no longer valid",
+              invalidResetMessage: "Request a new password reset email.",
+              retryErrorTitle: "Could not check the link",
+              retryErrorMessage: "Check your connection and try again.",
+            },
+          };
+        }
+
         function checkIcon() {
           return '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        }
+
+        function keyIcon() {
+          return '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 7a4 4 0 1 1-7.4 2.1L3 13.7V17h3v3h3l4.9-4.6A4 4 0 0 1 15 7Z" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
         }
 
         function errorIcon() {

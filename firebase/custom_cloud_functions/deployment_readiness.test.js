@@ -64,6 +64,20 @@ test("deployment readiness accepts the required critical functions", () => {
   assert.equal(report.checkedFunctions, REQUIRED_FUNCTIONS.length);
 });
 
+test("deployment readiness requires the Expatlio RevenueCat app id", () => {
+  const deployment = completeDeployment();
+  const webhook = deployment.find((fn) => fn.id === "revenueCatWebhook");
+  webhook.environmentVariables.REVENUECAT_APP_ID = "wrong_app";
+
+  const report = analyzeFunctionsDeployment(deployment);
+
+  assert.equal(report.ok, false);
+  assert.ok(report.failures.some((failure) =>
+    failure.id === "revenueCatWebhook" &&
+      failure.reason === "missing_required_environment",
+  ));
+});
+
 test("deployment readiness fails missing critical functions", () => {
   const report = analyzeFunctionsDeployment([
     deployedFunction({id: "acceptCall"}),
@@ -93,6 +107,8 @@ test("deployment readiness fails missing critical functions", () => {
   assert.ok(missingIds.includes("sendEventChatMessage"));
   assert.ok(missingIds.includes("getEventChatAccessState"));
   assert.ok(missingIds.includes("sendCustomEmailVerification"));
+  assert.ok(missingIds.includes("requestPasswordReset"));
+  assert.ok(missingIds.includes("processPasswordResetRequest"));
   assert.ok(missingIds.includes("submitReview"));
   assert.ok(missingIds.includes("getEventHistory"));
   assert.ok(missingIds.includes("getCallHistory"));
@@ -293,6 +309,47 @@ test("deployment readiness exposes translation and feedback callables", () => {
   ]) {
     assert.ok(ttlCollectionGroups.has(collectionGroup));
   }
+});
+
+test("deployment readiness exposes the password reset queue", () => {
+  const functionIds = new Set(REQUIRED_FUNCTIONS.map((item) => item.id));
+  const indexSource = fs.readFileSync(
+      path.join(__dirname, "index.js"),
+      "utf8",
+  );
+  const packageJson = JSON.parse(fs.readFileSync(
+      path.join(__dirname, "package.json"),
+      "utf8",
+  ));
+  const deployScript = packageJson.scripts["deploy:readiness-functions"];
+  const firestoreIndexes = JSON.parse(fs.readFileSync(
+      path.join(__dirname, "..", "firestore.indexes.json"),
+      "utf8",
+  ));
+  const firebaseConfig = JSON.parse(fs.readFileSync(
+      path.join(__dirname, "..", "firebase.json"),
+      "utf8",
+  ));
+  const ttlCollectionGroups = new Set(
+      firestoreIndexes.fieldOverrides
+          .filter((override) =>
+            override.fieldPath === "expiresAt" && override.ttl === true,
+          )
+          .map((override) => override.collectionGroup),
+  );
+
+  for (const id of ["requestPasswordReset", "processPasswordResetRequest"]) {
+    assert.ok(functionIds.has(id));
+    assert.match(indexSource, new RegExp(`exports\\.${id}\\b`));
+    assert.match(
+        deployScript,
+        new RegExp(`functions:custom_cloud_functions:${id}\\b`),
+    );
+  }
+  assert.match(deployScript, /firestore:rules,firestore:indexes,hosting,/);
+  assert.equal(firebaseConfig.hosting.site, "smalltalk-2109b");
+  assert.ok(ttlCollectionGroups.has("passwordResetRequests"));
+  assert.ok(ttlCollectionGroups.has("passwordResetRateLimits"));
 });
 
 test("deployment readiness requires production integration flags", () => {
