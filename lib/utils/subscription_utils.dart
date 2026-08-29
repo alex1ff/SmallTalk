@@ -12,8 +12,16 @@ import '/backend/schema/users_record.dart';
 import '/backend/schema/structs/gift_minutes_struct.dart';
 import '/backend/schema/structs/subscription_struct.dart';
 
+const String trialSubscriptionProductId = 'expatlio_trial_1_Month';
+const Set<String> paidPremiumProductIds = {
+  'expatlio_1_Month',
+  'expatlio_3_Month',
+  trialSubscriptionProductId,
+};
+
 /// True if [user] has a subscription whose `expiresAt` is in the future.
-/// Trial subscriptions (productId == "trial") count as active.
+/// This includes the active RevenueCat introductory period; the server then
+/// applies the separate one-call trial state policy.
 /// Pass [now] in tests to bypass the system clock; defaults to `DateTime.now()`.
 bool hasActiveSubscription(UsersRecord? user, {DateTime? now}) {
   final subscription = user?.subscription;
@@ -57,14 +65,22 @@ bool isSubscriptionExpiringSoon(
   return expiresAt.difference(reference) <= threshold;
 }
 
-/// True if this is a free trial subscription (Apple/Google intro offer or
-/// app-level fallback). Both surface `periodType: "TRIAL"` from RC, and
-/// the Firestore-fallback trial uses `productId == "trial"`.
+/// True if this is the dedicated RevenueCat trial product during its
+/// introductory period.
 bool isTrialSubscription(UsersRecord? user) {
   final subscription = user?.subscription;
   if (subscription == null) return false;
-  return subscription.productId == 'trial' ||
+  return subscription.productId == trialSubscriptionProductId &&
       subscription.periodType.toUpperCase() == 'TRIAL';
+}
+
+/// Full paid access. A trial product becomes Premium after Apple renews it
+/// with periodType NORMAL; an active TRIAL period remains restricted.
+bool isPaidPremiumSubscription(UsersRecord? user, {DateTime? now}) {
+  final subscription = user?.subscription;
+  if (!_isActive(subscription, now: now) || subscription == null) return false;
+  return paidPremiumProductIds.contains(subscription.productId) &&
+      subscription.periodType.toUpperCase() == 'NORMAL';
 }
 
 /// Format an expiry date as `DD.MM.YYYY` for display copy
@@ -135,13 +151,12 @@ DateTime? giftMinutesExpiresAt(UsersRecord? user, {DateTime? now}) {
   return user!.giftMinutes!.expiresAt;
 }
 
-/// True if the user can start a call right now — i.e. has either an
-/// active subscription or unexpired gift minutes. The single source of
-/// truth for client-side gating; server enforces the same predicate
-/// in create_video_session.js.
+/// True if the user has an active subscription and may enter the call flow.
+/// Trial eligibility (one call, 30-minute window) is checked server-side from
+/// `users/{uid}/trialAccess/current`; the client cannot infer that state from
+/// the RevenueCat subscription alone.
 bool canStartCall(UsersRecord? user, {DateTime? now}) =>
-    hasActiveSubscription(user, now: now) ||
-    hasUsableGiftMinutes(user, now: now);
+    hasActiveSubscription(user, now: now);
 
 /// Format a remaining-minutes count for UI. Drops trailing zeros so
 /// "10.0" → "10" but "7.5" stays "7.5".

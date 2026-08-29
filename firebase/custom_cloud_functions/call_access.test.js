@@ -25,9 +25,14 @@ function activeGift() {
   };
 }
 
-function activeSubscription() {
+function activeSubscription({
+  productId = "expatlio_1_Month",
+  periodType = "NORMAL",
+} = {}) {
   return {
     expiresAt: futureTimestamp(60),
+    productId,
+    periodType,
   };
 }
 
@@ -74,15 +79,15 @@ test("student call access matches start search entitlement semantics", () => {
       userData: {},
       nowMillis: fixedNowMillis,
     }).reason,
-    "no_active_access",
+    "no_subscription",
   );
   assert.equal(
     buildStudentCallAccessDecision({
       userRole: "student",
       userData: {giftMinutes: activeGift()},
       nowMillis: fixedNowMillis,
-    }).allowed,
-    true,
+    }).reason,
+    "no_subscription",
   );
   assert.equal(
     buildStudentCallAccessDecision({
@@ -90,7 +95,24 @@ test("student call access matches start search entitlement semantics", () => {
       userData: {subscription: activeSubscription()},
       usageData: dailyLimitUsage(),
       nowMillis: fixedNowMillis,
-    }).code,
-    "resource-exhausted",
+    }).allowed,
+    true,
+  );
+  assert.equal(
+    buildStudentCallAccessDecision({
+      userRole: "student",
+      userData: {
+        subscription: activeSubscription({
+          productId: "expatlio_trial_1_Month",
+          periodType: "TRIAL",
+        }),
+      },
+      trialData: {
+        trialCallStatus: "eligible",
+        trialCallWindowExpiresAt: futureTimestamp(30),
+      },
+      nowMillis: fixedNowMillis,
+    }).mode,
+    "trial",
   );
 });

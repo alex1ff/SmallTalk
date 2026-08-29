@@ -12,7 +12,6 @@ import '/custom_code/actions/index.dart' as actions;
 import '/flutter_flow/custom_functions.dart' as functions;
 import '/index.dart';
 import '/services/email_verification_service.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'registration_model.dart';
@@ -160,32 +159,6 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
       );
       studentRoleUpdate['availabilityToday'] = FieldValue.delete();
       await UsersRecord.collection.doc(user.uid).update(studentRoleUpdate);
-      try {
-        await FirebaseFunctions.instance
-            .httpsCallable('claimRegistrationGift')
-            .call();
-      } on FirebaseFunctionsException catch (error) {
-        if (!mounted) {
-          return;
-        }
-        await actions.showTopNotification(
-          context,
-          error.message ?? 'Бонусные минуты можно получить позже',
-          '',
-          true,
-        );
-      } catch (_) {
-        if (!mounted) {
-          return;
-        }
-        await actions.showTopNotification(
-          context,
-          'Бонусные минуты можно получить позже',
-          '',
-          true,
-        );
-      }
-
       if (!mounted) {
         return;
       }

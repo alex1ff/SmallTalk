@@ -1,11 +1,12 @@
 import '/components/button/button_widget.dart';
+import '/auth/firebase_auth/auth_util.dart';
 import '/components/wrapper.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/components/bottom_sheet_header.dart';
 import '/shared_pages/design/expatlio_design.dart';
-import '/components/promo_redeem_widget.dart';
 import '/students_pages/pay/pay_widget.dart';
+import '/utils/subscription_utils.dart';
 import 'package:flutter/material.dart';
 import 'no_balance_model.dart';
 export 'no_balance_model.dart';
@@ -40,6 +41,7 @@ class _NoBalanceWidgetState extends State<NoBalanceWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final hasTrial = isTrialSubscription(currentUserDocument);
     return Stack(
       alignment: AlignmentDirectional(0.0, 1.0),
       children: [
@@ -62,8 +64,12 @@ class _NoBalanceWidgetState extends State<NoBalanceWidget> {
                   children: [
                     BottomSheetHeader(
                       title: FFLocalizations.of(context).getVariableText(
-                        ruText: 'Нет активной подписки',
-                        enText: 'No active subscription',
+                        ruText: hasTrial
+                            ? 'Пробный звонок завершён'
+                            : 'Нет активной подписки',
+                        enText: hasTrial
+                            ? 'Trial call completed'
+                            : 'No active subscription',
                       ),
                     ),
                     Padding(
@@ -119,10 +125,12 @@ class _NoBalanceWidgetState extends State<NoBalanceWidget> {
                                     ExpatlioDesign.space0),
                                 child: Text(
                                   FFLocalizations.of(context).getVariableText(
-                                    ruText:
-                                        'Оформите подписку, чтобы начать звонок',
-                                    enText:
-                                        'Subscribe to start an Expatlio call',
+                                    ruText: hasTrial
+                                        ? 'Получите Premium, чтобы продолжить звонки'
+                                        : 'Оформите пробную подписку, чтобы начать звонок',
+                                    enText: hasTrial
+                                        ? 'Get Premium to continue calling'
+                                        : 'Start a trial subscription to make a call',
                                   ),
                                   textAlign: TextAlign.center,
                                   style: FlutterFlowTheme.of(context)
@@ -142,36 +150,6 @@ class _NoBalanceWidgetState extends State<NoBalanceWidget> {
                         ),
                       ),
                     ),
-                    // ─── SUBSCRIPTION REWORK (promo entry point) ──
-                    Padding(
-                      padding: EdgeInsetsDirectional.fromSTEB(
-                          ExpatlioDesign.space0,
-                          ExpatlioDesign.space20,
-                          ExpatlioDesign.space0,
-                          ExpatlioDesign.space0),
-                      child: TextButton(
-                        onPressed: () async {
-                          Navigator.pop(context);
-                          await showModalBottomSheet(
-                            context: context,
-                            isScrollControlled: true,
-                            backgroundColor: Colors.transparent,
-                            builder: (_) => const PromoRedeemWidget(),
-                          );
-                        },
-                        child: Text(
-                          FFLocalizations.of(context).getVariableText(
-                            ruText: 'У меня есть промокод',
-                            enText: 'I have a promo code',
-                          ),
-                          style: ExpatlioDesign.buttonTextStyle(
-                            context,
-                            color: FlutterFlowTheme.of(context).primary,
-                          ),
-                        ),
-                      ),
-                    ),
-                    // ──────────────────────────────────────────────
                     Padding(
                       padding: EdgeInsetsDirectional.fromSTEB(
                           ExpatlioDesign.space0,
@@ -184,8 +162,12 @@ class _NoBalanceWidgetState extends State<NoBalanceWidget> {
                         child: Wrapper.keyboardAware(
                           child: ButtonWidget(
                             text: FFLocalizations.of(context).getVariableText(
-                              ruText: 'Оформить подписку',
-                              enText: 'Subscribe',
+                              ruText: hasTrial
+                                  ? 'Получить Premium сейчас'
+                                  : 'Начать 3 дня бесплатно',
+                              enText: hasTrial
+                                  ? 'Start Premium now'
+                                  : 'Start 3 days free',
                             ),
                             action: () async {
                               Navigator.pop(context);

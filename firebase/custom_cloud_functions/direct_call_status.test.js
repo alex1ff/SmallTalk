@@ -11,9 +11,6 @@ const {
     normalizeTargetUserId,
   },
 } = require("./direct_call_status");
-const {
-  DAY_LIMIT_SECONDS,
-} = require("./subscription_usage_shared");
 
 const NOW = new Date("2026-05-26T12:00:00.000Z");
 const NOW_MILLIS = NOW.getTime();
@@ -28,6 +25,8 @@ function futureTimestamp(minutes = 30) {
 function activeSubscription() {
   return {
     expiresAt: futureTimestamp(60),
+    productId: "expatlio_1_Month",
+    periodType: "NORMAL",
   };
 }
 
@@ -140,14 +139,14 @@ test("direct call access fails closed before target live state is needed", () =>
       requesterData: requester(),
       usageData: {
         dayKey: "2026-05-26",
-        dayDurationSeconds: DAY_LIMIT_SECONDS,
+        dayDurationSeconds: 60 * 60,
       },
       nowMillis: NOW_MILLIS,
     }),
     {
-      allowed: false,
-      callability: "requires_access",
-      reason: "requires_access",
+      allowed: true,
+      callability: "callable",
+      reason: "ready",
     },
   );
 });

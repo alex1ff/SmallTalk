@@ -16,6 +16,7 @@ class StudentPayBottomBar extends StatelessWidget {
     required this.isBusy,
     required this.isLoading,
     required this.onPressed,
+    this.actionLabel,
   });
 
   final StudentPayPlan plan;
@@ -24,9 +25,17 @@ class StudentPayBottomBar extends StatelessWidget {
   final bool isBusy;
   final bool isLoading;
   final VoidCallback onPressed;
+  final String? actionLabel;
 
   @override
   Widget build(BuildContext context) {
+    final resolvedActionLabel = actionLabel ??
+        switch (plan.kind) {
+          StudentPayPlanKind.trialMonthly => 'Начать 3 дня бесплатно',
+          StudentPayPlanKind.monthly ||
+          StudentPayPlanKind.quarterly =>
+            'Выбрать ${plan.title} · $price/${plan.periodLabel}',
+        };
     return Container(
       key: studentPayBottomBarKey,
       decoration: const BoxDecoration(
@@ -80,7 +89,7 @@ class StudentPayBottomBar extends StatelessWidget {
                             )
                           : Text(
                               canPurchase
-                                  ? 'Выбрать ${plan.title} · $price/${plan.periodLabel}'
+                                  ? resolvedActionLabel
                                   : 'Повторить загрузку',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,

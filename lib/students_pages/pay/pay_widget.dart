@@ -3,10 +3,12 @@ import '/components/student_pay_intro.dart';
 import '/components/student_pay_plan.dart';
 import '/components/student_pay_plan_card.dart';
 import '/components/student_pay_restore_purchases_button.dart';
+import '/auth/firebase_auth/auth_util.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/components/basic_page_header.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/services/subscription_service.dart';
+import '/utils/subscription_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 
@@ -17,7 +19,7 @@ typedef StudentPayCatalogLoader = Future<Map<String, String>> Function();
 typedef StudentPayPurchaseHandler = Future<void> Function(String productId);
 
 class PayWidget extends StatefulWidget {
-  const PayWidget({super.key})
+  const PayWidget({super.key, this.premiumOnly = false})
       : _catalogLoader = null,
         _purchaseHandler = null;
 
@@ -27,10 +29,12 @@ class PayWidget extends StatefulWidget {
     required StudentPayCatalogLoader catalogLoader,
     required StudentPayPurchaseHandler purchaseHandler,
   })  : _catalogLoader = catalogLoader,
-        _purchaseHandler = purchaseHandler;
+        _purchaseHandler = purchaseHandler,
+        premiumOnly = false;
 
   final StudentPayCatalogLoader? _catalogLoader;
   final StudentPayPurchaseHandler? _purchaseHandler;
+  final bool premiumOnly;
 
   static String routeName = 'Pay';
   static String routePath = '/pay';
@@ -39,7 +43,22 @@ class PayWidget extends StatefulWidget {
   State<PayWidget> createState() => _PayWidgetState();
 }
 
-const _plans = [
+const _trialPlan = StudentPayPlan(
+  kind: StudentPayPlanKind.trialMonthly,
+  productId: SubscriptionProductIds.trialMonthly,
+  title: 'Trial',
+  subtitle: '3 дня бесплатно',
+  periodLabel: 'мес',
+  icon: Icons.play_circle_outline_rounded,
+  badge: '3 ДНЯ БЕСПЛАТНО',
+  features: [
+    'Один пробный звонок',
+    'Начните звонок в течение 30 минут',
+    'Отмена до списания оплаты',
+  ],
+);
+
+const _paidPlans = [
   StudentPayPlan(
     kind: StudentPayPlanKind.monthly,
     productId: SubscriptionProductIds.monthly,
@@ -86,6 +105,14 @@ class _PayWidgetState extends State<PayWidget> {
   void initState() {
     super.initState();
     _model = createModel(context, () => PayModel());
+    if (widget._catalogLoader == null &&
+        currentUserDocument != null &&
+        !hasActiveSubscription(currentUserDocument)) {
+      _selected = StudentPayPlanKind.trialMonthly;
+    } else if (widget._catalogLoader == null &&
+        isTrialSubscription(currentUserDocument)) {
+      _selected = StudentPayPlanKind.monthly;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadPackages();
     });
@@ -97,8 +124,28 @@ class _PayWidgetState extends State<PayWidget> {
     super.dispose();
   }
 
-  StudentPayPlan get _selectedPlan =>
-      _plans.firstWhere((plan) => plan.kind == _selected);
+  List<StudentPayPlan> get _visiblePlans {
+    if (widget.premiumOnly ||
+        widget._catalogLoader != null ||
+        currentUserDocument == null) {
+      return _paidPlans;
+    }
+    if (!hasActiveSubscription(currentUserDocument)) {
+      return const [_trialPlan];
+    }
+    if (isTrialSubscription(currentUserDocument)) {
+      return _paidPlans;
+    }
+    return _paidPlans;
+  }
+
+  StudentPayPlan get _selectedPlan {
+    final plans = _visiblePlans;
+    return plans.firstWhere(
+      (plan) => plan.kind == _selected,
+      orElse: () => plans.first,
+    );
+  }
 
   Package? get _selectedPackage =>
       _packagesByProductId[_selectedPlan.productId];
@@ -422,10 +469,10 @@ class _PayWidgetState extends State<PayWidget> {
                       children: [
                         const StudentPayIntro(),
                         const SizedBox(height: ExpatlioDesign.space24),
-                        for (final plan in _plans) ...[
+                        for (final plan in _visiblePlans) ...[
                           StudentPayPlanCard(
                             plan: plan,
-                            selected: _selected == plan.kind,
+                            selected: _selectedPlan.kind == plan.kind,
                             price: _priceFor(plan),
                             priceAvailable: _hasPackageFor(plan),
                             onTap: () {
@@ -434,7 +481,7 @@ class _PayWidgetState extends State<PayWidget> {
                               });
                             },
                           ),
-                          if (plan != _plans.last)
+                          if (plan != _visiblePlans.last)
                             const SizedBox(height: ExpatlioDesign.space12),
                         ],
                         const SizedBox(height: ExpatlioDesign.space16),
@@ -453,6 +500,12 @@ class _PayWidgetState extends State<PayWidget> {
         bottomNavigationBar: StudentPayBottomBar(
           plan: _selectedPlan,
           price: _priceFor(_selectedPlan),
+          actionLabel: isTrialSubscription(currentUserDocument)
+              ? _localized(
+                  'Начать Premium сейчас · ${_priceFor(_selectedPlan)}/${_selectedPlan.periodLabel}',
+                  'Start Premium now · ${_priceFor(_selectedPlan)}/${_selectedPlan.periodLabel}',
+                )
+              : null,
           canPurchase: _hasPackageFor(_selectedPlan),
           isBusy: _isPurchasing,
           isLoading: _isLoadingPackages,

@@ -3,6 +3,7 @@ const admin = require("firebase-admin");
 const {
   buildBoundedEventChatInboxEventIds,
 } = require("./event_chat_inbox");
+const {isPaidPremium} = require("./trial_access");
 
 const REQUEST_TIMEOUT_SECONDS = 30;
 const EVENT_STATUS_ACTIVE = "active";
@@ -482,6 +483,7 @@ async function executeJoinEventTransaction({
       organizerParticipantDoc.data() || {} :
       {};
     const chatData = chatDoc.exists ? chatDoc.data() || {} : {};
+    const userData = userDoc.exists ? userDoc.data() || {} : {};
 
     assertOrganizerParticipantActive({
       organizerParticipantExists: organizerParticipantDoc.exists,
@@ -508,8 +510,16 @@ async function executeJoinEventTransaction({
     assertEventHasCapacity(eventData);
     const participantSnapshot = buildParticipantSnapshot({
       userExists: userDoc.exists,
-      userData: userDoc.exists ? userDoc.data() || {} : {},
+      userData,
     });
+    if (eventData.organizerId !== uid &&
+        !isPaidPremium(userData, joinDate.getTime())) {
+      throwJoinError(
+          "permission-denied",
+          "Premium is required to join events",
+          {domainCode: "premium_required"},
+      );
+    }
     const readAccessUserIds = addReadAccessUser(
         validateReadAccessUserIds(chatData.readAccessUserIds, {
           organizerId: eventData.organizerId,

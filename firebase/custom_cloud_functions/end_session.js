@@ -39,6 +39,10 @@ const {
 const {
   cancelProtocolV2NativeSurfaces,
 } = require("./match_delivery_v2");
+const {
+  reconcileTrialCallInTransaction,
+  trialAccessRef,
+} = require("./trial_access");
 
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
@@ -272,6 +276,34 @@ exports.endSession = functions
 
       const sessionData = sessionDoc.data() || {};
       console.log("📋 Current session status:", sessionData.status);
+      const storedTrialCallIds =
+        sessionData.trialCallIdsByUserId &&
+        typeof sessionData.trialCallIdsByUserId === "object" ?
+          sessionData.trialCallIdsByUserId : {};
+      const trialCallIdsByUserId = Object.keys(storedTrialCallIds).length > 0 ?
+        storedTrialCallIds :
+        sessionData.accessMode === "trial" && sessionData.studentId ? {
+          [sessionData.studentId]: sessionData.trialCallId || sessionId,
+        } : {};
+      const trialContexts = await Promise.all(
+          Object.entries(trialCallIdsByUserId)
+              .filter(([participantId, trialCallId]) =>
+                typeof participantId === "string" &&
+                participantId.length > 0 &&
+                !participantId.includes("/") &&
+                typeof trialCallId === "string" &&
+                trialCallId.length > 0,
+              )
+              .map(async ([participantId, trialCallId]) => {
+                const ref = trialAccessRef(db, participantId);
+                return {
+                  participantId,
+                  trialCallId,
+                  ref,
+                  snap: await transaction.get(ref),
+                };
+              }),
+      );
 
       if (!isSessionParticipant(sessionData, userId)) {
         console.log("❌ Permission denied - user is not a participant");
@@ -365,6 +397,17 @@ exports.endSession = functions
             stopReason,
           }),
         );
+        for (const trialContext of trialContexts) {
+          reconcileTrialCallInTransaction({
+            transaction,
+            trialRef: trialContext.ref,
+            trialSnap: trialContext.snap,
+            trialCallId: trialContext.trialCallId,
+            durationSeconds: 0,
+            technicalFailure: true,
+            nowMillis: requestTimestamp,
+          });
+        }
         if (isProtocolV2) {
           const serverTimestamp =
             admin.firestore.FieldValue.serverTimestamp();
@@ -583,6 +626,18 @@ exports.endSession = functions
           fieldDelete: admin.firestore.FieldValue.delete(),
         }),
       );
+
+      for (const trialContext of trialContexts) {
+        reconcileTrialCallInTransaction({
+          transaction,
+          trialRef: trialContext.ref,
+          trialSnap: trialContext.snap,
+          trialCallId: trialContext.trialCallId,
+          durationSeconds: duration,
+          technicalFailure: false,
+          nowMillis: requestTimestamp,
+        });
+      }
 
       transaction.update(sessionRef, sessionUpdates);
       if (pairHistoryWrite) {

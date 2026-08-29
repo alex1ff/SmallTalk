@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum StudentPayPlanKind { monthly, quarterly }
+enum StudentPayPlanKind { trialMonthly, monthly, quarterly }
 
 class StudentPayPlan {
   const StudentPayPlan({

@@ -12,12 +12,13 @@ subscription.
 2. The event catalogue is visible as previews. Full event details and event
    participation require Premium.
 3. Tapping **Start search** without an active subscription opens the Apple
-   subscription sheet for the monthly Premium product with a three-day free
-   introductory offer. Apple displays the billing terms and asks the user to
-   confirm; the app never collects card details itself. If the Apple ID is not
-   eligible for an introductory offer, the sheet shows the standard full price.
-   After the purchase webhook is accepted, the server unlocks Premium
-   immediately; until then the client shows a processing state.
+   subscription sheet for the dedicated trial product (`expatlio_trial_1_Month`)
+   configured with a three-day free introductory offer. Apple displays the
+   billing terms and asks the user to confirm; the app never collects card
+   details itself. If the Apple ID is not eligible for an introductory offer,
+   the sheet shows the standard full price. After the purchase webhook is
+   accepted, the server unlocks trial access immediately; until then the client
+   shows a processing state.
 4. During the introductory period the user may make one trial call. The trial
    call window is `purchased_at_ms + 30 minutes`, using the Apple/RevenueCat
    transaction timestamp (UTC milliseconds), not the device clock. A delayed
@@ -40,13 +41,13 @@ subscription.
 
 ## Product and entitlement model
 
-Use the existing monthly product `expatlio_1_Month` as the canonical Premium
-auto-renewable subscription and configure its three-day introductory offer in
-App Store Connect. Keep `expatlio_3_Month` in the paid-product allowlist and
-RevenueCat offering for existing and direct quarterly purchasers; it is not
-shown as the trial-entry package. The app-level trial restriction is derived from the
-subscription period type (`TRIAL`) and the server-owned trial-call state; it
-is not a second fake subscription product.
+Use `expatlio_1_Month` and `expatlio_3_Month` as Level 1 paid Premium products.
+Use the dedicated `expatlio_trial_1_Month` product as Level 2 in the same Apple
+subscription group, with a three-day introductory offer. During the trial,
+the paywall shows the two Level 1 products and a purchase of either is an
+immediate Apple upgrade that ends the introductory period. The app-level trial
+restriction is derived from the trial product's `periodType == TRIAL` and the
+server-owned trial-call state.
 
 The existing RevenueCat offering `subscriptions` and entitlement remain the
 integration point. `expatlio_1_Month` must be present in the offering and in
@@ -136,7 +137,7 @@ reset, or consume a trial call.
 
 ## Access checks
 
-- `isTrial`: subscription is active, product is `expatlio_1_Month`, and
+- `isTrial`: subscription is active, product is `expatlio_trial_1_Month`, and
   `periodType == TRIAL`.
 - `isPaidPremium`: subscription is active, product is allowlisted, and
   `periodType` is exactly `NORMAL` (the only paid period currently accepted).
@@ -160,7 +161,8 @@ or unavailable.
 
 `giftMinutes` no longer grants student call access in this flow. Deployment
 order is: (1) deploy the server gate that ignores legacy student gift minutes,
-(2) stop registration and promo-minute grants, (3) remove gift-minute CTAs and
+(2) stop automatic registration gift grants (explicit promo-code redemption is
+still a separate admin-controlled feature), (3) remove gift-minute CTAs and
 legacy balances from the student UI. Existing balances expire naturally and
 are not converted into calls or refunds. Remove the
 existing 60-minute/day and 8-hour/week subscription ceilings for paid Premium;

@@ -38,14 +38,6 @@ const {
   loadSameDayRepeatCandidateIdsForTransaction,
 } = require("./match_repeat_prevention");
 const {
-  checkUsageLimits,
-  hasActiveSubscription,
-  readUsage,
-} = require("./subscription_usage_shared");
-const {
-  hasUsableGiftMinutes,
-} = require("./gift_minutes_shared");
-const {
   buildTeacherIncomingCallApnsPayload,
   buildTeacherIncomingCallFcmMessage,
   createIncomingCallNotificationInTransaction,
@@ -54,8 +46,12 @@ const {
   findNextCallableCandidateInTransaction,
 } = require("./call_candidate_tokens");
 const {
+  buildStudentCallAccessDecision,
   hasActiveCallState,
 } = require("./call_access");
+const {
+  trialAccessRef,
+} = require("./trial_access");
 const {
   isActiveStudentSearchRequest,
 } = require("./match_candidate_pool");
@@ -254,49 +250,29 @@ exports.createVideoSession = functions
         );
       }
 
-      // Server-side gate for students. Allow the call to start iff:
-      //   (a) the user has an active subscription, OR
-      //   (b) the user has unexpired gift minutes left.
-      // Subscribers also face anti-abuse limits (60 min/day, 8 h/week)
-      // to keep tutor payouts solvent. Gift minutes are inherently
-      // bounded by the small bucket size (10 min) so no daily cap.
+      // Fast preflight. The same policy is repeated inside the session
+      // creation transaction so concurrent requests cannot bypass trial use.
       if (requesterRole === "student") {
-        const requesterHasSubscription =
-            hasActiveSubscription(requesterData, Date.now());
-        const requesterHasGift =
-            hasUsableGiftMinutes(requesterData);
-
-        if (!requesterHasSubscription && !requesterHasGift) {
-          console.warn("🛑 createVideoSession blocked: no access right", {
+        const trialDoc = await trialAccessRef(
+          admin.firestore(),
+          requesterId,
+        ).get();
+        const accessDecision = buildStudentCallAccessDecision({
+          userRole: requesterRole,
+          userData: requesterData,
+          trialData: trialDoc.exists ? trialDoc.data() || {} : null,
+          nowMillis: Date.now(),
+        });
+        if (!accessDecision.allowed) {
+          console.warn("🛑 createVideoSession blocked by access policy", {
             requesterId,
+            reason: accessDecision.reason,
           });
           throw new functions.https.HttpsError(
-            "failed-precondition",
-            "Оформите подписку или дождитесь восстановления подарочных минут.",
-            { reason: "no_active_access" },
+            accessDecision.code || "failed-precondition",
+            accessDecision.message || "Active subscription is required",
+            {reason: accessDecision.reason},
           );
-        }
-
-        if (requesterHasSubscription) {
-          const usageData = await readUsage(admin.firestore(), requesterId);
-          const limitCheck = checkUsageLimits(usageData);
-          if (!limitCheck.allowed) {
-            console.warn("🛑 createVideoSession blocked by usage limit", {
-              requesterId,
-              reason: limitCheck.reason,
-              dayDurationSeconds: limitCheck.dayDurationSeconds,
-              weekDurationSeconds: limitCheck.weekDurationSeconds,
-            });
-            const userMessage = limitCheck.reason === "daily_limit_reached" ?
-              "Дневной лимит звонков по подписке исчерпан. " +
-                "Возвращайтесь завтра." :
-              "Недельный лимит звонков по подписке исчерпан.";
-            throw new functions.https.HttpsError(
-              "resource-exhausted",
-              userMessage,
-              { reason: limitCheck.reason },
-            );
-          }
         }
       }
 

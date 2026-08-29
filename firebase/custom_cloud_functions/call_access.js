@@ -1,10 +1,6 @@
 const {
-  hasUsableGiftMinutes,
-} = require("./gift_minutes_shared");
-const {
-  checkUsageLimits,
-  hasActiveSubscription,
-} = require("./subscription_usage_shared");
+  buildTrialCallAccessDecision,
+} = require("./trial_access");
 
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -18,6 +14,7 @@ function hasActiveCallState(userData = {}) {
 function buildStudentCallAccessDecision({
   userRole,
   userData = {},
+  trialData = null,
   usageData = null,
   nowMillis = Date.now(),
 }) {
@@ -39,29 +36,26 @@ function buildStudentCallAccessDecision({
     };
   }
 
-  const hasSubscription = hasActiveSubscription(userData, nowMillis);
-  const hasGift = hasUsableGiftMinutes(userData, nowMillis);
-  if (!hasSubscription && !hasGift) {
+  const subscriptionDecision = buildTrialCallAccessDecision({
+    userData,
+    trialData,
+    nowMillis,
+  });
+  if (!subscriptionDecision.allowed) {
     return {
       allowed: false,
       code: "failed-precondition",
-      reason: "no_active_access",
-      message: "Active subscription or gift minutes are required",
+      reason: subscriptionDecision.reason,
+      message: subscriptionDecision.reason === "trial_call_consumed" ?
+        "Trial call already used" :
+        subscriptionDecision.reason === "trial_window_expired" ?
+          "Trial call window has expired" :
+          subscriptionDecision.reason === "retry_cooldown" ?
+            "Please wait before retrying" :
+            "Active subscription is required",
+      mode: subscriptionDecision.mode,
+      retryAfterMillis: subscriptionDecision.retryAfterMillis || null,
     };
-  }
-
-  if (hasSubscription) {
-    const usageCheck = checkUsageLimits(usageData, new Date(nowMillis));
-    if (!usageCheck.allowed) {
-      return {
-        allowed: false,
-        code: "resource-exhausted",
-        reason: usageCheck.reason,
-        message: usageCheck.reason === "daily_limit_reached" ?
-          "Daily subscription call limit reached" :
-          "Weekly subscription call limit reached",
-      };
-    }
   }
 
   return {
@@ -69,6 +63,8 @@ function buildStudentCallAccessDecision({
     code: null,
     reason: "ready",
     message: "",
+    mode: subscriptionDecision.mode,
+    retryAfterMillis: null,
   };
 }
 

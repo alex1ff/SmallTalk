@@ -2808,6 +2808,27 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
         );
         return;
       }
+      if (error is FirebaseFunctionsException) {
+        final details = error.details;
+        final reason =
+            details is Map ? (details['reason']?.toString().trim() ?? '') : '';
+        if ({
+          'no_subscription',
+          'trial_state_unavailable',
+          'trial_window_expired',
+          'trial_call_consumed',
+        }.contains(reason)) {
+          _logStartSearchFailure(error, stackTrace);
+          if (mounted) {
+            safeSetState(() {
+              _searchState = StudentDashboardSearchState.idle;
+              _searchErrorReason = null;
+            });
+            await _showNoSearchAccessBottomSheet();
+          }
+          return;
+        }
+      }
       if (startSearchRequestSent &&
           !startSearchResponseReceived &&
           await _recoverStartSearchRequestAfterFailure()) {
@@ -4053,8 +4074,12 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
                                           ExpatlioDesign.space0,
                                           ExpatlioDesign.space0),
                                       child: Text(
-                                        FFLocalizations.of(context).getText(
-                                          'crtk35jr' /* Первая минута бесплатно! */,
+                                        FFLocalizations.of(context)
+                                            .getVariableText(
+                                          ruText:
+                                              '3 дня бесплатно · один пробный звонок',
+                                          enText:
+                                              '3 days free · one trial call',
                                         ),
                                         textAlign: TextAlign.center,
                                         style: FlutterFlowTheme.of(context)
@@ -4083,8 +4108,9 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
                                         highlightColor: Colors.transparent,
                                         onTap: () async {
                                           // ─── SUBSCRIPTION REWORK ────
-                                          // Gate by active subscription or gift
-                                          // minutes instead of legacy balanceST.
+                                          // Gate by subscription; the server
+                                          // decides whether the trial call is
+                                          // still eligible.
                                           if (!canStartCall(
                                               currentUserDocument)) {
                                             // ──────────────────────────

@@ -4,7 +4,6 @@ import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/services/new_account_inbox_bootstrap.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 
 enum SocialAuthEntryDestination {
@@ -283,28 +282,14 @@ Future<UsersRecord?> persistCanonicalUserRole({
   bool grantStudentBonus = false,
   void Function(String message)? onDebugLog,
 }) async {
-  final shouldGrantStudentBonus = role == UserRole.student &&
-      grantStudentBonus &&
-      !(existingUser?.hasBalanceST() ?? false);
+  // Trial access is now granted by RevenueCat after the user subscribes.
+  // Do not create legacy gift-minute balances during registration or role
+  // recovery; they bypass the one-call trial policy.
+  const shouldGrantStudentBonus = false;
 
   final updateData = buildCanonicalUserRoleUpdateData(role: role);
 
   await userRef.set(updateData, SetOptions(merge: true));
-
-  if (shouldGrantStudentBonus) {
-    try {
-      await FirebaseFunctions.instance
-          .httpsCallable('claimRegistrationGift')
-          .call();
-    } on FirebaseFunctionsException catch (error) {
-      onDebugLog?.call(
-        'registrationGiftClaimFailed code=${error.code} '
-        'message=${error.message ?? 'none'}',
-      );
-    } catch (error) {
-      onDebugLog?.call('registrationGiftClaimFailed error=$error');
-    }
-  }
 
   final updatedUser = await ensureCanonicalCurrentUserDocument(
     preferredUid: authUserUid ?? userRef.id,

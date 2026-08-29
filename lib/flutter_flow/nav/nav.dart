@@ -223,7 +223,13 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
             name: PayWidget.routeName,
             path: PayWidget.routePath,
             requireAuth: true,
-            builder: (context, params) => PayWidget(),
+            builder: (context, params) => PayWidget(
+              premiumOnly: params.getParam(
+                    'premiumOnly',
+                    ParamType.bool,
+                  ) ??
+                  false,
+            ),
           ),
           FFRoute(
             name: AcquaintanceNSWidget.routeName,

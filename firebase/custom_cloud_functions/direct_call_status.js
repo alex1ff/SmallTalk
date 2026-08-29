@@ -17,14 +17,10 @@ const {
   getReadOnlyUserVoipTokenState,
 } = require("./voip_tokens");
 const {
-  checkUsageLimits,
-  hasActiveSubscription,
-  readUsage,
-} = require("./subscription_usage_shared");
-const { hasUsableGiftMinutes } = require("./gift_minutes_shared");
-const {
+  buildStudentCallAccessDecision,
   hasActiveCallState,
 } = require("./call_access");
+const {trialAccessRef} = require("./trial_access");
 
 const DIRECT_CALL_STATUS_TTL_SECONDS = 15;
 const MAX_UID_LENGTH = 128;
@@ -92,52 +88,42 @@ function isAvailableAfterInFuture(userData = {}, now = new Date()) {
 function buildAccessDecision({
   requesterRole,
   requesterData = {},
+  trialData = null,
   usageData = null,
   nowMillis = Date.now(),
 }) {
-  if (requesterRole !== "student") {
+  const decision = buildStudentCallAccessDecision({
+    userRole: requesterRole,
+    userData: requesterData,
+    trialData,
+    usageData,
+    nowMillis,
+  });
+  if (decision.allowed) {
+    return {
+      allowed: true,
+      callability: "callable",
+      reason: "ready",
+    };
+  }
+  if (decision.reason === "student_required") {
     return {
       allowed: false,
       callability: "unknown",
       reason: "unavailable",
     };
   }
-  if (hasActiveCallState(requesterData)) {
+  if (decision.reason === "active_call") {
     return {
       allowed: false,
       callability: "unavailable",
       reason: "unavailable",
     };
   }
-
-  const requesterHasSubscription = hasActiveSubscription(
-    requesterData,
-    nowMillis,
-  );
-  const requesterHasGift = hasUsableGiftMinutes(requesterData, nowMillis);
-  if (!requesterHasSubscription && !requesterHasGift) {
-    return {
-      allowed: false,
-      callability: "requires_access",
-      reason: "requires_access",
-    };
-  }
-
-  if (requesterHasSubscription) {
-    const usageCheck = checkUsageLimits(usageData, new Date(nowMillis));
-    if (!usageCheck.allowed) {
-      return {
-        allowed: false,
-        callability: "requires_access",
-        reason: "requires_access",
-      };
-    }
-  }
-
   return {
-    allowed: true,
-    callability: "callable",
-    reason: "ready",
+    allowed: false,
+    callability: "requires_access",
+    reason: "requires_access",
   };
 }
 
@@ -145,11 +131,13 @@ function buildPreTargetAccessResponse({
   targetUserId,
   requesterRole,
   requesterData = {},
+  trialData = null,
   checkedAtMillis = Date.now(),
 }) {
   const accessDecision = buildAccessDecision({
     requesterRole,
     requesterData,
+    trialData,
     usageData: null,
     nowMillis: checkedAtMillis,
   });
@@ -292,7 +280,10 @@ exports.getDirectCallStatus = functions.https.onCall(async (data, context) => {
   const requesterId = context.auth.uid;
   const checkedAtMillis = Date.now();
   const db = admin.firestore();
-  const requesterDoc = await db.collection("users").doc(requesterId).get();
+  const [requesterDoc, trialDoc] = await Promise.all([
+    db.collection("users").doc(requesterId).get(),
+    trialAccessRef(db, requesterId).get(),
+  ]);
   if (!requesterDoc.exists) {
     throw new functions.https.HttpsError(
       "not-found",
@@ -319,17 +310,17 @@ exports.getDirectCallStatus = functions.https.onCall(async (data, context) => {
     targetUserId,
     requesterRole,
     requesterData,
+    trialData: trialDoc.exists ? trialDoc.data() || {} : null,
     checkedAtMillis,
   });
   if (preTargetAccessResponse) {
     return preTargetAccessResponse;
   }
 
-  const usageData = await readUsage(db, requesterId);
   const accessDecision = buildAccessDecision({
     requesterRole,
     requesterData,
-    usageData,
+    trialData: trialDoc.exists ? trialDoc.data() || {} : null,
     nowMillis: checkedAtMillis,
   });
   if (!accessDecision.allowed) {

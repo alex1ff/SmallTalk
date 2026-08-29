@@ -3,7 +3,10 @@ const test = require("node:test");
 
 const {
   eventAllowlistFailure,
+  buildInitialTrialPayload,
   parseEvent,
+  shouldApplySubscriptionEvent,
+  shouldInitializeTrial,
   transactionDocumentIdForEvent,
 } = require("./revenue_cat_webhook").__private__;
 
@@ -22,6 +25,14 @@ function parsedEvent(overrides = {}) {
 }
 
 test("accepts only the Expatlio product and entitlement allowlist", () => {
+  assert.equal(
+      eventAllowlistFailure(parsedEvent({
+        product_id: "expatlio_trial_1_Month",
+      }), {
+        REVENUECAT_APP_ID: "app87d4dc887a",
+      }),
+      null,
+  );
   assert.equal(
       eventAllowlistFailure(parsedEvent(), {
         REVENUECAT_APP_ID: "app87d4dc887a",
@@ -55,6 +66,24 @@ test("accepts only the Expatlio product and entitlement allowlist", () => {
       }),
       "unexpected_revenuecat_app",
   );
+});
+
+test("initializes the 30-minute call window only for the trial SKU", () => {
+  const startedAt = Date.parse("2026-08-29T12:00:00.000Z");
+  const event = parsedEvent({
+    product_id: "expatlio_trial_1_Month",
+    period_type: "TRIAL",
+    purchased_at_ms: startedAt,
+    original_transaction_id: "original-1",
+  });
+  assert.equal(shouldInitializeTrial(event), true);
+  const payload = buildInitialTrialPayload(event, startedAt + 1000);
+  assert.equal(payload.trialCallStatus, "eligible");
+  assert.equal(
+      payload.trialCallWindowExpiresAt.toMillis(),
+      startedAt + 30 * 60 * 1000,
+  );
+  assert.equal(shouldInitializeTrial(parsedEvent()), false);
 });
 
 test("fails closed when the RevenueCat app allowlist is missing", () => {
@@ -95,4 +124,44 @@ test("uses a deterministic Firestore-safe transaction id per event", () => {
   assert.notEqual(first, other);
   assert.match(first, /^revenuecat_[a-f0-9]{64}$/);
   assert.doesNotMatch(first, /\//);
+});
+
+test("ignores provider events older than the subscription mirror", () => {
+  const current = {
+    lastProviderEventTimestampMs: 2_000,
+    lastProviderEventId: "event_2",
+  };
+  assert.equal(
+      shouldApplySubscriptionEvent(current, parsedEvent({
+        event_timestamp_ms: 1_000,
+      })),
+      false,
+  );
+  assert.equal(
+      shouldApplySubscriptionEvent(current, parsedEvent({
+        event_timestamp_ms: 3_000,
+      })),
+      true,
+  );
+});
+
+test("uses event id as a deterministic tie-breaker", () => {
+  const current = {
+    lastProviderEventTimestampMs: 2_000,
+    lastProviderEventId: "event_b",
+  };
+  assert.equal(
+      shouldApplySubscriptionEvent(current, parsedEvent({
+        id: "event_a",
+        event_timestamp_ms: 2_000,
+      })),
+      false,
+  );
+  assert.equal(
+      shouldApplySubscriptionEvent(current, parsedEvent({
+        id: "event_c",
+        event_timestamp_ms: 2_000,
+      })),
+      true,
+  );
 });

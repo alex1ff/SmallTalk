@@ -18,6 +18,7 @@ import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/events/event_create_widget.dart';
 import '/shared_pages/events/event_detail_widget.dart';
 import '/shared_pages/events/event_group_chat_widget.dart';
+import '/students_pages/pay/pay_widget.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/services/event_action_error_mapper.dart';
 import '/services/event_actions_repository.dart';
@@ -36,6 +37,7 @@ import '/services/event_list_cache_invalidation.dart';
 import '/services/events_analytics_service.dart';
 import '/services/ux_session_cache_lifecycle.dart';
 import '/services/user_public_profile_preload_repository.dart';
+import '/utils/subscription_utils.dart';
 
 const ValueKey<String> eventListCreateButtonKey =
     ValueKey<String>('event_list_create_button');
@@ -2603,6 +2605,17 @@ class _EventListWidgetState extends State<EventListWidget> {
         null,
     };
     if (desiredJoined == null) {
+      return;
+    }
+    if (desiredJoined &&
+        widget.joinEventInvoker == null &&
+        !isPaidPremiumSubscription(currentUserDocument)) {
+      context.pushNamed(
+        PayWidget.routeName,
+        queryParameters: {
+          'premiumOnly': serializeParam(true, ParamType.bool),
+        }.withoutNulls,
+      );
       return;
     }
     final nowUtc = _currentEventListNowUtc();

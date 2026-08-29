@@ -85,18 +85,17 @@ function studentUser(overrides = {}) {
     currentSessionId: "",
     display_name: "Student",
     photo_url: "student-photo",
+    subscription: {
+      productId: "expatlio_1_Month",
+      periodType: "NORMAL",
+      expiresAt: timestampFromMillis(fixedNowMillis + 60 * 60 * 1000),
+    },
     ...overrides,
   };
 }
 
 function studentUserWithAccess(overrides = {}) {
-  return studentUser({
-    giftMinutes: {
-      minutes: 10,
-      expiresAt: timestampFromMillis(fixedNowMillis + 60 * 60 * 1000),
-    },
-    ...overrides,
-  });
+  return studentUser(overrides);
 }
 
 function namedStudentUser(name, photoUrl, overrides = {}) {
@@ -595,6 +594,8 @@ test("reserveMatchPair atomically locks two student participants", async () => {
     "users/student-b",
     "searchRequests/student-a",
     "searchRequests/student-b",
+    "users/student-a/trialAccess/current",
+    "users/student-b/trialAccess/current",
   ]);
   assert.deepEqual(
     writes.map((write) => write.path),
@@ -1209,7 +1210,7 @@ test("reserveDirectPair accepts legacy teacher call token fallback", async () =>
 
 test("reserveDirectPair refuses requester without access", async () => {
   const {db, store, writes} = createFakeFirestore({
-    "users/student-a": studentUser(),
+    "users/student-a": studentUser({subscription: null}),
     "users/teacher-a": directTeacherUser(),
     "userPrivateTokens/teacher-a": {voipPushToken: "push-token"},
   });
@@ -1229,7 +1230,7 @@ test("reserveDirectPair refuses requester without access", async () => {
 
   assert.deepEqual(result, {
     locked: false,
-    reason: "requester_no_active_access",
+    reason: "requester_no_subscription",
   });
   assert.equal(writes.length, 0);
   assert.equal(store.get("videoSessions/session-direct"), undefined);
@@ -1273,10 +1274,12 @@ test("reserveDirectPair refuses active direct requester", async () => {
   }
 });
 
-test("reserveDirectPair refuses requester over subscription usage limit", async () => {
+test("reserveDirectPair ignores legacy usage caps for Premium", async () => {
   const {db, store, writes} = createFakeFirestore({
     "users/student-a": studentUser({
       subscription: {
+        productId: "expatlio_1_Month",
+        periodType: "NORMAL",
         expiresAt: timestampFromMillis(fixedNowMillis + 60 * 60 * 1000),
       },
     }),
@@ -1301,12 +1304,9 @@ test("reserveDirectPair refuses requester over subscription usage limit", async 
       lockExpiresAt: timestampFromMillis(fixedNowMillis + 45_000),
     }));
 
-  assert.deepEqual(result, {
-    locked: false,
-    reason: "requester_daily_limit_reached",
-  });
-  assert.equal(writes.length, 0);
-  assert.equal(store.get("videoSessions/session-direct"), undefined);
+  assert.equal(result.locked, true);
+  assert.ok(writes.length > 0);
+  assert.ok(store.get("videoSessions/session-direct"));
 });
 
 test("reserveDirectPair refuses direct blocklists", async () => {

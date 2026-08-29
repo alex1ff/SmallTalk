@@ -10,6 +10,7 @@ const {
 const {
   usageDocRef,
 } = require("./subscription_usage_shared");
+const { trialAccessRef } = require("./trial_access");
 const {
   buildReadOnlyVoipTokenState,
   getReadOnlyUserVoipTokenState,
@@ -296,12 +297,14 @@ function normalizeStartSearchInput(data) {
 function buildStartSearchAccessDecision({
   requesterRole,
   requesterData = {},
+  trialData = null,
   usageData = null,
   nowMillis = Date.now(),
 }) {
   return buildStudentCallAccessDecision({
     userRole: requesterRole,
     userData: requesterData,
+    trialData,
     usageData,
     nowMillis,
   });
@@ -3631,6 +3634,7 @@ async function startSearchCallable(data, context, options = {}) {
     .collection(SEARCH_REQUEST_COLLECTION)
     .doc(userId);
   const usageRef = usageDocRef(db, userId);
+  const trialRef = trialAccessRef(db, userId);
   const requestId = input.requestId ||
     db.collection(SEARCH_REQUEST_COLLECTION).doc().id;
   const cancellationIntentRef = searchCancellationIntentRef(
@@ -3642,9 +3646,11 @@ async function startSearchCallable(data, context, options = {}) {
   const serverTimestamp = admin.firestore.FieldValue.serverTimestamp();
 
   const startResult = await db.runTransaction(async (transaction) => {
-    const [requesterSnapshot, cancellationIntentSnap] = await Promise.all([
+    const [requesterSnapshot, cancellationIntentSnap, trialSnapshot] =
+      await Promise.all([
       transaction.get(userRef),
       cancellationIntentRef ? transaction.get(cancellationIntentRef) : null,
+      transaction.get(trialRef),
     ]);
     if (!requesterSnapshot.exists) {
       throw new functions.https.HttpsError(
@@ -3702,6 +3708,7 @@ async function startSearchCallable(data, context, options = {}) {
     const accessDecision = buildStartSearchAccessDecision({
       requesterRole,
       requesterData,
+      trialData: trialSnapshot.exists ? trialSnapshot.data() || {} : null,
       usageData: usageSnapshot.exists ? usageSnapshot.data() : null,
       nowMillis,
     });

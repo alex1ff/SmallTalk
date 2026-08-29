@@ -270,6 +270,11 @@ function userProfile(overrides = {}) {
   return {
     display_name: " Марко ",
     photo_url: " https://example.com/avatar.png ",
+    subscription: {
+      productId: "expatlio_1_Month",
+      periodType: "NORMAL",
+      expiresAt: startsAtTimestamp,
+    },
     ...overrides,
   };
 }

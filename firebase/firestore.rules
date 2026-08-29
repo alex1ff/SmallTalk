@@ -1305,6 +1305,15 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    match /users/{userId}/trialAccess/{trialId} {
+      allow get: if trialId == 'current' && isSelf(userId);
+      allow list, create, update, delete: if false;
+    }
+
+    match /subscriptionTrialGrants/{grantId} {
+      allow read, write: if false;
+    }
+
     match /userPrivateTokens/{userId} {
       allow read, write: if false;
     }

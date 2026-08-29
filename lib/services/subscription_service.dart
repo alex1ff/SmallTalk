@@ -91,19 +91,21 @@ const String kSubscriptionProEntitlementId = 'Expatlio Pro';
 /// Offering ID configured in RevenueCat dashboard for the subscription screen.
 const String kSubscriptionOfferingId = 'subscriptions';
 
-/// Stable identifiers of our two products in App Store Connect / Google
+/// Stable identifiers of our products in App Store Connect / Google
 /// Play. Used when matching packages returned by RevenueCat offerings.
 class SubscriptionProductIds {
   const SubscriptionProductIds._();
   static const String monthly = 'expatlio_1_Month';
   static const String quarterly = 'expatlio_3_Month';
-  static const List<String> all = [monthly, quarterly];
+  static const String trialMonthly = 'expatlio_trial_1_Month';
+  static const List<String> all = [monthly, quarterly, trialMonthly];
 }
 
 String? subscriptionProductIdForStoreProduct(StoreProduct product) {
   final productId = product.identifier.trim();
   if (productId == SubscriptionProductIds.monthly ||
-      productId == SubscriptionProductIds.quarterly) {
+      productId == SubscriptionProductIds.quarterly ||
+      productId == SubscriptionProductIds.trialMonthly) {
     return productId;
   }
   return null;
@@ -159,6 +161,8 @@ List<Package> selectSubscriptionPackagesFromOfferings(Offerings offerings) {
       packagesByProductId[SubscriptionProductIds.monthly]!,
     if (packagesByProductId[SubscriptionProductIds.quarterly] != null)
       packagesByProductId[SubscriptionProductIds.quarterly]!,
+    if (packagesByProductId[SubscriptionProductIds.trialMonthly] != null)
+      packagesByProductId[SubscriptionProductIds.trialMonthly]!,
   ];
 }
 

@@ -282,7 +282,7 @@ test("start search access decision blocks invalid callers server-side", () => {
       requesterData: studentData({giftMinutes: null, subscription: null}),
       nowMillis: fixedNowMillis,
     }).reason,
-    "no_active_access",
+    "no_subscription",
   );
   assert.equal(
     buildStartSearchAccessDecision({
@@ -297,7 +297,11 @@ test("start search access decision blocks invalid callers server-side", () => {
       requesterRole: "student",
       requesterData: studentData({
         giftMinutes: null,
-        subscription: {expiresAt: futureTimestamp(60)},
+        subscription: {
+          expiresAt: futureTimestamp(60),
+          productId: "expatlio_1_Month",
+          periodType: "NORMAL",
+        },
       }),
       usageData: {
         dayKey: "2026-06-21",
@@ -306,13 +310,24 @@ test("start search access decision blocks invalid callers server-side", () => {
         weekDurationSeconds: 60 * 60,
       },
       nowMillis: fixedNowMillis,
-    }).code,
-    "resource-exhausted",
+    }).allowed,
+    true,
   );
   assert.equal(
     buildStartSearchAccessDecision({
       requesterRole: "student",
-      requesterData: studentData(),
+      requesterData: studentData({
+        giftMinutes: null,
+        subscription: {
+          expiresAt: futureTimestamp(60),
+          productId: "expatlio_trial_1_Month",
+          periodType: "TRIAL",
+        },
+      }),
+      trialData: {
+        trialCallStatus: "eligible",
+        trialCallWindowExpiresAt: futureTimestamp(30),
+      },
       nowMillis: fixedNowMillis,
     }).allowed,
     true,

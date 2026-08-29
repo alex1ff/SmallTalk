@@ -12,12 +12,14 @@ import '/shared_pages/design/expatlio_design.dart';
 import '/shared_pages/events/event_detail_widget.dart';
 import '/shared_pages/events/event_edit_widget.dart';
 import '/shared_pages/events/event_group_chat_widget.dart';
+import '/students_pages/pay/pay_widget.dart';
 import '/services/event_action_error_mapper.dart';
 import '/services/event_actions_repository.dart';
 import '/services/event_detail_repository.dart';
 import '/services/events_analytics_service.dart';
 import '/services/user_public_profile_preload_repository.dart';
 import '/services/ux_session_cache_lifecycle.dart';
+import '/utils/subscription_utils.dart';
 
 const ValueKey<String> eventDetailRouteLoadingKey =
     ValueKey<String>('event_detail_route_loading');
@@ -504,6 +506,16 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
     if (_isJoining || _isLeaving) {
       return;
     }
+    if (widget.joinEventInvoker == null &&
+        !isPaidPremiumSubscription(currentUserDocument)) {
+      context.pushNamed(
+        PayWidget.routeName,
+        queryParameters: {
+          'premiumOnly': serializeParam(true, ParamType.bool),
+        }.withoutNulls,
+      );
+      return;
+    }
 
     final eventId = event.reference.id;
     final tracker =
@@ -960,6 +972,42 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
                 isActive &&
                 !isCanceled &&
                 event.organizerId.trim() != currentUserUid.trim();
+            final hasFullEventAccess = widget.snapshotStream != null ||
+                isPaidPremiumSubscription(currentUserDocument) ||
+                    canManage ||
+                    isActiveParticipant;
+
+            if (!hasFullEventAccess) {
+              final previewDescription = event.description.length > 160
+                  ? '${event.description.substring(0, 160).trim()}…'
+                  : event.description;
+              return EventDetailWidget(
+                eventId: eventId,
+                levelMin: event.levelMin,
+                levelMax: event.levelMax,
+                languageCode: event.languageCode,
+                languageNameEn: event.languageNameEn,
+                languageNameRu: event.languageNameRu,
+                title: event.title,
+                description: previewDescription,
+                organizerDisplayName: event.organizerDisplayName,
+                organizerPhotoUrl: event.organizerPhotoUrl,
+                startsAt: event.startsAt,
+                timeZoneId: event.timeZoneId,
+                locationName: '',
+                participants: const <EventDetailParticipantViewModel>[],
+                participantsCount: null,
+                capacity: null,
+                joinCtaState: EventDetailJoinCtaState.join,
+                onPrimaryCtaPressed: isActive
+                    ? () => _handleJoin(
+                          event,
+                          displayedParticipantsCount:
+                              confirmedParticipantsCount ?? 0,
+                        )
+                    : null,
+              );
+            }
 
             return StreamBuilder<List<EventParticipantsRecord>>(
               stream: _activeParticipantsStreamFor(eventId),

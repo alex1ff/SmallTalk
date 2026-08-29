@@ -21,6 +21,11 @@ const admin = require("firebase-admin");
 const {defineSecret} = require("firebase-functions/params");
 
 const revenueCatWebhookSecret = defineSecret("REVENUECAT_WEBHOOK_SECRET");
+const {
+  TRIAL_PRODUCT_ID,
+  TRIAL_WINDOW_MS,
+  trialAccessRef,
+} = require("./trial_access");
 
 // Entitlement that grants access to the product. Must match the
 // Entitlement ID configured in RevenueCat dashboard.
@@ -32,6 +37,7 @@ const PRO_ENTITLEMENT_ID = "Expatlio Pro";
 const PRODUCT_PERIOD_MONTHS = {
   "expatlio_1_Month": 1,
   "expatlio_3_Month": 3,
+  [TRIAL_PRODUCT_ID]: 1,
 };
 const ALLOWED_PRODUCT_IDS = new Set(Object.keys(PRODUCT_PERIOD_MONTHS));
 
@@ -151,6 +157,7 @@ function parseEvent(rawBody) {
   const store = safeString(event.store);
   const environment = safeString(event.environment);
   const originalTransactionId = safeString(event.original_transaction_id);
+  const eventTimestampMs = toMillisOrNull(event.event_timestamp_ms);
   const revenueCatAppId = safeString(event.app_id);
   const periodType = safeString(event.period_type); // TRIAL, NORMAL, INTRO, etc.
   const cancelReason = safeString(event.cancel_reason);
@@ -173,6 +180,7 @@ function parseEvent(rawBody) {
     storeShort: store && STORE_MAP[store] ? STORE_MAP[store] : "unknown",
     environment,
     originalTransactionId,
+    eventTimestampMs,
     revenueCatAppId,
     periodType,
     cancelReason,
@@ -237,8 +245,50 @@ function buildSubscriptionPayload(parsed, {willRenew}) {
     originalTransactionId: parsed.originalTransactionId,
     environment: parsed.environment,
     periodType: parsed.periodType,
+    lastProviderEventTimestampMs: parsed.eventTimestampMs,
+    lastProviderEventId: parsed.eventId,
     lastEventType: parsed.type,
     lastEventAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+}
+
+function shouldInitializeTrial(parsed) {
+  return parsed.type === "INITIAL_PURCHASE" &&
+    parsed.productId === TRIAL_PRODUCT_ID &&
+    normalizePeriodType(parsed.periodType) === "TRIAL";
+}
+
+function normalizePeriodType(value) {
+  return safeString(value)?.toUpperCase() || "";
+}
+
+function trialGrantDocumentId(originalTransactionId) {
+  return `apple_${crypto
+      .createHash("sha256")
+      .update(String(originalTransactionId), "utf8")
+      .digest("hex")}`;
+}
+
+function buildInitialTrialPayload(parsed, nowMillis = Date.now()) {
+  const startedAtMillis = parsed.purchasedAtMs;
+  if (!startedAtMillis) return null;
+  const expiresAtMillis = startedAtMillis + TRIAL_WINDOW_MS;
+  const expired = expiresAtMillis <= nowMillis;
+  return {
+    trialStartedAt: toTimestampOrNull(startedAtMillis),
+    trialCallWindowExpiresAt: toTimestampOrNull(expiresAtMillis),
+    trialCallStatus: expired ? "expired" : "eligible",
+    trialCallId: null,
+    attemptCount: 0,
+    technicalRetryCount: 0,
+    retryNotBeforeAt: null,
+    activeConnectedSeconds: 0,
+    disconnectCount: 0,
+    terminationReason: expired ? "expired" : null,
+    originalTransactionId: parsed.originalTransactionId,
+    sourceEventId: parsed.eventId,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
 }
 
@@ -287,6 +337,24 @@ function deriveWillRenew(eventType) {
   // CANCELLATION (user disabled auto-renew), EXPIRATION, BILLING_ISSUE,
   // SUBSCRIPTION_PAUSED — none of these will auto-renew next cycle.
   return false;
+}
+
+// RevenueCat retries can arrive out of order. Keep the subscription mirror
+// monotonic by provider event timestamp; the transaction record is still
+// written for every unique event so analytics remain complete.
+function shouldApplySubscriptionEvent(currentSubscription, parsed) {
+  if (!currentSubscription || typeof currentSubscription !== "object") {
+    return true;
+  }
+  const incomingAt = parsed.eventTimestampMs;
+  const currentAt = toMillisOrNull(
+      currentSubscription.lastProviderEventTimestampMs,
+  );
+  if (incomingAt == null || currentAt == null) return true;
+  if (incomingAt > currentAt) return true;
+  if (incomingAt < currentAt) return false;
+  const currentEventId = safeString(currentSubscription.lastProviderEventId);
+  return !currentEventId || parsed.eventId > currentEventId;
 }
 
 exports.revenueCatWebhook = functions
@@ -369,12 +437,28 @@ exports.revenueCatWebhook = functions
       const transactionRef = db
           .collection("transactions")
           .doc(transactionDocumentIdForEvent(parsed.eventId));
+      const initializesTrial = shouldInitializeTrial(parsed);
+      if (initializesTrial &&
+          (!parsed.originalTransactionId || !parsed.purchasedAtMs)) {
+        console.warn("⚠️ revenueCatWebhook malformed trial purchase", {
+          eventId: parsed.eventId,
+        });
+        res.status(400).send("Malformed trial purchase");
+        return;
+      }
+      const trialRef = userRef ? trialAccessRef(db, parsed.appUserId) : null;
+      const trialGrantRef = initializesTrial ?
+        db.collection("subscriptionTrialGrants").doc(
+            trialGrantDocumentId(parsed.originalTransactionId),
+        ) : null;
 
       try {
         const result = await db.runTransaction(async (tx) => {
-          const [transactionSnap, userSnap] = await Promise.all([
+          const [transactionSnap, userSnap, trialGrantSnap, trialSnap] = await Promise.all([
             tx.get(transactionRef),
             userRef ? tx.get(userRef) : Promise.resolve(null),
+            trialGrantRef ? tx.get(trialGrantRef) : Promise.resolve(null),
+            trialRef ? tx.get(trialRef) : Promise.resolve(null),
           ]);
           if (transactionSnap.exists) {
             return {duplicate: true};
@@ -386,15 +470,33 @@ exports.revenueCatWebhook = functions
             );
           }
 
+          if (trialGrantSnap?.exists) {
+            const ownerUid = safeString(trialGrantSnap.data()?.uid);
+            if (ownerUid && ownerUid !== parsed.appUserId) {
+              tx.create(transactionRef, {
+                ...buildTransactionPayload(parsed, null),
+                status: "ignored",
+                note: "trial_transaction_owned_by_another_user",
+              });
+              return {duplicate: false, accountMismatch: true};
+            }
+          }
+
+          const currentSubscription = userSnap?.exists ?
+            userSnap.data()?.subscription : null;
+          const applySubscription = shouldApplySubscriptionEvent(
+              currentSubscription,
+              parsed,
+          );
           const willRenew = deriveWillRenew(parsed.type);
           const userUpdate = {};
 
-          if (shouldWriteSubscriptionFull(parsed.type)) {
+          if (applySubscription && shouldWriteSubscriptionFull(parsed.type)) {
             // Full overwrite of the subscription struct on grant events.
             userUpdate.subscription = buildSubscriptionPayload(parsed, {
               willRenew,
             });
-          } else if (shouldUpdateWillRenew(parsed.type)) {
+          } else if (applySubscription && shouldUpdateWillRenew(parsed.type)) {
             // Touch only willRenew + lastEventType on cancellation/expiration.
             // We use dot-notation so we don't wipe the rest of the struct.
             userUpdate["subscription.willRenew"] = willRenew;
@@ -412,6 +514,21 @@ exports.revenueCatWebhook = functions
             tx.update(userRef, userUpdate);
           }
 
+          if (initializesTrial && userRef && userSnap.exists &&
+              !trialSnap?.exists) {
+            const trialPayload = buildInitialTrialPayload(parsed);
+            tx.set(trialRef, trialPayload, {merge: false});
+            if (!trialGrantSnap.exists) {
+              tx.create(trialGrantRef, {
+                uid: parsed.appUserId,
+                productId: parsed.productId,
+                originalTransactionId: parsed.originalTransactionId,
+                sourceEventId: parsed.eventId,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+              });
+            }
+          }
+
           const transactionPayload = buildTransactionPayload(parsed, userRef);
           if (isAnonymous) {
             transactionPayload.userId = null;
@@ -427,6 +544,14 @@ exports.revenueCatWebhook = functions
             transactionId: transactionRef.id,
           });
           res.status(200).send("Duplicate");
+          return;
+        }
+        if (result.accountMismatch) {
+          console.warn("⚠️ revenueCatWebhook trial ownership mismatch", {
+            eventId: parsed.eventId,
+            uid: parsed.appUserId,
+          });
+          res.status(200).send("Ignored account mismatch");
           return;
         }
 
@@ -454,5 +579,9 @@ exports.__private__ = {
   configuredRevenueCatAppIds,
   eventAllowlistFailure,
   parseEvent,
+  buildInitialTrialPayload,
+  shouldApplySubscriptionEvent,
+  shouldInitializeTrial,
+  trialGrantDocumentId,
   transactionDocumentIdForEvent,
 };

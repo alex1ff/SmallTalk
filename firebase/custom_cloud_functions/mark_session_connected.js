@@ -21,6 +21,7 @@ const {
   buildRoomJoinParticipantMetadata,
   readRoomJoinSignals,
 } = require("./room_join_signals");
+const {trialAccessRef} = require("./trial_access");
 
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 const MAX_SESSION_ID_LENGTH = 128;
@@ -424,8 +425,36 @@ exports.markSessionConnected = functions
         );
       }
 
+      const freshData = freshSnapshot.data() || {};
+      const storedTrialIds =
+        freshData.trialCallIdsByUserId &&
+        typeof freshData.trialCallIdsByUserId === "object" ?
+          freshData.trialCallIdsByUserId : {};
+      const trialCallIdsByUserId = Object.keys(storedTrialIds).length > 0 ?
+        storedTrialIds :
+        freshData.accessMode === "trial" && freshData.studentId ? {
+          [freshData.studentId]: freshData.trialCallId || sessionId,
+        } : {};
+      const trialContexts = await Promise.all(
+          Object.entries(trialCallIdsByUserId)
+              .filter(([participantId, trialCallId]) =>
+                typeof participantId === "string" &&
+                participantId.length > 0 &&
+                !participantId.includes("/") &&
+                typeof trialCallId === "string" &&
+                trialCallId.length > 0,
+              )
+              .map(async ([participantId, trialCallId]) => {
+                const ref = trialAccessRef(db, participantId);
+                return {
+                  trialCallId,
+                  ref,
+                  snap: await transaction.get(ref),
+                };
+              }),
+      );
       const decision = buildDailyPresenceConnectedDecision({
-        sessionData: freshSnapshot.data() || {},
+        sessionData: freshData,
         presenceData,
         userId,
       });
@@ -433,7 +462,6 @@ exports.markSessionConnected = functions
         throwCallableError(decision);
       }
 
-      const freshData = freshSnapshot.data() || {};
       await applyVerifiedConnectedSessionWritesInTransaction({
         db,
         transaction,
@@ -442,6 +470,19 @@ exports.markSessionConnected = functions
         sessionData: freshData,
         decision,
       });
+      if (decision.response?.connectedMarked === true) {
+        for (const trialContext of trialContexts) {
+          if (trialContext.snap?.exists &&
+              trialContext.snap.data()?.trialCallId ===
+                trialContext.trialCallId) {
+            transaction.set(trialContext.ref, {
+              bothJoinedAt: admin.firestore.FieldValue.serverTimestamp(),
+              lastLifecycleAt: admin.firestore.FieldValue.serverTimestamp(),
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            }, {merge: true});
+          }
+        }
+      }
 
       return {
         sessionId,

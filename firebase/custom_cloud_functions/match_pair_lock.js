@@ -28,6 +28,10 @@ const {
   buildStudentCallAccessDecision,
 } = require("./call_access");
 const {
+  reserveTrialCallInTransaction,
+  trialAccessRef,
+} = require("./trial_access");
+const {
   usageDocRef,
 } = require("./subscription_usage_shared");
 const {
@@ -288,6 +292,7 @@ function validateDirectPairAccessForLock({
   requesterId,
   requesterData = {},
   requesterUsageData = null,
+  requesterTrialData = null,
   responderId,
   responderData = {},
   language = "",
@@ -297,6 +302,7 @@ function validateDirectPairAccessForLock({
   const accessDecision = buildStudentCallAccessDecision({
     userRole: requesterRole,
     userData: requesterData,
+    trialData: requesterTrialData,
     usageData: requesterUsageData,
     nowMillis,
   });
@@ -339,7 +345,7 @@ function validateDirectPairAccessForLock({
     return {ok: false, reason: "responder_available_after_in_future"};
   }
 
-  return {ok: true, reason: "ready"};
+  return {ok: true, reason: "ready", mode: accessDecision.mode};
 }
 
 function buildPairAttemptId({
@@ -1431,6 +1437,9 @@ async function reserveMatchPairInTransaction({
     normalizedResponderRole === "native_speaker" ?
       db.collection(PRIVATE_TOKEN_COLLECTION).doc(normalizedResponderId) :
       null;
+  const requesterTrialRef = trialAccessRef(db, normalizedRequesterId);
+  const responderTrialRef = normalizedResponderRole === "student" ?
+    trialAccessRef(db, normalizedResponderId) : null;
 
   const [
     sessionSnapshot,
@@ -1439,6 +1448,8 @@ async function reserveMatchPairInTransaction({
     requesterSearchSnapshot,
     responderSearchSnapshot,
     responderPrivateTokenSnapshot,
+    requesterTrialSnapshot,
+    responderTrialSnapshot,
   ] = await Promise.all([
     transaction.get(sessionRef),
     transaction.get(requesterUserRef),
@@ -1448,6 +1459,8 @@ async function reserveMatchPairInTransaction({
     responderPrivateTokenRef ?
       transaction.get(responderPrivateTokenRef) :
       null,
+    transaction.get(requesterTrialRef),
+    responderTrialRef ? transaction.get(responderTrialRef) : null,
   ]);
 
   if (sessionSnapshot.exists) {
@@ -1478,6 +1491,34 @@ async function reserveMatchPairInTransaction({
   });
   if (!responderUserValidation.ok) {
     return buildPairLockFailure(responderUserValidation.reason);
+  }
+
+  const requesterAccessDecision = buildStudentCallAccessDecision({
+    userRole: "student",
+    userData: requesterUserData,
+    trialData: requesterTrialSnapshot.exists ?
+      requesterTrialSnapshot.data() || {} : null,
+    nowMillis,
+  });
+  if (!requesterAccessDecision.allowed) {
+    return buildPairLockFailure(
+        `requester_${requesterAccessDecision.reason}`,
+    );
+  }
+  let responderAccessDecision = null;
+  if (normalizedResponderRole === "student") {
+    responderAccessDecision = buildStudentCallAccessDecision({
+      userRole: "student",
+      userData: responderUserData,
+      trialData: responderTrialSnapshot?.exists ?
+        responderTrialSnapshot.data() || {} : null,
+      nowMillis,
+    });
+    if (!responderAccessDecision.allowed) {
+      return buildPairLockFailure(
+          `responder_${responderAccessDecision.reason}`,
+      );
+    }
   }
 
   const requesterSearchValidation = validateSearchRequestForPairLock({
@@ -1571,6 +1612,50 @@ async function reserveMatchPairInTransaction({
     });
 
   const sessionId = sessionRef.id;
+  const accessModesByUserId = {
+    [normalizedRequesterId]: requesterAccessDecision.mode,
+    ...(responderAccessDecision ? {
+      [normalizedResponderId]: responderAccessDecision.mode,
+    } : {}),
+  };
+  const trialCallIdsByUserId = {};
+  if (requesterAccessDecision.mode === "trial") {
+    const reservation = reserveTrialCallInTransaction({
+      transaction,
+      trialRef: requesterTrialRef,
+      trialSnap: requesterTrialSnapshot,
+      requestId: sessionId,
+      nowMillis,
+    });
+    if (!reservation.allowed) {
+      return buildPairLockFailure(`requester_${reservation.reason}`);
+    }
+    trialCallIdsByUserId[normalizedRequesterId] = reservation.trialCallId;
+  }
+  if (responderAccessDecision?.mode === "trial") {
+    const reservation = reserveTrialCallInTransaction({
+      transaction,
+      trialRef: responderTrialRef,
+      trialSnap: responderTrialSnapshot,
+      requestId: sessionId,
+      nowMillis,
+    });
+    if (!reservation.allowed) {
+      return buildPairLockFailure(`responder_${reservation.reason}`);
+    }
+    trialCallIdsByUserId[normalizedResponderId] = reservation.trialCallId;
+  }
+  const sessionAccessData = {
+    ...sessionData,
+    accessMode: requesterAccessDecision.mode,
+    accessModesByUserId,
+    ...(trialCallIdsByUserId[normalizedRequesterId] ? {
+      trialCallId: trialCallIdsByUserId[normalizedRequesterId],
+    } : {}),
+    ...(Object.keys(trialCallIdsByUserId).length > 0 ? {
+      trialCallIdsByUserId,
+    } : {}),
+  };
   const finalPairAttemptId = normalizeDocumentId(pairAttemptId) ||
     buildPairAttemptId({
       sessionId,
@@ -1578,7 +1663,7 @@ async function reserveMatchPairInTransaction({
       responderId: normalizedResponderId,
     });
   const sessionLockData = buildVideoSessionPairLockData({
-    sessionData,
+    sessionData: sessionAccessData,
     requesterId: normalizedRequesterId,
     responderId: normalizedResponderId,
     requesterRole: "student",
@@ -1687,6 +1772,7 @@ async function reserveDirectPairInTransaction({
     .collection(USER_COLLECTION)
     .doc(normalizedResponderId);
   const requesterUsageRef = usageDocRef(db, normalizedRequesterId);
+  const requesterTrialRef = trialAccessRef(db, normalizedRequesterId);
   const responderPrivateTokenRef = db
     .collection(PRIVATE_TOKEN_COLLECTION)
     .doc(normalizedResponderId);
@@ -1695,12 +1781,14 @@ async function reserveDirectPairInTransaction({
     requesterUserSnapshot,
     responderUserSnapshot,
     requesterUsageSnapshot,
+    requesterTrialSnapshot,
     responderPrivateTokenSnapshot,
   ] = await Promise.all([
     transaction.get(sessionRef),
     transaction.get(requesterUserRef),
     transaction.get(responderUserRef),
     transaction.get(requesterUsageRef),
+    transaction.get(requesterTrialRef),
     transaction.get(responderPrivateTokenRef),
   ]);
 
@@ -1740,6 +1828,8 @@ async function reserveDirectPairInTransaction({
     requesterId: normalizedRequesterId,
     requesterData: requesterUserData,
     requesterUsageData,
+    requesterTrialData: requesterTrialSnapshot.exists ?
+      requesterTrialSnapshot.data() || {} : null,
     responderId: normalizedResponderId,
     responderData: responderUserData,
     language: sessionData.language,
@@ -1768,6 +1858,32 @@ async function reserveDirectPairInTransaction({
   }
 
   const sessionId = sessionRef.id;
+  let accessSessionData = {
+    ...sessionData,
+    accessMode: directAccessValidation.mode,
+    accessModesByUserId: {
+      [normalizedRequesterId]: directAccessValidation.mode,
+    },
+  };
+  if (directAccessValidation.mode === "trial") {
+    const reservation = reserveTrialCallInTransaction({
+      transaction,
+      trialRef: requesterTrialRef,
+      trialSnap: requesterTrialSnapshot,
+      requestId: sessionId,
+      nowMillis,
+    });
+    if (!reservation.allowed) {
+      return buildPairLockFailure(`requester_${reservation.reason}`);
+    }
+    accessSessionData = {
+      ...accessSessionData,
+      trialCallId: reservation.trialCallId,
+      trialCallIdsByUserId: {
+        [normalizedRequesterId]: reservation.trialCallId,
+      },
+    };
+  }
   const finalPairAttemptId = normalizeDocumentId(pairAttemptId) ||
     buildPairAttemptId({
       sessionId,
@@ -1775,7 +1891,7 @@ async function reserveDirectPairInTransaction({
       responderId: normalizedResponderId,
     });
   const sessionLockData = buildVideoSessionPairLockData({
-    sessionData,
+    sessionData: accessSessionData,
     requesterId: normalizedRequesterId,
     responderId: normalizedResponderId,
     requesterRole: "student",
