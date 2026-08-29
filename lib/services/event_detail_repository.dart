@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
 
 import 'package:rxdart/rxdart.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 import '/backend/backend.dart';
 import '/services/ux_loading_state.dart';
@@ -9,6 +11,9 @@ import '/services/ux_session_cache_lifecycle.dart';
 import '/services/ux_session_loaded_result_cache.dart';
 
 typedef EventDetailSnapshotStream = Stream<DocumentSnapshot> Function(
+  DocumentReference eventRef,
+);
+typedef EventDetailCallableLoader = Future<EventsRecord?> Function(
   DocumentReference eventRef,
 );
 typedef EventParticipantSnapshotStream = Stream<DocumentSnapshot> Function(
@@ -54,23 +59,33 @@ class EventDetailRepository {
     String? sessionCacheUserId,
     EventDetailSnapshotFlagReader? snapshotIsFromCache,
     EventDetailSnapshotFlagReader? snapshotHasPendingWrites,
+    EventDetailCallableLoader? callableLoader,
+    Duration callableRefreshInterval = const Duration(seconds: 15),
+    Duration callableRetryInitialDelay = const Duration(seconds: 1),
+    Duration callableRetryMaxDelay = const Duration(seconds: 30),
   }) {
     _ensureSessionCacheLifecycleRegistered();
     final eventRef = eventReferenceForId(eventId);
-    final loader = snapshotStream ?? _watchEventSnapshot;
     final cacheKey = _eventDetailCacheKey(
       userId: sessionCacheUserId,
       normalizedEventId: eventRef.id,
     );
     final cacheWatcherToken =
         cacheKey == null ? null : _registerEventDetailWatcherRequest(cacheKey);
-    final usesInjectedSnapshots = snapshotStream != null;
-    final isFromCache = snapshotIsFromCache ??
-        (usesInjectedSnapshots ? _snapshotFlagIsFalse : _snapshotIsFromCache);
-    final hasPendingWrites = snapshotHasPendingWrites ??
-        (usesInjectedSnapshots
-            ? _snapshotFlagIsFalse
-            : _snapshotHasPendingWrites);
+    if (snapshotStream == null) {
+      return _watchCallableEventDetail(
+        eventRef: eventRef,
+        cacheKey: cacheKey,
+        cacheWatcherToken: cacheWatcherToken,
+        loader: callableLoader ?? _loadEventDetailViaCallable,
+        refreshInterval: callableRefreshInterval,
+        retryInitialDelay: callableRetryInitialDelay,
+        retryMaxDelay: callableRetryMaxDelay,
+      );
+    }
+    final loader = snapshotStream;
+    final isFromCache = snapshotIsFromCache ?? _snapshotFlagIsFalse;
+    final hasPendingWrites = snapshotHasPendingWrites ?? _snapshotFlagIsFalse;
 
     return loader(eventRef)
         .map((snapshot) {
@@ -124,6 +139,140 @@ class EventDetailRepository {
           }
           return event;
         });
+  }
+
+  static Stream<EventsRecord?> _watchCallableEventDetail({
+    required DocumentReference eventRef,
+    required _EventDetailCacheKey? cacheKey,
+    required int? cacheWatcherToken,
+    required EventDetailCallableLoader loader,
+    required Duration refreshInterval,
+    required Duration retryInitialDelay,
+    required Duration retryMaxDelay,
+  }) {
+    return Stream<EventsRecord?>.multi((controller) {
+      var canceled = false;
+      var retryAttempt = 0;
+      Timer? delayTimer;
+      Completer<void>? delayCompleter;
+      var hasLastEvent = false;
+      EventsRecord? lastEvent;
+      if (cacheKey != null) {
+        final cached = _eventDetailSessionCache.read(cacheKey);
+        if (cached != null) {
+          hasLastEvent = true;
+          lastEvent = cached.data;
+        }
+      }
+
+      Future<void> waitFor(Duration duration) {
+        if (canceled) return Future<void>.value();
+        final completer = Completer<void>();
+        delayCompleter = completer;
+        delayTimer = Timer(duration, () {
+          if (!completer.isCompleted) completer.complete();
+        });
+        return completer.future.whenComplete(() {
+          delayTimer = null;
+          delayCompleter = null;
+        });
+      }
+
+      controller.onCancel = () {
+        canceled = true;
+        delayTimer?.cancel();
+        if (delayCompleter != null && !delayCompleter!.isCompleted) {
+          delayCompleter!.complete();
+        }
+      };
+
+      unawaited(() async {
+        while (!canceled && !controller.isClosed) {
+          try {
+            final event = await loader(eventRef);
+            if (canceled || controller.isClosed) return;
+            final authoritativeCacheKey = _authoritativeEventDetailCacheKey(
+              cacheKey,
+              cacheWatcherToken,
+            );
+            if (event == null) {
+              if (authoritativeCacheKey != null) {
+                _eventDetailSessionCache.remove(authoritativeCacheKey);
+              }
+            } else if (authoritativeCacheKey != null) {
+              _eventDetailSessionCache.write(
+                UxLoadedResult<EventsRecord>.data(
+                  dataKey: authoritativeCacheKey,
+                  data: event,
+                ),
+              );
+            }
+            hasLastEvent = true;
+            lastEvent = event;
+            retryAttempt = 0;
+            controller.add(event);
+            await waitFor(_nonNegativeDuration(refreshInterval));
+          } catch (error, stackTrace) {
+            if (canceled || controller.isClosed) return;
+            if (!_isRetryableEventDetailError(error)) {
+              controller.addError(error, stackTrace);
+              await controller.close();
+              return;
+            }
+            // Keep the last server result visible while a transient callable
+            // error is retried. With no cached result, remain pending until a
+            // successful response arrives instead of replacing the loading UI
+            // with a terminal-looking error state.
+            if (hasLastEvent) {
+              controller.add(lastEvent);
+            }
+            final delay = _eventDetailRetryDelay(
+              initial: retryInitialDelay,
+              maximum: retryMaxDelay,
+              attempt: retryAttempt,
+            );
+            retryAttempt++;
+            await waitFor(delay);
+          }
+        }
+      }());
+    });
+  }
+
+  static Future<EventsRecord?> _loadEventDetailViaCallable(
+    DocumentReference eventRef,
+  ) async {
+    final result = await FirebaseFunctions.instance
+        .httpsCallable('getEventDetails')
+        .call(<String, dynamic>{'eventId': eventRef.id});
+    final root = Map<String, dynamic>.from(result.data as Map);
+    final rawEvent = root['event'];
+    if (rawEvent is! Map) {
+      throw const FormatException('Callable returned malformed event detail.');
+    }
+    final data = Map<String, dynamic>.from(rawEvent);
+    void convertTimestamp(String source, String target) {
+      final millis = (data.remove(source) as num?)?.toInt();
+      if (millis != null) {
+        data[target] = Timestamp.fromMillisecondsSinceEpoch(millis);
+      }
+    }
+
+    convertTimestamp('startsAtMs', 'startsAt');
+    convertTimestamp('createdAtMs', 'createdAt');
+    convertTimestamp('updatedAtMs', 'updatedAt');
+    convertTimestamp('canceledAtMs', 'canceledAt');
+    final geoPoint = data['locationGeoPoint'];
+    if (geoPoint is Map) {
+      final latitude = (geoPoint['latitude'] as num?)?.toDouble();
+      final longitude = (geoPoint['longitude'] as num?)?.toDouble();
+      if (latitude != null && longitude != null) {
+        data['locationGeoPoint'] = GeoPoint(latitude, longitude);
+      } else {
+        data.remove('locationGeoPoint');
+      }
+    }
+    return EventsRecord.getDocumentFromData(data, eventRef);
   }
 
   static EventsRecord? cachedEventDetail({
@@ -371,18 +520,50 @@ String normalizeEventDetailId(String eventId) {
   return normalizedEventId;
 }
 
-Stream<DocumentSnapshot> _watchEventSnapshot(DocumentReference eventRef) =>
-    eventRef.snapshots(includeMetadataChanges: true);
-
-bool _snapshotIsFromCache(DocumentSnapshot snapshot) {
-  return snapshot.metadata.isFromCache;
-}
-
-bool _snapshotHasPendingWrites(DocumentSnapshot snapshot) {
-  return snapshot.metadata.hasPendingWrites;
-}
-
 bool _snapshotFlagIsFalse(DocumentSnapshot _) => false;
+
+Duration _nonNegativeDuration(Duration value) =>
+    value.isNegative ? Duration.zero : value;
+
+Duration _eventDetailRetryDelay({
+  required Duration initial,
+  required Duration maximum,
+  required int attempt,
+}) {
+  final boundedInitial = _nonNegativeDuration(initial);
+  final boundedMaximum = _nonNegativeDuration(maximum);
+  if (boundedInitial == Duration.zero || boundedMaximum == Duration.zero) {
+    return Duration.zero;
+  }
+  var delay = boundedInitial;
+  final maxAttempts = 31;
+  for (var index = 0; index < attempt && index < maxAttempts; index++) {
+    final nextMicros =
+        delay.inMicroseconds > (boundedMaximum.inMicroseconds ~/ 2)
+            ? boundedMaximum.inMicroseconds
+            : delay.inMicroseconds * 2;
+    delay = Duration(
+      microseconds: nextMicros.clamp(0, boundedMaximum.inMicroseconds).toInt(),
+    );
+    if (delay >= boundedMaximum) break;
+  }
+  return delay > boundedMaximum ? boundedMaximum : delay;
+}
+
+bool _isRetryableEventDetailError(Object error) {
+  if (error is! FirebaseFunctionsException) return false;
+  return switch (error.code) {
+    'cancelled' ||
+    'deadline-exceeded' ||
+    'internal' ||
+    'resource-exhausted' ||
+    'unavailable' ||
+    'unknown' ||
+    'aborted' =>
+      true,
+    _ => false,
+  };
+}
 
 Stream<DocumentSnapshot> _watchParticipantSnapshot(
   DocumentReference participantRef,

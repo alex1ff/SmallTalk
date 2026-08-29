@@ -8,6 +8,7 @@ const {
 } = require("./daily_room_cleanup");
 const {
   ensureConversationCallEventForSession,
+  getConnectedCallStartMillis,
 } = require("./chats_shared");
 const {
   cancelProtocolV2NotificationsInTransaction,
@@ -40,6 +41,9 @@ const {
   logCallLifecycleError,
   logCallLifecycleEvent,
 } = require("./call_lifecycle_logs");
+const {
+  reconcileSessionTrialCallsInTransaction,
+} = require("./trial_access");
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const PENDING_RESPONSE_TIMEOUT_SESSION_STATUSES = new Set([
@@ -664,6 +668,15 @@ exports.cleanupExpiredSessions = functions
               ...freshData,
               participantStates: protocolV2ParticipantStates,
             } : freshData;
+            await reconcileSessionTrialCallsInTransaction({
+              db,
+              transaction,
+              sessionId: doc.id,
+              sessionData: freshData,
+              durationSeconds: 0,
+              technicalFailure: true,
+              nowMillis: pendingResponseCleanupDeadlineMillis,
+            });
             await releaseSessionPairLocksInTransaction({
               db,
               transaction,
@@ -743,6 +756,20 @@ exports.cleanupExpiredSessions = functions
           }
 
           console.log(`🔚 Auto-ending expired session: ${doc.id}`);
+          const connectedStartMillis = getConnectedCallStartMillis(freshData);
+          const connectedDurationSeconds = connectedStartMillis > 0 ?
+            Math.max(0, Math.floor(
+                (cleanupDeadlineMillis - connectedStartMillis) / 1000,
+            )) : 0;
+          await reconcileSessionTrialCallsInTransaction({
+            db,
+            transaction,
+            sessionId: doc.id,
+            sessionData: freshData,
+            durationSeconds: connectedDurationSeconds,
+            technicalFailure: connectedStartMillis <= 0,
+            nowMillis: cleanupDeadlineMillis,
+          });
           await releaseSessionPairLocksInTransaction({
             db,
             transaction,

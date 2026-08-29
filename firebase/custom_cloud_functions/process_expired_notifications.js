@@ -50,6 +50,9 @@ const {
 const {
   reconcileReleasedProtocolV2Match,
 } = require("./start_search").__private__;
+const {
+  reconcileSessionTrialCallsInTransaction,
+} = require("./trial_access");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -582,6 +585,15 @@ async function processExpiredNotification(notificationDoc) {
           const serverTimestamp =
             admin.firestore.FieldValue.serverTimestamp();
           const fieldDelete = admin.firestore.FieldValue.delete();
+          await reconcileSessionTrialCallsInTransaction({
+            db,
+            transaction,
+            sessionId,
+            sessionData: freshSessionData,
+            durationSeconds: 0,
+            technicalFailure: true,
+            nowMillis: Date.now(),
+          });
           await releaseSessionPairLocksInTransaction({
             db,
             transaction,
@@ -751,6 +763,15 @@ async function processExpiredNotification(notificationDoc) {
         }
 
         if (!nextTutor) {
+          await reconcileSessionTrialCallsInTransaction({
+            db,
+            transaction,
+            sessionId,
+            sessionData: freshSessionData,
+            durationSeconds: 0,
+            technicalFailure: true,
+            nowMillis: Date.now(),
+          });
           await releaseSessionPairLocksInTransaction({
             db,
             transaction,

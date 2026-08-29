@@ -30,6 +30,8 @@ const {
 // Entitlement that grants access to the product. Must match the
 // Entitlement ID configured in RevenueCat dashboard.
 const PRO_ENTITLEMENT_ID = "Expatlio Pro";
+const PROMOTIONAL_PRODUCT_ID = "revenuecat_promotional";
+const PROMOTIONAL_LIFETIME_EXPIRES_AT_MS = 253402300799999;
 
 // Product → period (months) map. Source of truth lives in App Store Connect
 // / Google Play, this map only tells us how long to extend the subscription
@@ -38,8 +40,13 @@ const PRODUCT_PERIOD_MONTHS = {
   "expatlio_1_Month": 1,
   "expatlio_3_Month": 3,
   [TRIAL_PRODUCT_ID]: 1,
+  [PROMOTIONAL_PRODUCT_ID]: 0,
 };
-const ALLOWED_PRODUCT_IDS = new Set(Object.keys(PRODUCT_PERIOD_MONTHS));
+const ALLOWED_PRODUCT_IDS = new Set([
+  "expatlio_1_Month",
+  "expatlio_3_Month",
+  TRIAL_PRODUCT_ID,
+]);
 
 // Map RevenueCat store identifiers to internal short codes used in the
 // SubscriptionStruct.store field.
@@ -64,6 +71,8 @@ const HANDLED_EVENT_TYPES = new Set([
   "EXPIRATION",
   "BILLING_ISSUE",
   "SUBSCRIPTION_PAUSED",
+  "SUBSCRIPTION_EXTENDED",
+  "REFUND_REVERSED",
   "TRANSFER",
   "TEST",
 ]);
@@ -72,9 +81,10 @@ const HANDLED_EVENT_TYPES = new Set([
 const GRANTING_EVENT_TYPES = new Set([
   "INITIAL_PURCHASE",
   "RENEWAL",
-  "PRODUCT_CHANGE",
   "UNCANCELLATION",
   "NON_RENEWING_PURCHASE",
+  "SUBSCRIPTION_EXTENDED",
+  "REFUND_REVERSED",
 ]);
 
 // Event types that mark the subscription as no longer auto-renewing or
@@ -98,6 +108,8 @@ function transactionTypeForEvent(eventType) {
     case "UNCANCELLATION":
       return "subscription_purchase";
     case "RENEWAL":
+    case "SUBSCRIPTION_EXTENDED":
+    case "REFUND_REVERSED":
       return "subscription_renewal";
     case "CANCELLATION":
       return "subscription_cancellation";
@@ -132,6 +144,11 @@ function safeString(value) {
   return null;
 }
 
+function safeStringArray(value) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map(safeString).filter(Boolean))];
+}
+
 function parseEvent(rawBody) {
   if (!rawBody || typeof rawBody !== "object") {
     return null;
@@ -144,11 +161,15 @@ function parseEvent(rawBody) {
   const type = safeString(event.type);
   const eventId = safeString(event.id);
   const appUserId = safeString(event.app_user_id);
-  if (!type || !eventId || !appUserId) {
+  const transferredFrom = safeStringArray(event.transferred_from);
+  const transferredTo = safeStringArray(event.transferred_to);
+  if (!type || !eventId ||
+      (type !== "TRANSFER" && !appUserId)) {
     return null;
   }
 
   const productId = safeString(event.product_id);
+  const newProductId = safeString(event.new_product_id);
   const purchasedAtMs = toMillisOrNull(event.purchased_at_ms);
   const expirationAtMs = toMillisOrNull(event.expiration_at_ms);
   const entitlementIds = Array.isArray(event.entitlement_ids) ?
@@ -173,6 +194,7 @@ function parseEvent(rawBody) {
     eventId,
     appUserId,
     productId,
+    newProductId,
     purchasedAtMs,
     expirationAtMs,
     entitlementIds,
@@ -186,6 +208,8 @@ function parseEvent(rawBody) {
     cancelReason,
     priceInPurchasedCurrency,
     currency,
+    transferredFrom,
+    transferredTo,
   };
 }
 
@@ -198,26 +222,77 @@ function configuredRevenueCatAppIds(env = process.env) {
   );
 }
 
-function eventAllowlistFailure(parsed, env = process.env) {
-  if (parsed.type === "TRANSFER") {
-    return "unsupported_transfer";
+function isPromotionalEvent(parsed) {
+  return parsed.store === "PROMOTIONAL" ||
+    normalizePeriodType(parsed.periodType) === "PROMOTIONAL";
+}
+
+function mirroredProductId(parsed) {
+  return isPromotionalEvent(parsed) ?
+    PROMOTIONAL_PRODUCT_ID : parsed.productId;
+}
+
+function effectiveExpirationAtMs(parsed) {
+  if (parsed.expirationAtMs) return parsed.expirationAtMs;
+  if (isPromotionalEvent(parsed) &&
+      !["CANCELLATION", "EXPIRATION"].includes(parsed.type)) {
+    return PROMOTIONAL_LIFETIME_EXPIRES_AT_MS;
   }
+  if (isPromotionalEvent(parsed) &&
+      ["CANCELLATION", "EXPIRATION"].includes(parsed.type)) {
+    return parsed.eventTimestampMs;
+  }
+  return null;
+}
+
+function eventAllowlistFailure(parsed, env = process.env) {
   if (parsed.type === "TEST") {
     return null;
   }
 
   const appIds = configuredRevenueCatAppIds(env);
-  if (appIds.size === 0) {
+  const isPromotional = isPromotionalEvent(parsed);
+  if (appIds.size === 0 && !isPromotional) {
     return "missing_revenuecat_app_allowlist";
   }
-  if (!parsed.revenueCatAppId || !appIds.has(parsed.revenueCatAppId)) {
+  if ((!parsed.revenueCatAppId && !isPromotional) ||
+      (parsed.revenueCatAppId && !appIds.has(parsed.revenueCatAppId))) {
     return "unexpected_revenuecat_app";
   }
-  if (!parsed.productId || !ALLOWED_PRODUCT_IDS.has(parsed.productId)) {
+  if (parsed.type === "TRANSFER") return null;
+  if (!isPromotional &&
+      (!parsed.productId || !ALLOWED_PRODUCT_IDS.has(parsed.productId))) {
     return "unexpected_product";
+  }
+  if (parsed.type === "PRODUCT_CHANGE" && parsed.newProductId &&
+      !ALLOWED_PRODUCT_IDS.has(parsed.newProductId)) {
+    return "unexpected_new_product";
   }
   if (!parsed.entitlementIds.includes(PRO_ENTITLEMENT_ID)) {
     return "unexpected_entitlement";
+  }
+  return null;
+}
+
+function malformedEventReason(parsed) {
+  if (parsed.type === "TEST") return null;
+  if (parsed.eventTimestampMs == null) return "missing_event_timestamp";
+  if (parsed.type === "TRANSFER") {
+    if (parsed.transferredFrom.length === 0 ||
+        parsed.transferredTo.length === 0) {
+      return "missing_transfer_identity";
+    }
+    return null;
+  }
+  if (!parsed.appUserId) return "missing_app_user_id";
+  if (!parsed.productId && !isPromotionalEvent(parsed)) {
+    return "missing_product_id";
+  }
+  if (!effectiveExpirationAtMs(parsed)) return "missing_expiration_timestamp";
+  if (!parsed.periodType) return "missing_period_type";
+  if (shouldWriteSubscriptionFull(parsed.type) &&
+      !parsed.purchasedAtMs && !isPromotionalEvent(parsed)) {
+    return "missing_purchase_timestamp";
   }
   return null;
 }
@@ -231,20 +306,26 @@ function transactionDocumentIdForEvent(eventId) {
 
 // Build the SubscriptionStruct payload that mirrors RevenueCat state.
 function buildSubscriptionPayload(parsed, {willRenew}) {
-  const productId = parsed.productId || "unknown";
+  const productId = mirroredProductId(parsed) || "unknown";
   const periodMonths = PRODUCT_PERIOD_MONTHS[productId] || 0;
   return {
     entitlementId: PRO_ENTITLEMENT_ID,
     productId,
     periodMonths,
-    startedAt: toTimestampOrNull(parsed.purchasedAtMs),
-    expiresAt: toTimestampOrNull(parsed.expirationAtMs),
+    providerProductId: parsed.productId || null,
+    startedAt: toTimestampOrNull(
+        parsed.purchasedAtMs || parsed.eventTimestampMs,
+    ),
+    expiresAt: toTimestampOrNull(effectiveExpirationAtMs(parsed)),
     willRenew,
     store: parsed.storeShort,
     revenueCatUserId: parsed.appUserId,
     originalTransactionId: parsed.originalTransactionId,
     environment: parsed.environment,
-    periodType: parsed.periodType,
+    newProductId: parsed.newProductId || null,
+    expirationAtMs: parsed.expirationAtMs,
+    periodType: isPromotionalEvent(parsed) ?
+      "PROMOTIONAL" : parsed.periodType,
     lastProviderEventTimestampMs: parsed.eventTimestampMs,
     lastProviderEventId: parsed.eventId,
     lastEventType: parsed.type,
@@ -267,6 +348,23 @@ function trialGrantDocumentId(originalTransactionId) {
       .createHash("sha256")
       .update(String(originalTransactionId), "utf8")
       .digest("hex")}`;
+}
+
+function transferSourceDocumentId(appUserId) {
+  return `rc_${crypto.createHash("sha256")
+      .update(String(appUserId), "utf8").digest("hex")}`;
+}
+
+function isAnonymousRevenueCatUserId(appUserId) {
+  return safeString(appUserId)?.startsWith("$RCAnonymousID:") === true;
+}
+
+function transferSourceRef(db, appUserId) {
+  if (isAnonymousRevenueCatUserId(appUserId)) {
+    return db.collection("revenueCatTransferSources")
+        .doc(transferSourceDocumentId(appUserId));
+  }
+  return db.collection("users").doc(appUserId);
 }
 
 function buildInitialTrialPayload(parsed, nowMillis = Date.now()) {
@@ -293,14 +391,17 @@ function buildInitialTrialPayload(parsed, nowMillis = Date.now()) {
 }
 
 function buildTransactionPayload(parsed, userRef) {
+  const productId = mirroredProductId(parsed);
   return {
     userId: userRef,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     type: transactionTypeForEvent(parsed.type),
     status: "completed",
-    productId: parsed.productId,
-    periodMonths: PRODUCT_PERIOD_MONTHS[parsed.productId] || 0,
-    subscriptionExpiresAt: toTimestampOrNull(parsed.expirationAtMs),
+    productId,
+    providerProductId: parsed.productId || null,
+    newProductId: parsed.newProductId,
+    periodMonths: PRODUCT_PERIOD_MONTHS[productId] || 0,
+    subscriptionExpiresAt: toTimestampOrNull(effectiveExpirationAtMs(parsed)),
     revenueCatEventId: parsed.eventId,
     revenueCatEventType: parsed.type,
     amount: parsed.priceInPurchasedCurrency,
@@ -308,7 +409,8 @@ function buildTransactionPayload(parsed, userRef) {
     store: parsed.storeShort,
     environment: parsed.environment,
     originalTransactionId: parsed.originalTransactionId,
-    periodType: parsed.periodType,
+    periodType: isPromotionalEvent(parsed) ?
+      "PROMOTIONAL" : parsed.periodType,
     cancelReason: parsed.cancelReason,
   };
 }
@@ -327,9 +429,15 @@ function shouldUpdateWillRenew(eventType) {
   );
 }
 
-function deriveWillRenew(eventType) {
+function deriveWillRenew(eventType, currentSubscription = {}, parsed = {}) {
+  if (isPromotionalEvent(parsed)) return false;
+  if (eventType === "SUBSCRIPTION_EXTENDED" ||
+      eventType === "REFUND_REVERSED" ||
+      isImmediateRefund(parsed)) {
+    return currentSubscription?.willRenew === true;
+  }
   if (GRANTING_EVENT_TYPES.has(eventType)) {
-    // INITIAL_PURCHASE / RENEWAL / UNCANCELLATION / PRODUCT_CHANGE imply
+    // INITIAL_PURCHASE / RENEWAL / UNCANCELLATION / extension imply
     // the user wants future renewals. NON_RENEWING_PURCHASE explicitly
     // does not auto-renew.
     return eventType !== "NON_RENEWING_PURCHASE";
@@ -337,6 +445,38 @@ function deriveWillRenew(eventType) {
   // CANCELLATION (user disabled auto-renew), EXPIRATION, BILLING_ISSUE,
   // SUBSCRIPTION_PAUSED — none of these will auto-renew next cycle.
   return false;
+}
+
+function providerEventPriority(eventType) {
+  switch (eventType) {
+    case "BILLING_ISSUE": return 10;
+    case "SUBSCRIPTION_PAUSED": return 15;
+    case "CANCELLATION": return 20;
+    case "EXPIRATION": return 30;
+    case "PRODUCT_CHANGE": return 40;
+    case "INITIAL_PURCHASE":
+    case "NON_RENEWING_PURCHASE":
+    case "SUBSCRIPTION_EXTENDED": return 50;
+    case "RENEWAL":
+    case "UNCANCELLATION": return 60;
+    case "REFUND_REVERSED": return 70;
+    case "TRANSFER": return 80;
+    default: return 0;
+  }
+}
+
+function providerOrderingUpdate(parsed) {
+  return {
+    "subscription.lastProviderEventTimestampMs": parsed.eventTimestampMs,
+    "subscription.lastProviderEventId": parsed.eventId,
+    "subscription.lastEventType": parsed.type,
+    "subscription.lastEventAt": admin.firestore.FieldValue.serverTimestamp(),
+  };
+}
+
+function isImmediateRefund(parsed) {
+  return parsed.type === "CANCELLATION" &&
+    normalizePeriodType(parsed.cancelReason) === "CUSTOMER_SUPPORT";
 }
 
 // RevenueCat retries can arrive out of order. Keep the subscription mirror
@@ -353,8 +493,298 @@ function shouldApplySubscriptionEvent(currentSubscription, parsed) {
   if (incomingAt == null || currentAt == null) return true;
   if (incomingAt > currentAt) return true;
   if (incomingAt < currentAt) return false;
+  const currentEventType = safeString(currentSubscription.lastEventType);
+  if (currentEventType) {
+    const incomingPriority = providerEventPriority(parsed.type);
+    const currentPriority = providerEventPriority(currentEventType);
+    if (incomingPriority > currentPriority) return true;
+    if (incomingPriority < currentPriority) return false;
+  }
   const currentEventId = safeString(currentSubscription.lastProviderEventId);
   return !currentEventId || parsed.eventId > currentEventId;
+}
+
+function transferSourceIndex(sourceSnaps) {
+  let selectedIndex = -1;
+  let selectedTimestamp = -1;
+  sourceSnaps.forEach((snap, index) => {
+    const subscription = snap.exists ? snap.data()?.subscription : null;
+    if (!subscription || typeof subscription !== "object") return;
+    const timestamp = toMillisOrNull(
+        subscription.lastProviderEventTimestampMs,
+    ) || 0;
+    if (selectedIndex < 0 || timestamp > selectedTimestamp) {
+      selectedIndex = index;
+      selectedTimestamp = timestamp;
+    }
+  });
+  return selectedIndex;
+}
+
+function preferredTransferDestinationId(destinationIds) {
+  const ids = safeStringArray(destinationIds);
+  const identifiedIds = ids.filter((id) =>
+    !isAnonymousRevenueCatUserId(id),
+  );
+  if (identifiedIds.length === 1) return identifiedIds[0];
+  if (identifiedIds.length > 1) return null;
+  return ids.sort()[0] || null;
+}
+
+function trialAccessStateRank(data) {
+  switch (safeString(data?.trialCallStatus)) {
+    case "consumed": return 4;
+    case "expired": return 3;
+    case "inProgress": return 2;
+    case "eligible": return 1;
+    default: return 0;
+  }
+}
+
+function conservativeTrialAccessState(states) {
+  return states.filter((state) => state && typeof state === "object")
+      .reduce((selected, candidate) => {
+        if (!selected) return candidate;
+        const selectedRank = trialAccessStateRank(selected);
+        const candidateRank = trialAccessStateRank(candidate);
+        if (candidateRank > selectedRank) return candidate;
+        if (candidateRank < selectedRank) return selected;
+        const selectedAttempts = Number(selected.attemptCount) || 0;
+        const candidateAttempts = Number(candidate.attemptCount) || 0;
+        return candidateAttempts > selectedAttempts ? candidate : selected;
+      }, null);
+}
+
+function buildPendingTransferData(parsed, note) {
+  return {
+    eventId: parsed.eventId,
+    type: parsed.type,
+    transferredFrom: parsed.transferredFrom,
+    transferredTo: parsed.transferredTo,
+    note,
+    status: "pending",
+    eventTimestampMs: parsed.eventTimestampMs,
+    environment: parsed.environment,
+    revenueCatAppId: parsed.revenueCatAppId,
+    attemptCount: admin.firestore.FieldValue.increment(1),
+    lastAttemptAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+}
+
+async function applyTransferEvent({db, parsed, transactionRef}) {
+  const sourceIds = parsed.transferredFrom;
+  const destinationIds = parsed.transferredTo;
+  const pendingRef = db.collection("revenueCatPendingTransfers").doc(
+      transactionRef.id,
+  );
+  const destinationId = preferredTransferDestinationId(destinationIds);
+  if (!destinationId) {
+    return db.runTransaction(async (tx) => {
+      const transactionSnap = await tx.get(transactionRef);
+      if (transactionSnap.exists) return {duplicate: true};
+      tx.set(pendingRef, buildPendingTransferData(
+          parsed,
+          "transfer_identity_unresolvable",
+      ), {merge: true});
+      return {pending: true};
+    });
+  }
+  const destinationIsAnonymous = isAnonymousRevenueCatUserId(destinationId);
+  const destinationRef = transferSourceRef(db, destinationId);
+  const sourceRefs = sourceIds.map((uid) => transferSourceRef(db, uid));
+  return db.runTransaction(async (tx) => {
+    const [transactionSnap, destinationSnap, ...sourceSnaps] =
+      await Promise.all([
+        tx.get(transactionRef),
+        tx.get(destinationRef),
+        ...sourceRefs.map((ref) => tx.get(ref)),
+      ]);
+    if (transactionSnap.exists) return {duplicate: true};
+    const sourceIndex = transferSourceIndex(sourceSnaps);
+    if (!destinationIsAnonymous && !destinationSnap.exists) {
+      tx.set(pendingRef, buildPendingTransferData(
+          parsed,
+          "transfer_subscription_unavailable",
+      ), {merge: true});
+      return {pending: true};
+    }
+    const destinationSubscription = destinationSnap.data()?.subscription;
+    if (sourceIndex < 0) {
+      if (!destinationSubscription ||
+          typeof destinationSubscription !== "object") {
+        tx.set(pendingRef, buildPendingTransferData(
+            parsed,
+            "transfer_subscription_unavailable",
+        ), {merge: true});
+        return {pending: true};
+      }
+      const applyDestinationEvent = shouldApplySubscriptionEvent(
+          destinationSubscription,
+          parsed,
+      );
+      if (applyDestinationEvent) {
+        tx.update(destinationRef, providerOrderingUpdate(parsed));
+      }
+      const payload = buildTransactionPayload(parsed, destinationRef);
+      if (!applyDestinationEvent) {
+        payload.status = "ignored";
+        payload.note = "older_provider_event";
+      }
+      tx.create(transactionRef, {
+        ...payload,
+        transferredFrom: parsed.transferredFrom,
+        transferredTo: parsed.transferredTo,
+        note: applyDestinationEvent ?
+          "destination_subscription_already_mirrored" : payload.note,
+      });
+      tx.delete(pendingRef);
+      return {duplicate: false, destinationId};
+    }
+    const sourceRef = sourceRefs[sourceIndex];
+    const sourceId = sourceIds[sourceIndex];
+    const sourceData = sourceSnaps[sourceIndex].data() || {};
+    const sourceSubscription = sourceData.subscription || {};
+    const applySourceEvent = shouldApplySubscriptionEvent(
+        sourceSubscription,
+        parsed,
+    );
+    const applyDestinationEvent = !destinationSubscription ||
+      shouldApplySubscriptionEvent(destinationSubscription, parsed);
+    if (!applySourceEvent) {
+      tx.create(transactionRef, {
+        ...buildTransactionPayload(parsed, destinationRef),
+        status: "ignored",
+        note: "older_provider_event",
+        transferredFrom: parsed.transferredFrom,
+        transferredTo: parsed.transferredTo,
+      });
+      tx.delete(pendingRef);
+      return {ignored: true};
+    }
+    const sourceTrialRefs = sourceIds.map((id, index) =>
+      isAnonymousRevenueCatUserId(id) ? null :
+        trialAccessRef(db, sourceRefs[index].id),
+    );
+    const destinationTrialRef = destinationIsAnonymous ? null :
+      trialAccessRef(db, destinationId);
+    const [sourceTrialSnaps, destinationTrialSnap] = await Promise.all([
+      Promise.all(sourceTrialRefs.map((ref) =>
+        ref ? tx.get(ref) : Promise.resolve(null),
+      )),
+      destinationTrialRef ? tx.get(destinationTrialRef) : Promise.resolve(null),
+    ]);
+    const destinationData = destinationSnap.exists ?
+      destinationSnap.data() || {} : {};
+    const sourceTrialStates = sourceIds.map((id, index) =>
+      isAnonymousRevenueCatUserId(id) ?
+        sourceSnaps[index].data()?.trialAccess :
+        (sourceTrialSnaps[index]?.exists ?
+          sourceTrialSnaps[index].data() || {} : null),
+    );
+    const destinationTrialData = destinationIsAnonymous ?
+      destinationData.trialAccess :
+      (destinationTrialSnap?.exists ? destinationTrialSnap.data() || {} : null);
+    const mergedTrialData = conservativeTrialAccessState([
+      ...sourceTrialStates,
+      destinationTrialData,
+    ]);
+    const trialGrantEntries = new Map();
+    sourceSnaps.forEach((snap, index) => {
+      const originalTransactionId = safeString(
+          snap.exists ? snap.data()?.subscription?.originalTransactionId : null,
+      );
+      if (!originalTransactionId) return;
+      const ref = db.collection("subscriptionTrialGrants").doc(
+          trialGrantDocumentId(originalTransactionId),
+      );
+      const entry = trialGrantEntries.get(ref.path) || {
+        ref,
+        sourceIds: new Set(),
+      };
+      entry.sourceIds.add(sourceIds[index]);
+      trialGrantEntries.set(ref.path, entry);
+    });
+    const trialGrantValues = [...trialGrantEntries.values()];
+    const trialGrantSnaps = await Promise.all(
+        trialGrantValues.map((entry) => tx.get(entry.ref)),
+    );
+    const nowTimestamp = toTimestampOrNull(parsed.eventTimestampMs);
+    sourceSnaps.forEach((snap, index) => {
+      if (!snap.exists) return;
+      const data = snap.data() || {};
+      const subscription = data.subscription;
+      const update = {};
+      if (subscription && typeof subscription === "object" &&
+          shouldApplySubscriptionEvent(subscription, parsed)) {
+        Object.assign(update, {
+          "subscription.expiresAt": nowTimestamp,
+          "subscription.willRenew": false,
+          ...providerOrderingUpdate(parsed),
+        });
+      }
+      if (isAnonymousRevenueCatUserId(sourceIds[index]) &&
+          data.trialAccess && typeof data.trialAccess === "object") {
+        update.trialAccess = admin.firestore.FieldValue.delete();
+      }
+      if (Object.keys(update).length > 0) tx.update(sourceRefs[index], update);
+      if (sourceTrialSnaps[index]?.exists) {
+        tx.delete(sourceTrialRefs[index]);
+      }
+    });
+    if (applyDestinationEvent) {
+      const destinationUpdate = {
+        subscription: {
+          ...sourceSubscription,
+          revenueCatUserId: destinationId,
+          lastProviderEventTimestampMs: parsed.eventTimestampMs,
+          lastProviderEventId: parsed.eventId,
+          lastEventType: parsed.type,
+          lastEventAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+      };
+      if (destinationIsAnonymous) {
+        tx.set(destinationRef, destinationUpdate, {merge: true});
+      } else {
+        tx.update(destinationRef, destinationUpdate);
+      }
+    }
+    if (mergedTrialData) {
+      const movedTrialData = {
+        ...mergedTrialData,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+      if (destinationIsAnonymous) {
+        tx.set(destinationRef, {trialAccess: movedTrialData}, {merge: true});
+      } else {
+        tx.set(destinationTrialRef, movedTrialData, {merge: false});
+      }
+    }
+    trialGrantValues.forEach((entry, index) => {
+      const grantSnap = trialGrantSnaps[index];
+      if (grantSnap.exists &&
+          entry.sourceIds.has(safeString(grantSnap.data()?.uid))) {
+        tx.update(entry.ref, {
+          uid: destinationId,
+          transferredAt: admin.firestore.FieldValue.serverTimestamp(),
+          transferEventId: parsed.eventId,
+        });
+      }
+    });
+    tx.create(transactionRef, {
+      ...buildTransactionPayload(
+          parsed,
+          destinationIsAnonymous ? null : destinationRef,
+      ),
+      transferredFrom: parsed.transferredFrom,
+      transferredTo: parsed.transferredTo,
+      sourceUserId: sourceRef,
+      note: applyDestinationEvent ? null :
+        "destination_subscription_already_newer",
+    });
+    tx.delete(pendingRef);
+    return {duplicate: false, destinationId};
+  });
 }
 
 exports.revenueCatWebhook = functions
@@ -417,6 +847,17 @@ exports.revenueCatWebhook = functions
         return;
       }
 
+      const malformedReason = malformedEventReason(parsed);
+      if (malformedReason) {
+        console.warn("⚠️ revenueCatWebhook malformed lifecycle event", {
+          type: parsed.type,
+          eventId: parsed.eventId,
+          reason: malformedReason,
+        });
+        res.status(400).send("Malformed lifecycle event");
+        return;
+      }
+
       const allowlistFailure = eventAllowlistFailure(parsed);
       if (allowlistFailure) {
         console.warn("⚠️ revenueCatWebhook ignored by allowlist", {
@@ -430,13 +871,36 @@ exports.revenueCatWebhook = functions
       }
 
       const db = admin.firestore();
-      const isAnonymous = parsed.appUserId.startsWith("$RCAnonymousID:");
-      const userRef = isAnonymous ?
-        null :
-        db.collection("users").doc(parsed.appUserId);
       const transactionRef = db
           .collection("transactions")
           .doc(transactionDocumentIdForEvent(parsed.eventId));
+      if (parsed.type === "TRANSFER") {
+        try {
+          const transferResult = await applyTransferEvent({
+            db,
+            parsed,
+            transactionRef,
+          });
+          if (transferResult.pending) {
+            res.status(500).send("Transfer pending");
+          } else {
+            res.status(200).send(
+                transferResult.duplicate ? "Duplicate" : "OK",
+            );
+          }
+        } catch (err) {
+          console.error("❌ revenueCatWebhook transfer failed", {
+            eventId: parsed.eventId,
+            err: err && err.message ? err.message : err,
+          });
+          res.status(500).send("Internal error");
+        }
+        return;
+      }
+      const isAnonymous = isAnonymousRevenueCatUserId(parsed.appUserId);
+      const userRef = isAnonymous ?
+        null :
+        db.collection("users").doc(parsed.appUserId);
       const initializesTrial = shouldInitializeTrial(parsed);
       if (initializesTrial &&
           (!parsed.originalTransactionId || !parsed.purchasedAtMs)) {
@@ -447,6 +911,8 @@ exports.revenueCatWebhook = functions
         return;
       }
       const trialRef = userRef ? trialAccessRef(db, parsed.appUserId) : null;
+      const transferSource = isAnonymous ?
+        transferSourceRef(db, parsed.appUserId) : null;
       const trialGrantRef = initializesTrial ?
         db.collection("subscriptionTrialGrants").doc(
             trialGrantDocumentId(parsed.originalTransactionId),
@@ -454,11 +920,13 @@ exports.revenueCatWebhook = functions
 
       try {
         const result = await db.runTransaction(async (tx) => {
-          const [transactionSnap, userSnap, trialGrantSnap, trialSnap] = await Promise.all([
+          const [transactionSnap, userSnap, trialGrantSnap, trialSnap,
+            transferSourceSnap] = await Promise.all([
             tx.get(transactionRef),
             userRef ? tx.get(userRef) : Promise.resolve(null),
             trialGrantRef ? tx.get(trialGrantRef) : Promise.resolve(null),
             trialRef ? tx.get(trialRef) : Promise.resolve(null),
+            transferSource ? tx.get(transferSource) : Promise.resolve(null),
           ]);
           if (transactionSnap.exists) {
             return {duplicate: true};
@@ -482,13 +950,18 @@ exports.revenueCatWebhook = functions
             }
           }
 
-          const currentSubscription = userSnap?.exists ?
-            userSnap.data()?.subscription : null;
+          const mirrorSnap = userSnap?.exists ? userSnap : transferSourceSnap;
+          const currentSubscription = mirrorSnap?.exists ?
+            mirrorSnap.data()?.subscription : null;
           const applySubscription = shouldApplySubscriptionEvent(
               currentSubscription,
               parsed,
           );
-          const willRenew = deriveWillRenew(parsed.type);
+          const willRenew = deriveWillRenew(
+              parsed.type,
+              currentSubscription || {},
+              parsed,
+          );
           const userUpdate = {};
 
           if (applySubscription && shouldWriteSubscriptionFull(parsed.type)) {
@@ -500,24 +973,38 @@ exports.revenueCatWebhook = functions
             // Touch only willRenew + lastEventType on cancellation/expiration.
             // We use dot-notation so we don't wipe the rest of the struct.
             userUpdate["subscription.willRenew"] = willRenew;
-            userUpdate["subscription.lastEventType"] = parsed.type;
-            userUpdate["subscription.lastEventAt"] =
-              admin.firestore.FieldValue.serverTimestamp();
-            if (parsed.type === "EXPIRATION" && parsed.expirationAtMs) {
+            Object.assign(userUpdate, providerOrderingUpdate(parsed));
+            if ((parsed.type === "EXPIRATION" || isImmediateRefund(parsed)) &&
+                effectiveExpirationAtMs(parsed)) {
               userUpdate["subscription.expiresAt"] = toTimestampOrNull(
-                  parsed.expirationAtMs,
+                  isImmediateRefund(parsed) ?
+                    Math.min(
+                        effectiveExpirationAtMs(parsed),
+                        parsed.eventTimestampMs,
+                    ) : effectiveExpirationAtMs(parsed),
               );
             }
+          } else if (applySubscription && parsed.type === "PRODUCT_CHANGE") {
+            if (parsed.newProductId) {
+              userUpdate["subscription.pendingProductId"] =
+                parsed.newProductId;
+            }
+            Object.assign(userUpdate, providerOrderingUpdate(parsed));
           }
 
-          if (userRef && userSnap.exists && Object.keys(userUpdate).length > 0) {
-            tx.update(userRef, userUpdate);
-          }
-
-          if (initializesTrial && userRef && userSnap.exists &&
-              !trialSnap?.exists) {
+          const embeddedTrial = transferSourceSnap?.exists ?
+            transferSourceSnap.data()?.trialAccess : null;
+          const hasTrialState = userRef ? trialSnap?.exists === true :
+            embeddedTrial && typeof embeddedTrial === "object";
+          const canInitializeTrial = userRef ? userSnap?.exists === true :
+            transferSource != null;
+          if (initializesTrial && canInitializeTrial && !hasTrialState) {
             const trialPayload = buildInitialTrialPayload(parsed);
-            tx.set(trialRef, trialPayload, {merge: false});
+            if (userRef) {
+              tx.set(trialRef, trialPayload, {merge: false});
+            } else {
+              userUpdate.trialAccess = trialPayload;
+            }
             if (!trialGrantSnap.exists) {
               tx.create(trialGrantRef, {
                 uid: parsed.appUserId,
@@ -529,7 +1016,17 @@ exports.revenueCatWebhook = functions
             }
           }
 
+          if (userRef && userSnap.exists && Object.keys(userUpdate).length > 0) {
+            tx.update(userRef, userUpdate);
+          } else if (transferSource && Object.keys(userUpdate).length > 0) {
+            tx.set(transferSource, userUpdate, {merge: true});
+          }
+
           const transactionPayload = buildTransactionPayload(parsed, userRef);
+          if (!applySubscription) {
+            transactionPayload.status = "ignored";
+            transactionPayload.note = "older_provider_event";
+          }
           if (isAnonymous) {
             transactionPayload.userId = null;
             transactionPayload.note = "anonymous_rc_user";
@@ -578,10 +1075,20 @@ exports.__private__ = {
   PRO_ENTITLEMENT_ID,
   configuredRevenueCatAppIds,
   eventAllowlistFailure,
+  malformedEventReason,
   parseEvent,
   buildInitialTrialPayload,
+  buildSubscriptionPayload,
+  deriveWillRenew,
   shouldApplySubscriptionEvent,
   shouldInitializeTrial,
+  isImmediateRefund,
+  isAnonymousRevenueCatUserId,
+  applyTransferEvent,
   trialGrantDocumentId,
   transactionDocumentIdForEvent,
+  preferredTransferDestinationId,
+  conservativeTrialAccessState,
+  transferSourceDocumentId,
+  transferSourceIndex,
 };

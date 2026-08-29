@@ -19,6 +19,9 @@ const {
 const {
   VIDEO_SESSION_STATUS,
 } = require("./video_sessions_shared");
+const {
+  reconcileSessionTrialCallsInTransaction,
+} = require("./trial_access");
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 const CANCELLABLE_SESSION_STATUSES = new Set([
   VIDEO_SESSION_STATUS.SEARCHING,
@@ -146,6 +149,16 @@ exports.cancelCall = functions
           `Session cannot be cancelled. Current status: ${sessionData.status}`,
         );
       }
+
+      await reconcileSessionTrialCallsInTransaction({
+        db,
+        transaction,
+        sessionId,
+        sessionData,
+        durationSeconds: 0,
+        technicalFailure: true,
+        nowMillis: Date.now(),
+      });
 
       await releaseSessionPairLocksInTransaction(
         buildCancelCallPairLockReleaseOptions({

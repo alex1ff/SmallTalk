@@ -1957,9 +1957,41 @@ test("executeCreateEventTransaction creates all event documents", async () => {
         "update:users/uid",
         "set:eventCreationCounters/uid/days/20260616",
         `create:eventCreateRequests/uid/requests/${validRequest.createRequestId}`,
+        "create:events_public/event-new",
       ],
   );
 });
+
+test("executeCreateEventTransaction replaces an existing public projection",
+    async () => {
+      const {db, makeRef, store, writes} = createFakeFirestore({
+        "users/uid": {display_name: "Анастасия Иванова"},
+        "events_public/event-new": {title: "stale"},
+      });
+      const dayInfo = buildUtcDayInfo(fixedNow);
+      const {normalized, payloadHash} =
+        buildNormalizedAndHash(cloneValidRequest());
+
+      await executeCreateEventTransaction({
+        db,
+        uid: "uid",
+        creationDate: fixedNow,
+        creationTimestamp: fixedTimestamp,
+        dayInfo,
+        normalized,
+        payloadHash,
+        eventRef: makeRef("events/event-new"),
+      });
+
+      assert.equal(store.get("events_public/event-new").title,
+          "Разговорный клуб: кофе и английский");
+      assert.equal(store.get("events_public/event-new").participantsCount, 1);
+      assert.equal(
+          writes.at(-1).type,
+          "update",
+      );
+      assert.equal(writes.at(-1).path, "events_public/event-new");
+    });
 
 test("executeCreateEventTransaction derives organizer snapshot from profile",
     async () => {
@@ -2590,8 +2622,9 @@ test("executeCreateEventTransaction rolls back buffered writes on failure", asyn
       /Simulated transaction commit failure/,
   );
 
-  assert.equal(writes.length, 6);
+  assert.equal(writes.length, 7);
   assert.equal(store.has("events/event-new"), false);
+  assert.equal(store.has("events_public/event-new"), false);
   assert.equal(store.has("events/event-new/participants/uid"), false);
   assert.equal(store.has("eventChats/event-new"), false);
   assert.equal(store.has("eventCreationCounters/uid/days/20260616"), false);
@@ -2604,7 +2637,7 @@ test("executeCreateEventTransaction rolls back buffered writes on failure", asyn
 });
 
 test("executeCreateEventTransaction leaves no partial docs when interrupted", async () => {
-  for (const writeCount of [1, 2, 3, 4, 5, 6]) {
+  for (const writeCount of [1, 2, 3, 4, 5, 6, 7]) {
     const {db, makeRef, store, writes} = createFakeFirestore(
         {"users/uid": {display_name: "Анастасия Иванова"}},
         {failAfterBufferedWrites: writeCount},

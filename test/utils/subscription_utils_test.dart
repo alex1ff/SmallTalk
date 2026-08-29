@@ -48,6 +48,42 @@ void main() {
     });
   });
 
+  group('isPaidPremiumSubscriptionStruct', () {
+    SubscriptionStruct subscription(String productId, String periodType) =>
+        SubscriptionStruct(
+          productId: productId,
+          periodType: periodType,
+          expiresAt: futureExpiry,
+        );
+
+    test('accepts normal store plans and promotional grants', () {
+      expect(
+        isPaidPremiumSubscriptionStruct(
+          subscription('expatlio_1_Month', 'NORMAL'),
+          now: now,
+        ),
+        isTrue,
+      );
+      expect(
+        isPaidPremiumSubscriptionStruct(
+          subscription(promotionalSubscriptionProductId, 'PROMOTIONAL'),
+          now: now,
+        ),
+        isTrue,
+      );
+    });
+
+    test('does not grant full access during the introductory trial', () {
+      expect(
+        isPaidPremiumSubscriptionStruct(
+          subscription(trialSubscriptionProductId, 'TRIAL'),
+          now: now,
+        ),
+        isFalse,
+      );
+    });
+  });
+
   group('isGiftMinutesActive', () {
     test('true when minutes > 0 and expiry in future', () {
       expect(isGiftMinutesActive(activeGift(), now: now), isTrue);

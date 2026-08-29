@@ -101,6 +101,11 @@ const persistCallChat = require("./persist_call_chat.js");
 exports.persistCallChat = persistCallChat.persistCallChat;
 const revenueCatWebhook = require("./revenue_cat_webhook.js");
 exports.revenueCatWebhook = revenueCatWebhook.revenueCatWebhook;
+const retryPendingRevenueCatTransfers = require(
+  "./retry_pending_revenuecat_transfers.js",
+);
+exports.retryPendingRevenueCatTransfers =
+  retryPendingRevenueCatTransfers.retryPendingRevenueCatTransfers;
 const grantPromoEntitlement = require("./grant_promo_entitlement.js");
 exports.grantPromoEntitlement = grantPromoEntitlement.grantPromoEntitlement;
 const redeemPromoCode = require("./redeem_promo_code.js");
@@ -115,6 +120,13 @@ const cancelEvent = require("./cancel_event.js");
 exports.cancelEvent = cancelEvent.cancelEvent;
 const joinEvent = require("./join_event.js");
 exports.joinEvent = joinEvent.joinEvent;
+const getEventDetails = require("./get_event_details.js");
+exports.getEventDetails = getEventDetails.getEventDetails;
+const eventPublicProjection = require("./sync_event_public_projection.js");
+exports.syncEventPublicProjection =
+  eventPublicProjection.syncEventPublicProjection;
+exports.repairEventPublicProjections =
+  eventPublicProjection.repairEventPublicProjections;
 const leaveEvent = require("./leave_event.js");
 exports.leaveEvent = leaveEvent.leaveEvent;
 const sendEventChatMessage = require("./send_event_chat_message.js");

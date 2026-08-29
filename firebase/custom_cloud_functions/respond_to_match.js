@@ -43,6 +43,9 @@ const {
   cancelProtocolV2NotificationsInTransaction,
   incomingCallNotificationRef,
 } = require("./call_notifications");
+const {
+  reconcileSessionTrialCallsInTransaction,
+} = require("./trial_access");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -509,6 +512,15 @@ async function respondToMatchCallable(data, context, options = {}) {
         participantIds,
         serverTimestamp,
         fieldDelete,
+      });
+      await reconcileSessionTrialCallsInTransaction({
+        db,
+        transaction,
+        sessionId: input.sessionId,
+        sessionData,
+        durationSeconds: 0,
+        technicalFailure: true,
+        nowMillis,
       });
       await releaseSessionPairLocksInTransaction(releaseOptions);
       cancelProtocolV2NotificationsInTransaction({

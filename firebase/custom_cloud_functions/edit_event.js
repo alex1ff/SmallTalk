@@ -7,6 +7,10 @@ const {
     normalizeCreateEventPayload,
   },
 } = require("./create_event");
+const {
+  eventPreviewRef,
+  writeEventPreview,
+} = require("./event_public_projection");
 
 const REQUEST_TIMEOUT_SECONDS = 30;
 const EDIT_EVENT_KEYS = Object.freeze([
@@ -222,6 +226,7 @@ async function executeEditEventTransaction({
   payload,
 }) {
   const eventRef = db.collection("events").doc(payload.eventId);
+  const previewRef = eventPreviewRef(db, payload.eventId);
   const activeParticipantsQuery = eventRef
       .collection("participants")
       .where("status", "==", "active");
@@ -240,12 +245,19 @@ async function executeEditEventTransaction({
       activeParticipantDocs: activeParticipantsSnapshot.docs || [],
       eventData,
     });
+    const previewDoc = await tx.get(previewRef);
 
     const update = buildEventEditableUpdate({
       normalized: payload.normalized,
       editTimestamp,
     });
     tx.update(eventRef, update);
+    writeEventPreview({
+      tx,
+      previewDoc,
+      previewRef,
+      eventData: {...eventData, ...update},
+    });
 
     return {
       eventId: payload.eventId,

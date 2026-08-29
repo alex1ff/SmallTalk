@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:small_talk/backend/backend.dart';
@@ -20,6 +21,156 @@ void main() {
   });
 
   group('EventDetailRepository', () {
+    test('default callable detail source refreshes and updates cache',
+        () async {
+      var calls = 0;
+      final events = await EventDetailRepository.watchEventDetail(
+        eventId: 'event-live',
+        sessionCacheUserId: 'user-a',
+        callableRefreshInterval: Duration.zero,
+        callableLoader: (eventRef) async {
+          calls += 1;
+          return EventsRecord.getDocumentFromData(
+            eventDetailData(title: calls == 1 ? 'Initial' : 'Updated'),
+            eventRef,
+          );
+        },
+      ).take(2).toList();
+
+      expect(events.map((event) => event?.title), ['Initial', 'Updated']);
+      expect(calls, 2);
+      expect(
+        EventDetailRepository.cachedEventDetail(
+          eventId: 'event-live',
+          userId: 'user-a',
+        )?.title,
+        'Updated',
+      );
+    });
+
+    test('callable transient failure keeps cached detail and retries',
+        () async {
+      await EventDetailRepository.watchEventDetail(
+        eventId: 'event-retry',
+        sessionCacheUserId: 'user-a',
+        snapshotStream: (_) => Stream<DocumentSnapshot>.value(
+          _FakeEventDocumentSnapshot(
+            reference: eventObjectRef('event-retry'),
+            data: eventDetailData(title: 'Cached title'),
+          ),
+        ),
+      ).drain<void>();
+
+      var calls = 0;
+      final events = await EventDetailRepository.watchEventDetail(
+        eventId: 'event-retry',
+        sessionCacheUserId: 'user-a',
+        callableRetryInitialDelay: Duration.zero,
+        callableRetryMaxDelay: Duration.zero,
+        callableLoader: (eventRef) async {
+          calls += 1;
+          if (calls == 1) {
+            throw FirebaseFunctionsException(
+              code: 'unavailable',
+              message: 'temporary outage',
+            );
+          }
+          return EventsRecord.getDocumentFromData(
+            eventDetailData(title: 'Recovered title'),
+            eventRef,
+          );
+        },
+      ).take(2).toList();
+
+      expect(events.map((event) => event?.title), [
+        'Cached title',
+        'Recovered title',
+      ]);
+      expect(calls, 2);
+      expect(
+        EventDetailRepository.cachedEventDetail(
+          eventId: 'event-retry',
+          userId: 'user-a',
+        )?.title,
+        'Recovered title',
+      );
+    });
+
+    test('callable transient failure without cache stays alive until recovery',
+        () async {
+      var calls = 0;
+      final event = await EventDetailRepository.watchEventDetail(
+        eventId: 'event-retry-empty',
+        callableRetryInitialDelay: Duration.zero,
+        callableRetryMaxDelay: Duration.zero,
+        callableLoader: (eventRef) async {
+          calls += 1;
+          if (calls == 1) {
+            throw FirebaseFunctionsException(
+              code: 'deadline-exceeded',
+              message: 'temporary outage',
+            );
+          }
+          return EventsRecord.getDocumentFromData(
+            eventDetailData(title: 'Recovered title'),
+            eventRef,
+          );
+        },
+      ).first;
+
+      expect(event?.title, 'Recovered title');
+      expect(calls, 2);
+    });
+
+    test('callable malformed response is terminal and is not retried',
+        () async {
+      var calls = 0;
+      final error = FormatException('malformed event detail');
+
+      await expectLater(
+        EventDetailRepository.watchEventDetail(
+          eventId: 'event-malformed',
+          callableRetryInitialDelay: Duration.zero,
+          callableRetryMaxDelay: Duration.zero,
+          callableLoader: (_) async {
+            calls += 1;
+            throw error;
+          },
+        ),
+        emitsError(same(error)),
+      );
+
+      expect(calls, 1);
+    });
+
+    test('canceling callable detail polling prevents scheduled retries',
+        () async {
+      var calls = 0;
+      final firstEvent = Completer<EventsRecord?>();
+      final subscription = EventDetailRepository.watchEventDetail(
+        eventId: 'event-cancel',
+        callableRefreshInterval: const Duration(milliseconds: 25),
+        callableLoader: (eventRef) async {
+          calls += 1;
+          if (calls == 1) {
+            return EventsRecord.getDocumentFromData(
+              eventDetailData(title: 'Initial'),
+              eventRef,
+            );
+          }
+          firstEvent.complete(null);
+          return null;
+        },
+      ).listen((_) {});
+
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      await subscription.cancel();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(calls, 1);
+      expect(firstEvent.isCompleted, isFalse);
+    });
+
     test('normalizes event id and subscribes to the event document', () async {
       DocumentReference? capturedEventRef;
 

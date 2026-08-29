@@ -47,7 +47,8 @@ enum StudentDashboardSearchState {
 enum StudentDashboardSearchErrorReason {
   authRequired,
   activeCall,
-  usageLimitReached,
+  retryCooldown,
+  trialCallInProgress,
   mediaPermissionDenied,
   searchUnavailable,
   activeSessionUnavailable,
@@ -81,7 +82,6 @@ class StudentsDashboardWidget extends StatefulWidget {
     bool? topUpSuccess,
     this.initialSearchState = StudentDashboardSearchState.idle,
     this.activeSessionStream,
-    this.usageLimitReachedChecker,
     this.startSearchRequest,
     this.heartbeatSearchRequest,
     this.stopSearchRequest,
@@ -96,7 +96,6 @@ class StudentsDashboardWidget extends StatefulWidget {
   final bool topUpSuccess;
   final StudentDashboardSearchState initialSearchState;
   final Stream<VideoSessionsRecord?>? activeSessionStream;
-  final Future<bool> Function(UsersRecord user)? usageLimitReachedChecker;
   final SearchRequestInvoker? startSearchRequest;
   final SearchRequestInvoker? heartbeatSearchRequest;
   final Future<dynamic> Function(String? activeSessionId)? stopSearchRequest;
@@ -105,7 +104,6 @@ class StudentsDashboardWidget extends StatefulWidget {
   final PartnerCountLoader? partnerCountLoader;
   final PartnerPreviewLoader? partnerPreviewLoader;
 
-  static Future<bool> Function(UsersRecord user)? debugUsageLimitReachedChecker;
   static Future<VideoSessionsRecord?> Function(DocumentReference sessionRef)?
       debugActiveSessionReader;
   static SearchRequestInvoker? debugStartSearchRequest;
@@ -189,11 +187,9 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
   final Set<String> _foregroundAcceptStartedSessionIds = <String>{};
   final Set<String> _autoOpenCredentialStartedSessionIds = <String>{};
   StudentDashboardSearchErrorReason? _searchErrorReason;
+  int? _retryAfterMillis;
   StudentDashboardSearchState _lastActiveSessionSearchState =
       StudentDashboardSearchState.idle;
-
-  static const int _subscriberDailySearchLimitSeconds = 60 * 60;
-  static const int _subscriberWeeklySearchLimitSeconds = 8 * 60 * 60;
 
   bool get _showLegacyDashboard => false;
   bool _isStopSearchState(StudentDashboardSearchState searchState) =>
@@ -487,13 +483,17 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     _activeSearchRecoveryRetryTimer = null;
   }
 
-  void _setSearchError(StudentDashboardSearchErrorReason reason) {
+  void _setSearchError(
+    StudentDashboardSearchErrorReason reason, {
+    int? retryAfterMillis,
+  }) {
     _clearSearchTimeoutTimer();
     _clearForegroundSearchNoticeTimer();
     _clearSearchHeartbeatTimer();
     safeSetState(() {
       _searchState = StudentDashboardSearchState.error;
       _searchErrorReason = reason;
+      _retryAfterMillis = retryAfterMillis;
       _matchedSearchSessionId = null;
       _suppressedActiveSessionId = null;
       _suppressedActiveSearchUserId = null;
@@ -2122,73 +2122,6 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     }
   }
 
-  String _usageDayKeyUtc(DateTime value) {
-    return value.toUtc().toIso8601String().split('T').first;
-  }
-
-  String _usageWeekKeyUtc(DateTime value) {
-    final utc = value.toUtc();
-    final day = DateTime.utc(utc.year, utc.month, utc.day);
-    final thursday = day.add(Duration(days: 4 - day.weekday));
-    final yearStart = DateTime.utc(thursday.year);
-    final weekNo = ((thursday.difference(yearStart).inDays + 1) / 7).ceil();
-    return '${thursday.year}-W${weekNo.toString().padLeft(2, '0')}';
-  }
-
-  int _usageSecondsForCurrentWindow(
-    Map<String, dynamic> data, {
-    required String keyField,
-    required String expectedKey,
-    required String secondsField,
-  }) {
-    if (data[keyField] != expectedKey) {
-      return 0;
-    }
-    return (data[secondsField] as num?)?.toInt() ?? 0;
-  }
-
-  Future<bool> _hasKnownUsageLimitReached(UsersRecord user) async {
-    if (!hasActiveSubscription(user)) {
-      return false;
-    }
-
-    final checker = widget.usageLimitReachedChecker ??
-        StudentsDashboardWidget.debugUsageLimitReachedChecker;
-    if (checker != null) {
-      return checker(user);
-    }
-
-    try {
-      final usageSnapshot =
-          await user.reference.collection('usage').doc('current').get();
-      final usageData = usageSnapshot.data();
-      if (usageData == null) {
-        return false;
-      }
-
-      final now = DateTime.now();
-      final dayDurationSeconds = _usageSecondsForCurrentWindow(
-        usageData,
-        keyField: 'dayKey',
-        expectedKey: _usageDayKeyUtc(now),
-        secondsField: 'dayDurationSeconds',
-      );
-      final weekDurationSeconds = _usageSecondsForCurrentWindow(
-        usageData,
-        keyField: 'weekKey',
-        expectedKey: _usageWeekKeyUtc(now),
-        secondsField: 'weekDurationSeconds',
-      );
-      return dayDurationSeconds >= _subscriberDailySearchLimitSeconds ||
-          weekDurationSeconds >= _subscriberWeeklySearchLimitSeconds;
-    } catch (error) {
-      debugPrint(
-        'StudentsDashboard: failed to check local usage limit: $error',
-      );
-      return false;
-    }
-  }
-
   bool _isVideoCallReadySession(VideoSessionsRecord session) {
     final roomUrl = _normalizedNonEmptyString(session.dailyRoomUrl);
     if (roomUrl == null) {
@@ -2552,11 +2485,6 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       return false;
     }
 
-    if (await _hasKnownUsageLimitReached(user)) {
-      _setSearchError(StudentDashboardSearchErrorReason.usageLimitReached);
-      return false;
-    }
-
     final hasMediaPermissions = await ensureCameraAndMicrophonePermissions();
     if (!hasMediaPermissions) {
       _setSearchError(
@@ -2812,6 +2740,24 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
         final details = error.details;
         final reason =
             details is Map ? (details['reason']?.toString().trim() ?? '') : '';
+        final retryAfterMillis = details is Map
+            ? (details['retryAfterMillis'] as num?)?.toInt()
+            : null;
+        if (reason == 'retry_cooldown') {
+          _logStartSearchFailure(error, stackTrace);
+          _setSearchError(
+            StudentDashboardSearchErrorReason.retryCooldown,
+            retryAfterMillis: retryAfterMillis,
+          );
+          return;
+        }
+        if (reason == 'trial_call_in_progress') {
+          _logStartSearchFailure(error, stackTrace);
+          _setSearchError(
+            StudentDashboardSearchErrorReason.trialCallInProgress,
+          );
+          return;
+        }
         if ({
           'no_subscription',
           'trial_state_unavailable',
@@ -3029,10 +2975,25 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
           ruText: 'Завершите текущий звонок',
           enText: 'Finish the current call',
         );
-      case StudentDashboardSearchErrorReason.usageLimitReached:
+      case StudentDashboardSearchErrorReason.retryCooldown:
+        final remainingSeconds = _retryAfterMillis == null
+            ? null
+            : ((_retryAfterMillis! - DateTime.now().millisecondsSinceEpoch) /
+                    1000)
+                .ceil()
+                .clamp(1, 60);
         return FFLocalizations.of(context).getVariableText(
-          ruText: 'Лимит звонков исчерпан',
-          enText: 'Call limit reached',
+          ruText: remainingSeconds == null
+              ? 'Повторите через несколько секунд'
+              : 'Повторите через $remainingSeconds сек.',
+          enText: remainingSeconds == null
+              ? 'Try again in a few seconds'
+              : 'Try again in $remainingSeconds sec.',
+        );
+      case StudentDashboardSearchErrorReason.trialCallInProgress:
+        return FFLocalizations.of(context).getVariableText(
+          ruText: 'Пробный звонок уже запускается',
+          enText: 'Your trial call is already starting',
         );
       case StudentDashboardSearchErrorReason.mediaPermissionDenied:
         return FFLocalizations.of(context).getVariableText(

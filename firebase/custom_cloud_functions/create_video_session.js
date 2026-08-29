@@ -50,6 +50,7 @@ const {
   hasActiveCallState,
 } = require("./call_access");
 const {
+  reconcileSessionTrialCallsInTransaction,
   trialAccessRef,
 } = require("./trial_access");
 const {
@@ -93,6 +94,16 @@ function buildCreateSessionPolicyFields(nowMillis = Date.now()) {
       sessionPolicyState.expiresAt,
     ),
     sessionPolicy: sessionPolicyState.sessionPolicy,
+  };
+}
+
+function buildNoAvailableResponderSessionUpdate(nextTriedTutors) {
+  return {
+    triedTutors: nextTriedTutors,
+    status: VIDEO_SESSION_STATUS.CANCELLED,
+    endedAt: admin.firestore.FieldValue.serverTimestamp(),
+    cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+    cancelReason: "no_available_responder",
   };
 }
 
@@ -271,7 +282,12 @@ exports.createVideoSession = functions
           throw new functions.https.HttpsError(
             accessDecision.code || "failed-precondition",
             accessDecision.message || "Active subscription is required",
-            {reason: accessDecision.reason},
+            {
+              reason: accessDecision.reason,
+              ...(accessDecision.retryAfterMillis ? {
+                retryAfterMillis: accessDecision.retryAfterMillis,
+              } : {}),
+            },
           );
         }
       }
@@ -1309,6 +1325,7 @@ async function sendVoipPushToTutor(tutorId, callData) {
 
 exports.__private__ = {
   buildCreateSessionPolicyFields,
+  buildNoAvailableResponderSessionUpdate,
   compareCandidateDetails,
   hasCallableTeacherToken,
   orderCandidatesByMatchQuality,
@@ -1360,13 +1377,19 @@ async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) 
         const nextTriedTutors = nextCandidate.triedCandidateIds;
 
         if (!nextTutor) {
-          transaction.update(sessionRef, {
-            triedTutors: nextTriedTutors,
-            status: VIDEO_SESSION_STATUS.CANCELLED,
-            endedAt: admin.firestore.FieldValue.serverTimestamp(),
-            cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
-            cancelReason: "no_available_responder",
+          await reconcileSessionTrialCallsInTransaction({
+            db,
+            transaction,
+            sessionId,
+            sessionData: freshSessionData,
+            durationSeconds: 0,
+            technicalFailure: true,
+            nowMillis: Date.now(),
           });
+          transaction.update(
+              sessionRef,
+              buildNoAvailableResponderSessionUpdate(nextTriedTutors),
+          );
           return {
             shouldNotify: false,
             skipReason: "no_available_tutors",

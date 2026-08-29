@@ -92,11 +92,11 @@ void main() {
     expect(source, contains('hasActiveCallSession'));
     expect(source, contains('_hasActiveCallSessionForAccess'));
     expect(source, contains('VideoSessionsRecord.getDocumentOnce'));
-    expect(source, contains('usageLimitReachedChecker'));
-    expect(source, contains('_hasKnownUsageLimitReached(user)'));
-    expect(source, contains("collection('usage')"));
-    expect(source, contains("'dayDurationSeconds'"));
-    expect(source, contains("'weekDurationSeconds'"));
+    expect(source, isNot(contains('usageLimitReachedChecker')));
+    expect(source, isNot(contains('_hasKnownUsageLimitReached(user)')));
+    expect(source, isNot(contains("collection('usage')")));
+    expect(source, isNot(contains("'dayDurationSeconds'")));
+    expect(source, isNot(contains("'weekDurationSeconds'")));
     expect(source, contains('ensureCameraAndMicrophonePermissions()'));
     expect(
       source,

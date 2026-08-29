@@ -207,6 +207,14 @@ function createFakeFirestore(seed = {}) {
           reads.push(ref.path);
           return ref.get();
         },
+        create(ref, data) {
+          hasWrites = true;
+          if (store.has(ref.path)) {
+            throw new Error(`Document already exists: ${ref.path}`);
+          }
+          writes.push({type: "create", path: ref.path, data});
+          pendingWrites.push({path: ref.path, data});
+        },
         update(ref, data) {
           hasWrites = true;
           if (!store.has(ref.path)) {
@@ -1003,6 +1011,7 @@ test("editEvent callable validates startsAt against trusted backend time",
 test("editEvent callable lets organizer edit active future event", async () => {
   const {db, reads, store, writes} = createFakeFirestore({
     "events/event-1": eventData(),
+    "events_public/event-1": {title: "Stale title"},
     "events/event-1/participants/uid": participant(),
     "events/event-1/participants/alex": participant(),
     "events/event-1/participants/olga": participant(),
@@ -1030,11 +1039,13 @@ test("editEvent callable lets organizer edit active future event", async () => {
   assert.deepEqual(reads, [
     "events/event-1",
     "events/event-1/participants?status==active",
+    "events_public/event-1",
   ]);
   assert.deepEqual(
       writes.map((write) => `${write.type}:${write.path}`),
-      ["update:events/event-1"],
+      ["update:events/event-1", "update:events_public/event-1"],
   );
+  assert.equal(store.get("events_public/event-1").title, "Organizer update");
   assert.equal(
       writes.some((write) => (
         write.path.includes("eventCreationCounters") ||
@@ -1141,8 +1152,12 @@ test("executeEditEventTransaction updates organizer active future event", async 
   assert.deepEqual(reads, [
     "events/event-1",
     "events/event-1/participants?status==active",
+    "events_public/event-1",
   ]);
-  assert.deepEqual(writes.map((write) => write.path), ["events/event-1"]);
+  assert.deepEqual(
+      writes.map((write) => `${write.type}:${write.path}`),
+      ["update:events/event-1", "create:events_public/event-1"],
+  );
   assert.equal(writes[0].data.description, "Updated description");
   assert.equal(writes[0].data.languageCode, "en");
   assert.equal(writes[0].data.languageNameEn, "English");

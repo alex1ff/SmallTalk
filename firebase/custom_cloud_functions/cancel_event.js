@@ -1,5 +1,9 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const {
+  eventPreviewRef,
+  writeEventPreview,
+} = require("./event_public_projection");
 
 const REQUEST_TIMEOUT_SECONDS = 30;
 const EVENT_STATUS_ACTIVE = "active";
@@ -240,6 +244,7 @@ async function executeCancelEventTransaction({
   payload,
 }) {
   const eventRef = db.collection("events").doc(payload.eventId);
+  const previewRef = eventPreviewRef(db, payload.eventId);
   const chatRef = db.collection(EVENT_CHAT_COLLECTION).doc(payload.eventId);
   const activeParticipantsQuery = eventRef
       .collection("participants")
@@ -283,6 +288,7 @@ async function executeCancelEventTransaction({
       organizerId: eventData.organizerId,
       activeParticipantDocs: activeParticipantsSnapshot.docs || [],
     });
+    const previewDoc = await tx.get(previewRef);
 
     tx.update(eventRef, {
       status: EVENT_STATUS_CANCELED,
@@ -292,6 +298,17 @@ async function executeCancelEventTransaction({
     tx.update(chatRef, {
       readAccessUserIds,
       updatedAt: cancelTimestamp,
+    });
+    writeEventPreview({
+      tx,
+      previewDoc,
+      previewRef,
+      eventData: {
+        ...eventData,
+        status: EVENT_STATUS_CANCELED,
+        canceledAt: cancelTimestamp,
+        updatedAt: cancelTimestamp,
+      },
     });
 
     return buildCanceledResponse({

@@ -185,9 +185,6 @@ void main() {
     _requestPermissionsCallCount = 0;
     _requestPermissionsHandler = null;
     _checkPermissionStatusError = null;
-    StudentsDashboardWidget.debugUsageLimitReachedChecker = (_) async {
-      return false;
-    };
     StudentsDashboardWidget.debugActiveSessionReader = (_) async => null;
     StudentsDashboardWidget.debugStartSearchRequest = (payload) async {
       return <String, dynamic>{'requestId': payload['requestId']};
@@ -257,7 +254,6 @@ void main() {
   tearDown(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_permissionsChannel, null);
-    StudentsDashboardWidget.debugUsageLimitReachedChecker = null;
     StudentsDashboardWidget.debugActiveSessionReader = null;
     StudentsDashboardWidget.debugStartSearchRequest = null;
     StudentsDashboardWidget.debugHeartbeatSearchRequest = null;
@@ -1214,7 +1210,7 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('student dashboard blocks search when usage limit is reached',
+  testWidgets('student dashboard ignores legacy local usage limits for Premium',
       (tester) async {
     final startPayloads = <Map<String, dynamic>>[];
     setActiveStudent('student-start-search-usage-limit-test');
@@ -1222,7 +1218,6 @@ void main() {
     await tester.pumpWidget(
       _buildDashboardTestApp(
         StudentsDashboardWidget(
-          usageLimitReachedChecker: (_) async => true,
           startSearchRequest: (payload) async {
             startPayloads.add(Map<String, dynamic>.from(payload));
             return <String, dynamic>{'requestId': 'request-unexpected-start'};
@@ -1237,25 +1232,19 @@ void main() {
     await tester.tap(startSearchButton);
     await tester.pump();
 
-    expect(find.text('Лимит звонков исчерпан'), findsOneWidget);
-    expect(startPayloads, isEmpty);
-    expect(startSearchButton, findsOneWidget);
-    expect(
-      tester.widget<StudentStartSearchButton>(startSearchButton).isActive,
-      isFalse,
-    );
-    expect(find.text('Остановить поиск'), findsNothing);
-    expect(find.text('Ищем собеседника'), findsNothing);
+    expect(find.text('Лимит звонков исчерпан'), findsNothing);
+    expect(startPayloads, hasLength(1));
+    expect(find.text('Начать поиск'), findsNothing);
+    expect(find.text('Остановить поиск'), findsOneWidget);
+    expect(find.text('Ищем собеседника'), findsOneWidget);
     expect(find.text('Соединяем'), findsNothing);
-    expect(find.byType(CircularProgressIndicator), findsNothing);
-    expect(_checkPermissionStatusCallCount, 0);
-    expect(_requestPermissionsCallCount, 0);
+    expect(_checkPermissionStatusCallCount, greaterThan(0));
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
   testWidgets(
-      'student dashboard allows gift minutes access without subscription',
+      'student dashboard requires subscription even when gift minutes exist',
       (tester) async {
     setActiveStudent(
       'student-start-search-gift-access-test',
@@ -1275,11 +1264,13 @@ void main() {
       ),
     );
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.text('Ищем собеседника'), findsOneWidget);
-    expect(find.text('Остановить поиск'), findsOneWidget);
-    expect(find.byType(NoBalanceWidget), findsNothing);
-    expect(_checkPermissionStatusCallCount, greaterThan(0));
+    expect(find.byType(NoBalanceWidget), findsOneWidget);
+    expect(find.text('Нет активной подписки'), findsOneWidget);
+    expect(find.text('Ищем собеседника'), findsNothing);
+    expect(find.text('Остановить поиск'), findsNothing);
+    expect(_checkPermissionStatusCallCount, 0);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });

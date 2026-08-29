@@ -21,6 +21,7 @@ class SubscriptionStruct extends FFFirebaseStruct {
   SubscriptionStruct({
     String? entitlementId,
     String? productId,
+    String? pendingProductId,
     int? periodMonths,
     DateTime? startedAt,
     DateTime? expiresAt,
@@ -35,6 +36,7 @@ class SubscriptionStruct extends FFFirebaseStruct {
     FirestoreUtilData firestoreUtilData = const FirestoreUtilData(),
   })  : _entitlementId = entitlementId,
         _productId = productId,
+        _pendingProductId = pendingProductId,
         _periodMonths = periodMonths,
         _startedAt = startedAt,
         _expiresAt = expiresAt,
@@ -61,6 +63,13 @@ class SubscriptionStruct extends FFFirebaseStruct {
   set productId(String? val) => _productId = val;
 
   bool hasProductId() => _productId != null;
+
+  // "pendingProductId" field — deferred upgrade/downgrade target.
+  String? _pendingProductId;
+  String get pendingProductId => _pendingProductId ?? '';
+  set pendingProductId(String? val) => _pendingProductId = val;
+
+  bool hasPendingProductId() => _pendingProductId != null;
 
   // "periodMonths" field.
   int? _periodMonths;
@@ -146,6 +155,7 @@ class SubscriptionStruct extends FFFirebaseStruct {
       SubscriptionStruct(
         entitlementId: data['entitlementId'] as String?,
         productId: data['productId'] as String?,
+        pendingProductId: data['pendingProductId'] as String?,
         periodMonths: castToType<int>(data['periodMonths']),
         startedAt: data['startedAt'] as DateTime?,
         expiresAt: data['expiresAt'] as DateTime?,
@@ -166,6 +176,7 @@ class SubscriptionStruct extends FFFirebaseStruct {
   Map<String, dynamic> toMap() => {
         'entitlementId': _entitlementId,
         'productId': _productId,
+        'pendingProductId': _pendingProductId,
         'periodMonths': _periodMonths,
         'startedAt': _startedAt,
         'expiresAt': _expiresAt,
@@ -183,13 +194,13 @@ class SubscriptionStruct extends FFFirebaseStruct {
   Map<String, dynamic> toSerializableMap() => {
         'entitlementId': serializeParam(_entitlementId, ParamType.String),
         'productId': serializeParam(_productId, ParamType.String),
+        'pendingProductId': serializeParam(_pendingProductId, ParamType.String),
         'periodMonths': serializeParam(_periodMonths, ParamType.int),
         'startedAt': serializeParam(_startedAt, ParamType.DateTime),
         'expiresAt': serializeParam(_expiresAt, ParamType.DateTime),
         'willRenew': serializeParam(_willRenew, ParamType.bool),
         'store': serializeParam(_store, ParamType.String),
-        'revenueCatUserId':
-            serializeParam(_revenueCatUserId, ParamType.String),
+        'revenueCatUserId': serializeParam(_revenueCatUserId, ParamType.String),
         'originalTransactionId':
             serializeParam(_originalTransactionId, ParamType.String),
         'environment': serializeParam(_environment, ParamType.String),
@@ -202,8 +213,9 @@ class SubscriptionStruct extends FFFirebaseStruct {
       SubscriptionStruct(
         entitlementId:
             deserializeParam(data['entitlementId'], ParamType.String, false),
-        productId:
-            deserializeParam(data['productId'], ParamType.String, false),
+        productId: deserializeParam(data['productId'], ParamType.String, false),
+        pendingProductId:
+            deserializeParam(data['pendingProductId'], ParamType.String, false),
         periodMonths:
             deserializeParam(data['periodMonths'], ParamType.int, false),
         startedAt:
@@ -212,8 +224,8 @@ class SubscriptionStruct extends FFFirebaseStruct {
             deserializeParam(data['expiresAt'], ParamType.DateTime, false),
         willRenew: deserializeParam(data['willRenew'], ParamType.bool, false),
         store: deserializeParam(data['store'], ParamType.String, false),
-        revenueCatUserId: deserializeParam(
-            data['revenueCatUserId'], ParamType.String, false),
+        revenueCatUserId:
+            deserializeParam(data['revenueCatUserId'], ParamType.String, false),
         originalTransactionId: deserializeParam(
             data['originalTransactionId'], ParamType.String, false),
         environment:
@@ -234,6 +246,7 @@ class SubscriptionStruct extends FFFirebaseStruct {
     return other is SubscriptionStruct &&
         entitlementId == other.entitlementId &&
         productId == other.productId &&
+        pendingProductId == other.pendingProductId &&
         periodMonths == other.periodMonths &&
         startedAt == other.startedAt &&
         expiresAt == other.expiresAt &&
@@ -251,6 +264,7 @@ class SubscriptionStruct extends FFFirebaseStruct {
   int get hashCode => const ListEquality().hash([
         entitlementId,
         productId,
+        pendingProductId,
         periodMonths,
         startedAt,
         expiresAt,
@@ -268,6 +282,7 @@ class SubscriptionStruct extends FFFirebaseStruct {
 SubscriptionStruct createSubscriptionStruct({
   String? entitlementId,
   String? productId,
+  String? pendingProductId,
   int? periodMonths,
   DateTime? startedAt,
   DateTime? expiresAt,
@@ -287,6 +302,7 @@ SubscriptionStruct createSubscriptionStruct({
     SubscriptionStruct(
       entitlementId: entitlementId,
       productId: productId,
+      pendingProductId: pendingProductId,
       periodMonths: periodMonths,
       startedAt: startedAt,
       expiresAt: expiresAt,
@@ -365,7 +381,5 @@ Map<String, dynamic> getSubscriptionFirestoreData(
 List<Map<String, dynamic>> getSubscriptionListFirestoreData(
   List<SubscriptionStruct>? subscriptions,
 ) =>
-    subscriptions
-        ?.map((e) => getSubscriptionFirestoreData(e, true))
-        .toList() ??
+    subscriptions?.map((e) => getSubscriptionFirestoreData(e, true)).toList() ??
     [];

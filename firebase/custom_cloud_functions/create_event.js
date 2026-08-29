@@ -11,6 +11,10 @@ const {
 const {
   buildBoundedEventChatInboxEventIds,
 } = require("./event_chat_inbox");
+const {
+  eventPreviewRef,
+  writeEventPreview,
+} = require("./event_public_projection");
 
 const REQUEST_TIMEOUT_SECONDS = 30;
 const DAILY_CREATE_LIMIT = 5;
@@ -1019,6 +1023,7 @@ function buildCreateEventRefs({db, uid, createRequestId, dayInfo, eventRef}) {
   return {
     userRef: db.collection("users").doc(uid),
     eventRef,
+    previewRef: eventPreviewRef(db, eventRef.id),
     participantRef: eventRef.collection("participants").doc(uid),
     chatRef: db.collection(EVENT_CHAT_COLLECTION).doc(eventRef.id),
     counterRef: db
@@ -1065,9 +1070,10 @@ async function executeCreateEventTransaction({
     assertFutureStartsAt(normalized, creationDate);
     const eventNormalized = resolveNormalizedCity(normalized);
 
-    const [counterDoc, userDoc] = await Promise.all([
+    const [counterDoc, userDoc, previewDoc] = await Promise.all([
       tx.get(refs.counterRef),
       tx.get(refs.userRef),
+      tx.get(refs.previewRef),
     ]);
     const organizerSnapshot = buildOrganizerSnapshot({
       userExists: userDoc.exists,
@@ -1085,13 +1091,14 @@ async function executeCreateEventTransaction({
     });
     const dailyCreation = buildDailyCreation(nextCounter.count, dayInfo);
 
-    tx.create(refs.eventRef, buildEventData({
+    const eventData = buildEventData({
       normalized: eventNormalized,
       uid,
       eventId: refs.eventRef.id,
       organizerSnapshot,
       creationTimestamp,
-    }));
+    });
+    tx.create(refs.eventRef, eventData);
     tx.create(refs.participantRef, buildOrganizerParticipantData({
       uid,
       organizerSnapshot,
@@ -1122,6 +1129,12 @@ async function executeCreateEventTransaction({
       dailyCreation,
       creationTimestamp,
     }));
+    writeEventPreview({
+      tx,
+      previewDoc,
+      previewRef: refs.previewRef,
+      eventData,
+    });
 
     return {
       eventId: refs.eventRef.id,

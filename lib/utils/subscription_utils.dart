@@ -13,10 +13,12 @@ import '/backend/schema/structs/gift_minutes_struct.dart';
 import '/backend/schema/structs/subscription_struct.dart';
 
 const String trialSubscriptionProductId = 'expatlio_trial_1_Month';
+const String promotionalSubscriptionProductId = 'revenuecat_promotional';
 const Set<String> paidPremiumProductIds = {
   'expatlio_1_Month',
   'expatlio_3_Month',
   trialSubscriptionProductId,
+  promotionalSubscriptionProductId,
 };
 
 /// True if [user] has a subscription whose `expiresAt` is in the future.
@@ -75,12 +77,20 @@ bool isTrialSubscription(UsersRecord? user) {
 }
 
 /// Full paid access. A trial product becomes Premium after Apple renews it
-/// with periodType NORMAL; an active TRIAL period remains restricted.
+/// with periodType NORMAL; promotional grants are also full access.
 bool isPaidPremiumSubscription(UsersRecord? user, {DateTime? now}) {
-  final subscription = user?.subscription;
+  return isPaidPremiumSubscriptionStruct(user?.subscription, now: now);
+}
+
+/// Struct-level variant used by tests and components that already hold the
+/// mirrored subscription value.
+bool isPaidPremiumSubscriptionStruct(
+  SubscriptionStruct? subscription, {
+  DateTime? now,
+}) {
   if (!_isActive(subscription, now: now) || subscription == null) return false;
   return paidPremiumProductIds.contains(subscription.productId) &&
-      subscription.periodType.toUpperCase() == 'NORMAL';
+      {'NORMAL', 'PROMOTIONAL'}.contains(subscription.periodType.toUpperCase());
 }
 
 /// Format an expiry date as `DD.MM.YYYY` for display copy

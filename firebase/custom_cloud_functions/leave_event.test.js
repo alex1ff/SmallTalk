@@ -175,6 +175,13 @@ function createFakeFirestore(seed = {}, {
             }
             return snapshot;
           },
+          create(ref, data) {
+            hasWrites = true;
+            if (store.has(ref.path)) {
+              throw new Error(`Document already exists: ${ref.path}`);
+            }
+            pendingWrites.push({type: "create", path: ref.path, data});
+          },
           update(ref, data) {
             hasWrites = true;
             if (!store.has(ref.path)) {
@@ -430,6 +437,7 @@ test("executeLeaveEventTransaction marks participant left", async () => {
     "eventChats/event-1",
     "users/uid",
     "events/event-1/participants?status==active",
+    "events_public/event-1",
   ]);
   assert.deepEqual(
       writes.map((write) => `${write.type}:${write.path}`),
@@ -438,6 +446,7 @@ test("executeLeaveEventTransaction marks participant left", async () => {
         "update:events/event-1/participants/uid",
         "update:eventChats/event-1",
         "update:users/uid",
+        "create:events_public/event-1",
       ],
   );
   assert.deepEqual(writes[2].data, {
@@ -469,6 +478,7 @@ test("executeLeaveEventTransaction succeeds without a user document",
       const seed = validLeaveSeed({
         chat: {readAccessUserIds: ["organizer", "uid"]},
       });
+      seed["events_public/event-1"] = {participantsCount: 2};
       delete seed["users/uid"];
       const {db, store, writes} = createFakeFirestore(seed);
 
@@ -487,6 +497,11 @@ test("executeLeaveEventTransaction succeeds without a user document",
       assert.deepEqual(store.get("eventChats/event-1").readAccessUserIds, [
         "organizer",
       ]);
+      assert.equal(store.get("events_public/event-1").participantsCount, 1);
+      assert.equal(
+          writes.find((write) => write.path === "events_public/event-1")?.type,
+          "update",
+      );
       assert.equal(
           writes.some((write) => write.path === "users/uid"),
           false,
@@ -611,6 +626,7 @@ test("executeLeaveEventTransaction concurrent duplicate leaves decrement once",
             "update:events/event-1/participants/uid",
             "update:eventChats/event-1",
             "update:users/uid",
+            "create:events_public/event-1",
           ],
       );
     });

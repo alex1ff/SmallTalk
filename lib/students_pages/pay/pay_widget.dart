@@ -4,6 +4,7 @@ import '/components/student_pay_plan.dart';
 import '/components/student_pay_plan_card.dart';
 import '/components/student_pay_restore_purchases_button.dart';
 import '/auth/firebase_auth/auth_util.dart';
+import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/components/basic_page_header.dart';
 import '/shared_pages/design/expatlio_design.dart';
@@ -291,6 +292,40 @@ class _PayWidgetState extends State<PayWidget> {
       _packagesByProductId.containsKey(plan.productId) ||
       _storeProductsByProductId.containsKey(plan.productId);
 
+  Future<bool> _waitForServerSubscriptionMirror([String? productId]) async {
+    final userRef = currentUserReference;
+    if (userRef == null) return false;
+    final deadline = DateTime.now().add(const Duration(seconds: 60));
+    while (DateTime.now().isBefore(deadline)) {
+      try {
+        final user = await UsersRecord.getDocumentOnce(userRef);
+        final subscription = user.subscription;
+        final matchesCurrentProduct =
+            productId == null || subscription?.productId == productId;
+        final matchesDeferredPaidChange = productId != null &&
+            subscription?.pendingProductId == productId &&
+            isPaidPremiumSubscription(user);
+        if ((matchesCurrentProduct || matchesDeferredPaidChange) &&
+            hasActiveSubscription(user)) {
+          if (matchesCurrentProduct && isTrialSubscription(user)) {
+            final trialState =
+                await userRef.collection('trialAccess').doc('current').get();
+            if (trialState.exists) return true;
+          } else if (isPaidPremiumSubscription(user)) {
+            return true;
+          }
+        }
+      } catch (error, stackTrace) {
+        debugPrint(
+          '⚠️ PayWidget._waitForServerSubscriptionMirror failed: '
+          '$error\n$stackTrace',
+        );
+      }
+      await Future<void>.delayed(const Duration(seconds: 2));
+    }
+    return false;
+  }
+
   Future<void> _purchaseSelectedPlan() async {
     if (_isPurchasing || _isLoadingPackages) {
       return;
@@ -369,8 +404,25 @@ class _PayWidgetState extends State<PayWidget> {
       final hasPro =
           info.entitlements.active.containsKey(kSubscriptionProEntitlementId);
       if (hasPro) {
-        _showSnackBar(_localized('Подписка активна.', 'Subscription active.'));
-        context.safePop();
+        _showSnackBar(_localized(
+          'Покупка подтверждена. Активируем доступ…',
+          'Purchase confirmed. Activating access…',
+        ));
+        final mirrorReady = await _waitForServerSubscriptionMirror(
+          _selectedPlan.productId,
+        );
+        if (!mounted) return;
+        if (mirrorReady) {
+          _showSnackBar(
+            _localized('Подписка активна.', 'Subscription active.'),
+          );
+          context.safePop();
+        } else {
+          _showSnackBar(_localized(
+            'Покупка ещё обрабатывается. Оставайтесь на экране и нажмите «Восстановить покупки» или повторите загрузку.',
+            'Your purchase is still processing. Stay on this screen and use Restore purchases or reload the plans.',
+          ));
+        }
       }
     } catch (_) {
       if (mounted) {
@@ -406,14 +458,29 @@ class _PayWidgetState extends State<PayWidget> {
           info.entitlements.active.containsKey(kSubscriptionProEntitlementId);
       _showSnackBar(
         hasPro
-            ? _localized('Покупки восстановлены.', 'Purchases restored.')
+            ? _localized(
+                'Покупки восстановлены. Активируем доступ…',
+                'Purchases restored. Activating access…',
+              )
             : _localized(
                 'Активных покупок для восстановления не найдено.',
                 'No active purchases were found to restore.',
               ),
       );
       if (hasPro) {
-        context.safePop();
+        final mirrorReady = await _waitForServerSubscriptionMirror();
+        if (!mounted) return;
+        if (mirrorReady) {
+          _showSnackBar(
+            _localized('Подписка активна.', 'Subscription active.'),
+          );
+          context.safePop();
+        } else {
+          _showSnackBar(_localized(
+            'Покупка ещё обрабатывается. Повторите восстановление позже.',
+            'Your purchase is still processing. Restore it again shortly.',
+          ));
+        }
       }
     } catch (_) {
       if (mounted) {

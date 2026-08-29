@@ -476,6 +476,7 @@ test("executeJoinEventTransaction creates active participant", async () => {
     "eventChats/event-1",
     "users/uid",
     "events/event-1/participants?status==active",
+    "events_public/event-1",
   ]);
   assert.deepEqual(
       writes.map((write) => `${write.type}:${write.path}`),
@@ -484,6 +485,7 @@ test("executeJoinEventTransaction creates active participant", async () => {
         "create:events/event-1/participants/uid",
         "update:eventChats/event-1",
         "update:users/uid",
+        "create:events_public/event-1",
       ],
   );
   assert.deepEqual(writes[2].data, {
@@ -609,6 +611,7 @@ test("executeJoinEventTransaction allows join into last available seat",
             "create:events/event-1/participants/uid",
             "update:eventChats/event-1",
             "update:users/uid",
+            "create:events_public/event-1",
           ],
       );
       assert.deepEqual(writes[2].data, {
@@ -644,6 +647,7 @@ test("executeJoinEventTransaction treats existing chat access as an unordered se
 test("executeJoinEventTransaction rejoins left participant", async () => {
   const {db, store, writes} = createFakeFirestore({
     "events/event-1": activeEvent({participantsCount: 1}),
+    "events_public/event-1": {participantsCount: 1},
     "eventChats/event-1": eventChat({readAccessUserIds: ["organizer"]}),
     "events/event-1/participants/organizer": organizerParticipant(),
     "events/event-1/participants/uid": participant({
@@ -683,8 +687,10 @@ test("executeJoinEventTransaction rejoins left participant", async () => {
         "update:events/event-1/participants/uid",
         "update:eventChats/event-1",
         "update:users/uid",
+        "update:events_public/event-1",
       ],
   );
+  assert.equal(store.get("events_public/event-1").participantsCount, 2);
   assert.deepEqual(writes[2].data, {
     readAccessUserIds: ["organizer", "uid"],
     updatedAt: fixedTimestamp,
@@ -788,6 +794,7 @@ test("executeJoinEventTransaction concurrent rejoins reuse one membership",
             "update:events/event-1/participants/uid",
             "update:eventChats/event-1",
             "update:users/uid",
+            "create:events_public/event-1",
           ],
       );
     });
@@ -900,6 +907,7 @@ test("executeJoinEventTransaction concurrent duplicate joins create one membersh
             "create:events/event-1/participants/uid",
             "update:eventChats/event-1",
             "update:users/uid",
+            "create:events_public/event-1",
           ],
       );
     });
@@ -1209,6 +1217,7 @@ test("executeJoinEventTransaction concurrent joins never exceed capacity",
             `create:events/event-1/participants/${joinedUid}`,
             "update:eventChats/event-1",
             `update:users/${joinedUid}`,
+            "create:events_public/event-1",
           ],
       );
     });

@@ -47,6 +47,15 @@ class _EventListQueryScope {
 class EventListRepository {
   const EventListRepository._();
 
+  static CollectionReference get _publicEventsCollection =>
+      FirebaseFirestore.instance.collection('events_public');
+
+  static EventsRecord _publicEventFromSnapshot(DocumentSnapshot snapshot) =>
+      EventsRecord.getDocumentFromData(
+        snapshot.data() as Map<String, dynamic>,
+        EventsRecord.collection.doc(snapshot.id),
+      );
+
   static EventListQuerySpec normalizeActiveEventListQuery({
     required String countryCode,
     required String cityKey,
@@ -139,10 +148,11 @@ class EventListRepository {
       pageSize: pageSize,
     );
     final loader = pageLoader ?? _loadEventCollectionPage;
+    final usesInjectedLoader = pageLoader != null;
 
     return loader(
-      EventsRecord.collection,
-      EventsRecord.fromSnapshot,
+      usesInjectedLoader ? EventsRecord.collection : _publicEventsCollection,
+      usesInjectedLoader ? EventsRecord.fromSnapshot : _publicEventFromSnapshot,
       queryBuilder: (query) => buildActiveEventListQuery(
         query,
         countryCode: spec.countryCode,

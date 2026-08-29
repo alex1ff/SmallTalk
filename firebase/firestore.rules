@@ -71,6 +71,28 @@ service cloud.firestore {
       return /databases/$(database)/documents/users/$(request.auth.uid);
     }
 
+    function currentUserDocumentExists() {
+      return isSignedIn() && exists(currentUserRef());
+    }
+
+    function currentUserHasPaidPremium() {
+      return currentUserDocumentExists() &&
+        get(currentUserRef()).data.keys().hasAny(['subscription']) &&
+        get(currentUserRef()).data.subscription is map &&
+        get(currentUserRef()).data.subscription.keys()
+          .hasAll(['productId', 'periodType', 'expiresAt']) &&
+        get(currentUserRef()).data.subscription.productId in [
+          'expatlio_1_Month',
+          'expatlio_3_Month',
+          'expatlio_trial_1_Month',
+          'revenuecat_promotional'
+        ] &&
+        get(currentUserRef()).data.subscription.periodType in
+          ['NORMAL', 'PROMOTIONAL'] &&
+        get(currentUserRef()).data.subscription.expiresAt is timestamp &&
+        get(currentUserRef()).data.subscription.expiresAt > request.time;
+    }
+
     function isOwnerRef(userRef) {
       return isSignedIn() && userRef == currentUserRef();
     }
@@ -871,14 +893,15 @@ service cloud.firestore {
     }
 
     function canListActiveEvent(data) {
-      return isSignedIn() && data.status == 'active';
+      return isAdmin() || (currentUserHasPaidPremium() && data.status == 'active');
     }
 
     function canGetEventDetail(eventId, data) {
       return isSignedIn() &&
         isAllowedEventStatus(data.status) &&
         (
-          data.status == 'active' ||
+          isAdmin() ||
+          (currentUserHasPaidPremium() && data.status == 'active') ||
           data.organizerId == request.auth.uid ||
           isActiveEventParticipant(eventId, request.auth.uid)
         );
@@ -1100,6 +1123,12 @@ service cloud.firestore {
     function canGetEventParticipant(eventId, userId, data) {
       return isSignedIn() &&
         eventIsActive(eventId) &&
+        (
+          isAdmin() ||
+          currentUserHasPaidPremium() ||
+          eventDocumentData(eventId).organizerId == request.auth.uid ||
+          isActiveEventParticipant(eventId, request.auth.uid)
+        ) &&
         isValidEventParticipantReadData(userId, data) &&
         data.status == 'active';
     }
@@ -1116,6 +1145,12 @@ service cloud.firestore {
     function canListActiveEventParticipants(eventId, data) {
       return isSignedIn() &&
         eventIsActive(eventId) &&
+        (
+          isAdmin() ||
+          currentUserHasPaidPremium() ||
+          eventDocumentData(eventId).organizerId == request.auth.uid ||
+          isActiveEventParticipant(eventId, request.auth.uid)
+        ) &&
         request.query.limit <= 50 &&
         data.status == 'active';
     }
@@ -1447,6 +1482,12 @@ service cloud.firestore {
         allow list: if canListActiveEventParticipants(eventId, resource.data);
         allow create, update, delete: if false;
       }
+    }
+
+    match /events_public/{eventId} {
+      allow get: if isSignedIn() && resource.data.status == 'active';
+      allow list: if isSignedIn() && resource.data.status == 'active';
+      allow create, update, delete: if false;
     }
 
     match /eventChats/{chatId} {

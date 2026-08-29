@@ -8,12 +8,14 @@ const crypto = require("node:crypto");
 const admin = require("firebase-admin");
 
 const TRIAL_PRODUCT_ID = "expatlio_trial_1_Month";
+const PROMOTIONAL_PRODUCT_ID = "revenuecat_promotional";
 const PREMIUM_PRODUCT_IDS = new Set([
   "expatlio_1_Month",
   "expatlio_3_Month",
   TRIAL_PRODUCT_ID,
+  PROMOTIONAL_PRODUCT_ID,
 ]);
-const PAID_PERIOD_TYPES = new Set(["NORMAL"]);
+const PAID_PERIOD_TYPES = new Set(["NORMAL", "PROMOTIONAL"]);
 const TRIAL_WINDOW_MS = 30 * 60 * 1000;
 const TRIAL_QUALIFICATION_SECONDS = 120;
 const TRIAL_MAX_ATTEMPTS = 3;
@@ -318,12 +320,58 @@ function reconcileTrialCallInTransaction({
   return {updated: true, status: "expired"};
 }
 
+function sessionTrialCallIds(sessionData = {}, sessionId = "") {
+  const stored = sessionData.trialCallIdsByUserId;
+  if (stored && typeof stored === "object" && !Array.isArray(stored)) {
+    return Object.fromEntries(
+        Object.entries(stored).filter(([uid, trialCallId]) =>
+          normalizeString(uid) && !uid.includes("/") &&
+          normalizeString(trialCallId),
+        ),
+    );
+  }
+  const studentId = normalizeString(sessionData.studentId);
+  if (sessionData.accessMode === "trial" && studentId &&
+      !studentId.includes("/")) {
+    return {
+      [studentId]: normalizeString(sessionData.trialCallId) || sessionId,
+    };
+  }
+  return {};
+}
+
+async function reconcileSessionTrialCallsInTransaction({
+  db,
+  transaction,
+  sessionId,
+  sessionData = {},
+  durationSeconds = 0,
+  technicalFailure = false,
+  nowMillis = Date.now(),
+} = {}) {
+  const entries = Object.entries(sessionTrialCallIds(sessionData, sessionId));
+  const contexts = await Promise.all(entries.map(async ([uid, trialCallId]) => {
+    const ref = trialAccessRef(db, uid);
+    return {ref, trialCallId, snap: await transaction.get(ref)};
+  }));
+  return contexts.map((context) => reconcileTrialCallInTransaction({
+    transaction,
+    trialRef: context.ref,
+    trialSnap: context.snap,
+    trialCallId: context.trialCallId,
+    durationSeconds,
+    technicalFailure,
+    nowMillis,
+  }));
+}
+
 module.exports = {
   PAID_PERIOD_TYPES,
   PREMIUM_PRODUCT_IDS,
   TRIAL_MAX_ATTEMPTS,
   TRIAL_MAX_TECHNICAL_RETRIES,
   TRIAL_PRODUCT_ID,
+  PROMOTIONAL_PRODUCT_ID,
   TRIAL_QUALIFICATION_SECONDS,
   TRIAL_RESERVATION_LEASE_MS,
   TRIAL_RETRY_COOLDOWN_MS,
@@ -335,6 +383,8 @@ module.exports = {
   normalizeString,
   reserveTrialCallInTransaction,
   reconcileTrialCallInTransaction,
+  reconcileSessionTrialCallsInTransaction,
+  sessionTrialCallIds,
   subscriptionProductId,
   subscriptionPeriodType,
   timestampToMillis,

@@ -4,6 +4,10 @@ const {
   buildBoundedEventChatInboxEventIds,
 } = require("./event_chat_inbox");
 const {isPaidPremium} = require("./trial_access");
+const {
+  eventPreviewRef,
+  writeEventPreview,
+} = require("./event_public_projection");
 
 const REQUEST_TIMEOUT_SECONDS = 30;
 const EVENT_STATUS_ACTIVE = "active";
@@ -439,6 +443,7 @@ async function executeJoinEventTransaction({
   payload,
 }) {
   const eventRef = db.collection("events").doc(payload.eventId);
+  const previewRef = eventPreviewRef(db, payload.eventId);
   const participantRef = eventRef.collection("participants").doc(uid);
   const chatRef = db.collection(EVENT_CHAT_COLLECTION).doc(payload.eventId);
   const userRef = db.collection("users").doc(uid);
@@ -528,6 +533,7 @@ async function executeJoinEventTransaction({
         uid,
     );
     const participantsCount = eventData.participantsCount + 1;
+    const previewDoc = await tx.get(previewRef);
 
     tx.update(eventRef, {
       participantsCount,
@@ -557,6 +563,16 @@ async function executeJoinEventTransaction({
       hiddenChatKeys: admin.firestore.FieldValue.arrayRemove(
           `event:${payload.eventId}`,
       ),
+    });
+    writeEventPreview({
+      tx,
+      previewDoc,
+      previewRef,
+      eventData: {
+        ...eventData,
+        participantsCount,
+        updatedAt: joinTimestamp,
+      },
     });
 
     return {

@@ -120,6 +120,14 @@ function createFakeFirestore(seed = {}) {
           reads.push(refOrQuery.path);
           return refOrQuery.get();
         },
+        create(ref, data) {
+          hasWrites = true;
+          if (store.has(ref.path)) {
+            throw new Error(`Document already exists: ${ref.path}`);
+          }
+          writes.push({type: "create", path: ref.path, data});
+          pendingWrites.push({path: ref.path, data});
+        },
         update(ref, data) {
           hasWrites = true;
           if (!store.has(ref.path)) {
@@ -337,10 +345,15 @@ test("cancelEvent callable lets organizer cancel active event", async () => {
     "events/event-1",
     "eventChats/event-1",
     "events/event-1/participants?status==active",
+    "events_public/event-1",
   ]);
   assert.deepEqual(
       writes.map((write) => `${write.type}:${write.path}`),
-      ["update:events/event-1", "update:eventChats/event-1"],
+      [
+        "update:events/event-1",
+        "update:eventChats/event-1",
+        "create:events_public/event-1",
+      ],
   );
   assert.equal(
       writes.some((write) => (
@@ -385,6 +398,7 @@ test("executeCancelEventTransaction cancels active event without counter writes"
   const eventBefore = activeEvent({startsAt: fixedTimestamp});
   const {db, reads, store, writes} = createFakeFirestore({
     "events/event-1": eventBefore,
+    "events_public/event-1": {status: "active"},
     "eventChats/event-1": eventChat({
       readAccessUserIds: ["uid", "left-before-cancel", "stale-reader"],
     }),
@@ -480,7 +494,11 @@ test("executeCancelEventTransaction cancels active event without counter writes"
   );
   assert.deepEqual(
       writes.map((write) => `${write.type}:${write.path}`),
-      ["update:events/event-1", "update:eventChats/event-1"],
+      [
+        "update:events/event-1",
+        "update:eventChats/event-1",
+        "update:events_public/event-1",
+      ],
   );
   assert.equal(
       writes.some((write) => write.path.includes("eventCreationCounters")),
@@ -490,7 +508,9 @@ test("executeCancelEventTransaction cancels active event without counter writes"
     "events/event-1",
     "eventChats/event-1",
     "events/event-1/participants?status==active",
+    "events_public/event-1",
   ]);
+  assert.equal(store.get("events_public/event-1").status, "canceled");
 });
 
 test("executeCancelEventTransaction rejects participant count drift", async () => {

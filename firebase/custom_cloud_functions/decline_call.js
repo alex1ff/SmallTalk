@@ -48,6 +48,9 @@ const {
   responderFailurePoolFingerprintMatches,
   resolveResponderFailureStopReason,
 } = require("./responder_failure_policy");
+const {
+  reconcileSessionTrialCallsInTransaction,
+} = require("./trial_access");
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -417,6 +420,15 @@ exports.declineCall = functions
             admin.firestore.FieldValue.serverTimestamp();
           sessionUpdate.cancelledBy = responderId;
           sessionUpdate.cancelReason = terminalStopReason;
+          await reconcileSessionTrialCallsInTransaction({
+            db,
+            transaction,
+            sessionId,
+            sessionData,
+            durationSeconds: 0,
+            technicalFailure: true,
+            nowMillis: Date.now(),
+          });
         }
 
         const preparedSessionUpdate =

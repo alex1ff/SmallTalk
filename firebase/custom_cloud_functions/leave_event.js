@@ -1,5 +1,9 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const {
+  eventPreviewRef,
+  writeEventPreview,
+} = require("./event_public_projection");
 
 const REQUEST_TIMEOUT_SECONDS = 30;
 const EVENT_STATUS_ACTIVE = "active";
@@ -386,6 +390,7 @@ async function executeLeaveEventTransaction({
   payload,
 }) {
   const eventRef = db.collection("events").doc(payload.eventId);
+  const previewRef = eventPreviewRef(db, payload.eventId);
   const participantRef = eventRef.collection("participants").doc(uid);
   const chatRef = db.collection(EVENT_CHAT_COLLECTION).doc(payload.eventId);
   const userRef = db.collection("users").doc(uid);
@@ -475,6 +480,7 @@ async function executeLeaveEventTransaction({
       uid,
     });
     const participantsCount = eventData.participantsCount - 1;
+    const previewDoc = await tx.get(previewRef);
 
     tx.update(eventRef, {
       participantsCount,
@@ -496,6 +502,16 @@ async function executeLeaveEventTransaction({
         ),
       });
     }
+    writeEventPreview({
+      tx,
+      previewDoc,
+      previewRef,
+      eventData: {
+        ...eventData,
+        participantsCount,
+        updatedAt: leaveTimestamp,
+      },
+    });
 
     return {
       eventId: payload.eventId,

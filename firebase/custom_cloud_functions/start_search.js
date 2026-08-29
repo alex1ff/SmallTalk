@@ -10,7 +10,10 @@ const {
 const {
   usageDocRef,
 } = require("./subscription_usage_shared");
-const { trialAccessRef } = require("./trial_access");
+const {
+  reconcileSessionTrialCallsInTransaction,
+  trialAccessRef,
+} = require("./trial_access");
 const {
   buildReadOnlyVoipTokenState,
   getReadOnlyUserVoipTokenState,
@@ -318,7 +321,12 @@ function throwAccessDecision(decision) {
   throw new functions.https.HttpsError(
     decision.code,
     decision.message,
-    {reason: decision.reason},
+    {
+      reason: decision.reason,
+      ...(decision.retryAfterMillis ? {
+        retryAfterMillis: decision.retryAfterMillis,
+      } : {}),
+    },
   );
 }
 
@@ -1681,6 +1689,15 @@ async function releaseTeacherResponderMatchForRetry({
 
     const serverTimestamp = admin.firestore.FieldValue.serverTimestamp();
     const fieldDelete = admin.firestore.FieldValue.delete();
+    await reconcileSessionTrialCallsInTransaction({
+      db,
+      transaction,
+      sessionId: normalizedSessionId,
+      sessionData,
+      durationSeconds: 0,
+      technicalFailure: true,
+      nowMillis: Date.now(),
+    });
     await releaseSessionPairLocksInTransaction({
       db,
       transaction,
@@ -1805,6 +1822,15 @@ async function releaseBackgroundStudentResponderMatchForRetry({
 
     const serverTimestamp = admin.firestore.FieldValue.serverTimestamp();
     const fieldDelete = admin.firestore.FieldValue.delete();
+    await reconcileSessionTrialCallsInTransaction({
+      db,
+      transaction,
+      sessionId: normalizedSessionId,
+      sessionData,
+      durationSeconds: 0,
+      technicalFailure: true,
+      nowMillis: Date.now(),
+    });
     await releaseSessionPairLocksInTransaction({
       db,
       transaction,
@@ -1959,6 +1985,15 @@ async function releaseProtocolV2MatchAfterRouteFailure({
       sessionData.participantRoles?.[participantId] === "student" &&
       participantStates[participantId]?.decision !== MATCH_DECISION.DECLINED,
     );
+    await reconcileSessionTrialCallsInTransaction({
+      db,
+      transaction,
+      sessionId: normalizedSessionId,
+      sessionData,
+      durationSeconds: 0,
+      technicalFailure: true,
+      nowMillis,
+    });
     await releaseSessionPairLocksInTransaction({
       db,
       transaction,
@@ -3570,6 +3605,29 @@ async function resumeRestoredStudentSearch({
   }
   if (!userSnap.exists) {
     return {resumed: false, settled: false, reason: "user_missing"};
+  }
+
+  const trialAccessSnapshot = await db.collection("users")
+      .doc(normalizedParticipantId)
+      .collection("trialAccess")
+      .doc("current")
+      .get();
+  const retryNotBeforeAt = timestampToMillis(
+      trialAccessSnapshot.data()?.retryNotBeforeAt,
+  );
+  const waitMillis = retryNotBeforeAt == null ? 0 :
+    Math.max(0, retryNotBeforeAt - Date.now());
+  if (waitMillis > 0) {
+    const wait = options.retryCooldownWait || ((millis) =>
+      new Promise((resolve) => setTimeout(resolve, millis)));
+    await wait(waitMillis);
+    return resumeRestoredStudentSearch({
+      db,
+      participantId: normalizedParticipantId,
+      sessionId: normalizedSessionId,
+      pairAttemptId: normalizedPairAttemptId,
+      options: {...options, retryCooldownWait: null},
+    });
   }
 
   await tryCreateStudentPairForSearchRequest({

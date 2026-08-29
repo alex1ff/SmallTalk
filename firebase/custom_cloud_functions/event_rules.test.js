@@ -75,6 +75,17 @@ function eventData(overrides = {}) {
   };
 }
 
+function eventPublicData(overrides = {}) {
+  const source = eventData(overrides);
+  const {
+    locationName: _locationName,
+    locationGeoPoint: _locationGeoPoint,
+    chatId: _chatId,
+    ...preview
+  } = source;
+  return preview;
+}
+
 function directEditPatch(overrides = {}) {
   return {
     title: "Updated conversation club",
@@ -226,8 +237,8 @@ function eventCreateRequestData(overrides = {}) {
   };
 }
 
-function eventListQuery(db) {
-  return db.collection("events")
+function eventListQuery(db, collection = "events_public") {
+  return db.collection(collection)
     .where("status", "==", "active")
     .where("countryCode", "==", "RU")
     .where("cityKey", "==", "moscow")
@@ -256,6 +267,13 @@ test.beforeEach(async () => {
   await testEnv.clearFirestore();
   await testEnv.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
+    await db.doc("users/paid-user").set({
+      subscription: {
+        productId: "expatlio_1_Month",
+        periodType: "NORMAL",
+        expiresAt: new Date("2099-06-30T00:00:00.000Z"),
+      },
+    });
     await db.doc("events/active-moscow").set(eventData());
     await db.doc("events/active-other-city").set(eventData({
       cityKey: "saint_petersburg",
@@ -266,6 +284,20 @@ test.beforeEach(async () => {
       chatId: "event-active-outside-date",
     }));
     await db.doc("events/canceled-moscow").set(eventData({
+      status: "canceled",
+      canceledAt: new Date("2026-06-15T10:00:00.000Z"),
+      chatId: "event-canceled-moscow",
+    }));
+    await db.doc("events_public/active-moscow").set(eventPublicData());
+    await db.doc("events_public/active-other-city").set(eventPublicData({
+      cityKey: "saint_petersburg",
+      chatId: "event-active-other-city",
+    }));
+    await db.doc("events_public/active-outside-date").set(eventPublicData({
+      startsAt: new Date("2026-06-22T15:00:00.000Z"),
+      chatId: "event-active-outside-date",
+    }));
+    await db.doc("events_public/canceled-moscow").set(eventPublicData({
       status: "canceled",
       canceledAt: new Date("2026-06-15T10:00:00.000Z"),
       chatId: "event-canceled-moscow",
@@ -350,7 +382,7 @@ test.beforeEach(async () => {
   });
 });
 
-test("authorized user can list active event discovery data", async () => {
+test("authorized user can list only public active event discovery data", async () => {
   const user = testEnv.authenticatedContext("user-a");
 
   const snapshot = await assertSucceeds(
@@ -370,6 +402,7 @@ test("authorized user cannot list events without an active status predicate", as
   const db = testEnv.authenticatedContext("user-a").firestore();
 
   await assertFails(db.collection("events").get());
+  await assertFails(db.collection("events_public").get());
   await assertFails(
     db.collection("events")
       .where("countryCode", "==", "RU")
@@ -378,30 +411,70 @@ test("authorized user cannot list events without an active status predicate", as
   );
 });
 
+test("free users cannot list protected events while paid Premium users can", async () => {
+  await assertFails(
+    eventListQuery(
+      testEnv.authenticatedContext("user-a").firestore(),
+      "events",
+    ).get(),
+  );
+  const snapshot = await assertSucceeds(
+    eventListQuery(
+      testEnv.authenticatedContext("paid-user").firestore(),
+      "events",
+    ).get(),
+  );
+  assert.deepEqual(snapshot.docs.map((doc) => doc.id), ["active-moscow"]);
+});
+
 test("authorized user cannot list non-active event statuses", async () => {
   const db = testEnv.authenticatedContext("user-a").firestore();
 
   await assertFails(
-    db.collection("events")
+    db.collection("events_public")
       .where("status", "==", "canceled")
       .get(),
   );
   await assertFails(
-    db.collection("events")
+    db.collection("events_public")
       .where("status", "!=", "canceled")
       .get(),
   );
   await assertFails(
-    db.collection("events")
+    db.collection("events_public")
       .where("status", "in", ["active", "canceled"])
       .get(),
   );
 });
 
-test("authorized user can get active event detail directly", async () => {
-  const db = testEnv.authenticatedContext("user-a").firestore();
+test("clients cannot write event public projections", async () => {
+  const db = testEnv.authenticatedContext("paid-user").firestore();
+  await assertFails(db.doc("events_public/active-moscow").update({title: "x"}));
+  await assertFails(db.doc("events_public/new-event").set(eventPublicData()));
+  await assertFails(db.doc("events_public/active-moscow").delete());
+});
 
-  await assertSucceeds(db.doc("events/active-moscow").get());
+test("protected event detail is limited to Premium, organizer, or participant", async () => {
+  await assertFails(
+    testEnv.authenticatedContext("other-user").firestore()
+      .doc("events/active-moscow").get(),
+  );
+  await assertSucceeds(
+    testEnv.authenticatedContext("paid-user").firestore()
+      .doc("events/active-moscow").get(),
+  );
+  await assertFails(
+    testEnv.authenticatedContext("paid-user").firestore()
+      .doc("events/canceled-moscow").get(),
+  );
+  await assertSucceeds(
+    testEnv.authenticatedContext("organizer").firestore()
+      .doc("events/editable-event").get(),
+  );
+  await assertSucceeds(
+    testEnv.authenticatedContext("user-a").firestore()
+      .doc("events/editable-event").get(),
+  );
 });
 
 test("unauthenticated user cannot get event detail directly", async () => {
@@ -442,7 +515,7 @@ test("canceled event detail is limited to organizer and active participants", as
 });
 
 test("authorized user can list active event participants for roster UI", async () => {
-  const db = testEnv.authenticatedContext("viewer").firestore();
+  const db = testEnv.authenticatedContext("user-a").firestore();
 
   const snapshot = await assertSucceeds(
     db.collection("events/editable-event/participants")
@@ -458,7 +531,7 @@ test("authorized user can list active event participants for roster UI", async (
 });
 
 test("participant roster queries must be scoped to active participant status", async () => {
-  const db = testEnv.authenticatedContext("viewer").firestore();
+  const db = testEnv.authenticatedContext("user-a").firestore();
 
   await assertFails(
     db.collection("events/editable-event/participants")
@@ -489,7 +562,7 @@ test("participant roster queries must be scoped to active participant status", a
 });
 
 test("participant get is limited to active roster docs and own membership state", async () => {
-  const viewer = testEnv.authenticatedContext("viewer");
+  const viewer = testEnv.authenticatedContext("user-a");
   const activeUser = testEnv.authenticatedContext("user-a");
   const leftUser = testEnv.authenticatedContext("user-left");
   const malformedOwner = testEnv.authenticatedContext("malformed-owner");

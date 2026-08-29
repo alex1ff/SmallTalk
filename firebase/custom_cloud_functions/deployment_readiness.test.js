@@ -104,6 +104,10 @@ test("deployment readiness fails missing critical functions", () => {
   assert.ok(missingIds.includes("cancelEvent"));
   assert.ok(missingIds.includes("joinEvent"));
   assert.ok(missingIds.includes("leaveEvent"));
+  assert.ok(missingIds.includes("getEventDetails"));
+  assert.ok(missingIds.includes("syncEventPublicProjection"));
+  assert.ok(missingIds.includes("repairEventPublicProjections"));
+  assert.ok(missingIds.includes("retryPendingRevenueCatTransfers"));
   assert.ok(missingIds.includes("sendEventChatMessage"));
   assert.ok(missingIds.includes("getEventChatAccessState"));
   assert.ok(missingIds.includes("sendCustomEmailVerification"));
@@ -224,11 +228,59 @@ test("deployment readiness exposes event history callable and index", () => {
         {fieldPath: "__name__", order: "DESCENDING"},
       ]),
   );
+  const hasPublicEventsIndex = firestoreIndexes.indexes.some((index) =>
+    index.collectionGroup === "events_public" &&
+      index.queryScope === "COLLECTION" &&
+      JSON.stringify(index.fields) === JSON.stringify([
+        {fieldPath: "status", order: "ASCENDING"},
+        {fieldPath: "countryCode", order: "ASCENDING"},
+        {fieldPath: "cityKey", order: "ASCENDING"},
+        {fieldPath: "startsAt", order: "ASCENDING"},
+      ]),
+  );
+  const hasPendingTransferRetryIndex = firestoreIndexes.indexes.some((index) =>
+    index.collectionGroup === "revenueCatPendingTransfers" &&
+      index.queryScope === "COLLECTION" &&
+      JSON.stringify(index.fields) === JSON.stringify([
+        {fieldPath: "status", order: "ASCENDING"},
+        {fieldPath: "updatedAt", order: "ASCENDING"},
+      ]),
+  );
 
   assert.ok(functionIds.has("getEventHistory"));
   assert.match(indexSource, /exports\.getEventHistory\b/);
   assert.match(deployScript, /functions:custom_cloud_functions:getEventHistory\b/);
   assert.equal(hasParticipantsHistoryIndex, true);
+  assert.equal(hasPublicEventsIndex, true);
+  assert.equal(hasPendingTransferRetryIndex, true);
+});
+
+test("deployment readiness provides a mandatory public event backfill", () => {
+  const packageJson = JSON.parse(fs.readFileSync(
+      path.join(__dirname, "package.json"),
+      "utf8",
+  ));
+  const backfillScript = packageJson.scripts[
+      "backfill:event-public-projections"
+  ];
+  const deployScript = packageJson.scripts.deploy;
+  const backfillSource = fs.readFileSync(
+      path.join(
+          __dirname,
+          "scripts",
+          "backfill_event_public_projections.js",
+      ),
+      "utf8",
+  );
+
+  assert.equal(
+      backfillScript,
+      "node scripts/backfill_event_public_projections.js",
+  );
+  assert.match(deployScript, /backfill:event-public-projections/);
+  assert.match(backfillSource, /repairEventPublicProjections/);
+  assert.match(backfillSource, /eventPassComplete/);
+  assert.match(backfillSource, /projectionPassComplete/);
 });
 
 test("deployment readiness exposes call history callable", () => {

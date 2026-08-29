@@ -153,6 +153,9 @@ const REQUIRED_FUNCTIONS = [
   {id: "cancelEvent", trigger: "callable"},
   {id: "joinEvent", trigger: "callable"},
   {id: "leaveEvent", trigger: "callable"},
+  {id: "getEventDetails", trigger: "callable"},
+  {id: "syncEventPublicProjection", trigger: "firestore"},
+  {id: "repairEventPublicProjections", trigger: "scheduled"},
   {id: "sendEventChatMessage", trigger: "callable"},
   {id: "getEventChatAccessState", trigger: "callable"},
   {id: "reportEvent", trigger: "callable"},
@@ -167,6 +170,7 @@ const REQUIRED_FUNCTIONS = [
     secrets: ["REVENUECAT_WEBHOOK_SECRET"],
     environment: REVENUECAT_ENVIRONMENT,
   },
+  {id: "retryPendingRevenueCatTransfers", trigger: "scheduled"},
   {
     id: "grantPromoEntitlement",
     trigger: "callable",
