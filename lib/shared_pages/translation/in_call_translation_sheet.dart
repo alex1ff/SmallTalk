@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '/auth/firebase_auth/auth_util.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/services/translation_repository.dart';
+import '/services/error_reporting/error_reporter.dart';
 import '/shared_pages/design/expatlio_design.dart';
 
 class InCallTranslationSheet extends StatefulWidget {
@@ -98,13 +99,27 @@ class _InCallTranslationSheetState extends State<InCallTranslationSheet> {
     } on TranslationFailure catch (failure) {
       if (!mounted || generation != _translationGeneration) return;
       setState(() => _failure = failure);
-    } on FormatException {
+    } on FormatException catch (error, st) {
       if (!mounted || generation != _translationGeneration) return;
+      ErrorReporting.reporter.captureNonFatal(
+        feature: ErrorFeature.translation,
+        code: AppErrorCode.translationInvalidResponse,
+        error: error,
+        stackTrace: st,
+        sessionId: widget.sessionId,
+      );
       setState(() => _failure = const TranslationFailure(
             code: 'invalid_server_response',
           ));
-    } catch (_) {
+    } catch (error, st) {
       if (!mounted || generation != _translationGeneration) return;
+      ErrorReporting.reporter.captureNonFatal(
+        feature: ErrorFeature.translation,
+        code: AppErrorCode.translationUnexpected,
+        error: error,
+        stackTrace: st,
+        sessionId: widget.sessionId,
+      );
       setState(() => _failure = const TranslationFailure(
             code: 'unexpected_error',
           ));

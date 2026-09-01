@@ -60,6 +60,8 @@ const VOCABULARY_KEYS = new Set([
   "translation",
   "example",
 ]);
+// Intentional sanitizer for provider/user text before prompt construction.
+// eslint-disable-next-line no-control-regex
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/u;
 
 let genAIClient;
@@ -282,7 +284,9 @@ function feedbackThinkingConfig(modelId) {
 }
 
 function defaultWait(delayMs) {
-  return new Promise((resolve) => setTimeout(resolve, delayMs));
+  return new Promise((resolve) => {
+    setTimeout(resolve, delayMs);
+  });
 }
 
 const feedbackResponseJsonSchema = {

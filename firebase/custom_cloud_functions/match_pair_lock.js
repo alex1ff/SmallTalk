@@ -28,6 +28,8 @@ const {
   buildStudentCallAccessDecision,
 } = require("./call_access");
 const {
+  applyTrialCallReservationPlanInTransaction,
+  buildTrialCallReservationPlan,
   reserveTrialCallInTransaction,
   trialAccessRef,
 } = require("./trial_access");
@@ -1030,6 +1032,16 @@ async function stopSessionSearchRequestsInTransaction({
 }
 
 async function releaseSessionPairLocksInTransaction({
+  ...options
+}) {
+  const prepared = await prepareSessionPairLockReleaseInTransaction(options);
+  return applyPreparedSessionPairLockReleaseWrites({
+    transaction: options.transaction,
+    prepared,
+  });
+}
+
+async function prepareSessionPairLockReleaseInTransaction({
   db,
   transaction,
   sessionId,
@@ -1056,8 +1068,9 @@ async function releaseSessionPairLocksInTransaction({
     sessionData,
     participantIds,
   });
-  applyPairLockReleaseWrites({
-    transaction,
+  return {
+    released: true,
+    reason: "prepared",
     targets,
     sessionId: normalizedSessionId,
     serverTimestamp,
@@ -1069,11 +1082,24 @@ async function releaseSessionPairLocksInTransaction({
     restoreSearchParticipantIds,
     restoreSearchExcludedCandidateIdsByParticipantId,
     restoredFromPairAttemptId: sessionData.pairAttemptId,
+  };
+}
+
+function applyPreparedSessionPairLockReleaseWrites({
+  transaction,
+  prepared,
+}) {
+  if (!prepared?.released) {
+    return prepared || {released: false, reason: "not_prepared"};
+  }
+  applyPairLockReleaseWrites({
+    transaction,
+    ...prepared,
   });
   return {
     released: true,
     reason: "released",
-    participantIds: targets.map((target) => target.participantId),
+    participantIds: prepared.targets.map((target) => target.participantId),
   };
 }
 
@@ -1157,7 +1183,7 @@ async function prepareExistingSessionNextResponderPairLockInTransaction({
     responderUserSnapshot,
     requesterSearchSnapshot,
     responderSearchSnapshot,
-    responderPrivateTokenSnapshot,
+    _responderPrivateTokenSnapshot,
   ] = await Promise.all([
     transaction.get(requesterUserRef),
     transaction.get(responderUserRef),
@@ -1619,30 +1645,53 @@ async function reserveMatchPairInTransaction({
     } : {}),
   };
   const trialCallIdsByUserId = {};
-  if (requesterAccessDecision.mode === "trial") {
-    const reservation = reserveTrialCallInTransaction({
+  const requesterReservationPlan = requesterAccessDecision.mode === "trial" ?
+    buildTrialCallReservationPlan({
+      trialData: requesterTrialSnapshot.exists ?
+        requesterTrialSnapshot.data() || {} : {},
+      requestId: sessionId,
+      nowMillis,
+    }) : null;
+  const responderReservationPlan = responderAccessDecision?.mode === "trial" ?
+    buildTrialCallReservationPlan({
+      trialData: responderTrialSnapshot?.exists ?
+        responderTrialSnapshot.data() || {} : {},
+      requestId: sessionId,
+      nowMillis,
+    }) : null;
+  if (requesterReservationPlan && !requesterReservationPlan.allowed) {
+    applyTrialCallReservationPlanInTransaction({
       transaction,
       trialRef: requesterTrialRef,
-      trialSnap: requesterTrialSnapshot,
-      requestId: sessionId,
-      nowMillis,
+      plan: requesterReservationPlan,
     });
-    if (!reservation.allowed) {
-      return buildPairLockFailure(`requester_${reservation.reason}`);
-    }
+    return buildPairLockFailure(
+        `requester_${requesterReservationPlan.reason}`,
+    );
+  }
+  if (responderReservationPlan && !responderReservationPlan.allowed) {
+    // Do not queue responder maintenance here. createVideoSession may inspect
+    // another candidate in this same transaction, and Firestore forbids reads
+    // after the first write. Keeping both plans unapplied also guarantees that
+    // a rejected candidate cannot mutate either participant.
+    return buildPairLockFailure(
+        `responder_${responderReservationPlan.reason}`,
+    );
+  }
+  if (requesterReservationPlan) {
+    const reservation = applyTrialCallReservationPlanInTransaction({
+      transaction,
+      trialRef: requesterTrialRef,
+      plan: requesterReservationPlan,
+    });
     trialCallIdsByUserId[normalizedRequesterId] = reservation.trialCallId;
   }
-  if (responderAccessDecision?.mode === "trial") {
-    const reservation = reserveTrialCallInTransaction({
+  if (responderReservationPlan) {
+    const reservation = applyTrialCallReservationPlanInTransaction({
       transaction,
       trialRef: responderTrialRef,
-      trialSnap: responderTrialSnapshot,
-      requestId: sessionId,
-      nowMillis,
+      plan: responderReservationPlan,
     });
-    if (!reservation.allowed) {
-      return buildPairLockFailure(`responder_${reservation.reason}`);
-    }
     trialCallIdsByUserId[normalizedResponderId] = reservation.trialCallId;
   }
   const sessionAccessData = {
@@ -1981,6 +2030,7 @@ async function reserveMatchPair({
 
 module.exports = {
   MATCH_PAIR_LOCK_TTL_SECONDS,
+  applyPreparedSessionPairLockReleaseWrites,
   applyPreparedPairLockWrites,
   buildPairAttemptId,
   buildSearchRequestActiveRestoreUpdate,
@@ -1990,6 +2040,7 @@ module.exports = {
   hasLiveSearchRequestLock,
   isSearchRequestFreshForPairLock,
   prepareExistingSessionNextResponderPairLockInTransaction,
+  prepareSessionPairLockReleaseInTransaction,
   releaseSessionPairLocksInTransaction,
   resolveMatchProtocolVersion,
   reserveDirectPairInTransaction,

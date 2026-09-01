@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '/auth/firebase_auth/auth_util.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/services/call_feedback_repository.dart';
+import '/services/error_reporting/error_reporter.dart';
 import '/services/translation_repository.dart'
     show classifyCallIntegrationFailure;
 import '/shared_pages/design/expatlio_design.dart';
@@ -150,11 +151,25 @@ class _CallFeedbackCardState extends State<CallFeedbackCard> {
           _unavailableCode = failureCode;
         }
       });
-    } on FormatException {
+    } on FormatException catch (error, st) {
       if (!mounted || generation != _scopeGeneration) return;
+      ErrorReporting.reporter.captureNonFatal(
+        feature: ErrorFeature.aiFeedback,
+        code: AppErrorCode.aiFeedbackInvalidResponse,
+        error: error,
+        stackTrace: st,
+        sessionId: widget.sessionRef.id,
+      );
       setState(() => _unavailableCode = 'invalid_server_response');
-    } catch (_) {
+    } catch (error, st) {
       if (!mounted || generation != _scopeGeneration) return;
+      ErrorReporting.reporter.captureNonFatal(
+        feature: ErrorFeature.aiFeedback,
+        code: AppErrorCode.aiFeedbackUnexpected,
+        error: error,
+        stackTrace: st,
+        sessionId: widget.sessionRef.id,
+      );
       setState(() => _unavailableCode = 'unexpected_error');
     } finally {
       if (generation == _scopeGeneration) {

@@ -153,6 +153,7 @@
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
 				BCA8A67863989AA9778EFC5F /* [CP] Embed Pods Frameworks */,
 				416E53E13847FFEF713FE5B0 /* [CP] Copy Pods Resources */,
+				C0A5B2D7E9F34A1B8C6D0E21 /* [firebase_crashlytics] Crashlytics Upload Symbols */,
 			);
 			buildRules = (
 			);
@@ -230,6 +231,26 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" embed_and_thin";
+		};
+		C0A5B2D7E9F34A1B8C6D0E21 /* [firebase_crashlytics] Crashlytics Upload Symbols */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}",
+				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/",
+				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Info.plist",
+				"$(TARGET_BUILD_DIR)/$(EXECUTABLE_PATH)",
+				"$(PROJECT_DIR)/Runner/GoogleService-Info.plist",
+			);
+			name = "[firebase_crashlytics] Crashlytics Upload Symbols";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ -x \"${PODS_ROOT}/FirebaseCrashlytics/upload-symbols\" ] && [ -f \"${PROJECT_DIR}/Runner/GoogleService-Info.plist\" ]; then\n  \"${PODS_ROOT}/FirebaseCrashlytics/upload-symbols\" -gsp \"${PROJECT_DIR}/Runner/GoogleService-Info.plist\" -p ios \"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}\"\nfi\n";
+			showEnvVarsInLog = 0;
 		};
 		416E53E13847FFEF713FE5B0 /* [CP] Copy Pods Resources */ = {
 			isa = PBXShellScriptBuildPhase;

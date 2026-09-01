@@ -1,6 +1,8 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Shared identity and defensive field helpers. Privileged client access is
+    // sourced only from the signed Firebase Auth custom claim.
     function isSignedIn() {
       return request.auth != null;
     }
@@ -17,12 +19,6 @@ service cloud.firestore {
       return hasField(data, fieldName) &&
         data[fieldName] is string &&
         data[fieldName].size() > 0;
-    }
-
-    function nestedFieldEquals(data, parentFieldName, fieldName, value) {
-      return hasField(data, parentFieldName) &&
-        data[parentFieldName] is map &&
-        fieldEquals(data[parentFieldName], fieldName, value);
     }
 
     function nestedFieldHasText(data, parentFieldName, fieldName) {
@@ -449,7 +445,7 @@ service cloud.firestore {
     function canUpdateConversationReadMarker() {
       return isSignedIn() &&
         resource.data.isUnlocked == true &&
-        request.resource.data.diff(resource.data).changedKeys().hasOnly([
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'lastReadAtByUserId'
         ]) &&
         request.resource.data.lastReadAtByUserId is map &&
@@ -459,24 +455,13 @@ service cloud.firestore {
         ) &&
         request.resource.data.lastReadAtByUserId.diff(
           resource.data.lastReadAtByUserId
-        ).changedKeys().hasOnly([request.auth.uid]) &&
+        ).affectedKeys().hasOnly([request.auth.uid]) &&
         request.resource.data.lastReadAtByUserId[request.auth.uid] == request.time &&
         (
           !resource.data.lastReadAtByUserId.keys().hasAny([request.auth.uid]) ||
           request.resource.data.lastReadAtByUserId[request.auth.uid] >=
           resource.data.lastReadAtByUserId[request.auth.uid]
         );
-    }
-
-    function isPromoCodeRedeemUpdate() {
-      return isSignedIn() &&
-        request.resource.data.diff(resource.data).changedKeys().hasOnly([
-          'usageCount',
-          'usedBy'
-        ]) &&
-        request.resource.data.usageCount is int &&
-        resource.data.usageCount is int &&
-        request.resource.data.usageCount == resource.data.usageCount + 1;
     }
 
     function hasExplicitTeacherAccreditationStatus(data) {
@@ -743,7 +728,7 @@ service cloud.firestore {
       return isSelf(userId) &&
         ownUserUidUpdateIsValid(userId) &&
         ownUserRoleUpdateIsValid() &&
-        ownUserAvailabilityTodayUpdateIsValid(changedKeys) &&
+        ownUserAvailabilityTodayUpdateIsValid() &&
         ownUserLastSeenAtUpdateIsValid(changedKeys) &&
         !changedKeys.hasAny(privateUserTokenFields()) &&
         !changedKeys.hasAny(privateUserLifecycleFields()) &&
@@ -803,7 +788,7 @@ service cloud.firestore {
         userRoleCanOwnAvailabilityToday(request.resource.data);
     }
 
-    function ownUserAvailabilityTodayUpdateIsValid(changedKeys) {
+    function ownUserAvailabilityTodayUpdateIsValid() {
       return userRoleCanOwnAvailabilityToday(request.resource.data) ||
         !request.resource.data.keys().hasAny(['availabilityToday']);
     }
@@ -1333,6 +1318,8 @@ service cloud.firestore {
         request.query.limit <= 100;
     }
 
+    // User identity and account-owned data. Client writes must remain scoped
+    // to the authenticated document owner unless an explicit admin rule says otherwise.
     match /users/{userId} {
       allow create: if isAdmin() || canCreateOwnUser(userId);
       allow get, list: if canReadUserDocument(userId);
@@ -1369,6 +1356,8 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Call lifecycle and generated call integrations. Lifecycle documents are
+    // server-created; clients receive only participant-scoped reads and narrow updates.
     match /searchRequests/{userId} {
       allow get: if isAdmin() || isSelf(userId);
       allow list, create, update, delete: if false;
@@ -1437,6 +1426,8 @@ service cloud.firestore {
       allow create, read, update, delete: if false;
     }
 
+    // Direct conversations and events. Membership comes from server-owned
+    // participant fields; client updates cannot expand those authority fields.
     match /conversations/{pairId} {
       allow get: if isConversationParticipant(resource.data);
       allow list: if isConversationParticipantByMap(resource.data);
@@ -1517,6 +1508,7 @@ service cloud.firestore {
       allow create, read, update, delete: if isAdmin() || isSelf(userId);
     }
 
+    // Billing, catalog, reviews and low-risk account utilities.
     match /notifications/{notificationId} {
       allow create: if isAdmin();
       allow read: if isAdmin() || (
@@ -1534,8 +1526,7 @@ service cloud.firestore {
 
     match /promoCodes/{promoCodeId} {
       allow read: if isAdmin() || isSignedIn();
-      allow update: if isAdmin() || isPromoCodeRedeemUpdate();
-      allow create, delete: if isAdmin();
+      allow create, update, delete: if isAdmin();
     }
 
     match /reviews/{reviewId} {
@@ -1585,6 +1576,8 @@ service cloud.firestore {
       allow create, read, update, delete: if isAdmin() || isSelf(userId);
     }
 
+    // Operational and moderation collections. Explicit false rules below also
+    // prevent the final admin-read fallback where listed by its exclusion helper.
     match /eventCreationCounters/{document=**} {
       allow read, write: if false;
     }
@@ -1603,6 +1596,8 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Default deny for normal users. The custom-claim admin read fallback is a
+    // deliberate support capability; it never grants writes and excludes sensitive paths.
     match /{document=**} {
       allow read: if isAdmin() && !isEventProtectedFromAdminFallback(document);
     }

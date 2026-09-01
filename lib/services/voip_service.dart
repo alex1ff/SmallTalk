@@ -18,6 +18,11 @@ import '/backend/schema/enums/enums.dart';
 import '/flutter_flow/nav/nav.dart';
 import '/flutter_flow/permissions_util.dart';
 import '/services/match_coordinator.dart';
+import '/services/voip_accept_lifecycle.dart';
+import '/services/voip_accepted_session_resolver.dart';
+import '/services/voip_navigation_coordinator.dart';
+import '/services/voip_pending_callkit_action_queue.dart';
+import '/services/voip_token_registry.dart';
 
 const int _incomingCallTimeoutMilliseconds = 45000;
 const String _videoCallRoutePath = '/videoCallPage';
@@ -526,27 +531,6 @@ bool voipAcceptGateRequiresProcessClaimRelease(
   return decision != VoipAcceptGateDecision.proceed;
 }
 
-enum _PendingCallKitActionType {
-  accept,
-  decline,
-  timeout,
-  ended,
-}
-
-class _PendingCallKitAction {
-  const _PendingCallKitAction({
-    required this.type,
-    required this.data,
-    required this.queuedAt,
-    required this.queuedForUserId,
-  });
-
-  final _PendingCallKitActionType type;
-  final Map<String, dynamic> data;
-  final DateTime queuedAt;
-  final String? queuedForUserId;
-}
-
 /// VoIP сервис для обработки входящих звонков
 /// Использует CallKit (iOS) и ConnectionService (Android)
 class VoIPService {
@@ -554,8 +538,8 @@ class VoIPService {
   static final RegExp _uuidPattern = RegExp(
     r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
   );
-  static final Map<String, DateTime> _processAcceptClaimedAtBySession = {};
-  static const Duration _processAcceptDedupeWindow = Duration(minutes: 2);
+  static final VoipProcessAcceptGate _processAcceptGate =
+      VoipProcessAcceptGate();
   static const Duration _declineDedupeWindow = Duration(minutes: 2);
   static const Duration _pendingNavigationRetryDelay =
       Duration(milliseconds: 100);
@@ -585,26 +569,17 @@ class VoIPService {
   bool _callActionHandlingReady = false;
   bool _pendingCallKitActionsDraining = false;
   final Map<String, DateTime> _sessionStateTouchedAt = {};
-  final List<_PendingCallKitAction> _pendingCallKitActions =
-      <_PendingCallKitAction>[];
-  final Set<String> _acceptInProgress = {};
-  final Set<String> _acceptedSessions = {};
-  final Set<String> _handledCallKitAcceptIds = {};
-  final Map<String, DateTime> _recentAcceptBySession = {};
+  final VoipPendingCallKitActionQueue _pendingCallKitActions =
+      VoipPendingCallKitActionQueue(
+    ttl: _pendingCallKitActionTtl,
+    maxCount: _pendingCallKitActionMaxCount,
+  );
   final Set<String> _declineInProgress = {};
   final Map<String, DateTime> _recentDeclineBySession = {};
   final Map<String, int> _sessionStateGenerations = {};
   final Set<String> _handledNotificationIds = {};
   String? _lastAcceptedSessionId;
   bool _lastAcceptedIsTutor = false;
-  String? _lastNavigatedSessionId;
-  bool? _lastNavigatedIsTutor;
-  String? _pendingSessionId;
-  bool _pendingIsTutor = false;
-  bool _navRetryInProgress = false;
-  String? _pendingRoomUrl;
-  String? _pendingMeetingToken;
-  String? _pendingRoomName;
   String? _lastRoomUrl;
   String? _lastMeetingToken;
   String? _lastRoomName;
@@ -621,6 +596,33 @@ class VoIPService {
   final Map<String, DateTime> _serverEndedCallKitTombstones = {};
   String? _lastCallKitId;
   String? _notificationListenerUserId;
+  late final VoipTokenRegistry _tokenRegistry = VoipTokenRegistry(
+    currentUserId: _currentUserIdOrNull,
+    invokeRegistration: _invokeVoipTokenRegistration,
+    readPushKitToken: FlutterCallkitIncoming.getDevicePushTokenVoIP,
+    clientPlatform: voipClientPlatform,
+    matchProtocolVersion: () => matchProtocolVersion,
+    log: debugPrint,
+  );
+  late final VoipAcceptedSessionResolver _acceptedSessionResolver =
+      VoipAcceptedSessionResolver(currentUserId: _currentUserIdOrNull);
+  late final VoipAcceptLifecycle _acceptLifecycle = VoipAcceptLifecycle(
+    processGate: _processAcceptGate,
+    sessionStateTtl: _sessionStateTtl,
+  );
+  final Map<String, VoipAcceptAttemptToken> _debugAcceptAttempts =
+      <String, VoipAcceptAttemptToken>{};
+  late final VoipNavigationCoordinator _navigationCoordinator =
+      VoipNavigationCoordinator(
+    attempt: _attemptVideoCallNavigation,
+    onRetryExhausted: _logNavigationRetryExhausted,
+    retryDelay: _pendingNavigationRetryDelay,
+    maxAttempts: _pendingNavigationMaxAttempts,
+    routePath: _videoCallRoutePath,
+  );
+  String? get _lastNavigatedSessionId =>
+      _navigationCoordinator.lastNavigatedSessionId;
+  String? get _pendingSessionId => _navigationCoordinator.pendingSessionId;
   @visibleForTesting
   MatchCoordinator? debugMatchCoordinatorOverride;
   @visibleForTesting
@@ -705,24 +707,34 @@ class VoIPService {
     }
     _pendingCallKitActionsDraining = true;
     try {
-      _prunePendingCallKitActions(now: now);
+      _pendingCallKitActions.prune(
+        now: now ?? DateTime.now(),
+        currentUserId: _currentUserIdOrNull(),
+        acceptPayloadHasExpired: (data, effectiveNow) =>
+            voipIncomingCallPayloadHasExpired(data, now: effectiveNow),
+      );
       while (_canHandleCallKitActions && _pendingCallKitActions.isNotEmpty) {
-        final action = _pendingCallKitActions.removeAt(0);
-        if (_pendingCallKitActionHasExpired(action, now: now) ||
-            !_pendingCallKitActionTargetsCurrentUser(action)) {
+        final action = _pendingCallKitActions.removeFirst();
+        if (!_pendingCallKitActions.isEligible(
+          action,
+          now: now ?? DateTime.now(),
+          currentUserId: _currentUserIdOrNull(),
+          acceptPayloadHasExpired: (data, effectiveNow) =>
+              voipIncomingCallPayloadHasExpired(data, now: effectiveNow),
+        )) {
           continue;
         }
         switch (action.type) {
-          case _PendingCallKitActionType.accept:
+          case VoipPendingCallKitActionType.accept:
             await _handleCallAccept(action.data, now: now);
             break;
-          case _PendingCallKitActionType.decline:
+          case VoipPendingCallKitActionType.decline:
             await _handleCallDecline(action.data);
             break;
-          case _PendingCallKitActionType.timeout:
+          case VoipPendingCallKitActionType.timeout:
             await _handleCallTimeout(action.data);
             break;
-          case _PendingCallKitActionType.ended:
+          case VoipPendingCallKitActionType.ended:
             await _handleCallEnded(action.data);
             break;
         }
@@ -768,13 +780,13 @@ class VoIPService {
           '📞 VoIPService: Replaying background accepted call: $sessionId',
         );
         if (_queueCallKitActionIfNotReady(
-          type: _PendingCallKitActionType.accept,
+          type: VoipPendingCallKitActionType.accept,
           data: acceptData,
         )) {
           continue;
         }
         if (_shouldDropCallKitActionForCurrentUser(
-          type: _PendingCallKitActionType.accept,
+          type: VoipPendingCallKitActionType.accept,
           data: acceptData,
         )) {
           continue;
@@ -797,27 +809,40 @@ class VoIPService {
 
   @visibleForTesting
   bool debugTryClaimProcessAcceptForTesting(String sessionId) {
-    return _tryClaimProcessAccept(sessionId);
+    final result = _acceptLifecycle.begin(
+      VoipAcceptIdentity(
+        sessionId: sessionId,
+        callKitId: _callKitIdForSession('debug-process:$sessionId'),
+      ),
+      now: DateTime.now(),
+    );
+    final token = result.token;
+    if (token == null) return false;
+    _debugAcceptAttempts[sessionId] = token;
+    return true;
   }
 
   @visibleForTesting
   bool debugHasProcessAcceptClaimForTesting(String sessionId) {
-    return _processAcceptClaimedAtBySession.containsKey(sessionId);
+    return _processAcceptGate.hasClaim(sessionId, now: DateTime.now());
   }
 
   @visibleForTesting
   void debugReleaseProcessAcceptClaimForTesting(String sessionId) {
-    _releaseProcessAcceptClaim(sessionId);
+    final token = _debugAcceptAttempts.remove(sessionId);
+    if (token != null) {
+      _acceptLifecycle.releaseForRetry(token);
+    }
   }
 
   @visibleForTesting
   void debugMarkAcceptInProgressForTesting(String sessionId) {
-    _acceptInProgress.add(sessionId);
+    _debugEnsureAcceptAttempt(sessionId);
   }
 
   @visibleForTesting
   bool debugAcceptInProgressForTesting(String sessionId) {
-    return _acceptInProgress.contains(sessionId);
+    return _acceptLifecycle.isAcceptInProgress(sessionId);
   }
 
   @visibleForTesting
@@ -833,12 +858,15 @@ class VoIPService {
 
   @visibleForTesting
   void debugMarkAcceptedSessionForTesting(String sessionId) {
-    _acceptedSessions.add(sessionId);
+    final token = _debugEnsureAcceptAttempt(sessionId);
+    if (token != null) {
+      _acceptLifecycle.markAccepted(token);
+    }
   }
 
   @visibleForTesting
   bool debugAcceptedSessionForTesting(String sessionId) {
-    return _acceptedSessions.contains(sessionId);
+    return _acceptLifecycle.isAccepted(sessionId);
   }
 
   @visibleForTesting
@@ -869,8 +897,18 @@ class VoIPService {
   }) {
     final normalizedCallKitId = _normalizeCallKitId(callKitId);
     if (normalizedCallKitId == null) return;
+    final existing = _debugAcceptAttempts[sessionId];
+    final hadActiveAttempt =
+        existing != null && _acceptLifecycle.isCurrent(existing);
     _sessionCallKitIds[sessionId] = normalizedCallKitId;
-    _handledCallKitAcceptIds.add(normalizedCallKitId);
+    final token = _debugEnsureAcceptAttempt(
+      sessionId,
+      callKitId: normalizedCallKitId,
+    );
+    if (!hadActiveAttempt && token != null) {
+      _acceptLifecycle.finish(token);
+      _debugAcceptAttempts.remove(sessionId);
+    }
     _lastCallKitId = normalizedCallKitId;
   }
 
@@ -878,7 +916,7 @@ class VoIPService {
   bool debugHandledCallKitAcceptForTesting(String callKitId) {
     final normalizedCallKitId = _normalizeCallKitId(callKitId);
     return normalizedCallKitId != null &&
-        _handledCallKitAcceptIds.contains(normalizedCallKitId);
+        _acceptLifecycle.hasHandledCallKitId(normalizedCallKitId);
   }
 
   @visibleForTesting
@@ -941,6 +979,42 @@ class VoIPService {
   @visibleForTesting
   Future<void> debugHandleCallEndedForTesting(Map<String, dynamic> data) {
     return _handleCallEnded(data);
+  }
+
+  VoipAcceptAttemptToken? _debugEnsureAcceptAttempt(
+    String sessionId, {
+    String? callKitId,
+  }) {
+    final existing = _debugAcceptAttempts[sessionId];
+    final effectiveCallKitId = callKitId ??
+        existing?.identity.callKitId ??
+        _callKitIdForSession('debug-accept:$sessionId');
+    if (existing != null &&
+        _acceptLifecycle.isCurrent(existing) &&
+        existing.identity.callKitId == effectiveCallKitId) {
+      return existing;
+    }
+
+    final wasAccepted = _acceptLifecycle.isAccepted(sessionId);
+    if (existing != null && _acceptLifecycle.isCurrent(existing)) {
+      _acceptLifecycle.releaseForRetry(existing);
+    } else if (_acceptLifecycle.hasSessionState(sessionId)) {
+      _acceptLifecycle.invalidate(sessionId);
+    }
+    final result = _acceptLifecycle.begin(
+      VoipAcceptIdentity(
+        sessionId: sessionId,
+        callKitId: effectiveCallKitId,
+      ),
+      now: DateTime.now(),
+    );
+    final token = result.token;
+    if (token == null) return null;
+    _debugAcceptAttempts[sessionId] = token;
+    if (wasAccepted) {
+      _acceptLifecycle.markAccepted(token);
+    }
+    return token;
   }
 
   @visibleForTesting
@@ -1254,8 +1328,8 @@ class VoIPService {
     return sessionId == _lastAcceptedSessionId ||
         sessionId == _lastNavigatedSessionId ||
         sessionId == _pendingSessionId ||
-        _acceptedSessions.contains(sessionId) ||
-        _acceptInProgress.contains(sessionId);
+        _acceptLifecycle.isAccepted(sessionId) ||
+        _acceptLifecycle.isAcceptInProgress(sessionId);
   }
 
   bool _canEndSessionFromInMemoryState(String sessionId) {
@@ -1271,26 +1345,8 @@ class VoIPService {
   bool _hasTrackedSessionState(String sessionId) {
     return _sessionStateTouchedAt.containsKey(sessionId) ||
         _sessionCallKitIds.containsKey(sessionId) ||
-        _recentAcceptBySession.containsKey(sessionId) ||
+        _acceptLifecycle.hasSessionState(sessionId) ||
         _hasProtectedLiveSessionState(sessionId);
-  }
-
-  bool _tryClaimProcessAccept(String sessionId) {
-    final now = DateTime.now();
-    _processAcceptClaimedAtBySession.removeWhere(
-      (_, claimedAt) => now.difference(claimedAt) >= _processAcceptDedupeWindow,
-    );
-    final lastClaim = _processAcceptClaimedAtBySession[sessionId];
-    if (lastClaim != null &&
-        now.difference(lastClaim) < _processAcceptDedupeWindow) {
-      return false;
-    }
-    _processAcceptClaimedAtBySession[sessionId] = now;
-    return true;
-  }
-
-  void _releaseProcessAcceptClaim(String sessionId) {
-    _processAcceptClaimedAtBySession.remove(sessionId);
   }
 
   Future<bool> _shouldEndSessionViaFallbackLookup(String sessionId) async {
@@ -1713,13 +1769,13 @@ class VoIPService {
   }
 
   void _resetInMemoryState() {
+    _acceptLifecycle.reset();
+    _debugAcceptAttempts.clear();
+    _acceptedSessionResolver.reset();
+    _navigationCoordinator.reset();
     _sessionPruneTimer?.cancel();
     _sessionPruneTimer = null;
     _sessionStateTouchedAt.clear();
-    _acceptInProgress.clear();
-    _acceptedSessions.clear();
-    _handledCallKitAcceptIds.clear();
-    _recentAcceptBySession.clear();
     _declineInProgress.clear();
     _recentDeclineBySession.clear();
     _sessionStateGenerations.clear();
@@ -1730,18 +1786,8 @@ class VoIPService {
     _pendingCallKitActions.clear();
     _pendingCallKitActionsDraining = false;
     _callActionHandlingReady = false;
-    _processAcceptClaimedAtBySession.clear();
-
     _lastAcceptedSessionId = null;
     _lastAcceptedIsTutor = false;
-    _lastNavigatedSessionId = null;
-    _lastNavigatedIsTutor = null;
-    _pendingSessionId = null;
-    _pendingIsTutor = false;
-    _navRetryInProgress = false;
-    _pendingRoomUrl = null;
-    _pendingMeetingToken = null;
-    _pendingRoomName = null;
     _lastRoomUrl = null;
     _lastMeetingToken = null;
     _lastRoomName = null;
@@ -1770,9 +1816,8 @@ class VoIPService {
 
   void _pruneStaleSessionState() {
     if (_sessionStateTouchedAt.isEmpty &&
-        _recentAcceptBySession.isEmpty &&
         _recentDeclineBySession.isEmpty &&
-        _acceptedSessions.isEmpty &&
+        !_acceptLifecycle.hasAnyState &&
         _sessionCallKitIds.isEmpty) {
       return;
     }
@@ -1788,21 +1833,7 @@ class VoIPService {
       }
     }
 
-    for (final entry in List<MapEntry<String, DateTime>>.from(
-      _recentAcceptBySession.entries,
-    )) {
-      if (now.difference(entry.value) >= _sessionStateTtl) {
-        staleSessionIds.add(entry.key);
-      }
-    }
     _pruneRecentDeclineState(now);
-
-    for (final sessionId in List<String>.from(_acceptedSessions)) {
-      final touchedAt = _sessionStateTouchedAt[sessionId];
-      if (touchedAt == null || now.difference(touchedAt) >= _sessionStateTtl) {
-        staleSessionIds.add(sessionId);
-      }
-    }
 
     for (final sessionId in List<String>.from(_sessionCallKitIds.keys)) {
       final touchedAt = _sessionStateTouchedAt[sessionId];
@@ -1811,18 +1842,19 @@ class VoIPService {
       }
     }
 
-    if (_lastAcceptedSessionId != null) {
-      staleSessionIds.remove(_lastAcceptedSessionId);
-    }
-    if (_lastNavigatedSessionId != null) {
-      staleSessionIds.remove(_lastNavigatedSessionId);
-    }
-    if (_pendingSessionId != null) {
-      staleSessionIds.remove(_pendingSessionId);
-    }
-    if (_prefetchedSessionId != null) {
-      staleSessionIds.remove(_prefetchedSessionId);
-    }
+    final retainedSessionIds = <String>{
+      if (_lastAcceptedSessionId != null) _lastAcceptedSessionId!,
+      if (_lastNavigatedSessionId != null) _lastNavigatedSessionId!,
+      if (_pendingSessionId != null) _pendingSessionId!,
+      if (_prefetchedSessionId != null) _prefetchedSessionId!,
+    };
+    staleSessionIds.addAll(
+      _acceptLifecycle.prune(
+        now: now,
+        retainedSessionIds: retainedSessionIds,
+      ),
+    );
+    staleSessionIds.removeAll(retainedSessionIds);
 
     if (staleSessionIds.isEmpty) return;
 
@@ -1874,107 +1906,29 @@ class VoIPService {
     debugPrint('✅ VoIPService: Deinitialized');
   }
 
-  Future<void> _registerVoipToken({
-    required String tokenType,
-    required String token,
-  }) async {
-    final trimmedToken = token.trim();
-    if (trimmedToken.isEmpty) {
-      return;
-    }
-
-    await _functions.httpsCallable('registerVoipToken').call({
-      'tokenType': tokenType,
-      'token': trimmedToken,
-      'platform': voipClientPlatform(),
-      'matchProtocolVersion': matchProtocolVersion,
-    });
-  }
-
-  Future<void> _removeRegisteredVoipToken(String tokenType) async {
-    if (_auth.currentUser == null) return;
-    try {
-      await _functions.httpsCallable('registerVoipToken').call({
-        'removeTokenType': tokenType,
-        'platform': voipClientPlatform(),
-        'matchProtocolVersion': matchProtocolVersion,
-      });
-      debugPrint('✅ VoIPService: Removed invalidated $tokenType token');
-    } catch (error) {
-      debugPrint(
-        '⚠️ VoIPService: Failed to remove invalidated $tokenType token: '
-        '$error',
-      );
-    }
+  Future<void> _invokeVoipTokenRegistration(
+    Map<String, dynamic> payload,
+  ) async {
+    await _functions.httpsCallable('registerVoipToken').call(payload);
   }
 
   Future<void> _clearRegisteredVoipTokens() async {
-    if (_auth.currentUser == null) {
-      return;
-    }
-
-    try {
-      await _functions.httpsCallable('registerVoipToken').call({
-        'clearAll': true,
-        'matchProtocolVersion': matchProtocolVersion,
-      });
-    } catch (e) {
-      debugPrint('⚠️ VoIPService: Failed to clear registered tokens: $e');
-    }
+    await _tokenRegistry.clearRegisteredTokens();
   }
 
   /// Сохранение FCM токена через серверный контракт.
   Future<void> _saveVoipToken(String token) async {
     try {
-      final user = _auth.currentUser;
-      if (user == null) {
-        debugPrint(
-            '⚠️ VoIPService: No authenticated user, skipping token save');
-        return;
-      }
-
-      await _registerVoipToken(tokenType: 'fcm', token: token);
-
-      debugPrint('✅ VoIPService: Token saved for user ${user.uid}');
+      await _tokenRegistry.saveFcmToken(token);
     } catch (e) {
       debugPrint('❌ VoIPService: Error saving token: $e');
     }
   }
 
-  /// Сохранение PushKit токена через серверный контракт (iOS).
-  Future<void> _savePushKitToken(String token) async {
-    try {
-      final user = _auth.currentUser;
-      if (user == null) {
-        debugPrint(
-            '⚠️ VoIPService: No authenticated user, skipping PushKit token save');
-        return;
-      }
-
-      await _registerVoipToken(tokenType: 'pushkit', token: token);
-
-      debugPrint('✅ VoIPService: PushKit token saved for user ${user.uid}');
-    } catch (e) {
-      debugPrint('❌ VoIPService: Error saving PushKit token: $e');
-    }
-  }
-
   /// Пробуем синхронизировать PushKit токен (iOS)
   Future<void> _syncPushKitToken() async {
-    if (kIsWeb || voipClientPlatform() != 'ios') return;
-
-    try {
-      final token = await FlutterCallkitIncoming.getDevicePushTokenVoIP();
-      if (token is String) {
-        if (token.trim().isEmpty) {
-          await _removeRegisteredVoipToken('pushkit');
-        } else {
-          await _savePushKitToken(token);
-        }
-      }
-    } catch (e) {
-      debugPrint('⚠️ VoIPService: PushKit token not available yet: $e');
-    }
+    if (kIsWeb) return;
+    await _tokenRegistry.syncPushKitToken();
   }
 
   /// Показать входящий звонок (вызывается из push notification handler)
@@ -2118,17 +2072,17 @@ class VoIPService {
         await _syncPushKitToken();
       } else if (event is CallEventActionCallAccept) {
         await _dispatchCallKitAction(
-          type: _PendingCallKitActionType.accept,
+          type: VoipPendingCallKitActionType.accept,
           data: _callKitEventData(event.callKitParams),
         );
       } else if (event is CallEventActionCallDecline) {
         await _dispatchCallKitAction(
-          type: _PendingCallKitActionType.decline,
+          type: VoipPendingCallKitActionType.decline,
           data: _callKitEventData(event.callKitParams),
         );
       } else if (event is CallEventActionCallEnded) {
         await _dispatchCallKitAction(
-          type: _PendingCallKitActionType.ended,
+          type: VoipPendingCallKitActionType.ended,
           data: _callKitEventData(event.callKitParams),
         );
       } else if (event is CallEventActionCallTimeout) {
@@ -2144,7 +2098,7 @@ class VoIPService {
           return;
         }
         await _dispatchCallKitAction(
-          type: _PendingCallKitActionType.timeout,
+          type: VoipPendingCallKitActionType.timeout,
           data: data,
         );
       } else if (event is CallEventActionCallToggleAudioSession) {
@@ -2183,7 +2137,7 @@ class VoIPService {
   }
 
   Future<void> _dispatchCallKitAction({
-    required _PendingCallKitActionType type,
+    required VoipPendingCallKitActionType type,
     required Map<String, dynamic> data,
   }) async {
     if (_queueCallKitActionIfNotReady(type: type, data: data) ||
@@ -2191,16 +2145,16 @@ class VoIPService {
       return;
     }
     switch (type) {
-      case _PendingCallKitActionType.accept:
+      case VoipPendingCallKitActionType.accept:
         await _handleCallAccept(data);
         break;
-      case _PendingCallKitActionType.decline:
+      case VoipPendingCallKitActionType.decline:
         await _handleCallDecline(data);
         break;
-      case _PendingCallKitActionType.ended:
+      case VoipPendingCallKitActionType.ended:
         await _handleCallEnded(data);
         break;
-      case _PendingCallKitActionType.timeout:
+      case VoipPendingCallKitActionType.timeout:
         await _handleCallTimeout(data);
         break;
     }
@@ -2215,7 +2169,7 @@ class VoIPService {
   }
 
   bool _queueCallKitActionIfNotReady({
-    required _PendingCallKitActionType type,
+    required VoipPendingCallKitActionType type,
     required Map<String, dynamic>? data,
   }) {
     if (_canHandleCallKitActions) {
@@ -2236,64 +2190,21 @@ class VoIPService {
       _voipNonEmptyString(normalizedData['id']) ??
           _voipStringFromPayload(normalizedData, 'callKitId'),
     );
-    final incomingKey = _pendingCallKitActionIdentityKey(
-      sessionId: sessionId,
-      callKitId: callKitId,
+    _pendingCallKitActions.enqueue(
+      VoipPendingCallKitAction(
+        type: type,
+        data: normalizedData,
+        sessionId: sessionId,
+        callKitId: callKitId,
+        targetUserId: _voipStringFromPayload(normalizedData, 'recipientId'),
+        queuedAt: DateTime.now(),
+        queuedForUserId: _currentUserIdOrNull(),
+      ),
     );
-    final existingIndex = _pendingCallKitActions.indexWhere((action) {
-      final existingSessionId =
-          _voipStringFromPayload(action.data, 'sessionId');
-      final existingCallKitId = _normalizeCallKitId(
-        _voipNonEmptyString(action.data['id']) ??
-            _voipStringFromPayload(action.data, 'callKitId'),
-      );
-      return incomingKey ==
-          _pendingCallKitActionIdentityKey(
-            sessionId: existingSessionId,
-            callKitId: existingCallKitId,
-          );
-    });
-    final action = _PendingCallKitAction(
-      type: type,
-      data: normalizedData,
-      queuedAt: DateTime.now(),
-      queuedForUserId: _currentUserIdOrNull(),
-    );
-    if (existingIndex >= 0) {
-      final existingAction = _pendingCallKitActions[existingIndex];
-      if (_pendingCallKitActionPriority(type) >=
-          _pendingCallKitActionPriority(existingAction.type)) {
-        _pendingCallKitActions[existingIndex] = action;
-      }
-    } else {
-      _pendingCallKitActions.add(action);
-      if (_pendingCallKitActions.length > _pendingCallKitActionMaxCount) {
-        _pendingCallKitActions.removeAt(0);
-      }
-    }
     debugPrint(
       '📞 VoIPService: Queued early CallKit ${type.name} for $sessionId',
     );
     return true;
-  }
-
-  int _pendingCallKitActionPriority(_PendingCallKitActionType type) {
-    switch (type) {
-      case _PendingCallKitActionType.timeout:
-        return 0;
-      case _PendingCallKitActionType.accept:
-        return 1;
-      case _PendingCallKitActionType.decline:
-      case _PendingCallKitActionType.ended:
-        return 2;
-    }
-  }
-
-  String _pendingCallKitActionIdentityKey({
-    required String? sessionId,
-    required String? callKitId,
-  }) {
-    return '${sessionId ?? ''}:${callKitId ?? ''}';
   }
 
   String? _serverEndedCallKitIdentityKey({
@@ -2417,26 +2328,6 @@ class VoIPService {
     }
   }
 
-  bool _pendingCallKitActionHasExpired(
-    _PendingCallKitAction action, {
-    DateTime? now,
-  }) {
-    final effectiveNow = now ?? DateTime.now();
-    if (effectiveNow.difference(action.queuedAt) >= _pendingCallKitActionTtl) {
-      return true;
-    }
-    return action.type == _PendingCallKitActionType.accept &&
-        voipIncomingCallPayloadHasExpired(action.data, now: effectiveNow);
-  }
-
-  bool _pendingCallKitActionTargetsCurrentUser(_PendingCallKitAction action) {
-    return _callKitActionTargetsCurrentUser(
-      action.data,
-      queuedForUserId: action.queuedForUserId,
-      requireQueuedUserForUntargeted: true,
-    );
-  }
-
   bool _callKitActionTargetsCurrentUser(
     Map<String, dynamic> data, {
     String? queuedForUserId,
@@ -2460,7 +2351,7 @@ class VoIPService {
   }
 
   bool _shouldDropCallKitActionForCurrentUser({
-    required _PendingCallKitActionType type,
+    required VoipPendingCallKitActionType type,
     required Map<String, dynamic>? data,
   }) {
     if (data == null) {
@@ -2478,38 +2369,31 @@ class VoIPService {
     return true;
   }
 
-  void _prunePendingCallKitActions({DateTime? now}) {
-    _pendingCallKitActions.removeWhere((action) {
-      return _pendingCallKitActionHasExpired(action, now: now) ||
-          !_pendingCallKitActionTargetsCurrentUser(action);
-    });
-  }
-
-  bool _stopAcceptForGateDecision({
+  bool _stopAcceptForLifecycleDecision({
     required String sessionId,
     required String effectiveCallKitId,
-    required VoipAcceptGateDecision decision,
-    required bool releaseProcessClaim,
+    required VoipAcceptDecision decision,
   }) {
     switch (decision) {
-      case VoipAcceptGateDecision.proceed:
+      case VoipAcceptDecision.proceed:
+      case VoipAcceptDecision.started:
         return false;
-      case VoipAcceptGateDecision.duplicateTimeWindow:
+      case VoipAcceptDecision.duplicateTimeWindow:
         debugPrint('⚠️ VoIPService: Duplicate accept event (time window)');
         break;
-      case VoipAcceptGateDecision.duplicateCallKitId:
+      case VoipAcceptDecision.duplicateCallKitId:
         debugPrint(
             '⚠️ VoIPService: Duplicate accept event (callKitId): $effectiveCallKitId');
         break;
-      case VoipAcceptGateDecision.alreadyAccepted:
+      case VoipAcceptDecision.alreadyAccepted:
         debugPrint('⚠️ VoIPService: Call already accepted: $sessionId');
         break;
-      case VoipAcceptGateDecision.acceptInProgress:
+      case VoipAcceptDecision.acceptInProgress:
         debugPrint('⚠️ VoIPService: Accept already in progress for $sessionId');
         break;
-    }
-    if (releaseProcessClaim) {
-      _releaseProcessAcceptClaim(sessionId);
+      case VoipAcceptDecision.duplicateProcessClaim:
+        debugPrint('⚠️ VoIPService: Duplicate accept event (process gate)');
+        break;
     }
     return true;
   }
@@ -2550,19 +2434,18 @@ class VoIPService {
       return;
     }
     final acceptTime = now ?? DateTime.now();
-    final preExpiredGateDecision = voipEvaluateAcceptGate(
-      now: acceptTime,
-      lastAcceptAt: _recentAcceptBySession[sessionId],
-      handledCallKitAcceptId:
-          _handledCallKitAcceptIds.contains(effectiveCallKitId),
-      acceptedSession: _acceptedSessions.contains(sessionId),
-      acceptInProgress: _acceptInProgress.contains(sessionId),
+    final acceptIdentity = VoipAcceptIdentity(
+      sessionId: sessionId,
+      callKitId: effectiveCallKitId,
     );
-    if (_stopAcceptForGateDecision(
+    final duplicateDecision = _acceptLifecycle.evaluate(
+      acceptIdentity,
+      now: acceptTime,
+    );
+    if (_stopAcceptForLifecycleDecision(
       sessionId: sessionId,
       effectiveCallKitId: effectiveCallKitId,
-      decision: preExpiredGateDecision,
-      releaseProcessClaim: false,
+      decision: duplicateDecision,
     )) {
       return;
     }
@@ -2585,31 +2468,20 @@ class VoIPService {
       );
       return;
     }
-    if (!_tryClaimProcessAccept(sessionId)) {
-      debugPrint('⚠️ VoIPService: Duplicate accept event (process gate)');
-      return;
-    }
-    _touchSessionState(sessionId);
-
-    final acceptGateDecision = voipEvaluateAcceptGate(
+    final startResult = _acceptLifecycle.begin(
+      acceptIdentity,
       now: acceptTime,
-      lastAcceptAt: _recentAcceptBySession[sessionId],
-      handledCallKitAcceptId:
-          _handledCallKitAcceptIds.contains(effectiveCallKitId),
-      acceptedSession: _acceptedSessions.contains(sessionId),
-      acceptInProgress: _acceptInProgress.contains(sessionId),
     );
-    if (_stopAcceptForGateDecision(
+    if (_stopAcceptForLifecycleDecision(
       sessionId: sessionId,
       effectiveCallKitId: effectiveCallKitId,
-      decision: acceptGateDecision,
-      releaseProcessClaim: true,
+      decision: startResult.decision,
     )) {
       return;
     }
+    final acceptAttempt = startResult.token!;
+    _touchSessionState(sessionId);
 
-    _recentAcceptBySession[sessionId] = acceptTime;
-    _handledCallKitAcceptIds.add(effectiveCallKitId);
     _lastCallKitId = effectiveCallKitId;
     _sessionCallKitIds[sessionId] = effectiveCallKitId;
     final pairAttemptId = _voipStringFromPayload(data, 'pairAttemptId');
@@ -2617,14 +2489,16 @@ class VoIPService {
       _sessionPairAttemptIds[sessionId] = pairAttemptId;
     }
 
-    _acceptInProgress.add(sessionId);
-
+    var finishAcceptAttempt = true;
     try {
-      if (!(await _ensureAcceptMediaPermissions())) {
+      final hasPermissions = await _ensureAcceptMediaPermissions();
+      if (!_acceptLifecycle.isCurrent(acceptAttempt)) return;
+      if (!hasPermissions) {
         debugPrint(
           '⚠️ VoIPService: camera or microphone permission denied before accepting $sessionId',
         );
-        _releaseProcessAcceptClaim(sessionId);
+        final permissionDeniedGeneration = _sessionStateGenerations[sessionId];
+        _acceptLifecycle.releaseForRetry(acceptAttempt);
         if (_voipUsesMatchProtocolV2(data)) {
           try {
             await _matchCoordinator.handleCallKitDecline(data);
@@ -2634,9 +2508,13 @@ class VoIPService {
           await _endExpiredAcceptSystemCall(
             sessionId: sessionId,
             callKitId: effectiveCallKitId,
+            expectedSessionGeneration: permissionDeniedGeneration,
           );
         } else {
-          await endCurrentCall(sessionId: sessionId);
+          await _endCurrentCall(
+            sessionId: sessionId,
+            expectedSessionGeneration: permissionDeniedGeneration,
+          );
         }
         return;
       }
@@ -2644,6 +2522,7 @@ class VoIPService {
       if (_voipUsesMatchProtocolV2(data)) {
         try {
           final handled = await _matchCoordinator.handleCallKitAccept(data);
+          if (!_acceptLifecycle.isCurrent(acceptAttempt)) return;
           if (!handled) {
             await _endExpiredAcceptSystemCall(
               sessionId: sessionId,
@@ -2651,11 +2530,12 @@ class VoIPService {
             );
             return;
           }
+          if (!_acceptLifecycle.markAccepted(acceptAttempt)) return;
           _lastAcceptedSessionId = sessionId;
           _lastAcceptedIsTutor = false;
-          _acceptedSessions.add(sessionId);
           debugPrint('✅ VoIPService: v2 CallKit accept submitted');
         } catch (error) {
+          if (!_acceptLifecycle.isCurrent(acceptAttempt)) return;
           debugPrint('❌ VoIPService: v2 accept failed: $error');
           if (voipIsDefinitiveV2AcceptFailure(error)) {
             await _endExpiredAcceptSystemCall(
@@ -2679,8 +2559,7 @@ class VoIPService {
       _lastMeetingToken = null;
       _lastRoomName = null;
       if (!isSameSession) {
-        _lastNavigatedSessionId = null;
-        _lastNavigatedIsTutor = null;
+        _navigationCoordinator.clearLastNavigation();
       }
 
       debugPrint('✅ VoIPService: Call accepted: $sessionId');
@@ -2688,35 +2567,36 @@ class VoIPService {
       final payloadCredentials = voipRoomCredentialsFromAcceptedPayload(data);
       final acceptAction = voipAcceptActionFromPayload(data);
       _lastAcceptedIsTutor = payloadCredentials == null;
+      final acceptedUserId = _currentUserIdOrNull()?.trim();
+      if (acceptedUserId == null || acceptedUserId.isEmpty) {
+        _clearSessionState(sessionId);
+        return;
+      }
+      final resolutionAttempt = _acceptedSessionResolver.begin(
+        sessionId: sessionId,
+        userId: acceptedUserId,
+      );
 
       // open_session means backend already accepted the pair. Do not call
       // acceptCall again; VideoCallPage/getSessionTokens can resolve credentials.
       if (payloadCredentials != null ||
           acceptAction == VoipAcceptPayloadAction.openSession) {
-        _lastAcceptedIsTutor = false;
-        _lastRoomUrl = payloadCredentials?.roomUrl;
-        _lastMeetingToken = null;
-        _lastRoomName =
-            payloadCredentials?.roomName ?? voipRoomNameFromAcceptPayload(data);
-        unawaited(_prefetchSessionTokensForAccept(sessionId));
-        _acceptedSessions.add(sessionId);
-
-        // Navigate FIRST, then update Firestore in the background.
-        _navigateToVideoCallForAccept(
-          sessionId: sessionId,
-          isTutor: false,
-          roomUrl: _lastRoomUrl,
-          meetingToken: null,
-          roomName: _lastRoomName,
+        final resolution = await _acceptedSessionResolver.resolve(
+          attempt: resolutionAttempt,
+          alreadyAccepted: VoipAcceptedSession(
+            isTutor: false,
+            roomUrl: payloadCredentials?.roomUrl,
+            roomName: payloadCredentials?.roomName ??
+                voipRoomNameFromAcceptPayload(data),
+          ),
+          accept: () async => null,
+          recover: () async => null,
         );
-        debugPrint(
-            '✅ VoIPService: Student navigation triggered (no acceptCall)');
-
-        // Firestore metadata write — fire-and-forget, not needed for navigation
-        unawaited(_markNavigationTriggeredForAccept(
-          sessionId: sessionId,
-          isTutor: false,
-        ).catchError((_) {}));
+        _applyAcceptedSessionResolution(
+          attempt: resolutionAttempt,
+          acceptAttempt: acceptAttempt,
+          resolution: resolution,
+        );
         return;
       }
 
@@ -2724,103 +2604,128 @@ class VoIPService {
       // duplicate accept events; navigating early creates multiple Daily clients
       // before the backend lock can collapse them.
       _lastAcceptedIsTutor = true;
-      _acceptedSessions.add(sessionId);
+      if (!_acceptLifecycle.markAccepted(acceptAttempt)) return;
 
       // Call acceptCall in the background — creates the Daily room and writes
       // dailyRoomUrl to the session document. VideoCallPage's StreamBuilder
       // reacts to this update and fetches a meeting token automatically.
-      unawaited(() async {
-        var didResolveAcceptedSession = false;
-        try {
-          debugPrint('☁️ VoIPService: Calling acceptCall function...');
-          final responseData = await _callAcceptCallFunction(sessionId);
-          final status = responseData['status'];
-          final responseCredentials =
-              voipRoomCredentialsFromAcceptCallResponse(responseData);
-
-          debugPrint('✅ VoIPService: acceptCall response: status=$status');
-
-          if (responseCredentials != null) {
-            _lastRoomUrl = responseCredentials.roomUrl;
-            _lastMeetingToken = responseCredentials.meetingToken;
-            _lastRoomName = responseCredentials.roomName;
-            _navigateToVideoCallForAccept(
-              sessionId: sessionId,
-              isTutor: true,
-              roomUrl: _lastRoomUrl,
-              meetingToken: _lastMeetingToken,
-              roomName: _lastRoomName,
-            );
-            debugPrint(
-                '🎬 VoIPService: Navigated to VideoCallPage (tutor, after acceptCall)');
-            didResolveAcceptedSession = true;
-          }
-        } catch (e) {
-          debugPrint('❌ VoIPService: acceptCall failed: $e');
-          if (await _tryRecoverActiveSession(sessionId)) {
-            _navigateToVideoCallForAccept(
-              sessionId: sessionId,
-              isTutor: true,
-              roomUrl: _lastRoomUrl,
-              meetingToken: _lastMeetingToken,
-              roomName: _lastRoomName,
-            );
-            debugPrint(
-                '🎬 VoIPService: Recovered accepted call after acceptCall error');
-            didResolveAcceptedSession = true;
-          } else {
-            _clearSessionState(sessionId);
-          }
-        }
-
-        if (!didResolveAcceptedSession) {
-          _clearSessionState(sessionId);
-          return;
-        }
-        unawaited(_prefetchSessionTokensForAccept(sessionId));
-        unawaited(_markNavigationTriggeredForAccept(
-          sessionId: sessionId,
-          isTutor: true,
-        ).catchError((_) {}));
-      }());
+      finishAcceptAttempt = false;
+      unawaited(_resolveAcceptedSession(
+        resolutionAttempt,
+        acceptAttempt,
+      ));
     } catch (e) {
+      if (!_acceptLifecycle.isCurrent(acceptAttempt)) return;
       debugPrint('❌ VoIPService: Error in call accept flow: $e');
       _clearSessionState(sessionId);
     } finally {
-      _acceptInProgress.remove(sessionId);
+      if (finishAcceptAttempt) {
+        _acceptLifecycle.finish(acceptAttempt);
+      }
     }
   }
 
-  Future<bool> _tryRecoverActiveSession(String sessionId) async {
+  Future<void> _resolveAcceptedSession(
+    VoipAcceptedSessionAttempt attempt,
+    VoipAcceptAttemptToken acceptAttempt,
+  ) async {
+    try {
+      final resolution = await _acceptedSessionResolver.resolve(
+        attempt: attempt,
+        accept: () async {
+          final response = await _callAcceptCallFunction(attempt.sessionId);
+          final credentials =
+              voipRoomCredentialsFromAcceptCallResponse(response);
+          if (credentials == null) return null;
+          return VoipAcceptedSession(
+            isTutor: true,
+            roomUrl: credentials.roomUrl,
+            meetingToken: credentials.meetingToken,
+            roomName: credentials.roomName,
+          );
+        },
+        recover: () => _recoverActiveSession(attempt.sessionId),
+      );
+      _applyAcceptedSessionResolution(
+        attempt: attempt,
+        acceptAttempt: acceptAttempt,
+        resolution: resolution,
+      );
+    } finally {
+      _acceptLifecycle.finish(acceptAttempt);
+    }
+  }
+
+  void _applyAcceptedSessionResolution({
+    required VoipAcceptedSessionAttempt attempt,
+    required VoipAcceptAttemptToken acceptAttempt,
+    required VoipAcceptedSessionResolution resolution,
+  }) {
+    if (!_acceptedSessionResolver.isCurrent(attempt) ||
+        !_acceptLifecycle.isCurrent(acceptAttempt)) {
+      return;
+    }
+    final accepted = resolution.session;
+    if (resolution.state != VoipAcceptedSessionResolutionState.resolved ||
+        accepted == null) {
+      if (resolution.state == VoipAcceptedSessionResolutionState.unresolved) {
+        _clearSessionState(attempt.sessionId);
+      }
+      return;
+    }
+
+    _lastAcceptedSessionId = attempt.sessionId;
+    _lastAcceptedIsTutor = accepted.isTutor;
+    _lastRoomUrl = accepted.roomUrl;
+    _lastMeetingToken = accepted.meetingToken;
+    _lastRoomName = accepted.roomName;
+    if (!_acceptLifecycle.markAccepted(acceptAttempt)) return;
+    _navigateToVideoCallForAccept(
+      sessionId: attempt.sessionId,
+      isTutor: accepted.isTutor,
+      roomUrl: accepted.roomUrl,
+      meetingToken: accepted.meetingToken,
+      roomName: accepted.roomName,
+    );
+    unawaited(_prefetchSessionTokensForAccept(attempt.sessionId));
+    unawaited(_markNavigationTriggeredForAccept(
+      sessionId: attempt.sessionId,
+      isTutor: accepted.isTutor,
+    ).catchError((_) {}));
+  }
+
+  Future<VoipAcceptedSession?> _recoverActiveSession(String sessionId) async {
     try {
       final override = debugRecoverActiveSessionOverride;
       if (override != null) {
-        return override(sessionId);
+        if (!(await override(sessionId))) return null;
+        return VoipAcceptedSession(
+          isTutor: true,
+          roomUrl: _lastRoomUrl,
+          roomName: _lastRoomName,
+        );
       }
       final userId = _auth.currentUser?.uid;
-      if (userId == null) return false;
+      if (userId == null) return null;
       final sessionDoc =
           await _firestore.collection('videoSessions').doc(sessionId).get();
-      if (!sessionDoc.exists) return false;
+      if (!sessionDoc.exists) return null;
       final data = sessionDoc.data();
-      if (data == null) return false;
+      if (data == null) return null;
       final status = data['status'] as String?;
       final tutorId = data['tutorId'] as String?;
       final roomUrl = data['dailyRoomUrl'] as String?;
-      if (roomUrl == null || roomUrl.isEmpty) return false;
-      if (tutorId != userId) return false;
-      if (status != 'active' && status != 'connecting') return false;
-
-      _lastAcceptedIsTutor = true;
-      _lastRoomUrl = roomUrl;
-      _lastRoomName = data['dailyRoomName'] as String?;
-      _lastMeetingToken = null;
-      _touchSessionState(sessionId);
-      unawaited(_prefetchSessionTokens(sessionId));
-      return true;
+      if (roomUrl == null || roomUrl.isEmpty) return null;
+      if (tutorId != userId) return null;
+      if (status != 'active' && status != 'connecting') return null;
+      return VoipAcceptedSession(
+        isTutor: true,
+        roomUrl: roomUrl,
+        roomName: data['dailyRoomName'] as String?,
+      );
     } catch (e) {
       debugPrint('⚠️ VoIPService: Recovery check failed: $e');
-      return false;
+      return null;
     }
   }
 
@@ -2854,62 +2759,73 @@ class VoIPService {
     String? meetingToken,
     String? roomName,
   }) {
-    final navContext = appNavigatorKey.currentContext;
-    if (navContext == null) {
+    if (appNavigatorKey.currentContext == null) {
       debugPrint('⚠️ VoIPService: Navigation context not ready');
-      _queueNavigation(
-        sessionId: sessionId,
-        isTutor: isTutor,
-        roomUrl: roomUrl,
-        meetingToken: meetingToken,
-        roomName: roomName,
-      );
-      return;
+      _touchSessionState(sessionId);
     }
 
-    if (_lastNavigatedSessionId == sessionId &&
-        _lastNavigatedIsTutor == isTutor) {
-      return;
-    }
+    unawaited(
+      _navigationCoordinator.requestNavigation(
+        VoipNavigationRequest(
+          sessionId: sessionId,
+          isTutor: isTutor,
+          roomUrl: roomUrl,
+          meetingToken: meetingToken,
+          roomName: roomName,
+        ),
+      ),
+    );
+  }
 
-    final prefetchedToken = _getFreshPrefetchedToken(sessionId);
-    final prefetchedRoomUrl = _getPrefetchedRoomUrl(sessionId);
-    final prefetchedRoomName = _getPrefetchedRoomName(sessionId);
-    final usePrefetch = prefetchedToken != null && prefetchedRoomUrl != null;
-    final effectiveMeetingToken = usePrefetch ? prefetchedToken : meetingToken;
-    final effectiveRoomUrl =
-        usePrefetch ? prefetchedRoomUrl : (roomUrl ?? prefetchedRoomUrl);
-    final effectiveRoomName =
-        usePrefetch ? prefetchedRoomName : (roomName ?? prefetchedRoomName);
-    final params = <String, String>{
-      'videoDocRef': sessionId,
-    };
-    if (effectiveRoomUrl != null && effectiveRoomUrl.isNotEmpty) {
-      params['roomUrl'] = effectiveRoomUrl;
-    }
-    if (effectiveMeetingToken != null && effectiveMeetingToken.isNotEmpty) {
-      params['meetingToken'] = effectiveMeetingToken;
-    }
-    if (effectiveRoomName != null && effectiveRoomName.isNotEmpty) {
-      params['roomName'] = effectiveRoomName;
-    }
-    final target =
-        Uri(path: _videoCallRoutePath, queryParameters: params).toString();
+  bool _attemptVideoCallNavigation(VoipNavigationTarget queuedTarget) {
+    final navContext = appNavigatorKey.currentContext;
+    if (navContext == null) return false;
 
+    final request = queuedTarget.request;
+    final target = _effectiveVideoCallTarget(request);
     final router = GoRouter.of(navContext);
     final currentLocation = router.getCurrentLocation();
-    if (_isVideoCallLocationForSession(currentLocation, sessionId)) {
-      _lastNavigatedSessionId = sessionId;
-      _lastNavigatedIsTutor = isTutor;
+    if (_isVideoCallLocationForSession(currentLocation, request.sessionId)) {
       debugPrint(
-          'ℹ️ VoIPService: Already on $_videoCallRoutePath for $sessionId, skip navigation');
-      return;
+        'ℹ️ VoIPService: Already on $_videoCallRoutePath for '
+        '${request.sessionId}, skip navigation',
+      );
+      return true;
     }
 
-    _lastNavigatedSessionId = sessionId;
-    _lastNavigatedIsTutor = isTutor;
-    router.go(target);
+    router.go(target.location);
     debugPrint('🎬 VoIPService: Navigated to VideoCallPage');
+    return true;
+  }
+
+  void _logNavigationRetryExhausted() {
+    debugPrint(
+      '⚠️ VoIPService: Navigation context not ready after extended retries',
+    );
+  }
+
+  VoipNavigationTarget _effectiveVideoCallTarget(
+    VoipNavigationRequest request,
+  ) {
+    final prefetchedToken = _getFreshPrefetchedToken(request.sessionId);
+    final prefetchedRoomUrl = _getPrefetchedRoomUrl(request.sessionId);
+    final prefetchedRoomName = _getPrefetchedRoomName(request.sessionId);
+    final usePrefetch = prefetchedToken != null && prefetchedRoomUrl != null;
+    final effectiveMeetingToken =
+        usePrefetch ? prefetchedToken : request.meetingToken;
+    final effectiveRoomUrl = usePrefetch
+        ? prefetchedRoomUrl
+        : (request.roomUrl ?? prefetchedRoomUrl);
+    final effectiveRoomName = usePrefetch
+        ? prefetchedRoomName
+        : (request.roomName ?? prefetchedRoomName);
+    return VoipNavigationTarget.fromRequest(
+      request,
+      path: _videoCallRoutePath,
+      effectiveRoomUrl: effectiveRoomUrl,
+      effectiveMeetingToken: effectiveMeetingToken,
+      effectiveRoomName: effectiveRoomName,
+    );
   }
 
   bool _isVideoCallLocationForSession(String location, String sessionId) {
@@ -2924,60 +2840,6 @@ class VoIPService {
       return false;
     }
     return currentVideoDocRef == sessionId;
-  }
-
-  void _queueNavigation({
-    required String sessionId,
-    required bool isTutor,
-    String? roomUrl,
-    String? meetingToken,
-    String? roomName,
-  }) {
-    _touchSessionState(sessionId);
-    _pendingSessionId = sessionId;
-    _pendingIsTutor = isTutor;
-    _pendingRoomUrl = roomUrl;
-    _pendingMeetingToken = meetingToken;
-    _pendingRoomName = roomName;
-    if (_navRetryInProgress) {
-      return;
-    }
-    _navRetryInProgress = true;
-    _retryPendingNavigation();
-  }
-
-  Future<void> _retryPendingNavigation() async {
-    int attempts = 0;
-    while (
-        _pendingSessionId != null && attempts < _pendingNavigationMaxAttempts) {
-      final navContext = appNavigatorKey.currentContext;
-      if (navContext != null) {
-        final sessionId = _pendingSessionId!;
-        final isTutor = _pendingIsTutor;
-        final roomUrl = _pendingRoomUrl;
-        final meetingToken = _pendingMeetingToken;
-        final roomName = _pendingRoomName;
-        _pendingSessionId = null;
-        _navRetryInProgress = false;
-        _tryNavigateToVideoCall(
-          sessionId: sessionId,
-          isTutor: isTutor,
-          roomUrl: roomUrl,
-          meetingToken: meetingToken,
-          roomName: roomName,
-        );
-        return;
-      }
-      await Future.delayed(_pendingNavigationRetryDelay);
-      attempts++;
-    }
-    if (_pendingSessionId != null) {
-      debugPrint(
-        '⚠️ VoIPService: Navigation context not ready after extended retries',
-      );
-    }
-    _pendingSessionId = null;
-    _navRetryInProgress = false;
   }
 
   void _handleAudioSessionToggle(dynamic body) {
@@ -3258,17 +3120,15 @@ class VoIPService {
   }
 
   void _clearSessionState(String sessionId) {
+    _acceptLifecycle.invalidate(sessionId);
+    _debugAcceptAttempts.remove(sessionId);
+    _acceptedSessionResolver.invalidateSession(sessionId);
     _sessionStateTouchedAt.remove(sessionId);
     _sessionStateGenerations.remove(sessionId);
-    _acceptInProgress.remove(sessionId);
-    _acceptedSessions.remove(sessionId);
-    _recentAcceptBySession.remove(sessionId);
     _declineInProgress.remove(sessionId);
-    _processAcceptClaimedAtBySession.remove(sessionId);
     final callKitIdForSession = _sessionCallKitIds[sessionId];
     if (callKitIdForSession != null) {
       _callKitEventDataById.remove(callKitIdForSession);
-      _handledCallKitAcceptIds.remove(callKitIdForSession);
       if (_lastCallKitId == callKitIdForSession) {
         _lastCallKitId = null;
       }
@@ -3279,17 +3139,9 @@ class VoIPService {
       _lastRoomUrl = null;
       _lastMeetingToken = null;
       _lastRoomName = null;
-      _lastNavigatedSessionId = null;
-      _lastNavigatedIsTutor = null;
+      _navigationCoordinator.clearLastNavigation();
     }
-    if (_pendingSessionId == sessionId) {
-      _pendingSessionId = null;
-      _pendingIsTutor = false;
-      _pendingRoomUrl = null;
-      _pendingMeetingToken = null;
-      _pendingRoomName = null;
-      _navRetryInProgress = false;
-    }
+    _navigationCoordinator.clearPending(sessionId: sessionId);
     if (_prefetchedSessionId == sessionId) {
       _prefetchedSessionId = null;
       _clearPrefetchedSessionCredentials();
@@ -3302,6 +3154,7 @@ class VoIPService {
   Future<void> _endExpiredAcceptSystemCall({
     required String sessionId,
     required String callKitId,
+    int? expectedSessionGeneration,
   }) async {
     try {
       final override = debugEndCallKitCallOverride;
@@ -3309,6 +3162,10 @@ class VoIPService {
         await override(sessionId: sessionId, callKitId: callKitId);
       } else {
         await FlutterCallkitIncoming.endCall(callKitId);
+      }
+      if (expectedSessionGeneration != null &&
+          _sessionStateGenerations[sessionId] != expectedSessionGeneration) {
+        return;
       }
       _clearSessionState(sessionId);
       debugPrint('✅ VoIPService: Expired accept system call cleared');
@@ -3439,7 +3296,14 @@ class VoIPService {
   }
 
   /// Завершить текущий активный звонок (программно)
-  Future<void> endCurrentCall({String? sessionId}) async {
+  Future<void> endCurrentCall({String? sessionId}) {
+    return _endCurrentCall(sessionId: sessionId);
+  }
+
+  Future<void> _endCurrentCall({
+    String? sessionId,
+    int? expectedSessionGeneration,
+  }) async {
     try {
       final callKitId =
           sessionId != null ? _sessionCallKitIds[sessionId] : _lastCallKitId;
@@ -3453,6 +3317,10 @@ class VoIPService {
       }
 
       if (sessionId != null) {
+        if (expectedSessionGeneration != null &&
+            _sessionStateGenerations[sessionId] != expectedSessionGeneration) {
+          return;
+        }
         _clearSessionState(sessionId);
         if (callKitId != null && _lastCallKitId == callKitId) {
           _lastCallKitId = null;
@@ -3460,7 +3328,7 @@ class VoIPService {
       } else {
         _sessionCallKitIds.clear();
         _sessionPairAttemptIds.clear();
-        _handledCallKitAcceptIds.clear();
+        _acceptLifecycle.clearHandledCallKitIds();
         _lastCallKitId = null;
       }
 

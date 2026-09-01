@@ -14,7 +14,8 @@ const {
   SEARCH_REQUEST_STATUS,
 } = require("./search_requests");
 const {
-  releaseSessionPairLocksInTransaction,
+  applyPreparedSessionPairLockReleaseWrites,
+  prepareSessionPairLockReleaseInTransaction,
 } = require("./match_pair_lock");
 const {
   VIDEO_SESSION_STATUS,
@@ -150,6 +151,17 @@ exports.cancelCall = functions
         );
       }
 
+      const preparedRelease =
+        await prepareSessionPairLockReleaseInTransaction(
+            buildCancelCallPairLockReleaseOptions({
+              db,
+              transaction,
+              sessionId,
+              sessionData,
+              serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+              fieldDelete: admin.firestore.FieldValue.delete(),
+            }),
+        );
       await reconcileSessionTrialCallsInTransaction({
         db,
         transaction,
@@ -160,16 +172,10 @@ exports.cancelCall = functions
         nowMillis: Date.now(),
       });
 
-      await releaseSessionPairLocksInTransaction(
-        buildCancelCallPairLockReleaseOptions({
-          db,
-          transaction,
-          sessionId,
-          sessionData,
-          serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
-          fieldDelete: admin.firestore.FieldValue.delete(),
-        }),
-      );
+      applyPreparedSessionPairLockReleaseWrites({
+        transaction,
+        prepared: preparedRelease,
+      });
 
       transaction.update(sessionRef, buildCancelCallSessionUpdate({
         cancelledBy: studentId,

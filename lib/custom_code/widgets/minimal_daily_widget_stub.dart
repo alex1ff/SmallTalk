@@ -11,6 +11,7 @@ class MinimalDailyWidget extends StatelessWidget {
     this.tokenRefreshCallback,
     this.joinCredentialsRefreshCallback,
     this.sessionStatus,
+    this.sessionConnectedAt,
     this.sessionExpiresAt,
     this.sessionPolicy,
     this.provisionalSessionLimitCountdown = false,
@@ -36,6 +37,7 @@ class MinimalDailyWidget extends StatelessWidget {
   final Future<Map<String, String?>?> Function()?
       joinCredentialsRefreshCallback;
   final String? sessionStatus;
+  final DateTime? sessionConnectedAt;
   final DateTime? sessionExpiresAt;
   final Map<String, dynamic>? sessionPolicy;
   final bool provisionalSessionLimitCountdown;

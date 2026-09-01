@@ -31,9 +31,10 @@ const {
   SEARCH_REQUEST_STATUS,
 } = require("./search_requests");
 const {
+  applyPreparedSessionPairLockReleaseWrites,
   applyPreparedPairLockWrites,
   prepareExistingSessionNextResponderPairLockInTransaction,
-  releaseSessionPairLocksInTransaction,
+  prepareSessionPairLockReleaseInTransaction,
 } = require("./match_pair_lock");
 const {
   buildResponderFailurePoolFingerprint,
@@ -585,6 +586,22 @@ async function processExpiredNotification(notificationDoc) {
           const serverTimestamp =
             admin.firestore.FieldValue.serverTimestamp();
           const fieldDelete = admin.firestore.FieldValue.delete();
+          const preparedRelease =
+            await prepareSessionPairLockReleaseInTransaction({
+              db,
+              transaction,
+              sessionId,
+              sessionData: freshSessionData,
+              participantIds: routing.participantIds,
+              serverTimestamp,
+              fieldDelete,
+              searchRequestStatus: SEARCH_REQUEST_STATUS.EXPIRED,
+              stopReason: "match_timeout",
+              releaseCallState: true,
+              restoreSearchParticipantIds: routing.restoreParticipantIds,
+              restoreSearchExcludedCandidateIdsByParticipantId:
+                routing.restoreExcludedCandidateIdsByParticipantId,
+            });
           await reconcileSessionTrialCallsInTransaction({
             db,
             transaction,
@@ -594,20 +611,9 @@ async function processExpiredNotification(notificationDoc) {
             technicalFailure: true,
             nowMillis: Date.now(),
           });
-          await releaseSessionPairLocksInTransaction({
-            db,
+          applyPreparedSessionPairLockReleaseWrites({
             transaction,
-            sessionId,
-            sessionData: freshSessionData,
-            participantIds: routing.participantIds,
-            serverTimestamp,
-            fieldDelete,
-            searchRequestStatus: SEARCH_REQUEST_STATUS.EXPIRED,
-            stopReason: "match_timeout",
-            releaseCallState: true,
-            restoreSearchParticipantIds: routing.restoreParticipantIds,
-            restoreSearchExcludedCandidateIdsByParticipantId:
-              routing.restoreExcludedCandidateIdsByParticipantId,
+            prepared: preparedRelease,
           });
           const participantStates = {
             ...(freshSessionData.participantStates || {}),
@@ -763,6 +769,22 @@ async function processExpiredNotification(notificationDoc) {
         }
 
         if (!nextTutor) {
+          const preparedRelease =
+            await prepareSessionPairLockReleaseInTransaction({
+              db,
+              transaction,
+              sessionId,
+              sessionData: freshSessionData,
+              serverTimestamp:
+                admin.firestore.FieldValue.serverTimestamp(),
+              fieldDelete: admin.firestore.FieldValue.delete(),
+              searchRequestStatus: SEARCH_REQUEST_STATUS.EXPIRED,
+              stopReason: terminalStopReason,
+              restoreSearchParticipantIds:
+                failureRouting.restoreSearchParticipantIds,
+              restoreSearchExcludedCandidateIdsByParticipantId:
+                failureRouting.restoreSearchExcludedCandidateIdsByParticipantId,
+            });
           await reconcileSessionTrialCallsInTransaction({
             db,
             transaction,
@@ -772,19 +794,9 @@ async function processExpiredNotification(notificationDoc) {
             technicalFailure: true,
             nowMillis: Date.now(),
           });
-          await releaseSessionPairLocksInTransaction({
-            db,
+          applyPreparedSessionPairLockReleaseWrites({
             transaction,
-            sessionId,
-            sessionData: freshSessionData,
-            serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
-            fieldDelete: admin.firestore.FieldValue.delete(),
-            searchRequestStatus: SEARCH_REQUEST_STATUS.EXPIRED,
-            stopReason: terminalStopReason,
-            restoreSearchParticipantIds:
-              failureRouting.restoreSearchParticipantIds,
-            restoreSearchExcludedCandidateIdsByParticipantId:
-              failureRouting.restoreSearchExcludedCandidateIdsByParticipantId,
+            prepared: preparedRelease,
           });
           transaction.update(notificationDoc.ref, expireNotificationUpdate);
           transaction.update(sessionRef, {

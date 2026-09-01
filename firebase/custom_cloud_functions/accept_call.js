@@ -41,7 +41,6 @@ const {
 const {
   MATCH_PROTOCOL_VERSION,
   MATCH_STAGE,
-  allParticipantsAccepted,
   allParticipantsReadyForFinalization,
 } = require("./match_protocol_v2");
 const {
@@ -1221,7 +1220,6 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
 
       if (transientDailyRoomName) {
         await deleteDailyRoom(transientDailyRoomName);
-        transientDailyRoomName = null;
       }
 
       if (error.code && error.message) {

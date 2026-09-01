@@ -24,7 +24,6 @@ const {
     buildStartSearchResponse,
     buildStudentPairSessionData,
     cancelBackgroundStudentResponderNotification,
-    cancelTeacherResponderNotification,
     canAttemptStudentPairForSearchRequest,
     canReuseSearchRequestForUser,
     hasCurrentMatchedSession,
@@ -38,6 +37,7 @@ const {
     maybeNotifyBackgroundStudentResponder,
     maybeNotifyTeacherResponder,
     normalizeStartSearchInput,
+    readSessionResponseDeadlineMillis,
     readErrorMessage,
     readProtocolV2PostRouteOutcome,
     recordBackgroundStudentResponderPushFailure,
@@ -47,6 +47,7 @@ const {
     recordTeacherResponderPushResult,
     releaseTeacherResponderMatchForRetry,
     runBackgroundStudentResponderPushSender,
+    resumeRestoredStudentSearch,
     searchRequestBelongsToResponder,
     searchRequestBelongsToUser,
     searchRequestMatchesSession,
@@ -59,7 +60,6 @@ const {
     shouldRouteProtocolV2InitialMatch,
     shouldUseTeacherResponderForIncomingCall,
     startSearchCallable,
-    teacherResponderPushStillCurrent,
     tryReadCurrentMatchedStartSearchResponse,
   },
 } = require("./start_search");
@@ -136,6 +136,34 @@ test("start search input rejects direct-call payload", () => {
   );
 });
 
+test("start search input preserves malformed request id error shape", () => {
+  assert.throws(
+      () => normalizeStartSearchInput({requestId: "invalid/request"}),
+      (error) =>
+        error.code === "invalid-argument" &&
+        error.message === "requestId is invalid",
+  );
+});
+
+test("start search request preserves missing language error shape", () => {
+  assert.throws(
+      () => buildStartSearchRequestData({
+        userId: "student-a",
+        userRef: {path: "users/student-a"},
+        requestId: "request-a",
+        requesterData: {},
+        input: {appState: "foreground", matchProtocolVersion: 1},
+        nowMillis: fixedNowMillis,
+        serverTimestamp,
+        timestampFromMillis,
+      }),
+      (error) =>
+        error.code === "invalid-argument" &&
+        error.message === "Language is required" &&
+        error.details?.reason === "language_required",
+  );
+});
+
 test("reused unbound search upgrades capability but matched attempt does not", () => {
   const base = {
     requestId: "request-a",
@@ -176,10 +204,18 @@ test("reused unbound search upgrades capability but matched attempt does not", (
 });
 
 test("start search source avoids unsafe error.message reads", () => {
-  const source = fs.readFileSync(
-    path.join(__dirname, "start_search.js"),
-    "utf8",
-  );
+  const source = [
+    "start_search.js",
+    "start_search_delivery.js",
+    "start_search_matcher.js",
+    "start_search_notification_store.js",
+    "start_search_push_transport.js",
+    "start_search_recovery.js",
+    "start_search_request_policy.js",
+  ].map((fileName) => fs.readFileSync(
+      path.join(__dirname, fileName),
+      "utf8",
+  )).join("\n");
   const unsafeMessageReads = source
     .split("\n")
     .filter((line) => /\berror\??\.message\b/.test(line))
@@ -194,10 +230,15 @@ test("start search source avoids unsafe error.message reads", () => {
 
 test("start search source keeps teachers in unified candidate loop", () => {
   const source = fs.readFileSync(
+    path.join(__dirname, "start_search_matcher.js"),
+    "utf8",
+  );
+  const endpointSource = fs.readFileSync(
     path.join(__dirname, "start_search.js"),
     "utf8",
   );
 
+  assert.match(endpointSource, /require\("\.\/start_search_matcher"\)/);
   assert.doesNotMatch(source, /includeTeachers:\s*false/);
   assert.match(source, /const matchCandidates = candidatePool\.candidates/);
   assert.match(source, /MATCH_CANDIDATE_SOURCE\.TEACHER_AVAILABILITY/);
@@ -581,6 +622,137 @@ test("current matched search response maps teacher scenario", () => {
     }).matchedRole,
     "native_speaker",
   );
+});
+
+function restoredSearchDb({
+  searchData,
+  userData = {role: "student"},
+  trialData = null,
+}) {
+  let searchReads = 0;
+  const snapshots = {
+    search: () => ({
+      exists: searchData != null,
+      data: () => searchData,
+    }),
+    user: () => ({
+      exists: userData != null,
+      data: () => userData,
+    }),
+    trial: () => ({
+      exists: trialData != null,
+      data: () => trialData,
+    }),
+  };
+  const db = {
+    collection: (collectionName) => ({
+      doc: (docId) => {
+        if (collectionName === "searchRequests") {
+          assert.equal(docId, "student-a");
+          return {
+            get: async () => {
+              searchReads += 1;
+              return snapshots.search();
+            },
+          };
+        }
+        assert.equal(collectionName, "users");
+        assert.equal(docId, "student-a");
+        return {
+          get: async () => snapshots.user(),
+          collection: (childCollection) => {
+            assert.equal(childCollection, "trialAccess");
+            return {
+              doc: (childId) => {
+                assert.equal(childId, "current");
+                return {get: async () => snapshots.trial()};
+              },
+            };
+          },
+        };
+      },
+    }),
+  };
+  return {db, get searchReads() { return searchReads; }};
+}
+
+test("restored search stops before matching when identity or state moved", async () => {
+  assert.deepEqual(
+    await resumeRestoredStudentSearch({db: {}, participantId: ""}),
+    {resumed: false, settled: false, reason: "resume_ids_missing"},
+  );
+
+  const missing = restoredSearchDb({searchData: null});
+  assert.deepEqual(await resumeRestoredStudentSearch({
+    db: missing.db,
+    participantId: "student-a",
+    sessionId: "session-ab",
+    pairAttemptId: "pair-ab",
+  }), {resumed: false, settled: true, reason: "search_missing"});
+
+  const moved = restoredSearchDb({
+    searchData: {
+      restoredFromSessionId: "session-other",
+      restoredFromPairAttemptId: "pair-ab",
+    },
+  });
+  assert.deepEqual(await resumeRestoredStudentSearch({
+    db: moved.db,
+    participantId: "student-a",
+    sessionId: "session-ab",
+    pairAttemptId: "pair-ab",
+  }), {resumed: false, settled: true, reason: "search_moved_on"});
+
+  const alreadyDone = restoredSearchDb({
+    searchData: {
+      status: SEARCH_REQUEST_STATUS.MATCHED,
+      restoredFromSessionId: "session-ab",
+      restoredFromPairAttemptId: "pair-ab",
+      currentSessionId: "session-next",
+    },
+  });
+  assert.deepEqual(await resumeRestoredStudentSearch({
+    db: alreadyDone.db,
+    participantId: "student-a",
+    sessionId: "session-ab",
+    pairAttemptId: "pair-ab",
+  }), {resumed: false, settled: true, reason: "search_already_done"});
+});
+
+test("restored search cooldown waits once and re-reads current state", async () => {
+  const searchData = {
+    status: SEARCH_REQUEST_STATUS.ACTIVE,
+    restoredFromSessionId: "session-ab",
+    restoredFromPairAttemptId: "pair-ab",
+    currentSessionId: null,
+  };
+  const fixture = restoredSearchDb({
+    searchData,
+    trialData: {retryNotBeforeAt: timestampFromMillis(Date.now() + 60_000)},
+  });
+  const waits = [];
+
+  const result = await resumeRestoredStudentSearch({
+    db: fixture.db,
+    participantId: "student-a",
+    sessionId: "session-ab",
+    pairAttemptId: "pair-ab",
+    options: {
+      retryCooldownWait: async (millis) => {
+        waits.push(millis);
+        searchData.restoredFromPairAttemptId = "pair-new";
+      },
+    },
+  });
+
+  assert.deepEqual(result, {
+    resumed: false,
+    settled: true,
+    reason: "search_moved_on",
+  });
+  assert.equal(waits.length, 1);
+  assert.ok(waits[0] > 0 && waits[0] <= 60 * 60 * 1000);
+  assert.equal(fixture.searchReads, 2);
 });
 
 test("student pair session data carries matching context", () => {
@@ -985,6 +1157,75 @@ test("background responder incoming call requires fresh background request", () 
     }),
     {shouldNotify: false, reason: "search_request_session_mismatch"},
   );
+});
+
+test("responder policy uses earliest deadline and every supported binding", () => {
+  assert.equal(
+    readSessionResponseDeadlineMillis({
+      responseExpiresAt: timestampFromMillis(fixedNowMillis + 45_000),
+      confirmationExpiresAt: timestampFromMillis(fixedNowMillis + 30_000),
+    }),
+    fixedNowMillis + 30_000,
+  );
+  assert.equal(
+    searchRequestMatchesSession({matchedSessionId: "session-ab"}, "session-ab"),
+    true,
+  );
+  assert.equal(
+    searchRequestMatchesSession({activeSessionId: "session-ab"}, "session-ab"),
+    true,
+  );
+  assert.equal(
+    searchRequestBelongsToResponder({
+      userRef: {id: "student-b"},
+    }, "student-b"),
+    true,
+  );
+  assert.equal(
+    searchRequestBelongsToResponder({
+      userId: "student-c",
+      userRef: {id: "student-b"},
+    }, "student-b"),
+    false,
+  );
+});
+
+test("teacher responder policy rejects each eligibility boundary", () => {
+  const now = new Date(fixedNowMillis);
+  const teacherData = {
+    role: "native_speaker",
+    language_instruction_NS: {code: "en"},
+    verif_NS: true,
+    isAvailable: true,
+    currentSessionId: "session-at",
+  };
+  const sessionData = {sessionId: "session-at", language: "en"};
+  const tokenState = {hasUsableToken: true};
+  const decide = (overrides = {}, tokens = tokenState) =>
+    shouldUseTeacherResponderForIncomingCall({
+      teacherData: {...teacherData, ...overrides},
+      responderId: "teacher-a",
+      sessionId: "session-at",
+      sessionData,
+      tokenState: tokens,
+      now,
+    });
+
+  assert.equal(decide({role: "student"}).reason, "teacher_role_mismatch");
+  assert.equal(decide({isInCall: true}).reason, "teacher_in_call");
+  assert.equal(decide({verif_NS: false}).reason, "teacher_not_approved");
+  assert.equal(
+    decide({language_instruction_NS: {code: "de"}}).reason,
+    "teacher_language_mismatch",
+  );
+  assert.equal(decide({
+    availableAfter: {toDate: () => new Date(fixedNowMillis + 1)},
+  }).reason, "teacher_available_later");
+  assert.match(
+    decide({isAvailable: false}).reason,
+    /^teacher_/,
+  );
+  assert.equal(decide({}, {hasUsableToken: false}).reason, "teacher_missing_tokens");
 });
 
 function fakeStoreDb(store, hooks = {}) {
@@ -1650,6 +1891,20 @@ test("teacher responder notification failure releases match for retry", async ()
     shouldRetryTeacherMatchAfterNotifyResult({
       shouldNotify: true,
       pushResult: {sent: true, channel: "apns_voip"},
+    }),
+    false,
+  );
+  assert.equal(
+    shouldRetryTeacherMatchAfterNotifyResult({
+      shouldNotify: false,
+      reason: "session_active",
+    }),
+    true,
+  );
+  assert.equal(
+    shouldRetryBackgroundStudentMatchAfterNotifyResult({
+      shouldNotify: false,
+      reason: "session_connecting",
     }),
     false,
   );
@@ -2395,6 +2650,93 @@ test("student pair responder call data omits room credentials", () => {
   assert.equal(Object.hasOwn(fcmMessage.data, "meetingToken"), false);
 });
 
+test("student responder transport preserves early result contracts", async () => {
+  assert.deepEqual(
+    await sendVoipPushToStudentResponder("", {}),
+    {sent: false, reason: "missing_responder"},
+  );
+  const missingResponder = await sendVoipPushToStudentResponder(
+    "student-b",
+    {},
+    {
+      firestore: {
+        collection: () => ({doc: () => ({get: async () => ({exists: false})})}),
+      },
+      messaging: {send: async () => "message-id"},
+    },
+  );
+  assert.deepEqual(missingResponder, {
+    sent: false,
+    reason: "responder_missing",
+  });
+  const responseWindowClosed = await sendVoipPushToStudentResponder(
+    "student-b",
+    {expiresAt: "2020-01-01T00:00:00.000Z"},
+    {
+      firestore: {
+        collection: () => ({
+          doc: () => ({
+            get: async () => ({exists: true, data: () => ({})}),
+          }),
+        }),
+      },
+      messaging: {send: async () => "message-id"},
+    },
+  );
+  assert.deepEqual(responseWindowClosed, {
+    sent: false,
+    reason: "response_window_closed",
+  });
+  const missingTokens = await sendVoipPushToStudentResponder(
+    "student-b",
+    {},
+    {
+      firestore: {
+        collection: () => ({
+          doc: () => ({
+            get: async () => ({exists: true, data: () => ({})}),
+          }),
+        }),
+      },
+      getUserVoipTokens: async () => ({
+        voipPushToken: "",
+        voipToken: "",
+      }),
+      messaging: {send: async () => "message-id"},
+    },
+  );
+  assert.deepEqual(missingTokens, {sent: false, reason: "missing_tokens"});
+  const iosWithoutPushKit = await sendVoipPushToStudentResponder(
+    "student-b",
+    {sessionId: "session-ab"},
+    {
+      firestore: {
+        collection: () => ({
+          doc: () => ({
+            get: async () => ({
+              exists: true,
+              data: () => ({matchProtocolPlatform: "ios"}),
+            }),
+          }),
+        }),
+      },
+      getUserVoipTokens: async () => ({
+        voipPushToken: "",
+        voipToken: "fcm-token",
+      }),
+      messaging: {send: async () => "message-id"},
+    },
+  );
+  assert.deepEqual(iosWithoutPushKit, {
+    sent: false,
+    reason: "missing_voip_push_token",
+    error: "ios_fcm_wake_not_native",
+    fcmWakeSent: true,
+    attemptedChannels: ["fcm"],
+    apnsFailureKind: "definitive",
+  });
+});
+
 test("student responder APNS failure is preserved when FCM is missing", async () => {
   let fcmSendCount = 0;
   const result = await sendVoipPushToStudentResponder(
@@ -2640,6 +2982,7 @@ test("Android responder can use FCM as the native delivery channel", async () =>
 });
 
 test("student responder push result preserves APNS and FCM failures", async () => {
+  const deliveryOrder = [];
   const result = await sendVoipPushToStudentResponder(
     "student-b",
     {
@@ -2665,10 +3008,12 @@ test("student responder push result preserves APNS and FCM failures", async () =
         voipToken: "fcm-token",
       }),
       sendApnsVoip: async () => {
+        deliveryOrder.push("apns");
         throw new Error("apns unavailable");
       },
       messaging: {
         send: async () => {
+          deliveryOrder.push("fcm");
           throw new Error("fcm unavailable");
         },
       },
@@ -2683,6 +3028,7 @@ test("student responder push result preserves APNS and FCM failures", async () =
     reason: "fcm_failed",
     error: "apns: apns unavailable; fcm: fcm unavailable",
   });
+  assert.deepEqual(deliveryOrder, ["apns", "fcm"]);
 });
 
 test("background responder push sender aborts slow sends", async () => {
@@ -4442,19 +4788,24 @@ if (!hasFirestoreEmulator) {
   } = require("./process_expired_notifications");
   const {startSearch} = require("./start_search");
 
-  const projectId =
-    process.env.GCLOUD_PROJECT ||
-    process.env.GOOGLE_CLOUD_PROJECT ||
-    "demo-smalltalk";
+  // Never clear a shared namespace or contact a remote Firestore instance.
+  const emulatorHost = process.env.FIRESTORE_EMULATOR_HOST;
+  assert.match(emulatorHost, /^(127\.0\.0\.1|localhost|\[::1\]):\d+$/);
+  const emulatorPort = Number(emulatorHost.slice(emulatorHost.lastIndexOf(":") + 1));
+  assert.ok(emulatorPort > 0 && emulatorPort <= 65535);
+  const projectId = `demo-smalltalk-search-${process.pid}`;
   process.env.GCLOUD_PROJECT = projectId;
   process.env.GOOGLE_CLOUD_PROJECT = projectId;
 
+  let suiteApp;
   if (!admin.apps.length) {
-    admin.initializeApp({projectId});
+    suiteApp = admin.initializeApp({projectId});
   }
+  assert.equal(admin.app().options.projectId, projectId);
 
   const testEnv = functionsTest({projectId});
   const db = admin.firestore();
+  assert.equal(db.projectId, projectId);
   const wrappedAcceptCall = testEnv.wrap(acceptCall);
   const wrappedCreateVideoSession = testEnv.wrap(createVideoSession);
   const wrappedDeclineCall = testEnv.wrap(declineCall);
@@ -4463,8 +4814,27 @@ if (!hasFirestoreEmulator) {
   const wrappedStartSearch = testEnv.wrap(startSearch);
   let uidCounter = 0;
 
-  test.after(() => {
-    testEnv.cleanup();
+  async function clearTestDatabase() {
+    // Official emulator-only endpoint; the process-specific demo ID ensures
+    // parallel suites cannot delete each other's fixtures.
+    const response = await fetch(
+      `http://${emulatorHost}/emulator/v1/projects/${projectId}` +
+        "/databases/(default)/documents",
+      {method: "DELETE", signal: AbortSignal.timeout(10_000)},
+    );
+    assert.equal(response.ok, true, `Emulator cleanup failed: ${response.status}`);
+  }
+
+  test.beforeEach(clearTestDatabase);
+  test.after(async () => {
+    try {
+      await clearTestDatabase();
+    } finally {
+      testEnv.cleanup();
+      if (suiteApp && admin.apps.includes(suiteApp)) {
+        await suiteApp.delete();
+      }
+    }
   });
 
   function uniqueId(prefix) {
@@ -4505,6 +4875,10 @@ if (!hasFirestoreEmulator) {
     return db.collection("searchRequests").doc(uid);
   }
 
+  function trialAccessRef(uid) {
+    return userRef(uid).collection("trialAccess").doc("current");
+  }
+
   async function assertNoSearchRequestForUser(uid) {
     assert.equal((await searchRequestRef(uid).get()).exists, false);
     assert.equal(
@@ -4536,6 +4910,11 @@ if (!hasFirestoreEmulator) {
       profileCity: {key: cityKeyForUid(uid)},
       giftMinutes: {
         minutes: 10,
+        expiresAt: emulatorFutureTimestamp(60),
+      },
+      subscription: {
+        productId: "expatlio_1_Month",
+        periodType: "NORMAL",
         expiresAt: emulatorFutureTimestamp(60),
       },
       isInCall: false,
@@ -4748,7 +5127,6 @@ if (!hasFirestoreEmulator) {
 
   test("startSearch callable creates one active request document", async () => {
     const uid = uniqueId("student");
-    const cityKey = cityKeyForUid(uid);
     await deleteDoc(userRef(uid));
     await deleteDoc(searchRequestRef(uid));
     await seedStudent(uid);
@@ -4779,8 +5157,6 @@ if (!hasFirestoreEmulator) {
     assert.deepEqual(requestData.filters, {
       preferredLevel: "B2",
       levelRank: 4,
-      countryCode: "US",
-      cityKey,
     });
     assert.equal(typeof requestData.createdAt.toMillis, "function");
     assert.equal(typeof requestData.updatedAt.toMillis, "function");
@@ -4807,9 +5183,13 @@ if (!hasFirestoreEmulator) {
 
     const first = await wrappedStartSearch({
       preferredPartnerLevel: "B1",
+      preferredCountry: "US",
+      cityKey,
     }, authContext(uid));
     const second = await wrappedStartSearch({
       preferredPartnerLevel: "C2",
+      preferredCountry: "DE",
+      cityKey: "another_city",
     }, authContext(uid));
     const snapshot = await searchRequestRef(uid).get();
 
@@ -6597,7 +6977,6 @@ if (!hasFirestoreEmulator) {
 
         let teacherPushSendCount = 0;
         const response = await startSearchCallable({
-          preferredPartnerLevel: "B1",
           appState: "foreground",
         }, authContext(requesterUid), {
           teacherResponderPushSender: async (responderId, callData) => {
@@ -6696,7 +7075,7 @@ if (!hasFirestoreEmulator) {
       await Promise.all(refsToDelete.map(deleteDoc));
       await seedStudent(adjacentStudentUid, {
         display_name: "Adjacent Student",
-        level: "A2",
+        level: "B2",
         profileCity: {key: cityKey},
       });
       await seedStudent(requesterUid, {
@@ -6784,33 +7163,33 @@ if (!hasFirestoreEmulator) {
     }
   });
 
-  test("startSearch callable accepts only one-step adjacent level", async () => {
-    const requesterUid = uniqueId("one-step-requester");
-    const adjacentStudentUid = uniqueId("one-step-adjacent-student");
-    const farStudentUid = uniqueId("one-step-far-student");
+  test("startSearch callable rejects below-minimum and accepts higher levels", async () => {
+    const requesterUid = uniqueId("minimum-level-requester");
+    const higherStudentUid = uniqueId("above-minimum-student");
+    const lowerStudentUid = uniqueId("below-minimum-student");
     const cityKey = cityKeyForUid(
-      `${requesterUid}-${adjacentStudentUid}-${farStudentUid}`,
+      `${requesterUid}-${higherStudentUid}-${lowerStudentUid}`,
     );
     const refsToDelete = [
       userRef(requesterUid),
-      userRef(adjacentStudentUid),
-      userRef(farStudentUid),
+      userRef(higherStudentUid),
+      userRef(lowerStudentUid),
       searchRequestRef(requesterUid),
-      searchRequestRef(adjacentStudentUid),
-      searchRequestRef(farStudentUid),
+      searchRequestRef(higherStudentUid),
+      searchRequestRef(lowerStudentUid),
     ];
     let sessionId = "";
 
     try {
       await Promise.all(refsToDelete.map(deleteDoc));
-      await seedStudent(farStudentUid, {
-        display_name: "Far Student",
+      await seedStudent(lowerStudentUid, {
+        display_name: "Lower Level Student",
         level: "A1",
         profileCity: {key: cityKey},
       });
-      await seedStudent(adjacentStudentUid, {
-        display_name: "Adjacent Student",
-        level: "B2",
+      await seedStudent(higherStudentUid, {
+        display_name: "Higher Level Student",
+        level: "C2",
         profileCity: {key: cityKey},
       });
       await seedStudent(requesterUid, {
@@ -6819,22 +7198,22 @@ if (!hasFirestoreEmulator) {
         profileCity: {key: cityKey},
       });
 
-      const farResponse = await wrappedStartSearch({
+      const lowerResponse = await wrappedStartSearch({
         preferredPartnerLevel: "B1",
         appState: "foreground",
-      }, authContext(farStudentUid));
-      await searchRequestRef(farStudentUid).update({
+      }, authContext(lowerStudentUid));
+      await searchRequestRef(lowerStudentUid).update({
         createdAt: admin.firestore.Timestamp.fromMillis(
           Date.now() - 10 * 60 * 1000,
         ),
         updatedAt: admin.firestore.Timestamp.now(),
         heartbeatAt: admin.firestore.Timestamp.now(),
       });
-      const adjacentResponse = await wrappedStartSearch({
+      const higherResponse = await wrappedStartSearch({
         preferredPartnerLevel: "B1",
         appState: "foreground",
-      }, authContext(adjacentStudentUid));
-      await searchRequestRef(adjacentStudentUid).update({
+      }, authContext(higherStudentUid));
+      await searchRequestRef(higherStudentUid).update({
         createdAt: admin.firestore.Timestamp.fromMillis(
           Date.now() - 2 * 60 * 1000,
         ),
@@ -6853,32 +7232,32 @@ if (!hasFirestoreEmulator) {
         .doc(response.sessionId)
         .get();
       const sessionData = sessionSnapshot.data();
-      const farRequest = (await searchRequestRef(farStudentUid).get()).data();
-      const adjacentRequest =
-        (await searchRequestRef(adjacentStudentUid).get()).data();
+      const lowerRequest = (await searchRequestRef(lowerStudentUid).get()).data();
+      const higherRequest =
+        (await searchRequestRef(higherStudentUid).get()).data();
 
-      assert.equal(farResponse.status, "active");
-      assert.equal(adjacentResponse.status, "active");
+      assert.equal(lowerResponse.status, "active");
+      assert.equal(higherResponse.status, "active");
       assert.equal(response.status, "matched");
-      assert.equal(response.matchedUserId, adjacentStudentUid);
+      assert.equal(response.matchedUserId, higherStudentUid);
       assert.equal(response.matchedRole, "student");
       assert.equal(response.scenario, "student_student");
       assert.equal(sessionSnapshot.exists, true);
-      assert.deepEqual(sessionData.availableTutors, [adjacentStudentUid]);
+      assert.deepEqual(sessionData.availableTutors, [higherStudentUid]);
       assert.deepEqual(
         sessionData.matchContext.candidateIds,
-        [adjacentStudentUid],
+        [higherStudentUid],
       );
       assert.equal(
         sessionData.matchContext.selectedResponderId,
-        adjacentStudentUid,
+        higherStudentUid,
       );
-      assert.equal(sessionData.currentResponderId, adjacentStudentUid);
+      assert.equal(sessionData.currentResponderId, higherStudentUid);
       assert.equal(sessionData.currentResponderRole, "student");
-      assert.equal(adjacentRequest.status, SEARCH_REQUEST_STATUS.MATCHED);
-      assert.equal(adjacentRequest.currentSessionId, response.sessionId);
-      assert.equal(farRequest.status, SEARCH_REQUEST_STATUS.ACTIVE);
-      assert.equal(farRequest.currentSessionId, null);
+      assert.equal(higherRequest.status, SEARCH_REQUEST_STATUS.MATCHED);
+      assert.equal(higherRequest.currentSessionId, response.sessionId);
+      assert.equal(lowerRequest.status, SEARCH_REQUEST_STATUS.ACTIVE);
+      assert.equal(lowerRequest.currentSessionId, null);
     } finally {
       if (sessionId) {
         await deleteDoc(db.collection("videoSessions").doc(sessionId));
@@ -7815,7 +8194,59 @@ if (!hasFirestoreEmulator) {
       () => wrappedStartSearch({}, authContext(uid)),
       (error) =>
         error.code === "failed-precondition" &&
-        error.details?.reason === "no_active_access",
+        error.message === "Active subscription is required" &&
+        error.details?.reason === "no_subscription",
+    );
+    await assertNoSearchRequestForUser(uid);
+  });
+
+  test("startSearch callable rejects gift-only access without writes", async () => {
+    const uid = uniqueId("student-gift-only");
+    await seedStudent(uid, {subscription: null});
+    const beforeUser = (await userRef(uid).get()).data();
+
+    await assert.rejects(
+      () => wrappedStartSearch({}, authContext(uid)),
+      (error) =>
+        error.code === "failed-precondition" &&
+        error.message === "Active subscription is required" &&
+        error.details?.reason === "no_subscription",
+    );
+
+    await assertNoSearchRequestForUser(uid);
+    assert.deepEqual((await userRef(uid).get()).data(), beforeUser);
+    assert.equal((await trialAccessRef(uid).get()).exists, false);
+  });
+
+  test("startSearch callable preserves trial cooldown error details", async () => {
+    const uid = uniqueId("student-trial-cooldown");
+    const retryAfterMillis = Date.now() + 60 * 1000;
+    await deleteDoc(userRef(uid));
+    await deleteDoc(searchRequestRef(uid));
+    await seedStudent(uid, {
+      giftMinutes: null,
+      subscription: {
+        productId: "expatlio_trial_1_Month",
+        periodType: "TRIAL",
+        expiresAt: emulatorFutureTimestamp(60),
+      },
+    });
+    await trialAccessRef(uid).set({
+      trialCallStatus: "eligible",
+      trialCallWindowExpiresAt: emulatorFutureTimestamp(30),
+      retryNotBeforeAt:
+        admin.firestore.Timestamp.fromMillis(retryAfterMillis),
+      attemptCount: 0,
+      technicalRetryCount: 1,
+    });
+
+    await assert.rejects(
+      () => wrappedStartSearch({}, authContext(uid)),
+      (error) =>
+        error.code === "failed-precondition" &&
+        error.message === "Please wait before retrying" &&
+        error.details?.reason === "retry_cooldown" &&
+        error.details?.retryAfterMillis === retryAfterMillis,
     );
   });
 }

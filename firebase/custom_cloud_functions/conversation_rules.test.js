@@ -7,6 +7,9 @@ const {
   assertFails,
   assertSucceeds,
 } = require("@firebase/rules-unit-testing");
+const firebaseCompat = require("firebase/compat/app");
+
+require("firebase/compat/firestore");
 
 const projectId = process.env.GCLOUD_PROJECT || "demo-smalltalk";
 const firestoreHostRaw = process.env.FIRESTORE_EMULATOR_HOST || "127.0.0.1:8080";
@@ -50,6 +53,7 @@ test.beforeEach(async () => {
         db.doc("users/user-b"),
       ],
       isUnlocked: true,
+      lastReadAtByUserId: {},
       lastMessageAt: new Date("2026-05-02T10:00:00.000Z"),
     });
     await db.doc("conversations/user-b_user-c").set({
@@ -64,6 +68,7 @@ test.beforeEach(async () => {
         db.doc("users/user-c"),
       ],
       isUnlocked: true,
+      lastReadAtByUserId: {},
       lastMessageAt: new Date("2026-05-02T10:01:00.000Z"),
     });
     await db.doc("conversations/user-a_user-b/messages/message-1").set({
@@ -105,4 +110,44 @@ test("non-participant cannot get another conversation", async () => {
   await assertFails(
     user.firestore().doc("conversations/user-b_user-c").get(),
   );
+});
+
+test("participant can update only their own read marker", async () => {
+  const user = testEnv.authenticatedContext("user-a");
+
+  await assertSucceeds(
+    user.firestore().doc("conversations/user-a_user-b").update({
+      "lastReadAtByUserId.user-a":
+        firebaseCompat.firestore.FieldValue.serverTimestamp(),
+    }),
+  );
+});
+
+test("read marker update cannot add another participant marker", async () => {
+  const user = testEnv.authenticatedContext("user-a");
+
+  await assertFails(
+    user.firestore().doc("conversations/user-a_user-b").update({
+      "lastReadAtByUserId.user-a":
+        firebaseCompat.firestore.FieldValue.serverTimestamp(),
+      "lastReadAtByUserId.user-b":
+        firebaseCompat.firestore.FieldValue.serverTimestamp(),
+    }),
+  );
+});
+
+test("read marker update cannot add or remove conversation fields", async () => {
+  const user = testEnv.authenticatedContext("user-a");
+  const conversation = user.firestore().doc("conversations/user-a_user-b");
+
+  await assertFails(conversation.update({
+    "lastReadAtByUserId.user-a":
+      firebaseCompat.firestore.FieldValue.serverTimestamp(),
+    participantIds: firebaseCompat.firestore.FieldValue.delete(),
+  }));
+  await assertFails(conversation.update({
+    "lastReadAtByUserId.user-a":
+      firebaseCompat.firestore.FieldValue.serverTimestamp(),
+    injectedAccessField: true,
+  }));
 });

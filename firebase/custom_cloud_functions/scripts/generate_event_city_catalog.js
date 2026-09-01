@@ -45,7 +45,7 @@ function assertValidTimeZoneId(timeZoneId, field) {
   assertString(timeZoneId, field);
   try {
     new Intl.DateTimeFormat("en-US", {timeZone: timeZoneId}).format();
-  } catch (err) {
+  } catch {
     throw new Error(`${field} must be a valid IANA timezone`);
   }
 }

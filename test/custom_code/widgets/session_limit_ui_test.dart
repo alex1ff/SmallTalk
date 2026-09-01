@@ -112,6 +112,91 @@ void main() {
     });
   });
 
+  group('call duration timer gate', () {
+    test('requires active server status and both Daily participants', () {
+      expect(
+        shouldRunCallDurationTimer(
+          sessionStatus: 'active',
+          isDailyConnected: true,
+          hasRemoteParticipant: true,
+          hasServerConnectedAt: true,
+        ),
+        isTrue,
+      );
+      for (final status in <String?>[
+        null,
+        'searching',
+        'pending_confirmation',
+        'connecting',
+        'ended',
+        'cancelled',
+        'expired',
+      ]) {
+        expect(
+          shouldRunCallDurationTimer(
+            sessionStatus: status,
+            isDailyConnected: true,
+            hasRemoteParticipant: true,
+            hasServerConnectedAt: true,
+          ),
+          isFalse,
+        );
+      }
+      expect(
+        shouldRunCallDurationTimer(
+          sessionStatus: 'active',
+          isDailyConnected: false,
+          hasRemoteParticipant: true,
+          hasServerConnectedAt: true,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldRunCallDurationTimer(
+          sessionStatus: 'active',
+          isDailyConnected: true,
+          hasRemoteParticipant: false,
+          hasServerConnectedAt: true,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldRunCallDurationTimer(
+          sessionStatus: 'active',
+          isDailyConnected: true,
+          hasRemoteParticipant: true,
+          hasServerConnectedAt: false,
+        ),
+        isFalse,
+      );
+    });
+
+    test('derives duration from the trusted server connection timestamp', () {
+      final connectedAt = DateTime.utc(2026, 8, 30, 12);
+      expect(
+        resolveAuthoritativeCallDurationSeconds(
+          serverConnectedAt: connectedAt,
+          serverAlignedNow: connectedAt.add(const Duration(seconds: 73)),
+        ),
+        73,
+      );
+      expect(
+        resolveAuthoritativeCallDurationSeconds(
+          serverConnectedAt: null,
+          serverAlignedNow: connectedAt,
+        ),
+        0,
+      );
+      expect(
+        resolveAuthoritativeCallDurationSeconds(
+          serverConnectedAt: connectedAt,
+          serverAlignedNow: connectedAt.subtract(const Duration(seconds: 1)),
+        ),
+        0,
+      );
+    });
+  });
+
   group('resolveSessionLimitNow', () {
     test('ignores server clock offset until the session becomes active', () {
       final deviceNow = DateTime.utc(2026, 8, 24, 10);

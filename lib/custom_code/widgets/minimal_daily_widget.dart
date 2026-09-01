@@ -18,11 +18,7 @@ import 'package:flutter/foundation.dart';
 import 'package:daily_flutter/daily_flutter.dart';
 import 'dart:async';
 import 'dart:convert' as dart_convert;
-import 'dart:typed_data' as typed_data;
 import 'dart:math' as math;
-import 'package:web_socket_channel/io.dart';
-import 'package:flutter_sound/flutter_sound.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import '/services/voip_service.dart';
@@ -31,6 +27,23 @@ import '/components/interactive_caption_text.dart';
 import '/shared_pages/chat_message_bubble_style.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import 'deepgram_credential_exception.dart';
+import 'daily_join_credentials.dart' as join_credentials;
+import 'daily_app_message_decoder.dart';
+import 'daily_lifecycle_transition_queue.dart';
+import 'daily_session_controller.dart';
+import 'daily_runtime_error_policy.dart';
+import 'daily_call_error_policy.dart';
+import 'caption_message_policy.dart' as caption_policy;
+import 'local_caption_assembler.dart';
+import 'caption_log_queue.dart';
+import 'call_timer_controller.dart';
+import 'call_duration_badge.dart';
+import 'call_controls_bar.dart';
+import 'call_chat_controller.dart';
+import 'call_participant_identity.dart' as participant_identity;
+import 'deepgram_message_parser.dart' as deepgram_parser;
+import 'deepgram_transport_adapters.dart';
+import 'outgoing_caption_buffer.dart';
 import 'session_limit_ui.dart' as session_limit_ui;
 
 // VideoQuality enum simplified - only auto mode needed
@@ -55,6 +68,7 @@ class _CallState {
   final bool microphoneEnabled;
   // Quality tracking removed - Daily handles this internally
   final String? error;
+  final bool hasTerminalError;
   final int retryCount;
   final Map<ParticipantId, VideoViewController> remoteControllers;
   final _ActiveCaption? localCaption;
@@ -71,6 +85,7 @@ class _CallState {
     this.cameraEnabled = true,
     this.microphoneEnabled = true,
     this.error,
+    this.hasTerminalError = false,
     this.retryCount = 0,
     this.remoteControllers = const {},
     this.localCaption,
@@ -88,6 +103,8 @@ class _CallState {
     bool? cameraEnabled,
     bool? microphoneEnabled,
     String? error,
+    bool clearError = false,
+    bool? hasTerminalError,
     int? retryCount,
     Map<ParticipantId, VideoViewController>? remoteControllers,
     _ActiveCaption? localCaption,
@@ -105,7 +122,8 @@ class _CallState {
       connectionState: connectionState ?? this.connectionState,
       cameraEnabled: cameraEnabled ?? this.cameraEnabled,
       microphoneEnabled: microphoneEnabled ?? this.microphoneEnabled,
-      error: error ?? this.error,
+      error: clearError ? null : (error ?? this.error),
+      hasTerminalError: hasTerminalError ?? this.hasTerminalError,
       retryCount: retryCount ?? this.retryCount,
       remoteControllers: remoteControllers ?? this.remoteControllers,
       localCaption:
@@ -157,17 +175,6 @@ enum _CaptionPhase {
   String get wireValue => this == _CaptionPhase.interim ? 'interim' : 'final';
 
   double get opacity => this == _CaptionPhase.interim ? 0.78 : 1.0;
-
-  static _CaptionPhase? fromWire(String? value) {
-    switch (value?.trim().toLowerCase()) {
-      case 'interim':
-        return _CaptionPhase.interim;
-      case 'final':
-        return _CaptionPhase.finalCaption;
-      default:
-        return null;
-    }
-  }
 }
 
 @immutable
@@ -361,6 +368,7 @@ class MinimalDailyWidget extends StatefulWidget {
     this.tokenRefreshCallback,
     this.joinCredentialsRefreshCallback,
     this.sessionStatus,
+    this.sessionConnectedAt,
     this.sessionExpiresAt,
     this.sessionPolicy,
     this.provisionalSessionLimitCountdown = false,
@@ -389,6 +397,7 @@ class MinimalDailyWidget extends StatefulWidget {
   final Future<Map<String, String?>?> Function()?
       joinCredentialsRefreshCallback;
   final String? sessionStatus;
+  final DateTime? sessionConnectedAt;
   final DateTime? sessionExpiresAt;
   final Map<String, dynamic>? sessionPolicy;
   final bool provisionalSessionLimitCountdown;
@@ -412,17 +421,68 @@ class MinimalDailyWidget extends StatefulWidget {
 
 class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     with WidgetsBindingObserver, TickerProviderStateMixin {
-  static CallClient? _processActiveCallClient;
-  static Object? _processActiveCallClientLeaseToken;
-  static Completer<void>? _processActiveCallClientReleaseCompleter;
-  final Object _processCallClientLeaseToken = Object();
-
-  // Core resources - properly managed
-  CallClient? _callClient;
+  static final _processDailyLease = DailySessionLease();
+  late final _dailySession = DailySessionController<CallClient>(
+    lease: _processDailyLease,
+    create: CallClient.create,
+    events: (client) => client.events,
+    onEvent: _handleCallEvent,
+    onEventError: _handleEventError,
+    prepare: (_) {
+      _localVideoController = VideoViewController();
+    },
+    join: _joinRoomWithEnhancedSettings,
+    configure: [
+      _configurePublishing,
+      _enableLocalInputs,
+      (client) => _ensureActiveRemoteSubscriptionProfile(client),
+      _configureUsername,
+    ],
+    onClosing: _onDailyClosing,
+    disableInputs: _disableLocalInputsForCleanup,
+    stopCaptions: (_) async {
+      await _stopDeepgramStreaming();
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      await _flushPendingCaptionLogs(force: true);
+    },
+    leave: (client) async {
+      await client.leave();
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    },
+    detachVideo: (_) => _detachCallVideo(),
+    dispose: (client) => client.dispose(),
+    onError: (code) {
+      if (kDebugMode) print('Daily lifecycle: $code');
+    },
+  );
+  late final _deepgramTransport = createDeepgramTransportController(
+    shouldRun: _shouldRunDeepgram,
+    sessionId: () => widget.sessionId,
+    language: () => widget.deepgramLanguage,
+    resolveCredential: ({bool forceRefresh = false}) =>
+        _resolveDeepgramCredential(forceRefresh: forceRefresh),
+    onMessage: _handleDeepgramMessage,
+    onIssue: ({required code, required message}) =>
+        _reportCaptionRuntimeIssue(code: code, message: message),
+    onCredentialUnavailable: _reportGenericCredentialUnavailable,
+    onStreamingChanged: (streaming) {
+      if (mounted && !_disposed) {
+        _updateState(_state.copyWith(isStreamingToDeepgram: streaming));
+      }
+    },
+    onStarted: _clearCaptionRuntimeIssue,
+    finalizeCaptionAndFlush: _finalizeCurrentCaptionAndFlushLogs,
+    clearCaption: _clearLocalCaptions,
+    onDiagnostic: (code) {
+      if (kDebugMode) print('Deepgram transport: $code');
+    },
+  );
+  CallClient? get _callClient => _dailySession.client;
   VideoViewController? _localVideoController;
-  StreamSubscription? _eventSubscription;
-  StreamSubscription<dynamic>? _deepgramMessageSubscription;
-  StreamSubscription<typed_data.Uint8List>? _audioStreamSubscription;
+  Future<void>? _cleanupFuture;
+  bool _preserveCleanupMeetingToken = true;
+  bool _preserveCleanupTokenAttempts = true;
+  bool _preserveCleanupChat = true;
 
   // State management - immutable
   _CallState _state = const _CallState();
@@ -431,8 +491,6 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   // Resource tracking for proper cleanup
   final Set<Timer> _activeTimers = {};
-  final Set<StreamSubscription> _activeSubscriptions = {};
-  final Set<StreamController> _activeControllers = {};
 
   // Remote track readiness tracking
   final Map<ParticipantId, DateTime> _remoteJoinTimes = {};
@@ -455,63 +513,75 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   int _tokenRefreshAttempts = 0;
   static const int _maxTokenRefreshAttempts = 2;
   String? _deepgramCredential;
+  int _deepgramCredentialGeneration = 0;
   Timer? _remoteLeftTimer;
   bool _remoteLeftNotified = false;
   bool _userRequestedEnd = false;
   bool _sessionExtensionRequestInFlight = false;
 
   // Call duration timer
-  Timer? _durationTimer;
-  final Stopwatch _callDurationStopwatch = Stopwatch();
   final ValueNotifier<int> _callDurationNotifier = ValueNotifier<int>(0);
   Timer? _callCheckpointNoticeTimer;
   final ValueNotifier<_CallCheckpointNotice?> _callCheckpointNoticeNotifier =
       ValueNotifier<_CallCheckpointNotice?>(null);
-  final Set<int> _shownCallCheckpointMinutes = <int>{};
-  DateTime? _sessionLimitWarningShownFor;
-  DateTime? _sessionLimitAutoEndedFor;
-  Duration? _sessionClockOffset;
+  late final _callTimer = CallTimerController(
+    readSession: () => CallTimerSession(
+      connectedAt: widget.sessionConnectedAt,
+      expiresAt: widget.sessionExpiresAt,
+      policy: widget.sessionPolicy,
+      status: widget.sessionStatus,
+      provisionalCountdown: widget.provisionalSessionLimitCountdown,
+      isStudent: widget.isStudent == true,
+      userRequestedEnd: _userRequestedEnd,
+    ),
+    onUpdate: _handleCallTimerUpdate,
+  );
   final Map<ParticipantId, String> _remoteParticipantUiSignatures = {};
   int _localCaptionClearGeneration = 0;
-  int _localCaptionUtteranceId = 0;
-  int _localCaptionRevision = 0;
-  bool _localUtteranceOpen = false;
-  String _localCommittedCaptionText = '';
-  String _localCurrentCaptionText = '';
-  DateTime? _localCaptionStartedAt;
+  final _localCaptionAssembler = LocalCaptionAssembler();
   final TextEditingController _chatTextController = TextEditingController();
   final FocusNode _chatFocusNode = FocusNode();
   final ScrollController _chatScrollController = ScrollController();
-  final List<_ChatMessage> _ownSentChatMessages = <_ChatMessage>[];
-  bool _isSendingChatMessage = false;
-  bool _persistCallChatInFlight = false;
-  bool _persistCallChatCompleted = false;
-  int _persistCallChatAttemptCount = 0;
+  late final CallChatController _callChatController = CallChatController(
+    sessionId: () => widget.sessionId,
+    canSend: () =>
+        _state.connectionState == ConnectionState.connected &&
+        !_dailySession.isClosing &&
+        _hasRemoteParticipantPresent(),
+    localIdentity: () => (
+      id: _localParticipantId(),
+      name: _localParticipantName(),
+    ),
+    sendText: _sendCallChatText,
+    persistBatch: _persistCallChatBatch,
+    endSession: _endCallChatSession,
+    onChanged: _syncCallChatState,
+    onDraftAccepted: _chatTextController.clear,
+    onMessageAppended: (_) => _scrollChatToBottom(animated: _state.isChatOpen),
+    onError: (code) {
+      if (kDebugMode) print('Call chat: $code');
+    },
+  );
   Timer? _localCaptionUiThrottleTimer;
   Timer? _remoteCaptionSendThrottleTimer;
   Timer? _localUtteranceEndTimer;
   Timer? _captionLogFlushTimer;
   _CaptionUpdate? _pendingLocalCaptionUpdate;
-  _OutgoingCaptionMessage? _pendingOutgoingCaptionMessage;
-  String? _lastSentCaptionSignature;
-  final Map<String, _CaptionLogEntry> _pendingCaptionLogEntries =
-      <String, _CaptionLogEntry>{};
-  final Set<String> _persistedCaptionLogIds = <String>{};
+  final OutgoingCaptionBuffer<_OutgoingCaptionMessage> _outgoingCaptionBuffer =
+      OutgoingCaptionBuffer<_OutgoingCaptionMessage>();
+  final Set<Future<void>> _outgoingCaptionFlushes = <Future<void>>{};
+  final CaptionLogQueue<_CaptionLogEntry> _captionLogQueue =
+      CaptionLogQueue<_CaptionLogEntry>();
   final Set<String> _reportedCaptionRuntimeIssueCodes = <String>{};
-  Future<void> _captionLogFlushChain = Future<void>.value();
-  double? _localCaptionConfidence;
 
   // Deepgram integration
-  FlutterSoundRecorder? _recorder;
-  IOWebSocketChannel? _deepgramChannel;
-  StreamController<typed_data.Uint8List>? _audioStreamController;
-  bool _recorderOpen = false;
-  bool _deepgramStopRequested = false;
-  bool _deepgramFinalizing = false;
-  bool _deepgramStartInProgress = false;
-  int _deepgramStreamGeneration = 0;
-  Future<void> _lifecycleTransitionChain = Future<void>.value();
-  int _lifecycleTransitionId = 0;
+  final _lifecycleTransitions = DailyLifecycleTransitionQueue(
+    onError: (_) {
+      if (kDebugMode) {
+        print('Daily lifecycle: transition_failed');
+      }
+    },
+  );
 
   // Removed quality monitoring - Daily Adaptive Bitrate handles this
 
@@ -535,12 +605,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   static const double _captionCompactMaxHeight = 128.0;
   static const double _captionRegularMaxHeight = 180.0;
   static const int _remoteVideoGraceMs = 2000;
-  static const int _deepgramFinalizeWaitMs = 250;
-  static const int _deepgramCloseWaitMs = 100;
-  static const int _maxChatMessages = 200;
   static const int _callCheckpointNoticeDurationMs = 4000;
   static const int _sessionLimitWarningLeadSeconds = 60;
-  static const int _sessionLimitAutoEndGraceSeconds = 2;
   static const double _chatWideBreakpoint = 720;
   static const List<_CallCheckpointNotice> _callCheckpointNotices =
       <_CallCheckpointNotice>[
@@ -583,7 +649,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       } else if (_isValidRoomUrl(widget.roomUrl)) {
         _updateState(_state.copyWith(
           connectionState: ConnectionState.connecting,
-          error: null,
+          clearError: true,
+          hasTerminalError: false,
         ));
       }
 
@@ -605,91 +672,50 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
           DeviceOrientation.landscapeRight,
         ]);
       }
-    } catch (e) {
-      if (kDebugMode) print('Hardware acceleration setup failed: $e');
+    } catch (_) {
+      if (kDebugMode) print('Daily platform: orientation_setup_failed');
     }
   }
 
   /// Validate room URL format
   bool _isValidRoomUrl(String url) {
-    if (url.isEmpty || url == '0' || url == 'null') return false;
-    try {
-      final uri = Uri.tryParse(url);
-      return uri != null && uri.hasScheme && uri.hasAuthority;
-    } catch (e) {
-      return false;
-    }
+    return join_credentials.isValidRoomUrl(url);
   }
 
   String? _sanitizeMeetingToken(String? token) {
-    if (token == null) return null;
-    final trimmed = token.trim();
-    if (trimmed.isEmpty) return null;
-    final lower = trimmed.toLowerCase();
-    if (lower == 'null' ||
-        lower == 'undefined' ||
-        lower == 'false' ||
-        lower == '0' ||
-        lower == 'none') {
-      return null;
-    }
-    return trimmed;
+    return join_credentials.sanitizeMeetingToken(token);
   }
 
   String? _effectiveMeetingToken() {
-    return _sanitizeMeetingToken(_dynamicMeetingToken ?? widget.meetingToken);
+    return join_credentials.effectiveMeetingToken(
+      dynamicToken: _dynamicMeetingToken,
+      configuredToken: widget.meetingToken,
+    );
   }
 
   String? _sanitizeRoomUrl(String? url) {
-    if (url == null) return null;
-    final trimmed = url.trim();
-    return _isValidRoomUrl(trimmed) ? trimmed : null;
+    return join_credentials.sanitizeRoomUrl(url);
   }
 
   String? _effectiveRoomUrl() {
-    return _sanitizeRoomUrl(_dynamicRoomUrl) ??
-        _sanitizeRoomUrl(widget.roomUrl);
+    return join_credentials.effectiveRoomUrl(
+      dynamicRoomUrl: _dynamicRoomUrl,
+      configuredRoomUrl: widget.roomUrl,
+    );
   }
 
   String? _configuredDeepgramCredentialFor(
     MinimalDailyWidget widgetInstance,
   ) {
-    return _sanitizeDeepgramCredential(
+    return join_credentials.configuredDeepgramCredential(
+      primaryCredential: widgetInstance.deepgramCredential,
       // ignore: deprecated_member_use_from_same_package
-      widgetInstance.deepgramCredential ?? widgetInstance.deepgramApiKey,
+      legacyApiKey: widgetInstance.deepgramApiKey,
     );
   }
 
   String? _sanitizeDeepgramCredential(String? value) {
-    if (value == null) return null;
-    final trimmed = value.trim();
-    if (trimmed.isEmpty) return null;
-    final lowered = trimmed.toLowerCase();
-    if (lowered == 'null' ||
-        lowered == 'undefined' ||
-        lowered == 'false' ||
-        lowered == '0' ||
-        lowered == 'none') {
-      return null;
-    }
-    return trimmed;
-  }
-
-  bool _looksLikeJwt(String value) {
-    final parts = value.split('.');
-    return parts.length == 3 &&
-        parts[0].isNotEmpty &&
-        parts[1].isNotEmpty &&
-        parts[2].isNotEmpty;
-  }
-
-  String _buildDeepgramAuthHeader(String credential) {
-    final sanitized = credential.trim();
-    final lowered = sanitized.toLowerCase();
-    if (lowered.startsWith('token ') || lowered.startsWith('bearer ')) {
-      return sanitized;
-    }
-    return _looksLikeJwt(sanitized) ? 'Bearer $sanitized' : 'Token $sanitized';
+    return join_credentials.sanitizeDeepgramCredential(value);
   }
 
   bool _canUseDeepgram() {
@@ -702,6 +728,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   Future<String?> _resolveDeepgramCredential({
     bool forceRefresh = false,
   }) async {
+    final requestGeneration = _deepgramCredentialGeneration;
+    final requestSessionId = widget.sessionId?.trim();
     final staticCredential = _configuredDeepgramCredentialFor(widget);
 
     if (!forceRefresh) {
@@ -716,6 +744,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     if (widget.deepgramTokenRefreshCallback != null) {
       try {
         final fetched = await widget.deepgramTokenRefreshCallback!.call();
+        if (requestGeneration != _deepgramCredentialGeneration ||
+            widget.sessionId?.trim() != requestSessionId) {
+          return null;
+        }
         final sanitized = _sanitizeDeepgramCredential(fetched);
         if (sanitized != null) {
           _deepgramCredential = sanitized;
@@ -726,12 +758,16 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
           code: error.code,
           message: error.message,
         );
-        if (kDebugMode) print('Deepgram token refresh failed: $error');
-      } catch (e) {
-        if (kDebugMode) print('Deepgram token refresh failed: $e');
+        if (kDebugMode) print('Deepgram credential: refresh_rejected');
+      } catch (_) {
+        if (kDebugMode) print('Deepgram credential: refresh_failed');
       }
     }
 
+    if (requestGeneration != _deepgramCredentialGeneration ||
+        widget.sessionId?.trim() != requestSessionId) {
+      return null;
+    }
     if (staticCredential != null) {
       _deepgramCredential = staticCredential;
       return staticCredential;
@@ -740,62 +776,20 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     return null;
   }
 
-  bool _hasValidJoinData() {
-    return _effectiveRoomUrl() != null && _effectiveMeetingToken() != null;
-  }
-
-  bool _hasProcessActiveCallClientConflict() {
-    final leaseToken = _processActiveCallClientLeaseToken;
-    if (leaseToken == null) {
-      return false;
-    }
-    return !identical(leaseToken, _processCallClientLeaseToken);
-  }
-
-  void _claimProcessActiveCallClientLease() {
-    _processActiveCallClientLeaseToken = _processCallClientLeaseToken;
-    _processActiveCallClientReleaseCompleter = Completer<void>();
-  }
-
-  void _claimProcessActiveCallClient(CallClient callClient) {
-    _processActiveCallClient = callClient;
-    _processActiveCallClientLeaseToken = _processCallClientLeaseToken;
-    _processActiveCallClientReleaseCompleter ??= Completer<void>();
-  }
-
-  void _releaseProcessActiveCallClientLease() {
-    if (!identical(
-        _processActiveCallClientLeaseToken, _processCallClientLeaseToken)) {
+  void _reportGenericCredentialUnavailable() {
+    // A typed refresh failure has already published a more useful safe issue.
+    if (!shouldReportGenericCaptionCredentialIssue(_state.captionIssueCode)) {
       return;
     }
-    _processActiveCallClientLeaseToken = null;
-    final releaseCompleter = _processActiveCallClientReleaseCompleter;
-    if (releaseCompleter != null && !releaseCompleter.isCompleted) {
-      releaseCompleter.complete();
-    }
-    _processActiveCallClientReleaseCompleter = null;
+    _reportCaptionRuntimeIssue(
+      code: 'caption_token_unavailable',
+      message:
+          'Субтитры временно недоступны: не удалось получить токен распознавания.',
+    );
   }
 
-  void _releaseProcessActiveCallClient([CallClient? callClient]) {
-    final targetClient = callClient ?? _callClient;
-    if (targetClient != null &&
-        identical(_processActiveCallClient, targetClient)) {
-      _processActiveCallClient = null;
-    }
-    if (_processActiveCallClient == null) {
-      _releaseProcessActiveCallClientLease();
-    }
-  }
-
-  Future<bool> _waitForProcessActiveCallClientRelease() async {
-    final releaseCompleter = _processActiveCallClientReleaseCompleter;
-    if (releaseCompleter == null || releaseCompleter.isCompleted) {
-      return !_hasProcessActiveCallClientConflict();
-    }
-    try {
-      await releaseCompleter.future.timeout(const Duration(seconds: 2));
-    } catch (_) {}
-    return !_hasProcessActiveCallClientConflict();
+  bool _hasValidJoinData() {
+    return _effectiveRoomUrl() != null && _effectiveMeetingToken() != null;
   }
 
   void _scheduleProcessActiveCallClientRetry() {
@@ -807,135 +801,75 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     });
   }
 
-  /// Simplified initialization
+  /// Widget bridge only: retry/credential policy remains outside the native
+  /// resource owner's operation so error recovery cannot await itself.
   Future<void> _initializeCall() async {
-    if (!mounted || _disposed) return;
-    if (_isInitializing ||
-        _state.connectionState == ConnectionState.connected) {
-      return;
-    }
-    if (_hasProcessActiveCallClientConflict()) {
-      final released = await _waitForProcessActiveCallClientRelease();
-      if (!mounted || _disposed) {
-        return;
-      }
-      if (released) {
-        if (_hasProcessActiveCallClientConflict()) {
-          if (kDebugMode) {
-            print(
-                'MinimalDailyWidget: duplicate CallClient still active after release wait');
-          }
-          return;
-        }
-      } else {
-        if (kDebugMode) {
-          print(
-              'MinimalDailyWidget: duplicate CallClient blocked for room/session');
-        }
-        _scheduleProcessActiveCallClientRetry();
-        return;
-      }
-    }
-    if (_hasProcessActiveCallClientConflict()) {
-      if (kDebugMode) {
-        print(
-            'MinimalDailyWidget: duplicate CallClient blocked for room/session');
-      }
-      return;
-    }
-    _claimProcessActiveCallClientLease();
+    if (!shouldAttemptDailySessionInitialization(
+          hasTerminalError: _state.hasTerminalError,
+        ) ||
+        !mounted ||
+        _disposed ||
+        _isInitializing ||
+        _state.connectionState == ConnectionState.connected) return;
     _isInitializing = true;
-    _systemCallMarkedConnected = false;
-    _userRequestedEnd = false;
-    _remoteLeftNotified = false;
-    _activeRemoteProfileConfigured = false;
-    _prioritySubscribedParticipants.clear();
-    _cancelTrackedTimer(_remoteLeftTimer);
-    _remoteLeftTimer = null;
-
-    _updateState(_state.copyWith(
-      connectionState: ConnectionState.connecting,
-      error: null,
-    ));
-
+    Object? failure;
+    final sessionId = widget.sessionId;
+    final roomUrl = widget.roomUrl;
     try {
-      // Create CallClient with timeout
-      final createdCallClient = await _createCallClientWithTimeout();
-      if (!mounted || createdCallClient == null) {
-        try {
-          await createdCallClient?.dispose();
-        } catch (_) {}
-        _releaseProcessActiveCallClientLease();
-        return;
+      await _cleanupFuture;
+      if (!mounted || _disposed) return;
+      _callTimer.resume();
+      _systemCallMarkedConnected = false;
+      _userRequestedEnd = false;
+      _remoteLeftNotified = false;
+      _activeRemoteProfileConfigured = false;
+      _prioritySubscribedParticipants.clear();
+      _cancelTrackedTimer(_remoteLeftTimer);
+      _remoteLeftTimer = null;
+      _updateState(_state.copyWith(
+        connectionState: ConnectionState.connecting,
+        clearError: true,
+        hasTerminalError: false,
+      ));
+      final result = await _dailySession.open();
+      if (result == DailySessionOpenResult.busy && mounted && !_disposed) {
+        _scheduleProcessActiveCallClientRetry();
+      } else if (result == DailySessionOpenResult.quarantined &&
+          mounted &&
+          !_disposed) {
+        _showDailySessionQuarantine();
       }
-      if (_hasProcessActiveCallClientConflict()) {
-        if (kDebugMode) {
-          print(
-              'MinimalDailyWidget: disposing duplicate CallClient for room/session');
-        }
-        try {
-          await createdCallClient.dispose();
-        } catch (e) {
-          if (kDebugMode) {
-            print('Error disposing duplicate call client: $e');
-          }
-        }
-        _releaseProcessActiveCallClientLease();
-        return;
-      }
-      _callClient = createdCallClient;
-      _claimProcessActiveCallClient(createdCallClient);
-
-      // Initialize video controller
-      _localVideoController = VideoViewController();
-
-      // Setup event subscription
-      await _setupEventSubscription();
-
-      // Join room with FIXED quality settings sequence
-      await _joinRoomWithEnhancedSettings();
-
-      // Quality monitoring removed - Daily Adaptive Bitrate handles this
-    } catch (e) {
-      _releaseProcessActiveCallClient();
-      await _handleConnectionError(e);
+    } catch (error) {
+      failure = error;
     } finally {
       _isInitializing = false;
     }
-  }
-
-  /// Create CallClient with timeout and retry
-  Future<CallClient?> _createCallClientWithTimeout() async {
-    const timeout = Duration(seconds: 10);
-
-    try {
-      return await CallClient.create().timeout(timeout);
-    } on TimeoutException {
-      throw Exception('CallClient creation timed out');
-    } catch (e) {
-      if (kDebugMode) print('CallClient creation failed: $e');
-      rethrow;
+    if (failure != null &&
+        mounted &&
+        !_disposed &&
+        widget.sessionId == sessionId &&
+        widget.roomUrl == roomUrl) {
+      if (_dailySession.isQuarantined) {
+        _showDailySessionQuarantine();
+      } else {
+        await _handleConnectionError(failure);
+      }
     }
   }
 
-  /// Setup event subscription with proper error handling
-  Future<void> _setupEventSubscription() async {
-    await _cancelTrackedSubscription(_eventSubscription);
-    _eventSubscription = _trackSubscription(_callClient!.events.listen(
-      _handleCallEvent,
-      onError: (error) {
-        if (kDebugMode) print('Event stream error: $error');
-        // Route through _handleEventError to filter non-fatal errors
-        if (mounted && !_disposed) {
-          _handleEventError(error.toString());
-        }
-      },
-      cancelOnError: false,
+  void _showDailySessionQuarantine() {
+    if (!mounted || _disposed) return;
+    if (kDebugMode) print('Daily lifecycle: native_resource_quarantined');
+    _updateState(_state.copyWith(
+      connectionState: ConnectionState.failed,
+      hasTerminalError: true,
+      error:
+          'Не удалось безопасно перезапустить звонок. Закройте и снова откройте приложение.',
     ));
   }
 
   /// Join room with default settings to avoid SDK parsing errors
-  Future<void> _joinRoomWithEnhancedSettings() async {
+  Future<void> _joinRoomWithEnhancedSettings(CallClient client) async {
     final roomUrl = _effectiveRoomUrl();
     if (roomUrl == null) {
       throw StateError('Daily room URL is not ready');
@@ -943,12 +877,11 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     final roomUri = Uri.parse(roomUrl);
     final token = _effectiveMeetingToken();
 
-    await _callClient!.join(
-      url: roomUri,
-      token: token,
-    );
+    await client.join(url: roomUri, token: token);
+  }
 
-    await _callClient!.updatePublishing(
+  Future<void> _configurePublishing(CallClient client) async {
+    await client.updatePublishing(
       publishing: PublishingSettingsUpdate.set(
         microphone: const MicrophonePublishingSettingsUpdate.set(
           isPublishing: BoolUpdate.set(true),
@@ -961,27 +894,25 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         ),
       ),
     );
+  }
 
-    await _callClient!.updateInputs(
+  Future<void> _enableLocalInputs(CallClient client) async {
+    await client.updateInputs(
       inputs: const InputSettingsUpdate.set(
         camera: CameraInputSettingsUpdate.set(isEnabled: BoolUpdate.set(true)),
         microphone:
             MicrophoneInputSettingsUpdate.set(isEnabled: BoolUpdate.set(true)),
       ),
     );
-
-    await _ensureActiveRemoteSubscriptionProfile();
-    await _configureUsername();
   }
 
   /// Configure username with fallback
-  Future<void> _configureUsername() async {
+  Future<void> _configureUsername(CallClient client) async {
     try {
       final name = widget.username ?? _getDefaultUsername();
-      await _callClient?.setUsername(name);
-      if (kDebugMode) print('Username set: $name');
-    } catch (e) {
-      if (kDebugMode) print('Username configuration failed: $e');
+      await client.setUsername(name);
+    } catch (_) {
+      if (kDebugMode) print('Daily participant: username_setup_failed');
     }
   }
 
@@ -1013,8 +944,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         inputsUpdated: _handleInputsUpdated,
         error: _handleEventError,
       );
-    } catch (e) {
-      if (kDebugMode) print('Event handling error: $e');
+    } catch (_) {
+      if (kDebugMode) print('Daily event: callback_failed');
     }
   }
 
@@ -1026,7 +957,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       case CallState.joined:
         _updateState(_state.copyWith(
           connectionState: ConnectionState.connected,
-          error: null,
+          clearError: true,
+          hasTerminalError: false,
           retryCount: 0,
         ));
         _tokenRefreshAttempts = 0;
@@ -1036,7 +968,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         break;
 
       case CallState.left:
-        _stopDeepgramStreaming();
+        _stopDeepgramStreamingUnawaited();
         if (_userRequestedEnd) {
           _updateState(_state.copyWith(
             connectionState: ConnectionState.disconnected,
@@ -1155,7 +1087,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     if (!mounted) return;
 
     try {
-      final payload = _decodeAppMessagePayload(message);
+      final payload = decodeDailyAppMessagePayload(message);
       if (payload == null) return;
 
       final type = payload['type']?.toString();
@@ -1164,151 +1096,59 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       } else if (type == 'chat') {
         _processChatMessage(payload['text']?.toString() ?? '', from);
       }
-    } catch (e) {
-      if (kDebugMode) print('Invalid app message: $e');
+    } catch (_) {
+      if (kDebugMode) print('Daily app message: invalid_payload');
     }
-  }
-
-  /// Decode Daily app messages from string/map and handle double encoding.
-  ///
-  /// daily_flutter can emit app-message data as JSON-encoded strings, and when
-  /// sender payload is already a JSON string this arrives double-encoded.
-  Map<String, dynamic>? _decodeAppMessagePayload(String rawMessage) {
-    dynamic payload = rawMessage;
-
-    for (var i = 0; i < 2; i++) {
-      if (payload is String) {
-        final trimmed = payload.trim();
-        if (trimmed.isEmpty) return null;
-        payload = dart_convert.jsonDecode(trimmed);
-        continue;
-      }
-      break;
-    }
-
-    if (payload is Map) {
-      return Map<String, dynamic>.from(payload);
-    }
-
-    return null;
   }
 
   /// Process caption message with revision-aware ordering.
   void _processCaptionMessage(
       Map<String, dynamic> payload, ParticipantId from) {
-    final text = _normalizeCaptionText(payload['text']?.toString() ?? '');
     final current = _state.remoteCaptions[from];
-    final rawUtteranceId = _readInt(payload['utteranceId']);
-    final rawRevision = _readInt(payload['revision']);
-    final phase = _CaptionPhase.fromWire(payload['phase']?.toString()) ??
-        _CaptionPhase.finalCaption;
-
-    int utteranceId;
-    int revision;
-
-    if (rawUtteranceId == null || rawRevision == null) {
-      if (text.isEmpty) return;
-      if (current != null &&
-          current.phase == _CaptionPhase.finalCaption &&
-          current.text == text &&
-          !current.isFadingOut) {
-        return;
-      }
-      utteranceId = _nextLegacyRemoteUtteranceId(from, current);
-      revision = 1;
-    } else {
-      utteranceId = rawUtteranceId;
-      revision = rawRevision;
-      if (text.isEmpty) return;
-      final previousCounter = _remoteLegacyCaptionCounters[from] ?? 0;
-      if (utteranceId > previousCounter) {
-        _remoteLegacyCaptionCounters[from] = utteranceId;
-      }
+    final decision = caption_policy.resolveRemoteCaptionMessage(
+      payload,
+      current: current == null
+          ? null
+          : (
+              utteranceId: current.utteranceId,
+              revision: current.revision,
+              text: current.text,
+              isFinal: current.phase == _CaptionPhase.finalCaption,
+              isFadingOut: current.isFadingOut,
+            ),
+      legacyCounter: _remoteLegacyCaptionCounters[from] ?? 0,
+    );
+    final counterUpdate = decision.legacyCounterUpdate;
+    if (counterUpdate != null) {
+      _remoteLegacyCaptionCounters[from] = counterUpdate;
     }
-
-    if (current != null) {
-      if (utteranceId < current.utteranceId) {
-        return;
-      }
-      if (utteranceId == current.utteranceId && revision <= current.revision) {
-        return;
-      }
-    }
+    final update = decision.update;
+    if (update == null) return;
 
     _upsertRemoteCaption(
       participantId: from,
-      utteranceId: utteranceId,
-      revision: revision,
-      text: text,
-      phase: phase,
+      utteranceId: update.utteranceId,
+      revision: update.revision,
+      text: update.text,
+      phase:
+          update.isFinal ? _CaptionPhase.finalCaption : _CaptionPhase.interim,
     );
 
-    if (rawUtteranceId == null &&
-        rawRevision == null &&
-        phase == _CaptionPhase.finalCaption) {
+    if (update.shouldLogLegacyFinal) {
       _enqueueLegacyRemoteCaptionLog(
         from,
-        utteranceId: utteranceId,
-        text: text,
+        utteranceId: update.utteranceId,
+        text: update.text,
       );
     }
   }
 
-  int _nextLegacyRemoteUtteranceId(
-    ParticipantId participantId,
-    _ActiveCaption? current,
-  ) {
-    final nextUtteranceId = math.max(
-      (_remoteLegacyCaptionCounters[participantId] ?? 0) + 1,
-      (current?.utteranceId ?? 0) + 1,
-    );
-    _remoteLegacyCaptionCounters[participantId] = nextUtteranceId;
-    return nextUtteranceId;
-  }
-
-  int? _readInt(dynamic value) {
-    if (value is int) return value;
-    if (value is String) return int.tryParse(value.trim());
-    return null;
-  }
-
-  double? _readDouble(dynamic value) {
-    if (value is num) {
-      return value.toDouble();
-    }
-    if (value is String) {
-      return double.tryParse(value.trim());
-    }
-    return null;
-  }
-
   void _processChatMessage(String text, ParticipantId from) {
-    final trimmedText = text.trim();
-    if (trimmedText.isEmpty) return;
-
-    final message = _ChatMessage(
-      id: _buildChatMessageId(
-        senderId: from.id,
-        text: trimmedText,
-      ),
-      text: trimmedText,
-      senderName: _participantDisplayName(from),
+    _callChatController.receive(
+      text,
       senderId: from.id,
-      sentAt: DateTime.now(),
-      isLocal: false,
+      senderName: _participantDisplayName(from),
     );
-
-    _appendChatMessage(
-      message,
-      incrementUnread: !_state.isChatOpen,
-    );
-  }
-
-  String _buildChatMessageId({
-    required String senderId,
-    required String text,
-  }) {
-    return '${DateTime.now().microsecondsSinceEpoch}_${senderId}_${text.hashCode}';
   }
 
   String _participantDisplayName(
@@ -1316,11 +1156,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     String fallback = 'Собеседник',
   }) {
     final participant = _callClient?.participants.all[participantId];
-    final username = participant?.info.username?.trim();
-    if (username?.isNotEmpty == true) {
-      return username!;
-    }
-    return fallback;
+    return participant_identity.resolveRemoteParticipantName(
+      username: participant?.info.username,
+      fallback: fallback,
+    );
   }
 
   String _participantLogSpeakerId(
@@ -1328,57 +1167,44 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     required int utteranceId,
   }) {
     final participant = _callClient?.participants.all[participantId];
-    final userId = participant?.info.userId?.trim();
-    if (userId?.isNotEmpty == true) {
-      return userId!;
-    }
-
-    final participantSessionId = participantId.id.trim();
-    if (participantSessionId.isNotEmpty) {
-      return participantSessionId;
-    }
-
-    return 'remote_$utteranceId';
+    return participant_identity.resolveRemoteCaptionLogSpeakerId(
+      userId: participant?.info.userId,
+      participantSessionId: participantId.id,
+      utteranceId: utteranceId,
+    );
   }
 
   String _localParticipantName() {
-    final localUsername = _callClient?.participants.local.info.username?.trim();
-    if (localUsername?.isNotEmpty == true) {
-      return localUsername!;
-    }
-
-    final widgetUsername = widget.username?.trim();
-    if (widgetUsername?.isNotEmpty == true) {
-      return widgetUsername!;
-    }
-
-    return widget.isStudent == true ? 'Студент' : 'Преподаватель';
+    return participant_identity.resolveLocalParticipantName(
+      dailyUsername: _callClient?.participants.local.info.username,
+      configuredUsername: widget.username,
+      isStudent: widget.isStudent,
+    );
   }
 
   String _localParticipantId() {
-    final localId = _callClient?.participants.local.id.id;
-    if (localId?.isNotEmpty == true) {
-      return localId!;
-    }
-    return 'local';
+    return participant_identity.resolveLocalParticipantId(
+      _callClient?.participants.local.id.id,
+    );
   }
 
-  void _appendChatMessage(
-    _ChatMessage message, {
-    bool incrementUnread = false,
-  }) {
-    final messages = List<_ChatMessage>.from(_state.chatMessages)..add(message);
-    if (messages.length > _maxChatMessages) {
-      messages.removeRange(0, messages.length - _maxChatMessages);
-    }
-
+  void _syncCallChatState() {
+    if (!mounted || _disposed) return;
+    final messages = _callChatController.messages
+        .map((message) => _ChatMessage(
+              id: message.id,
+              text: message.text,
+              senderName: message.senderName,
+              senderId: message.senderId,
+              sentAt: message.sentAt,
+              isLocal: message.isLocal,
+            ))
+        .toList(growable: false);
     _updateState(_state.copyWith(
       chatMessages: List<_ChatMessage>.unmodifiable(messages),
-      unreadChatCount:
-          incrementUnread ? _state.unreadChatCount + 1 : _state.unreadChatCount,
+      unreadChatCount: _callChatController.unreadCount,
+      isChatOpen: _state.isChatOpen,
     ));
-
-    _scrollChatToBottom(animated: _state.isChatOpen);
   }
 
   void _scrollChatToBottom({bool animated = true}) {
@@ -1400,19 +1226,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   void _setChatOpen(bool isOpen) {
     if (!mounted || _disposed) return;
-
-    if (!isOpen) {
-      _clearChatDraft();
-    }
-
-    _updateState(_state.copyWith(
-      isChatOpen: isOpen,
-      unreadChatCount: isOpen ? 0 : _state.unreadChatCount,
-    ));
-
-    if (isOpen) {
-      _scrollChatToBottom(animated: false);
-    }
+    if (!isOpen) _clearChatDraft();
+    _callChatController.setOpen(isOpen);
+    _updateState(_state.copyWith(isChatOpen: isOpen));
+    if (isOpen) _scrollChatToBottom(animated: false);
   }
 
   void _toggleChatOpen() {
@@ -1425,51 +1242,27 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   }
 
   bool _canSendChatText(String text) {
-    return _state.connectionState == ConnectionState.connected &&
-        _callClient != null &&
-        _hasRemoteParticipantPresent() &&
-        text.trim().isNotEmpty;
+    return !_callChatController.isSending &&
+        text.trim().isNotEmpty &&
+        _state.connectionState == ConnectionState.connected &&
+        !_dailySession.isClosing &&
+        _hasRemoteParticipantPresent();
+  }
+
+  Future<bool> _sendCallChatText(String text) async {
+    final payload = dart_convert.jsonEncode({'type': 'chat', 'text': text});
+    var delivered = false;
+    await _dailySession.runWithClient((client) async {
+      await client.sendAppMessage(payload, null);
+      delivered = true;
+    });
+    return delivered;
   }
 
   Future<void> _sendChatMessage() async {
-    final text = _chatTextController.text.trim();
-    if (_isSendingChatMessage ||
-        !_canSendChatText(text) ||
-        _callClient == null) {
-      return;
-    }
-
-    _isSendingChatMessage = true;
-
-    final message = _ChatMessage(
-      id: _buildChatMessageId(
-        senderId: _localParticipantId(),
-        text: text,
-      ),
-      text: text,
-      senderName: _localParticipantName(),
-      senderId: _localParticipantId(),
-      sentAt: DateTime.now(),
-      isLocal: true,
-    );
-
-    _appendChatMessage(message);
-    _chatTextController.clear();
-
-    try {
-      final payload = dart_convert.jsonEncode({
-        'type': 'chat',
-        'text': text,
-      });
-      await _callClient!.sendAppMessage(payload, null);
-      _ownSentChatMessages.add(message);
-    } catch (e) {
-      if (kDebugMode) print('Failed to send chat message: $e');
-    } finally {
-      if (mounted && !_disposed) {
-        setState(() => _isSendingChatMessage = false);
-      }
-    }
+    final text = _chatTextController.text;
+    if (!_canSendChatText(text)) return;
+    await _callChatController.send(text);
   }
 
   bool _isTerminalSessionStatus(String? status) {
@@ -1479,70 +1272,39 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         normalized == 'expired';
   }
 
-  Future<void> _persistOwnCallChatMessages() async {
-    if (_persistCallChatCompleted || _persistCallChatInFlight) {
-      return;
-    }
-
-    final sessionId = widget.sessionId?.trim();
-    if (sessionId == null || sessionId.isEmpty) {
-      _persistCallChatCompleted = true;
-      return;
-    }
-
-    if (_persistCallChatAttemptCount >= 3) {
-      return;
-    }
-
-    _persistCallChatInFlight = true;
-    _persistCallChatAttemptCount += 1;
-    final messages = List<_ChatMessage>.unmodifiable(_ownSentChatMessages);
-
-    try {
-      await FirebaseFunctions.instance.httpsCallable('persistCallChat').call({
-        'sessionId': sessionId,
-        'messages': messages
-            .map((message) => {
-                  'clientId': message.id,
-                  'text': message.text,
-                  'sentAtMs': message.sentAt.millisecondsSinceEpoch,
-                })
-            .toList(growable: false),
-      }).timeout(const Duration(seconds: 8));
-      _persistCallChatCompleted = true;
-    } on FirebaseFunctionsException catch (error) {
-      if (kDebugMode) {
-        print('Failed to persist call chat: ${error.code}');
-      }
-    } catch (error) {
-      if (kDebugMode) print('Failed to persist call chat: $error');
-    } finally {
-      _persistCallChatInFlight = false;
-    }
+  Future<void> _persistCallChatBatch(
+    String sessionId,
+    List<CallChatMessage> messages,
+  ) async {
+    await FirebaseFunctions.instance.httpsCallable('persistCallChat').call({
+      'sessionId': sessionId,
+      'messages': messages
+          .map((message) => {
+                'clientId': message.id,
+                'text': message.text,
+                'sentAtMs': message.sentAt.millisecondsSinceEpoch,
+              })
+          .toList(growable: false),
+    }).timeout(const Duration(seconds: 8));
   }
 
-  Future<void> _endSessionAndPersistCallChat(String? endReason) async {
-    final sessionId = widget.sessionId?.trim();
-    if (sessionId == null || sessionId.isEmpty) {
-      await _persistOwnCallChatMessages();
+  Future<void> _endCallChatSession(String sessionId, String? reason) async {
+    await FirebaseFunctions.instance.httpsCallable('endSession').call({
+      'sessionId': sessionId,
+      if (reason != null && reason.isNotEmpty) 'endReason': reason,
+    }).timeout(const Duration(seconds: 8));
+  }
+
+  Future<void> _persistOwnCallChatMessages({int? expectedGeneration}) async {
+    if (expectedGeneration != null &&
+        expectedGeneration != _callChatController.generation) {
       return;
     }
-
-    try {
-      await FirebaseFunctions.instance.httpsCallable('endSession').call({
-        'sessionId': sessionId,
-        if (endReason != null && endReason.isNotEmpty) 'endReason': endReason,
-      }).timeout(const Duration(seconds: 8));
-    } on FirebaseFunctionsException catch (error) {
-      if (kDebugMode) {
-        print('endSession before chat persist failed: ${error.code}');
-      }
-    } catch (error) {
-      if (kDebugMode) print('endSession before chat persist failed: $error');
-    }
-
-    await _persistOwnCallChatMessages();
+    await _callChatController.persist();
   }
+
+  Future<void> _endSessionAndPersistCallChat(String? endReason) =>
+      _callChatController.endSessionAndPersist(endReason);
 
   String _formatChatTimestamp(DateTime sentAt) {
     final hour = sentAt.hour.toString().padLeft(2, '0');
@@ -1565,25 +1327,20 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   }
 
   /// Handle event errors - filter out non-fatal errors
-  void _handleEventError(String error) {
-    if (kDebugMode) print('Daily event error: $error');
+  void _handleEventError(Object error) {
+    final decision = classifyDailyRuntimeError(
+      error,
+      fromEventStream: true,
+    );
+    if (kDebugMode) print('Daily event: ${decision.diagnosticCode}');
 
-    final lowerError = error.toLowerCase();
-
-    // Track subscription failures are transient - Daily SDK retries automatically.
-    // Do NOT treat these as fatal connection errors.
-    if (lowerError.contains('subscription') ||
-        lowerError.contains('consumer') ||
-        lowerError.contains('track') ||
-        lowerError.contains('no longer exists') ||
-        lowerError.contains('meeting_event') ||
-        lowerError.contains('send_meeting_event')) {
-      if (kDebugMode) print('Non-fatal Daily error (ignored): $error');
+    // Track subscription failures are transient; Daily retries them itself.
+    if (decision.isTransientEvent) {
       return;
     }
 
     // Only escalate truly fatal errors to connection error handler
-    unawaited(_handleConnectionError(error));
+    unawaited(_handleConnectionError(error, decision: decision));
   }
 
   /// Add remote participant with proper resource management
@@ -1618,8 +1375,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
           unawaited(_updateRemoteParticipant(participant));
         }
       });
-    } catch (e) {
-      if (kDebugMode) print('Failed to add remote participant: $e');
+    } catch (_) {
+      if (kDebugMode) print('Daily participant: add_failed');
     }
   }
 
@@ -1643,13 +1400,19 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   /// Update remote participant video track
   Future<void> _updateRemoteParticipant(Participant participant) async {
-    if (!mounted || _disposed) return;
+    final client = _callClient;
+    if (!mounted ||
+        _disposed ||
+        client == null ||
+        !_dailySession.isCurrent(client)) return;
 
     final controller = _state.remoteControllers[participant.id];
     if (controller == null) {
       // Controller might not be created yet, retry
       _createTrackedTimer(const Duration(milliseconds: 200), () {
-        if (mounted && _state.remoteControllers.containsKey(participant.id)) {
+        if (mounted &&
+            _dailySession.isCurrent(client) &&
+            _state.remoteControllers.containsKey(participant.id)) {
           unawaited(_updateRemoteParticipant(participant));
         }
       });
@@ -1661,11 +1424,14 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         ? media?.screenVideo.track
         : media?.camera.track;
 
-    await _setVideoTrack(
-      controller,
-      track,
-      debugContext: 'Failed to update remote participant track',
-    );
+    final current = await _dailySession.runWithClient((_) => _setVideoTrack(
+          controller,
+          track,
+          debugContext: 'Failed to update remote participant track',
+        ));
+    if (!current ||
+        !identical(_state.remoteControllers[participant.id], controller))
+      return;
 
     final wasReady = _remoteTrackReady[participant.id] ?? false;
     final isReady = track != null;
@@ -1681,27 +1447,29 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   }
 
   Future<void> _prioritizeRemoteSubscription(ParticipantId id) async {
-    if (_callClient == null) return;
+    final client = _callClient;
+    if (client == null || !_dailySession.isCurrent(client)) return;
     if (_prioritySubscribedParticipants.contains(id) &&
         _activeRemoteProfileConfigured) {
       return;
     }
 
     try {
-      await _ensureActiveRemoteSubscriptionProfile();
-      await _callClient!.updateSubscriptions(
-        forParticipants: {
-          id: SubscriptionSettingsUpdate.set(
-            profile: const SubscriptionProfileUpdate.set(
-              profile: SubscriptionProfile.activeRemote,
-            ),
-          ),
-        },
-      );
-      _prioritySubscribedParticipants.add(id);
-    } catch (e) {
-      if (kDebugMode)
-        print('Failed to prioritize remote subscription for $id: $e');
+      await _ensureActiveRemoteSubscriptionProfile(client);
+      if (!_dailySession.isCurrent(client)) return;
+      final current = await _dailySession
+          .runWithClient((active) => active.updateSubscriptions(
+                forParticipants: {
+                  id: SubscriptionSettingsUpdate.set(
+                    profile: const SubscriptionProfileUpdate.set(
+                      profile: SubscriptionProfile.activeRemote,
+                    ),
+                  ),
+                },
+              ));
+      if (current) _prioritySubscribedParticipants.add(id);
+    } catch (_) {
+      if (kDebugMode) print('Daily subscription: priority_update_failed');
     }
   }
 
@@ -1731,44 +1499,52 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
       // Also clear any captions from this participant
       _clearRemoteCaption(id);
-    } catch (e) {
-      if (kDebugMode) print('Failed to remove participant: $e');
+    } catch (_) {
+      if (kDebugMode) print('Daily participant: remove_failed');
     }
   }
 
   /// Update local video track safely
   Future<void> _updateLocalVideoTrack() async {
-    if (_callClient == null || _localVideoController == null || !mounted)
-      return;
+    final client = _callClient;
+    final controller = _localVideoController;
+    if (client == null ||
+        controller == null ||
+        !mounted ||
+        !_dailySession.isCurrent(client)) return;
 
-    final local = _callClient!.participants.local;
+    final local = client.participants.local;
     final track = local.media?.camera.track;
 
     // Update track - VideoViewController doesn't have a track getter
     // so we always set the track
-    await _setVideoTrack(
-      _localVideoController,
-      track,
-      debugContext: 'Local video track update failed',
-    );
+    await _dailySession.runWithClient((_) => _setVideoTrack(
+          controller,
+          track,
+          debugContext: 'Local video track update failed',
+        ));
   }
 
   /// Update input settings with quality preservation
   Future<void> _updateInputSettings({bool? camera, bool? microphone}) async {
-    if (_callClient == null || !mounted) return;
+    final client = _callClient;
+    if (client == null || !mounted || !_dailySession.isCurrent(client)) return;
 
     try {
-      await _callClient!.updateInputs(
-        inputs: InputSettingsUpdate.set(
-          camera: camera != null
-              ? CameraInputSettingsUpdate.set(isEnabled: BoolUpdate.set(camera))
-              : null,
-          microphone: microphone != null
-              ? MicrophoneInputSettingsUpdate.set(
-                  isEnabled: BoolUpdate.set(microphone))
-              : null,
-        ),
-      );
+      final current =
+          await _dailySession.runWithClient((active) => active.updateInputs(
+                inputs: InputSettingsUpdate.set(
+                  camera: camera != null
+                      ? CameraInputSettingsUpdate.set(
+                          isEnabled: BoolUpdate.set(camera))
+                      : null,
+                  microphone: microphone != null
+                      ? MicrophoneInputSettingsUpdate.set(
+                          isEnabled: BoolUpdate.set(microphone))
+                      : null,
+                ),
+              ));
+      if (!current) return;
 
       _updateState(_state.copyWith(
         cameraEnabled: camera ?? _state.cameraEnabled,
@@ -1776,26 +1552,18 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       ));
       if (microphone != null) {
         await _syncDeepgramWithMicrophoneState(forceRefresh: microphone);
-        if (microphone == false) {
+        if (microphone == false && _dailySession.isCurrent(client)) {
           await _flushPendingCaptionLogs(force: true);
         }
       }
-    } catch (e) {
-      if (kDebugMode) print('Input settings update failed: $e');
+    } catch (_) {
+      if (kDebugMode) print('Daily inputs: update_failed');
     }
   }
 
-  Future<void> _disableLocalInputsForCleanup() async {
-    if (_callClient == null) {
-      _updateState(_state.copyWith(
-        cameraEnabled: false,
-        microphoneEnabled: false,
-      ));
-      return;
-    }
-
+  Future<void> _disableLocalInputsForCleanup(CallClient client) async {
     try {
-      await _callClient!
+      await client
           .updateInputs(
             inputs: const InputSettingsUpdate.set(
               camera: CameraInputSettingsUpdate.set(
@@ -1807,9 +1575,9 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
             ),
           )
           .timeout(const Duration(seconds: 2));
-    } catch (e) {
+    } catch (_) {
       if (kDebugMode) {
-        print('Failed to disable local inputs during cleanup: $e');
+        print('Daily inputs: cleanup_disable_failed');
       }
     }
 
@@ -1827,65 +1595,38 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   bool _shouldRunDeepgram() {
     return mounted &&
         !_disposed &&
+        !_dailySession.isClosing &&
         _state.connectionState == ConnectionState.connected &&
         _state.microphoneEnabled &&
         _hasRemoteParticipantPresent() &&
         _canUseDeepgram();
   }
 
-  bool _isCurrentDeepgramStreamGeneration(
-    int generation,
-    String? sessionId,
-  ) {
-    return mounted &&
-        !_disposed &&
-        !_deepgramStopRequested &&
-        _deepgramStreamGeneration == generation &&
-        widget.sessionId?.trim() == sessionId &&
-        _shouldRunDeepgram();
-  }
-
-  bool _canHandleDeepgramMessage(
-    int generation,
-    String? sessionId,
-  ) {
-    return mounted &&
-        !_disposed &&
-        widget.sessionId?.trim() == sessionId &&
-        ((_deepgramFinalizing && _deepgramStopRequested) ||
-            (_deepgramStreamGeneration == generation &&
-                !_deepgramStopRequested &&
-                _shouldRunDeepgram()));
-  }
-
   Future<void> _syncDeepgramWithMicrophoneState({
     bool forceRefresh = false,
   }) async {
-    if (_shouldRunDeepgram()) {
-      if (!_state.isStreamingToDeepgram && !_deepgramStartInProgress) {
-        await _startDeepgramStreamingWithResolvedCredential(
-          forceRefresh: forceRefresh,
-        );
-      }
-      return;
-    }
-
-    if (_state.isStreamingToDeepgram ||
-        _deepgramStartInProgress ||
-        _recorder != null ||
-        _deepgramChannel != null) {
-      await _stopDeepgramStreaming();
-    }
-    _clearLocalCaptions();
+    await _deepgramTransport.sync(forceRefresh: forceRefresh);
+    if (!_shouldRunDeepgram()) _clearLocalCaptions();
   }
 
   Future<void> _promoteToActiveCallIfReady() async {
+    final client = _callClient;
+    if (client == null || !_dailySession.isCurrent(client)) return;
     if (_state.connectionState != ConnectionState.connected) return;
     if (!_hasRemoteParticipantPresent()) return;
 
-    _startDurationTimer();
     await _markRoomJoined();
+    if (!_dailySession.isCurrent(client)) return;
     await _markSystemCallConnected();
+    if (!_dailySession.isCurrent(client)) return;
+    if (session_limit_ui.shouldRunCallDurationTimer(
+      sessionStatus: widget.sessionStatus,
+      isDailyConnected: _state.connectionState == ConnectionState.connected,
+      hasRemoteParticipant: _hasRemoteParticipantPresent(),
+      hasServerConnectedAt: widget.sessionConnectedAt != null,
+    )) {
+      _startDurationTimer();
+    }
     await _syncDeepgramWithMicrophoneState(forceRefresh: true);
   }
 
@@ -1908,14 +1649,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     _cancelTrackedTimer(_localUtteranceEndTimer);
     _localUtteranceEndTimer = null;
     _pendingLocalCaptionUpdate = null;
-    _pendingOutgoingCaptionMessage = null;
-    _lastSentCaptionSignature = null;
-    _localUtteranceOpen = false;
-    _localCommittedCaptionText = '';
-    _localCurrentCaptionText = '';
-    _localCaptionConfidence = null;
-    _localCaptionRevision = 0;
-    _localCaptionStartedAt = null;
+    _outgoingCaptionBuffer.clear();
+    _localCaptionAssembler.clear();
 
     if (_state.localCaption == null) {
       return;
@@ -1923,39 +1658,46 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     _updateCaptionState(_state.copyWith(clearLocalCaption: true));
   }
 
-  Future<void> _ensureActiveRemoteSubscriptionProfile() async {
-    if (_callClient == null || _activeRemoteProfileConfigured) return;
+  Future<void> _ensureActiveRemoteSubscriptionProfile(
+      [CallClient? target]) async {
+    final client = target ?? _callClient;
+    if (client == null ||
+        !_dailySession.isCurrent(client) ||
+        _activeRemoteProfileConfigured) return;
 
     try {
-      await _callClient!.updateSubscriptionProfiles(
-        forProfiles: {
-          SubscriptionProfile.activeRemote:
-              const MediaSubscriptionSettingsUpdate.set(
-            camera: VideoSubscriptionSettingsUpdate.set(
-              subscriptionState: SubscriptionStateUpdate.subscribed,
-              receiveSettings: VideoReceiveSettingsUpdate.set(
-                maxQuality: VideoReceiveSettingsMaxQualityUpdate.high,
-              ),
-            ),
-            screenVideo: VideoSubscriptionSettingsUpdate.set(
-              subscriptionState: SubscriptionStateUpdate.subscribed,
-              receiveSettings: VideoReceiveSettingsUpdate.set(
-                maxQuality: VideoReceiveSettingsMaxQualityUpdate.high,
-              ),
-            ),
-            microphone: AudioSubscriptionSettingsUpdate.set(
-              subscriptionState: SubscriptionStateUpdate.subscribed,
-            ),
-            screenAudio: AudioSubscriptionSettingsUpdate.set(
-              subscriptionState: SubscriptionStateUpdate.subscribed,
-            ),
-          ),
-        },
-      );
-      _activeRemoteProfileConfigured = true;
-    } catch (e) {
+      final current = await _dailySession
+          .runWithClient((active) => active.updateSubscriptionProfiles(
+                forProfiles: {
+                  SubscriptionProfile.activeRemote:
+                      const MediaSubscriptionSettingsUpdate.set(
+                    camera: VideoSubscriptionSettingsUpdate.set(
+                      subscriptionState: SubscriptionStateUpdate.subscribed,
+                      receiveSettings: VideoReceiveSettingsUpdate.set(
+                        maxQuality: VideoReceiveSettingsMaxQualityUpdate.high,
+                      ),
+                    ),
+                    screenVideo: VideoSubscriptionSettingsUpdate.set(
+                      subscriptionState: SubscriptionStateUpdate.subscribed,
+                      receiveSettings: VideoReceiveSettingsUpdate.set(
+                        maxQuality: VideoReceiveSettingsMaxQualityUpdate.high,
+                      ),
+                    ),
+                    microphone: AudioSubscriptionSettingsUpdate.set(
+                      subscriptionState: SubscriptionStateUpdate.subscribed,
+                    ),
+                    screenAudio: AudioSubscriptionSettingsUpdate.set(
+                      subscriptionState: SubscriptionStateUpdate.subscribed,
+                    ),
+                  ),
+                },
+              ));
+      if (current) {
+        _activeRemoteProfileConfigured = true;
+      }
+    } catch (_) {
       if (kDebugMode) {
-        print('Failed to configure active remote subscription profile: $e');
+        print('Daily subscription: active_profile_failed');
       }
     }
   }
@@ -1979,28 +1721,34 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   // Resolution automatically scales from 540p to 720p based on available bandwidth
 
   /// Handle connection errors with exponential backoff retry
-  Future<void> _handleConnectionError(dynamic error) async {
+  Future<void> _handleConnectionError(
+    Object error, {
+    DailyRuntimeErrorDecision? decision,
+  }) async {
     if (!mounted || _disposed) return;
 
-    if (kDebugMode) print('Connection error: $error');
-
-    final message = error.toString().toLowerCase();
-    final isTokenError =
-        message.contains('sigauthz') || message.contains('token');
+    final safeDecision = decision ?? classifyDailyRuntimeError(error);
+    if (kDebugMode) {
+      print('Daily connection: ${safeDecision.diagnosticCode}');
+    }
 
     // If we're already connected and this isn't a token error,
     // don't tear down the connection - it's likely a transient issue
-    if (_state.connectionState == ConnectionState.connected && !isTokenError) {
-      if (kDebugMode) print('Ignoring non-fatal error while connected: $error');
+    if (_state.connectionState == ConnectionState.connected &&
+        !safeDecision.isTokenError) {
+      if (kDebugMode) print('Daily connection: ignored_while_connected');
       return;
     }
 
-    final refreshed = await _tryRefreshTokenOnError(error);
+    final refreshed = await _tryRefreshTokenOnError(
+      isTokenError: safeDecision.isTokenError,
+    );
     if (refreshed) {
       return;
     }
 
-    if (isTokenError && _tokenRefreshAttempts >= _maxTokenRefreshAttempts) {
+    if (safeDecision.isTokenError &&
+        _tokenRefreshAttempts >= _maxTokenRefreshAttempts) {
       await _cleanup(
         leaveCall: false,
         preserveMeetingToken: true,
@@ -2009,14 +1757,16 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       );
       _updateState(_state.copyWith(
         connectionState: ConnectionState.failed,
-        error: 'Ошибка токена, перезапустите звонок',
+        hasTerminalError: false,
+        error: safeDecision.userMessage,
       ));
       return;
     }
 
     _updateState(_state.copyWith(
       connectionState: ConnectionState.failed,
-      error: error.toString(),
+      hasTerminalError: false,
+      error: safeDecision.userMessage,
     ));
 
     if (_state.retryCount < _maxRetryAttempts) {
@@ -2032,7 +1782,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     );
   }
 
-  Future<bool> _tryRefreshTokenOnError(dynamic error) async {
+  Future<bool> _tryRefreshTokenOnError({required bool isTokenError}) async {
     if (_tokenRefreshInProgress) return false;
     if (_tokenRefreshAttempts >= _maxTokenRefreshAttempts) return false;
     if (widget.tokenRefreshCallback == null &&
@@ -2040,10 +1790,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       return false;
     }
 
-    final message = error.toString().toLowerCase();
-    final looksLikeTokenError =
-        message.contains('sigauthz') || message.contains('token');
-    if (!looksLikeTokenError) return false;
+    if (!isTokenError) return false;
 
     _tokenRefreshInProgress = true;
     _tokenRefreshAttempts += 1;
@@ -2080,8 +1827,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       }
       await _initializeCall();
       return true;
-    } catch (e) {
-      if (kDebugMode) print('Token refresh failed: $e');
+    } catch (_) {
+      if (kDebugMode) print('Daily token refresh: failed');
       return false;
     } finally {
       _tokenRefreshInProgress = false;
@@ -2132,342 +1879,64 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     await _initializeCall();
   }
 
-  Future<void> _startDeepgramStreamingWithResolvedCredential({
-    bool forceRefresh = false,
-  }) async {
-    if (!_shouldRunDeepgram()) {
-      return;
-    }
-    final sessionIdAtStart = widget.sessionId?.trim();
-    final credential = await _resolveDeepgramCredential(
-      forceRefresh: forceRefresh,
-    );
-    if (!_shouldRunDeepgram() || widget.sessionId?.trim() != sessionIdAtStart) {
-      return;
-    }
-    if (credential == null) {
-      if (_state.captionIssueCode == null) {
-        _reportCaptionRuntimeIssue(
-          code: 'caption_token_unavailable',
-          message:
-              'Субтитры временно недоступны: не удалось получить токен распознавания.',
-        );
-      }
-      if (kDebugMode) print('Deepgram disabled: no credential available');
-      return;
-    }
-    await _startDeepgramStreaming(credential);
-  }
+  Future<void> _stopDeepgramStreaming() => _deepgramTransport.stop();
 
-  /// Start Deepgram streaming with proper resource management
-  Future<void> _startDeepgramStreaming(String credential) async {
-    if (_state.isStreamingToDeepgram ||
-        !mounted ||
-        _deepgramStartInProgress ||
-        !_shouldRunDeepgram()) {
-      return;
-    }
-
-    final sessionIdAtStart = widget.sessionId?.trim();
-    final generation = ++_deepgramStreamGeneration;
-    var reportedSpecificStartIssue = false;
-    try {
-      _deepgramStartInProgress = true;
-      _deepgramStopRequested = false;
-
-      if (kDebugMode) {
-        print(
-          'Deepgram starting with ${_looksLikeJwt(credential) ? "temporary token" : "API key"} auth',
-        );
-      }
-
-      // Request microphone permission
-      final permission = await Permission.microphone.request();
-      if (!_isCurrentDeepgramStreamGeneration(generation, sessionIdAtStart)) {
-        return;
-      }
-      if (!permission.isGranted) {
-        _reportCaptionRuntimeIssue(
-          code: 'microphone_permission_denied',
-          message: 'Субтитры временно недоступны: нет доступа к микрофону.',
-        );
-        reportedSpecificStartIssue = true;
-        throw Exception('Microphone permission denied');
-      }
-
-      // Initialize recorder
-      final recorder = FlutterSoundRecorder();
-      _recorder = recorder;
-      await recorder.openRecorder();
-      if (!_isCurrentDeepgramStreamGeneration(generation, sessionIdAtStart) ||
-          _recorder != recorder) {
-        await _closeStaleDeepgramRecorder(recorder);
-        return;
-      }
-      _recorderOpen = true;
-
-      recorder.setSubscriptionDuration(const Duration(milliseconds: 100));
-
-      // Initialize Deepgram WebSocket
-      await _initializeDeepgramWebSocket(
-        credential,
-        generation: generation,
-        sessionId: sessionIdAtStart,
-      );
-      if (!_isCurrentDeepgramStreamGeneration(generation, sessionIdAtStart)) {
-        await _stopDeepgramStreaming();
-        return;
-      }
-
-      // Setup audio streaming
-      _audioStreamController = StreamController<typed_data.Uint8List>();
-      _trackController(_audioStreamController!);
-
-      _audioStreamSubscription = _trackSubscription(
-        _audioStreamController!.stream.listen(
-          (data) {
-            if (!_isCurrentDeepgramStreamGeneration(
-              generation,
-              sessionIdAtStart,
-            )) {
-              return;
-            }
-            final channel = _deepgramChannel;
-            if (channel == null) {
-              return;
-            }
-            try {
-              channel.sink.add(data);
-            } catch (e) {
-              _handleDeepgramAudioSinkFailure(
-                e,
-                generation: generation,
-                sessionId: sessionIdAtStart,
-              );
-            }
-          },
-          onError: (e) {
-            if (!_isCurrentDeepgramStreamGeneration(
-              generation,
-              sessionIdAtStart,
-            )) {
-              return;
-            }
-            _reportCaptionRuntimeIssue(
-              code: 'audio_stream_error',
-              message:
-                  'Субтитры временно недоступны: не удалось передать звук на распознавание.',
-            );
-            if (kDebugMode) print('Audio stream error: $e');
-          },
-        ),
-      );
-
-      // Start recording
-      await recorder.startRecorder(
-        toStream: _audioStreamController!.sink,
-        codec: Codec.pcm16,
-        sampleRate: 16000,
-        numChannels: 1,
-      );
-      if (!_isCurrentDeepgramStreamGeneration(generation, sessionIdAtStart)) {
-        await _stopDeepgramStreaming();
-        await _closeStaleDeepgramRecorder(recorder);
-        return;
-      }
-
-      _updateState(_state.copyWith(isStreamingToDeepgram: true));
-      _clearCaptionRuntimeIssue();
-
-      if (kDebugMode) print('Deepgram streaming started successfully');
-    } catch (e) {
-      if (!reportedSpecificStartIssue &&
-          _isCurrentDeepgramStreamGeneration(generation, sessionIdAtStart)) {
-        _reportCaptionRuntimeIssue(
-          code: 'deepgram_start_failed',
-          message:
-              'Субтитры временно недоступны: не удалось запустить распознавание речи.',
-        );
-      }
-      if (kDebugMode) print('Failed to start Deepgram streaming: $e');
-      await _stopDeepgramStreaming();
-    } finally {
-      if (_deepgramStreamGeneration == generation) {
-        _deepgramStartInProgress = false;
-      }
-    }
-  }
-
-  Future<void> _closeStaleDeepgramRecorder(
-      FlutterSoundRecorder recorder) async {
-    try {
-      if (recorder.isRecording) {
-        await recorder.stopRecorder();
-      }
-      await recorder.closeRecorder();
-    } catch (e) {
-      if (kDebugMode) print('Error closing stale Deepgram recorder: $e');
-    } finally {
-      if (_recorder == recorder) {
-        _recorder = null;
-        _recorderOpen = false;
-      }
-    }
-  }
-
-  /// Initialize Deepgram WebSocket connection
-  Future<void> _initializeDeepgramWebSocket(
-    String credential, {
-    required int generation,
-    required String? sessionId,
-  }) async {
-    final sanitizedCredential = credential.trim();
-    final uri = Uri.https('api.deepgram.com', '/v1/listen', {
-      'encoding': 'linear16',
-      'sample_rate': '16000',
-      'channels': '1',
-      'model': 'nova-3',
-      'language': widget.deepgramLanguage,
-      'smart_format': 'true',
-      'punctuate': 'true',
-      'utterances': 'true',
-      'interim_results': 'true',
-      'vad_events': 'true',
-      'endpointing': '500',
-      'utterance_end_ms': '1000',
-    });
-
-    final wsUrl = uri.toString().replaceFirst('https://', 'wss://');
-    final usesJwt = _looksLikeJwt(sanitizedCredential);
-
-    _deepgramChannel = IOWebSocketChannel.connect(
-      wsUrl,
-      protocols: usesJwt ? null : <String>['token', sanitizedCredential],
-      headers: {
-        'Authorization': _buildDeepgramAuthHeader(sanitizedCredential),
-      },
-      connectTimeout: const Duration(seconds: 10),
-    );
-
-    await _cancelTrackedSubscription(_deepgramMessageSubscription);
-    _deepgramMessageSubscription = _trackSubscription(
-      _deepgramChannel!.stream.listen(
-        (message) {
-          if (!_canHandleDeepgramMessage(generation, sessionId)) {
-            return;
-          }
-          _handleDeepgramMessage(message);
-        },
-        onError: (e) {
-          if (!_isCurrentDeepgramStreamGeneration(generation, sessionId)) {
-            if (kDebugMode) print('Ignored stale Deepgram WebSocket error: $e');
-            return;
-          }
-          _reportCaptionRuntimeIssue(
-            code: 'deepgram_websocket_error',
-            message:
-                'Субтитры временно недоступны: соединение с распознаванием речи прервано.',
-          );
-          if (kDebugMode) print('Deepgram WebSocket error: $e');
-          if (!_deepgramStopRequested) {
-            _restartDeepgramConnection();
-          }
-        },
-        onDone: () {
-          if (kDebugMode) print('Deepgram WebSocket closed');
-          if (_isCurrentDeepgramStreamGeneration(generation, sessionId)) {
-            _reportCaptionRuntimeIssue(
-              code: 'deepgram_websocket_error',
-              message:
-                  'Субтитры временно недоступны: соединение с распознаванием речи прервано.',
-            );
-            _restartDeepgramConnection();
-          }
-        },
-      ),
-    );
+  void _stopDeepgramStreamingUnawaited() {
+    unawaited(
+        _stopDeepgramStreaming().catchError((Object _, StackTrace __) {}));
   }
 
   /// Handle Deepgram message with proper parsing
   void _handleDeepgramMessage(dynamic message) {
     if (!mounted ||
-        (!_deepgramFinalizing &&
+        (!_deepgramTransport.finalizing &&
             (!_state.microphoneEnabled || !_hasRemoteParticipantPresent()))) {
       return;
     }
 
     try {
-      final decoded = dart_convert.jsonDecode(message);
-      if (decoded is! Map<String, dynamic>) {
-        _reportCaptionRuntimeIssue(
-          code: 'deepgram_message_parse_failed',
-          message:
-              'Субтитры временно недоступны: не удалось обработать ответ распознавания.',
-        );
-        return;
-      }
-
-      final data = decoded;
-      final type = data['type']?.toString();
-
-      if (_isDeepgramErrorFrame(data, type)) {
-        _reportCaptionRuntimeIssue(
-          code: 'deepgram_error_frame',
-          message:
-              'Субтитры временно недоступны: сервис распознавания вернул ошибку.',
-        );
-        return;
-      }
-
-      if (type == 'UtteranceEnd') {
-        _handleDeepgramUtteranceEnd();
-        return;
-      }
-
-      final channel = data['channel'];
-      final alternatives =
-          channel is Map<String, dynamic> ? channel['alternatives'] : null;
-
-      if (alternatives is! List || alternatives.isEmpty) return;
-
-      final firstAlternative = alternatives.first;
-      if (firstAlternative is! Map) return;
-
-      final transcript = _normalizeCaptionText(
-        firstAlternative['transcript']?.toString() ?? '',
-      );
-      final isFinalSegment = data['is_final'] == true;
-      final speechFinal =
-          data['speech_final'] == true || data['speech_finalized'] == true;
-      final confidence = _readDouble(firstAlternative['confidence']);
-
-      if (transcript.isEmpty) {
-        if (speechFinal) {
+      final parsed = deepgram_parser.parseDeepgramMessage(message);
+      switch (parsed.kind) {
+        case deepgram_parser.DeepgramMessageKind.ignored:
+          return;
+        case deepgram_parser.DeepgramMessageKind.invalidEnvelope:
+          _reportCaptionRuntimeIssue(
+            code: 'deepgram_message_parse_failed',
+            message:
+                'Субтитры временно недоступны: не удалось обработать ответ распознавания.',
+          );
+          return;
+        case deepgram_parser.DeepgramMessageKind.serviceError:
+          _reportCaptionRuntimeIssue(
+            code: 'deepgram_error_frame',
+            message:
+                'Субтитры временно недоступны: сервис распознавания вернул ошибку.',
+          );
+          return;
+        case deepgram_parser.DeepgramMessageKind.utteranceEnd:
+          _handleDeepgramUtteranceEnd();
+          return;
+        case deepgram_parser.DeepgramMessageKind.finalizeCurrent:
           _emitFinalUpdateForCurrentLocalCaption();
-        }
-        return;
+          return;
+        case deepgram_parser.DeepgramMessageKind.transcript:
+          _cancelLocalUtteranceEndFallback();
+          _handleDeepgramTranscript(
+            transcript: parsed.transcript!,
+            isFinalSegment: parsed.isFinalSegment,
+            speechFinal: parsed.speechFinal,
+            confidence: parsed.confidence,
+          );
+          return;
       }
-
-      _cancelLocalUtteranceEndFallback();
-      _handleDeepgramTranscript(
-        transcript: transcript,
-        isFinalSegment: isFinalSegment,
-        speechFinal: speechFinal,
-        confidence: confidence,
-      );
-    } catch (e) {
+    } catch (_) {
       _reportCaptionRuntimeIssue(
         code: 'deepgram_message_parse_failed',
         message:
             'Субтитры временно недоступны: не удалось обработать ответ распознавания.',
       );
-      if (kDebugMode) print('Failed to process Deepgram message: $e');
+      if (kDebugMode) print('Deepgram message: processing_failed');
     }
-  }
-
-  bool _isDeepgramErrorFrame(Map<String, dynamic> data, String? type) {
-    final normalizedType = type?.trim().toLowerCase();
-    return normalizedType == 'error' || data.containsKey('error');
   }
 
   void _handleDeepgramTranscript({
@@ -2476,38 +1945,26 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     required bool speechFinal,
     double? confidence,
   }) {
-    if (!_deepgramFinalizing &&
+    if (!_deepgramTransport.finalizing &&
         (!_state.microphoneEnabled || !_hasRemoteParticipantPresent())) {
       return;
     }
 
     _clearCaptionRuntimeIssue();
-    _ensureLocalCaptionUtteranceStarted();
-    if (confidence != null && (isFinalSegment || speechFinal)) {
-      _localCaptionConfidence = confidence;
-    }
-
-    if (isFinalSegment) {
-      _localCommittedCaptionText = _mergeCaptionSegments(
-        _localCommittedCaptionText,
-        transcript,
-      );
-    }
-
-    final now = DateTime.now();
-    final displayText = isFinalSegment
-        ? _localCommittedCaptionText
-        : _mergeCaptionSegments(_localCommittedCaptionText, transcript);
-
-    _localCurrentCaptionText = displayText;
-
+    final emission = _localCaptionAssembler.acceptTranscript(
+      transcript: transcript,
+      isFinalSegment: isFinalSegment,
+      speechFinal: speechFinal,
+      confidence: confidence,
+    );
     final update = _CaptionUpdate(
-      utteranceId: _localCaptionUtteranceId,
-      revision: _nextLocalCaptionRevision(),
-      text: displayText,
-      phase: speechFinal ? _CaptionPhase.finalCaption : _CaptionPhase.interim,
-      startedAt: _localCaptionStartedAt ?? now,
-      lastUpdateAt: now,
+      utteranceId: emission.utteranceId,
+      revision: emission.revision,
+      text: emission.text,
+      phase:
+          emission.isFinal ? _CaptionPhase.finalCaption : _CaptionPhase.interim,
+      startedAt: emission.startedAt,
+      lastUpdateAt: emission.lastUpdateAt,
     );
 
     _queueLocalCaptionUpdate(update, immediate: speechFinal);
@@ -2523,50 +1980,32 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
     if (speechFinal) {
       _enqueueLocalFinalCaptionLog(update);
-      _finalizeLocalUtterance(fallbackText: displayText);
+      _finalizeLocalUtterance(fallbackText: update.text);
     }
   }
 
   void _handleDeepgramUtteranceEnd() {
-    if (!_localUtteranceOpen || _localCurrentCaptionText.isEmpty) {
+    if (!_localCaptionAssembler.isOpen ||
+        _localCaptionAssembler.currentText.isEmpty) {
       return;
     }
 
     _cancelTrackedTimer(_localUtteranceEndTimer);
-    final utteranceId = _localCaptionUtteranceId;
-    final revisionAtSignal = _localCaptionRevision;
+    final utteranceId = _localCaptionAssembler.utteranceId;
+    final revisionAtSignal = _localCaptionAssembler.revision;
 
     _localUtteranceEndTimer = _createTrackedTimer(
       const Duration(milliseconds: _captionUtteranceEndFallbackMs),
       () {
         _localUtteranceEndTimer = null;
-        if (!_localUtteranceOpen ||
-            utteranceId != _localCaptionUtteranceId ||
-            revisionAtSignal != _localCaptionRevision) {
+        if (!_localCaptionAssembler.isOpen ||
+            utteranceId != _localCaptionAssembler.utteranceId ||
+            revisionAtSignal != _localCaptionAssembler.revision) {
           return;
         }
         _emitFinalUpdateForCurrentLocalCaption();
       },
     );
-  }
-
-  void _ensureLocalCaptionUtteranceStarted() {
-    if (_localUtteranceOpen) {
-      return;
-    }
-
-    _localUtteranceOpen = true;
-    _localCaptionUtteranceId += 1;
-    _localCaptionRevision = 0;
-    _localCommittedCaptionText = '';
-    _localCurrentCaptionText = '';
-    _localCaptionStartedAt = DateTime.now();
-    _localCaptionConfidence = null;
-  }
-
-  int _nextLocalCaptionRevision() {
-    _localCaptionRevision += 1;
-    return _localCaptionRevision;
   }
 
   void _cancelLocalUtteranceEndFallback() {
@@ -2583,29 +2022,24 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     }
 
     _cancelLocalUtteranceEndFallback();
-    _localUtteranceOpen = false;
-    _localCommittedCaptionText = '';
-    _localCurrentCaptionText = finalText;
+    _localCaptionAssembler.closeUtterance(finalText);
     _scheduleCaptionFadeAndClear(
-      utteranceId: _localCaptionUtteranceId,
+      utteranceId: _localCaptionAssembler.utteranceId,
       holdMs: _holdDurationForCaption(finalText),
     );
   }
 
   bool _emitFinalUpdateForCurrentLocalCaption() {
-    final finalText = _normalizeCaptionText(_localCurrentCaptionText);
-    if (!_localUtteranceOpen || finalText.isEmpty) {
-      return false;
-    }
-
-    final now = DateTime.now();
+    final emission = _localCaptionAssembler.prepareFinalUpdate();
+    if (emission == null) return false;
     final update = _CaptionUpdate(
-      utteranceId: _localCaptionUtteranceId,
-      revision: _nextLocalCaptionRevision(),
-      text: finalText,
-      phase: _CaptionPhase.finalCaption,
-      startedAt: _localCaptionStartedAt ?? now,
-      lastUpdateAt: now,
+      utteranceId: emission.utteranceId,
+      revision: emission.revision,
+      text: emission.text,
+      phase:
+          emission.isFinal ? _CaptionPhase.finalCaption : _CaptionPhase.interim,
+      startedAt: emission.startedAt,
+      lastUpdateAt: emission.lastUpdateAt,
     );
     _queueLocalCaptionUpdate(update, immediate: true);
     _queueOutgoingCaptionMessage(
@@ -2618,7 +2052,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       immediate: true,
     );
     _enqueueLocalFinalCaptionLog(update);
-    _finalizeLocalUtterance(fallbackText: finalText);
+    _finalizeLocalUtterance(fallbackText: update.text);
     return true;
   }
 
@@ -2626,7 +2060,16 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     // A short utterance can still be interim when the user or peer ends the
     // call. Promote the latest recognized text before clearing caption state.
     _emitFinalUpdateForCurrentLocalCaption();
+    while (_outgoingCaptionFlushes.isNotEmpty) {
+      await Future.wait(List<Future<void>>.of(_outgoingCaptionFlushes));
+    }
     await _flushPendingCaptionLogs(force: true);
+  }
+
+  void _scheduleOutgoingCaptionFlush() {
+    final flush = _flushOutgoingCaptionMessage();
+    _outgoingCaptionFlushes.add(flush);
+    unawaited(flush.whenComplete(() => _outgoingCaptionFlushes.remove(flush)));
   }
 
   void _queueLocalCaptionUpdate(
@@ -2711,7 +2154,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       language: widget.deepgramLanguage.trim(),
       source: 'local_deepgram_final',
       capturedAtClient: update.lastUpdateAt,
-      confidence: _localCaptionConfidence,
+      confidence: _localCaptionAssembler.confidence,
     );
 
     _enqueueCaptionLogEntry(entry);
@@ -2759,13 +2202,11 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       return;
     }
 
-    if (_persistedCaptionLogIds.contains(entry.logId)) {
+    if (!_captionLogQueue.enqueue(entry.logId, entry)) {
       return;
     }
 
-    _pendingCaptionLogEntries[entry.logId] = entry;
-
-    if (_pendingCaptionLogEntries.length >= _captionLogBatchThreshold) {
+    if (_captionLogQueue.pendingCount >= _captionLogBatchThreshold) {
       _cancelTrackedTimer(_captionLogFlushTimer);
       _captionLogFlushTimer = null;
       unawaited(_flushPendingCaptionLogs(force: true));
@@ -2793,29 +2234,20 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       _captionLogFlushTimer = null;
     }
 
-    final flushFuture =
-        _captionLogFlushChain.catchError((_) {}).then((_) async {
-      if (_pendingCaptionLogEntries.isEmpty) {
-        return;
-      }
-
+    final flushFuture = _captionLogQueue.flush((queuedEntries) async {
       final sessionRef = _captionLogSessionRef();
       final writerId = _captionLogWriterId();
       if (sessionRef == null || writerId == null) {
-        return;
+        return false;
       }
 
-      final entries = List<_CaptionLogEntry>.from(
-        _pendingCaptionLogEntries.values,
-      );
       if (kDebugMode) {
-        print(
-          'Flushing ${entries.length} caption logs for ${sessionRef.path}',
-        );
+        print('Caption log flush: batch_size=${queuedEntries.length}');
       }
       final batch = FirebaseFirestore.instance.batch();
 
-      for (final entry in entries) {
+      for (final queuedEntry in queuedEntries) {
+        final entry = queuedEntry.value;
         batch.set(
           CaptionLogsRecord.createDoc(sessionRef, id: entry.logId),
           entry.toFirestoreData(writerId: writerId),
@@ -2824,19 +2256,15 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       }
 
       await batch.commit();
-
-      for (final entry in entries) {
-        _pendingCaptionLogEntries.remove(entry.logId);
-        _persistedCaptionLogIds.add(entry.logId);
-      }
-    }).catchError((Object error) {
+      return true;
+    }).then<void>((_) {
+      // Outcomes are reflected in queue state; current-generation errors are
+      // handled below so the existing retry behavior remains widget-owned.
+    }).catchError((Object _) {
       if (kDebugMode) {
-        final sessionPath = _captionLogSessionRef()?.path ?? 'unknown-session';
-        print(
-          'Failed to flush ${_pendingCaptionLogEntries.length} caption logs for $sessionPath: $error',
-        );
+        print('Caption log flush: failed');
       }
-      if (_pendingCaptionLogEntries.isNotEmpty &&
+      if (!_captionLogQueue.isEmpty &&
           _captionLogFlushTimer == null &&
           !_disposed) {
         _captionLogFlushTimer = _createTrackedTimer(
@@ -2849,7 +2277,6 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       }
     });
 
-    _captionLogFlushChain = flushFuture.catchError((_) {});
     return flushFuture;
   }
 
@@ -2857,12 +2284,12 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     _OutgoingCaptionMessage message, {
     required bool immediate,
   }) {
-    _pendingOutgoingCaptionMessage = message;
+    _outgoingCaptionBuffer.enqueue(message, message.signature);
 
     if (immediate) {
       _cancelTrackedTimer(_remoteCaptionSendThrottleTimer);
       _remoteCaptionSendThrottleTimer = null;
-      unawaited(_flushOutgoingCaptionMessage());
+      _scheduleOutgoingCaptionFlush();
       return;
     }
 
@@ -2874,25 +2301,24 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       const Duration(milliseconds: _captionSendThrottleMs),
       () {
         _remoteCaptionSendThrottleTimer = null;
-        unawaited(_flushOutgoingCaptionMessage());
+        _scheduleOutgoingCaptionFlush();
       },
     );
   }
 
   Future<void> _flushOutgoingCaptionMessage() async {
-    final message = _pendingOutgoingCaptionMessage;
-    _pendingOutgoingCaptionMessage = null;
-    if (message == null) {
+    final pending = _outgoingCaptionBuffer.takePending();
+    if (pending == null) {
       return;
     }
 
-    if (message.signature == _lastSentCaptionSignature) {
+    if (_outgoingCaptionBuffer.isDuplicate(pending.signature)) {
       return;
     }
 
-    final didSend = await _sendCaptionMessage(message);
+    final didSend = await _sendCaptionMessage(pending.value);
     if (didSend) {
-      _lastSentCaptionSignature = message.signature;
+      _outgoingCaptionBuffer.markSent(pending.signature);
     }
   }
 
@@ -2900,7 +2326,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   Future<bool> _sendCaptionMessage(_OutgoingCaptionMessage message) async {
     if (_callClient == null ||
         message.text.trim().isEmpty ||
-        !_state.microphoneEnabled ||
+        (!_state.microphoneEnabled && !_deepgramTransport.finalizing) ||
         !_hasRemoteParticipantPresent()) {
       return false;
     }
@@ -2917,8 +2343,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         );
       }
       return true;
-    } catch (e) {
-      if (kDebugMode) print('Failed to send caption: $e');
+    } catch (_) {
+      if (kDebugMode) print('Caption transport: send_failed');
       return false;
     }
   }
@@ -2932,13 +2358,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   }) {
     final now = DateTime.now();
     final current = _state.remoteCaptions[participantId];
-    if (current != null &&
-        current.utteranceId == utteranceId &&
-        current.phase == _CaptionPhase.finalCaption &&
-        phase == _CaptionPhase.interim) {
-      return;
-    }
 
+    // Ordering and phase progression were checked by caption_policy.
     final nextGeneration = _nextRemoteCaptionClearGeneration(participantId);
     final nextCaption = _ActiveCaption(
       utteranceId: utteranceId,
@@ -3106,7 +2527,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   }
 
   String _normalizeCaptionText(String rawText) {
-    return rawText.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return caption_policy.normalizeCaptionText(rawText);
   }
 
   String _normalizeCaptionDiagnosticCode(String rawCode) {
@@ -3223,193 +2644,6 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     return widget.isStudent == true ? 'tutor' : 'student';
   }
 
-  String _mergeCaptionSegments(String committed, String segment) {
-    final normalizedCommitted = _normalizeCaptionText(committed);
-    final normalizedSegment = _normalizeCaptionText(segment);
-    if (normalizedCommitted.isEmpty) return normalizedSegment;
-    if (normalizedSegment.isEmpty) return normalizedCommitted;
-    if (normalizedSegment.startsWith(normalizedCommitted)) {
-      return normalizedSegment;
-    }
-    if (normalizedCommitted.endsWith(normalizedSegment)) {
-      return normalizedCommitted;
-    }
-
-    final committedWords = normalizedCommitted.split(' ');
-    final segmentWords = normalizedSegment.split(' ');
-    final maxOverlap = math.min(committedWords.length, segmentWords.length);
-
-    for (var overlap = maxOverlap; overlap > 0; overlap--) {
-      final committedSuffix =
-          committedWords.sublist(committedWords.length - overlap);
-      final segmentPrefix = segmentWords.sublist(0, overlap);
-      if (_wordListsEqual(committedSuffix, segmentPrefix)) {
-        return <String>[
-          ...committedWords,
-          ...segmentWords.sublist(overlap),
-        ].join(' ');
-      }
-    }
-
-    return '$normalizedCommitted $normalizedSegment';
-  }
-
-  bool _wordListsEqual(List<String> left, List<String> right) {
-    if (left.length != right.length) {
-      return false;
-    }
-
-    for (var i = 0; i < left.length; i++) {
-      if (left[i].toLowerCase() != right[i].toLowerCase()) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  /// Restart Deepgram connection on failure
-  void _restartDeepgramConnection() {
-    if (!mounted || _disposed || _userRequestedEnd) return;
-    if (_state.connectionState != ConnectionState.connected) return;
-
-    _createTrackedTimer(const Duration(seconds: 2), () {
-      if (mounted) {
-        unawaited(() async {
-          await _stopDeepgramStreaming();
-          await _startDeepgramStreamingWithResolvedCredential(
-            forceRefresh: true,
-          );
-        }());
-      }
-    });
-  }
-
-  void _handleDeepgramAudioSinkFailure(
-    Object error, {
-    required int generation,
-    required String? sessionId,
-  }) {
-    if (!_isCurrentDeepgramStreamGeneration(generation, sessionId)) {
-      if (kDebugMode) print('Ignored stale Deepgram audio sink error: $error');
-      return;
-    }
-    _reportCaptionRuntimeIssue(
-      code: 'audio_stream_error',
-      message:
-          'Субтитры временно недоступны: не удалось передать звук на распознавание.',
-    );
-    if (kDebugMode) print('Deepgram audio sink error: $error');
-    if (_deepgramStopRequested) {
-      return;
-    }
-
-    _deepgramStopRequested = true;
-    _deepgramStreamGeneration++;
-    unawaited(() async {
-      await _stopDeepgramStreaming();
-      if (_shouldRunDeepgram()) {
-        await _startDeepgramStreamingWithResolvedCredential(
-          forceRefresh: true,
-        );
-      }
-    }());
-  }
-
-  Future<void> _sendDeepgramControlMessage(String type) async {
-    final channel = _deepgramChannel;
-    if (channel == null) return;
-
-    try {
-      channel.sink.add(dart_convert.jsonEncode({'type': type}));
-    } catch (e) {
-      if (kDebugMode) {
-        print('Failed to send Deepgram $type control message: $e');
-      }
-    }
-  }
-
-  Future<void> _gracefullyCloseDeepgramStream() async {
-    if (_deepgramChannel == null) return;
-
-    await _sendDeepgramControlMessage('Finalize');
-    await Future<void>.delayed(
-      const Duration(milliseconds: _deepgramFinalizeWaitMs),
-    );
-    await _sendDeepgramControlMessage('CloseStream');
-    await Future<void>.delayed(
-      const Duration(milliseconds: _deepgramCloseWaitMs),
-    );
-    await _deepgramChannel?.sink.close();
-  }
-
-  /// Stop Deepgram streaming and cleanup resources
-  Future<void> _stopDeepgramStreaming() async {
-    if (!_state.isStreamingToDeepgram &&
-        !_deepgramStartInProgress &&
-        _recorder == null &&
-        _deepgramChannel == null &&
-        _audioStreamController == null) {
-      await _finalizeCurrentCaptionAndFlushLogs();
-      return;
-    }
-
-    // Keep accepting Deepgram result frames while Finalize drains buffered
-    // audio. Normal audio/start callbacks remain disabled by stopRequested.
-    _deepgramFinalizing = _deepgramChannel != null;
-    _deepgramStreamGeneration++;
-    _deepgramStopRequested = true;
-
-    Future<void> runCleanupStep(
-      String debugContext,
-      Future<void> Function() cleanup,
-    ) async {
-      try {
-        await cleanup();
-      } catch (e) {
-        if (kDebugMode) print('Error stopping Deepgram $debugContext: $e');
-      }
-    }
-
-    await runCleanupStep('audio subscription', () async {
-      await _cancelTrackedSubscription(_audioStreamSubscription);
-    });
-    _audioStreamSubscription = null;
-
-    await runCleanupStep('recorder', () async {
-      final recorder = _recorder;
-      if (recorder == null) {
-        return;
-      }
-      if (recorder.isRecording) {
-        await recorder.stopRecorder();
-      }
-      if (_recorderOpen) {
-        await recorder.closeRecorder();
-      }
-    });
-    _recorderOpen = false;
-    _recorder = null;
-
-    await runCleanupStep('websocket', _gracefullyCloseDeepgramStream);
-    _deepgramChannel = null;
-    _deepgramFinalizing = false;
-
-    await runCleanupStep('message subscription', () async {
-      await _cancelTrackedSubscription(_deepgramMessageSubscription);
-    });
-    _deepgramMessageSubscription = null;
-
-    await runCleanupStep('audio controller', () async {
-      await _closeTrackedController(_audioStreamController);
-    });
-    _audioStreamController = null;
-
-    _deepgramStartInProgress = false;
-    _updateState(_state.copyWith(isStreamingToDeepgram: false));
-    await _finalizeCurrentCaptionAndFlushLogs();
-    _clearLocalCaptions();
-  }
-
   /// Handle app lifecycle changes
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -3466,22 +2700,13 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   Future<void> _enqueueLifecycleTransition(
     Future<void> Function(int transitionId) action,
   ) {
-    final transitionId = ++_lifecycleTransitionId;
-    final nextTransition = _lifecycleTransitionChain
-        .catchError((_) {})
-        .then((_) => action(transitionId));
-    _lifecycleTransitionChain = nextTransition.catchError((error) {
-      if (kDebugMode) {
-        print('Lifecycle transition failed: $error');
-      }
-    });
-    return nextTransition;
+    return _lifecycleTransitions.enqueue(action);
   }
 
   bool _isCurrentLifecycleTransition(int transitionId) {
     return mounted &&
         !_disposed &&
-        transitionId == _lifecycleTransitionId &&
+        _lifecycleTransitions.isCurrent(transitionId) &&
         _state.connectionState == ConnectionState.connected;
   }
 
@@ -3501,45 +2726,69 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     final newConfiguredDeepgramCredential =
         _configuredDeepgramCredentialFor(widget);
     if (oldConfiguredDeepgramCredential != newConfiguredDeepgramCredential) {
+      _deepgramCredentialGeneration += 1;
       _deepgramCredential = newConfiguredDeepgramCredential;
       if (oldConfiguredDeepgramCredential == null &&
           newConfiguredDeepgramCredential != null) {
         unawaited(_syncDeepgramWithMicrophoneState(forceRefresh: true));
       }
     }
-    if (oldWidget.sessionId != widget.sessionId) {
-      unawaited(_stopDeepgramStreaming());
+    final sessionIdChanged = oldWidget.sessionId != widget.sessionId;
+    if (sessionIdChanged) {
+      _deepgramCredentialGeneration += 1;
+      _stopDeepgramStreamingUnawaited();
       _roomJoinMarked = false;
       _dynamicMeetingToken = null;
       _dynamicRoomUrl = null;
-      _ownSentChatMessages.clear();
-      _persistCallChatInFlight = false;
-      _persistCallChatCompleted = false;
-      _persistCallChatAttemptCount = 0;
-      _sessionLimitWarningShownFor = null;
-      _sessionLimitAutoEndedFor = null;
-      _sessionClockOffset = null;
+      _callChatController.resetSession();
+
+      _callTimer.resetLimitMarkers();
+      _callTimer.serverClockOffset = null;
       _sessionExtensionRequestInFlight = false;
       _resetCallCheckpointNotice(clearHistory: true);
-      _pendingCaptionLogEntries.clear();
-      _persistedCaptionLogIds.clear();
-      _reportedCaptionRuntimeIssueCodes.clear();
       _cancelTrackedTimer(_captionLogFlushTimer);
       _captionLogFlushTimer = null;
+      _captionLogQueue.reset();
+      _reportedCaptionRuntimeIssueCodes.clear();
       _clearCaptionRuntimeIssue();
     }
     if (oldWidget.sessionExpiresAt != widget.sessionExpiresAt) {
-      _sessionLimitWarningShownFor = null;
-      _sessionLimitAutoEndedFor = null;
+      _callTimer.resetLimitMarkers();
       _clearSessionLimitWarningNotice();
       if (_state.connectionState == ConnectionState.connected) {
         _setCallDurationValue(_callDurationNotifier.value);
       }
     }
 
+    final oldSessionStatus = oldWidget.sessionStatus?.trim().toLowerCase();
+    final newSessionStatus = widget.sessionStatus?.trim().toLowerCase();
+    if (oldSessionStatus != 'active' &&
+        session_limit_ui.shouldRunCallDurationTimer(
+          sessionStatus: newSessionStatus,
+          isDailyConnected: _state.connectionState == ConnectionState.connected,
+          hasRemoteParticipant: _hasRemoteParticipantPresent(),
+          hasServerConnectedAt: widget.sessionConnectedAt != null,
+        )) {
+      _startDurationTimer();
+    }
+    if (oldWidget.sessionConnectedAt != widget.sessionConnectedAt &&
+        session_limit_ui.shouldRunCallDurationTimer(
+          sessionStatus: newSessionStatus,
+          isDailyConnected: _state.connectionState == ConnectionState.connected,
+          hasRemoteParticipant: _hasRemoteParticipantPresent(),
+          hasServerConnectedAt: widget.sessionConnectedAt != null,
+        )) {
+      _startDurationTimer();
+      _setCallDurationValue(_authoritativeCallDurationSeconds());
+    }
     if (!_isTerminalSessionStatus(oldWidget.sessionStatus) &&
         _isTerminalSessionStatus(widget.sessionStatus)) {
-      unawaited(_persistOwnCallChatMessages());
+      _stopDurationTimer();
+      if (!sessionIdChanged) {
+        unawaited(_persistOwnCallChatMessages(
+          expectedGeneration: _callChatController.generation,
+        ));
+      }
     }
 
     final oldUrl = oldWidget.roomUrl;
@@ -3625,79 +2874,38 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     _captionOverlayNotifier.value = nextCaptionState;
   }
 
-  void _startDurationTimer() {
-    if (_callDurationStopwatch.isRunning) return;
+  void _startDurationTimer() => _callTimer.start();
 
-    if (_callDurationStopwatch.elapsed == Duration.zero) {
-      _setCallDurationValue(0);
-    } else {
-      _setCallDurationValue(_callDurationStopwatch.elapsed.inSeconds);
+  void _stopDurationTimer({bool reset = false}) =>
+      _callTimer.stop(reset: reset);
+
+  int _authoritativeCallDurationSeconds([DateTime? now]) =>
+      _callTimer.authoritativeSeconds(now);
+
+  void _setCallDurationValue(int totalSeconds) =>
+      _callTimer.setElapsedSeconds(totalSeconds);
+
+  void _handleCallTimerUpdate(CallTimerUpdate update) {
+    if (_disposed || !mounted) return;
+    if (_callDurationNotifier.value != update.elapsedSeconds) {
+      _callDurationNotifier.value = update.elapsedSeconds;
     }
-    _callDurationStopwatch.start();
-
-    if (_durationTimer != null) return;
-    _durationTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted || _disposed) {
-        return;
-      }
-      final elapsedSeconds = _callDurationStopwatch.elapsed.inSeconds;
-      _setCallDurationValue(elapsedSeconds);
-    });
-    _trackTimer(_durationTimer!);
-  }
-
-  void _stopDurationTimer({bool reset = false}) {
-    _cancelTrackedTimer(_durationTimer);
-    _durationTimer = null;
-    _setCallDurationValue(_callDurationStopwatch.elapsed.inSeconds);
-    _callDurationStopwatch.stop();
-    if (reset) {
-      _callDurationStopwatch.reset();
-      _setCallDurationValue(0);
+    if (update.shouldAutoEnd) {
+      unawaited(_requestAutoEndAtSessionLimit());
+    }
+    for (final minutes in update.checkpointMinutes) {
+      _showCallCheckpointNotice(_callCheckpointNotices.firstWhere(
+        (notice) => notice.minutes == minutes,
+      ));
     }
   }
 
-  void _setCallDurationValue(int totalSeconds) {
-    if (_disposed) {
-      return;
-    }
-    if (_callDurationNotifier.value != totalSeconds) {
-      _callDurationNotifier.value = totalSeconds;
-    }
-    if (_hasSessionLimitCountdown) {
-      _maybeAutoEndAtSessionLimit();
-      _maybeShowSessionLimitWarning();
-    } else {
-      _maybeShowCallCheckpointNotice(totalSeconds);
-    }
-  }
+  bool get _hasSessionLimitCountdown => _callTimer.hasCountdown;
 
-  bool get _hasSessionLimitCountdown {
-    return widget.provisionalSessionLimitCountdown ||
-        (widget.sessionExpiresAt != null &&
-            widget.sessionPolicy != null &&
-            widget.sessionPolicy!.isNotEmpty);
-  }
+  int _remainingSessionLimitSeconds([DateTime? now]) =>
+      _callTimer.remainingSeconds(now);
 
-  int _remainingSessionLimitSeconds([DateTime? now]) {
-    return session_limit_ui.resolveSessionLimitDisplaySeconds(
-      expiresAt: widget.sessionExpiresAt,
-      sessionPolicy: widget.sessionPolicy,
-      elapsedSeconds: _callDurationStopwatch.elapsed.inSeconds,
-      useProvisionalCountdown: widget.provisionalSessionLimitCountdown,
-      now: now ?? _serverAlignedNow(),
-    );
-  }
-
-  DateTime _serverAlignedNow() {
-    return session_limit_ui.resolveSessionLimitNow(
-      sessionStatus: widget.sessionStatus,
-      serverClockOffset: _sessionClockOffset,
-      expiresAt: widget.sessionExpiresAt,
-      sessionPolicy: widget.sessionPolicy,
-      elapsedSeconds: _callDurationStopwatch.elapsed.inSeconds,
-    );
-  }
+  DateTime _serverAlignedNow() => _callTimer.sessionLimitNow();
 
   bool get _currentUserRequestedSessionExtension {
     return session_limit_ui.hasUserRequestedSessionExtension(
@@ -3789,6 +2997,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   }
 
   Future<void> _requestAutoEndAtSessionLimit() async {
+    final generation = _callChatController.generation;
     final targetExpiresAt = widget.sessionExpiresAt;
     final sessionId = widget.sessionId?.trim();
     if (sessionId == null || sessionId.isEmpty) {
@@ -3805,6 +3014,11 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       final status = response.data is Map
           ? (response.data['status']?.toString() ?? '')
           : '';
+      if (_callChatController.generation != generation ||
+          widget.sessionId?.trim() != sessionId ||
+          widget.sessionExpiresAt != targetExpiresAt) {
+        return;
+      }
       if (session_limit_ui.shouldRetainAutoEndMarkerForResponseStatus(
         status,
       )) {
@@ -3813,78 +3027,21 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         // during the extension race window.
         return;
       }
-      await _persistOwnCallChatMessages();
-    } catch (error) {
-      _clearSessionLimitAutoEndMarker(targetExpiresAt);
+      await _persistOwnCallChatMessages(expectedGeneration: generation);
+    } catch (_) {
+      if (_callChatController.generation == generation &&
+          widget.sessionId?.trim() == sessionId &&
+          widget.sessionExpiresAt == targetExpiresAt) {
+        _clearSessionLimitAutoEndMarker(targetExpiresAt);
+      }
       if (kDebugMode) {
-        print('Session auto-end request failed: $error');
+        print('Session auto-end: request_failed');
       }
     }
-  }
-
-  String _formatDuration(int totalSeconds) {
-    return session_limit_ui.formatCallTimerDuration(totalSeconds);
-  }
-
-  void _maybeShowCallCheckpointNotice(int totalSeconds) {
-    if (_hasSessionLimitCountdown) {
-      return;
-    }
-    if (widget.isStudent != true) {
-      return;
-    }
-
-    for (final notice in _callCheckpointNotices) {
-      final thresholdSeconds = notice.minutes * 60;
-      if (totalSeconds >= thresholdSeconds &&
-          !_shownCallCheckpointMinutes.contains(notice.minutes)) {
-        _shownCallCheckpointMinutes.add(notice.minutes);
-        _showCallCheckpointNotice(notice);
-      }
-    }
-  }
-
-  void _maybeShowSessionLimitWarning() {
-    final expiresAt = widget.sessionExpiresAt;
-    if (!session_limit_ui.shouldShowSessionLimitWarning(
-      expiresAt: expiresAt,
-      warnedForExpiresAt: _sessionLimitWarningShownFor,
-      now: _serverAlignedNow(),
-      warningLeadSeconds: _sessionLimitWarningLeadSeconds,
-    )) {
-      return;
-    }
-
-    _sessionLimitWarningShownFor = expiresAt;
-  }
-
-  void _maybeAutoEndAtSessionLimit() {
-    final status = widget.sessionStatus?.trim().toLowerCase();
-    if (_userRequestedEnd ||
-        status == 'ended' ||
-        status == 'cancelled' ||
-        status == 'expired' ||
-        !session_limit_ui.shouldAutoEndSession(
-          expiresAt: widget.sessionExpiresAt,
-          autoEndedForExpiresAt: _sessionLimitAutoEndedFor,
-          now: _serverAlignedNow(),
-          graceSeconds: _sessionLimitAutoEndGraceSeconds,
-        )) {
-      return;
-    }
-
-    _sessionLimitAutoEndedFor = widget.sessionExpiresAt;
-    unawaited(_requestAutoEndAtSessionLimit());
   }
 
   void _clearSessionLimitAutoEndMarker(DateTime? expiresAt) {
-    if (expiresAt == null) {
-      _sessionLimitAutoEndedFor = null;
-      return;
-    }
-    if (_sessionLimitAutoEndedFor?.isAtSameMomentAs(expiresAt) == true) {
-      _sessionLimitAutoEndedFor = null;
-    }
+    _callTimer.clearAutoEndRequest(expiresAt);
   }
 
   void _clearSessionLimitWarningNotice() {
@@ -3924,16 +3081,16 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       _callCheckpointNoticeNotifier.value = null;
     }
     if (clearHistory) {
-      _shownCallCheckpointMinutes.clear();
+      _callTimer.clearCheckpointHistory();
     }
   }
 
   /// Handle errors uniformly
-  void _handleError(String context, dynamic error) {
-    if (kDebugMode) print('$context: $error');
+  void _handleError(String _, Object __) {
+    if (kDebugMode) print('Daily widget: initialization_failed');
 
     _updateState(_state.copyWith(
-      error: '$context: ${error.toString()}',
+      error: 'Не удалось подготовить звонок. Повторите попытку.',
     ));
   }
 
@@ -3945,12 +3102,14 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     }
     try {
       await VoIPService().endCurrentCall(sessionId: widget.sessionId?.trim());
-    } catch (e) {
-      if (kDebugMode) print('Failed to end system call UI: $e');
+    } catch (_) {
+      if (kDebugMode) print('System call UI: end_failed');
     }
   }
 
   Future<void> _markRoomJoined() async {
+    final client = _callClient;
+    if (client == null || !_dailySession.isCurrent(client)) return;
     final sessionId = widget.sessionId?.trim();
     if (_roomJoinMarked || sessionId == null || sessionId.isEmpty) {
       return;
@@ -3978,17 +3137,22 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       if (serverClockOffset != null &&
           mounted &&
           !_disposed &&
+          _dailySession.isCurrent(client) &&
           widget.sessionId?.trim() == sessionId) {
-        _sessionClockOffset = serverClockOffset;
+        _callTimer.serverClockOffset = serverClockOffset;
       }
-    } catch (e) {
+    } catch (_) {
       requestStopwatch.stop();
-      _roomJoinMarked = false;
-      if (kDebugMode) print('Failed to mark room joined: $e');
+      if (widget.sessionId?.trim() == sessionId) {
+        _roomJoinMarked = false;
+      }
+      if (kDebugMode) print('Daily session: mark_joined_failed');
     }
   }
 
   Future<void> _markSystemCallConnected() async {
+    final client = _callClient;
+    if (client == null || !_dailySession.isCurrent(client)) return;
     if (_systemCallMarkedConnected) return;
     if (kIsWeb) return;
     final platform = defaultTargetPlatform;
@@ -3998,9 +3162,9 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     try {
       await VoIPService()
           .markCallConnected(sessionId: widget.sessionId?.trim());
-      _systemCallMarkedConnected = true;
-    } catch (e) {
-      if (kDebugMode) print('Failed to mark system call connected: $e');
+      if (_dailySession.isCurrent(client)) _systemCallMarkedConnected = true;
+    } catch (_) {
+      if (kDebugMode) print('System call UI: mark_connected_failed');
     }
   }
 
@@ -4015,45 +3179,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     return timer;
   }
 
-  void _trackTimer(Timer timer) {
-    _activeTimers.add(timer);
-  }
-
   void _cancelTrackedTimer(Timer? timer) {
     if (timer == null) return;
     timer.cancel();
     _activeTimers.remove(timer);
-  }
-
-  /// Track subscription for cleanup
-  T _trackSubscription<T extends StreamSubscription>(T subscription) {
-    _activeSubscriptions.add(subscription);
-    return subscription;
-  }
-
-  Future<void> _cancelTrackedSubscription(
-    StreamSubscription? subscription,
-  ) async {
-    if (subscription == null) return;
-    try {
-      await subscription.cancel();
-    } finally {
-      _activeSubscriptions.remove(subscription);
-    }
-  }
-
-  /// Track controller for cleanup
-  void _trackController(StreamController controller) {
-    _activeControllers.add(controller);
-  }
-
-  Future<void> _closeTrackedController(StreamController? controller) async {
-    if (controller == null) return;
-    try {
-      await controller.close();
-    } finally {
-      _activeControllers.remove(controller);
-    }
   }
 
   Future<void> _setVideoTrack(
@@ -4064,8 +3193,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     if (controller == null) return;
     try {
       await controller.setTrack(track);
-    } catch (e) {
-      if (kDebugMode) print('$debugContext: $e');
+    } catch (_) {
+      if (kDebugMode) print('$debugContext: failed');
     }
   }
 
@@ -4085,16 +3214,25 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     }
     try {
       controller.dispose();
-    } catch (e) {
-      if (kDebugMode) print('$debugContext: $e');
+    } catch (_) {
+      if (kDebugMode) print('$debugContext: failed');
     }
   }
 
   /// COMPLETE BUILD METHOD REPLACEMENT - This should fix the error
   @override
   Widget build(BuildContext context) {
-    // Show waiting screen if room URL invalid
-    if (!_isValidRoomUrl(widget.roomUrl)) {
+    if (shouldRenderDailyTerminalError(
+      hasTerminalError: _state.hasTerminalError,
+    )) {
+      return _buildTerminalErrorScreen();
+    }
+
+    final roomUrlValid = _isValidRoomUrl(widget.roomUrl);
+    if (shouldRenderDailyConnectingScreen(
+      roomUrlValid: roomUrlValid,
+      hasTerminalError: _state.hasTerminalError,
+    )) {
       return _buildConnectingScreen();
     }
 
@@ -4167,7 +3305,13 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
               ),
 
               // Call duration timer (top-left)
-              if (_state.connectionState == ConnectionState.connected)
+              if (session_limit_ui.shouldRunCallDurationTimer(
+                sessionStatus: widget.sessionStatus,
+                isDailyConnected:
+                    _state.connectionState == ConnectionState.connected,
+                hasRemoteParticipant: _hasRemoteParticipantPresent(),
+                hasServerConnectedAt: widget.sessionConnectedAt != null,
+              ))
                 Positioned(
                   top: 55,
                   left: 20,
@@ -4275,7 +3419,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
               if (_state.error != null &&
                   _state.retryCount >= _maxRetryAttempts)
                 Positioned.fill(
-                  child: _buildErrorDisplay(),
+                  child: _buildErrorDisplay(allowRetry: true),
                 ),
 
               // Status overlay (searching/connecting/awaiting remote)
@@ -4304,6 +3448,17 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     );
   }
 
+  Widget _buildTerminalErrorScreen() {
+    return SizedBox(
+      width: widget.width ?? double.infinity,
+      height: widget.height ?? double.infinity,
+      child: ColoredBox(
+        color: Colors.black,
+        child: _buildErrorDisplay(allowRetry: false),
+      ),
+    );
+  }
+
   Widget _buildNeutralBackground() {
     return Container(color: Colors.black);
   }
@@ -4316,6 +3471,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   }
 
   String? _statusMessage() {
+    if (_state.hasTerminalError) return null;
     if (_state.remoteControllers.isNotEmpty || _hasRemoteParticipantPresent()) {
       return null;
     }
@@ -4351,81 +3507,20 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   }
 
   Widget _buildCallDurationBadge() {
-    return RepaintBoundary(
-      child: ValueListenableBuilder<int>(
-        valueListenable: _callDurationNotifier,
-        builder: (context, totalSeconds, _) {
-          final hasCountdown = _hasSessionLimitCountdown;
-          final remainingSeconds = _remainingSessionLimitSeconds();
-          final displaySeconds = hasCountdown ? remainingSeconds : totalSeconds;
-          final isWarning = hasCountdown &&
+    return ValueListenableBuilder<int>(
+      valueListenable: _callDurationNotifier,
+      builder: (context, totalSeconds, _) {
+        final hasCountdown = _hasSessionLimitCountdown;
+        final remainingSeconds = _remainingSessionLimitSeconds();
+        final displaySeconds = hasCountdown ? remainingSeconds : totalSeconds;
+        return CallDurationBadge(
+          displaySeconds: displaySeconds,
+          hasCountdown: hasCountdown,
+          isWarning: hasCountdown &&
               remainingSeconds > 0 &&
-              remainingSeconds <= _sessionLimitWarningLeadSeconds;
-          final accentColor =
-              isWarning ? const Color(0xFFFFB020) : Colors.white;
-
-          return Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: ExpatlioDesign.space12,
-              vertical: ExpatlioDesign.space8,
-            ),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: isWarning ? 0.68 : 0.45),
-              borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
-              border: hasCountdown
-                  ? Border.all(
-                      color: accentColor.withValues(alpha: 0.44),
-                      width: 1,
-                    )
-                  : null,
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (hasCountdown) ...[
-                  Icon(
-                    Icons.timer_outlined,
-                    color: accentColor,
-                    size: 16,
-                  ),
-                  const SizedBox(width: ExpatlioDesign.space8),
-                ],
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _formatDuration(displaySeconds),
-                      style: TextStyle(
-                        color: accentColor,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.5,
-                        height: 1.0,
-                      ),
-                    ),
-                    if (hasCountdown) ...[
-                      const SizedBox(height: ExpatlioDesign.space4),
-                      Text(
-                        isWarning ? 'Осталась 1 минута до лимита' : 'до лимита',
-                        style: TextStyle(
-                          color: (isWarning ? accentColor : Colors.white)
-                              .withValues(alpha: isWarning ? 0.95 : 0.72),
-                          fontSize: 11.0,
-                          fontWeight:
-                              isWarning ? FontWeight.w600 : FontWeight.w500,
-                          letterSpacing: 0.2,
-                          height: 1.0,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ],
-            ),
-          );
-        },
-      ),
+              remainingSeconds <= _sessionLimitWarningLeadSeconds,
+        );
+      },
     );
   }
 
@@ -4756,8 +3851,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       return _buildMirroredLocalVideoView(
         borderRadius: BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
       );
-    } catch (e) {
-      if (kDebugMode) print('Error building local video: $e');
+    } catch (_) {
+      if (kDebugMode) print('Daily video: local_build_failed');
       return _buildPlaceholder('Видео недоступно');
     }
   }
@@ -4828,8 +3923,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       }
 
       return _buildPlaceholder('Подключаем видео собеседника...');
-    } catch (e) {
-      if (kDebugMode) print('Error building remote video: $e');
+    } catch (_) {
+      if (kDebugMode) print('Daily video: remote_build_failed');
       return _buildPlaceholder('Видео недоступно');
     }
   }
@@ -5154,197 +4249,21 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   /// Build controls overlay
   Widget _buildControls() {
-    if (_state.connectionState != ConnectionState.connected) {
-      return const SizedBox.shrink();
-    }
-
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: [
-        _buildControlButton(
-          icon: _state.cameraEnabled ? Icons.videocam : Icons.videocam_off,
-          isActive: _state.cameraEnabled,
-          tooltip:
-              _state.cameraEnabled ? 'Выключить камеру' : 'Включить камеру',
-          semanticLabel: _state.cameraEnabled
-              ? 'Камера включена. Выключить камеру'
-              : 'Камера выключена. Включить камеру',
-          semanticHint: 'Переключает камеру в звонке',
-          semanticToggled: _state.cameraEnabled,
-          onPressed: () => _updateInputSettings(camera: !_state.cameraEnabled),
-          isEndCall: false,
-        ),
-        _buildControlButton(
-          icon: _state.microphoneEnabled ? Icons.mic : Icons.mic_off,
-          isActive: _state.microphoneEnabled,
-          tooltip: _state.microphoneEnabled
-              ? 'Выключить микрофон'
-              : 'Включить микрофон',
-          semanticLabel: _state.microphoneEnabled
-              ? 'Микрофон включен. Выключить микрофон'
-              : 'Микрофон выключен. Включить микрофон',
-          semanticHint: 'Переключает микрофон в звонке',
-          semanticToggled: _state.microphoneEnabled,
-          onPressed: () =>
-              _updateInputSettings(microphone: !_state.microphoneEnabled),
-          isEndCall: false,
-        ),
-        _buildControlButton(
-          icon:
-              _state.isChatOpen ? Icons.chat_bubble : Icons.chat_bubble_outline,
-          isActive: _state.isChatOpen,
-          tooltip: _chatControlTooltip(),
-          semanticLabel: _chatControlSemanticLabel(),
-          semanticHint: 'Открывает или скрывает чат звонка',
-          semanticToggled: _state.isChatOpen,
-          onPressed: _toggleChatOpen,
-          isEndCall: false,
-          badgeCount: _state.unreadChatCount,
-        ),
-        if (widget.translationCallback != null)
-          _buildControlButton(
-            icon: Icons.translate_rounded,
-            isActive: true,
-            tooltip: 'Быстрый перевод',
-            semanticLabel: 'Открыть быстрый перевод',
-            semanticHint: 'Переводит слово или фразу во время звонка',
-            onPressed: () => unawaited(widget.translationCallback!.call()),
-            isEndCall: false,
-          ),
-        _buildControlButton(
-          icon: Icons.call_end,
-          isActive: true,
-          tooltip: 'Завершить звонок',
-          semanticLabel: 'Завершить звонок',
-          semanticHint: 'Завершает текущий видеозвонок',
-          onPressed: () => _endCall(endReason: 'user_ended'),
-          isEndCall: true,
-        ),
-      ],
-    );
-  }
-
-  /// Build control button - FIXED
-  Widget _buildControlButton({
-    required IconData icon,
-    required bool isActive,
-    required String tooltip,
-    required String semanticLabel,
-    required VoidCallback onPressed,
-    required bool isEndCall,
-    String? semanticHint,
-    bool? semanticToggled,
-    int badgeCount = 0,
-  }) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Container(
-          width: 60,
-          height: 60,
-          decoration: BoxDecoration(
-            color: isEndCall
-                ? Colors.red.withValues(alpha: 0.9)
-                : (isActive
-                    ? Colors.black.withValues(alpha: 0.76)
-                    : Colors.black.withValues(alpha: 0.6)),
-            shape: BoxShape.circle,
-            border: isEndCall
-                ? null
-                : Border.all(
-                    color: isActive
-                        ? Colors.white.withValues(alpha: 0.18)
-                        : Colors.white.withValues(alpha: 0.08),
-                    width: 0.8,
-                  ),
-          ),
-          child: Semantics(
-            container: true,
-            button: true,
-            enabled: true,
-            label: semanticLabel,
-            hint: semanticHint,
-            toggled: semanticToggled,
-            onTap: onPressed,
-            child: Tooltip(
-              message: tooltip,
-              excludeFromSemantics: true,
-              child: ExcludeSemantics(
-                child: IconButton(
-                  icon: Icon(icon, color: Colors.white),
-                  onPressed: onPressed,
-                  iconSize: 24,
-                  padding: EdgeInsets.zero,
-                ),
-              ),
-            ),
-          ),
-        ),
-        if (badgeCount > 0)
-          Positioned(
-            top: -2,
-            right: -2,
-            child: ExcludeSemantics(
-              child: _buildUnreadBadge(badgeCount),
-            ),
-          ),
-      ],
-    );
-  }
-
-  String _chatControlTooltip() {
-    final unreadCount = _state.unreadChatCount;
-    final baseLabel = _state.isChatOpen ? 'Закрыть чат' : 'Открыть чат';
-
-    if (!_state.isChatOpen && unreadCount > 0) {
-      return '$baseLabel, ${_unreadMessagesSemanticLabel(unreadCount)}';
-    }
-
-    return baseLabel;
-  }
-
-  String _chatControlSemanticLabel() {
-    if (_state.isChatOpen) {
-      return 'Чат открыт. Закрыть чат';
-    }
-    if (_state.unreadChatCount > 0) {
-      return 'Чат закрыт. Открыть чат. '
-          '${_unreadMessagesSemanticLabel(_state.unreadChatCount)}';
-    }
-    return 'Чат закрыт. Открыть чат';
-  }
-
-  String _formatUnreadChatCount(int count) {
-    return count > 99 ? '99+' : count.toString();
-  }
-
-  String _unreadMessagesSemanticLabel(int count) {
-    if (count > 99) {
-      return 'Больше 99 непрочитанных сообщений';
-    }
-    return 'Непрочитанных сообщений: ${_formatUnreadChatCount(count)}';
-  }
-
-  Widget _buildUnreadBadge(int count) {
-    final label = _formatUnreadChatCount(count);
-    return Container(
-      padding: const EdgeInsets.symmetric(
-          horizontal: ExpatlioDesign.space8, vertical: ExpatlioDesign.space4),
-      constraints: const BoxConstraints(minWidth: 22),
-      decoration: BoxDecoration(
-        color: const Color(0xFF2F80ED),
-        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusSmall),
-        border: Border.all(color: Colors.black, width: 1.2),
-      ),
-      child: Text(
-        label,
-        textAlign: TextAlign.center,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
+    return CallControlsBar(
+      isVisible: _state.connectionState == ConnectionState.connected,
+      cameraEnabled: _state.cameraEnabled,
+      microphoneEnabled: _state.microphoneEnabled,
+      isChatOpen: _state.isChatOpen,
+      unreadChatCount: _state.unreadChatCount,
+      onCameraPressed: () =>
+          _updateInputSettings(camera: !_state.cameraEnabled),
+      onMicrophonePressed: () =>
+          _updateInputSettings(microphone: !_state.microphoneEnabled),
+      onChatPressed: _toggleChatOpen,
+      onTranslationPressed: widget.translationCallback == null
+          ? null
+          : () => unawaited(widget.translationCallback!.call()),
+      onEndCallPressed: () => _endCall(endReason: 'user_ended'),
     );
   }
 
@@ -5795,7 +4714,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
               ? 'Отправить сообщение'
               : 'Отправка сообщения недоступна',
           enabled: composerEnabled,
-          isSending: _isSendingChatMessage,
+          isSending: _callChatController.isSending,
           onSendPressed: () => unawaited(_sendChatMessage()),
         ),
       ],
@@ -5834,7 +4753,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   }
 
   /// Build error display
-  Widget _buildErrorDisplay() {
+  Widget _buildErrorDisplay({required bool allowRetry}) {
     return Center(
       child: Container(
         padding: const EdgeInsets.all(ExpatlioDesign.space20),
@@ -5867,14 +4786,16 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                 ),
               ),
             ),
-            const SizedBox(height: ExpatlioDesign.space16),
-            ElevatedButton(
-              onPressed: () {
-                _updateState(_state.copyWith(retryCount: 0));
-                _performReconnection();
-              },
-              child: const Text('Повторить попытку'),
-            ),
+            if (allowRetry) ...[
+              const SizedBox(height: ExpatlioDesign.space16),
+              ElevatedButton(
+                onPressed: () {
+                  _updateState(_state.copyWith(retryCount: 0));
+                  _performReconnection();
+                },
+                child: const Text('Повторить попытку'),
+              ),
+            ],
           ],
         ),
       ),
@@ -5900,176 +4821,132 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
       // 3. Then invoke the callback which navigates away.
       await widget.endCallCallback?.call(endReason);
-    } catch (e) {
-      if (kDebugMode) print('End call callback failed: $e');
+    } catch (_) {
+      if (kDebugMode) print('Call end: callback_failed');
       if (mounted && !_disposed) {
         context.safePop();
       }
     }
   }
 
-  /// Cleanup all resources - proper order to prevent crashes:
-  /// 1. Cancel timers (stop pending operations)
-  /// 2. Cancel event subscription FIRST (prevents CallState.left from
-  ///    triggering _scheduleReconnection during cleanup)
-  /// 3. Disable local camera/microphone capture
-  /// 4. Stop Deepgram
-  /// 5. Leave call (signal server while connection still alive)
-  /// 6. Cancel remaining subscriptions
-  /// 7. Clear tracks and dispose video controllers
-  /// 8. Dispose CallClient
-  ///
-  /// NOTE: _userRequestedEnd is NOT reset here. It is only set by _endCall()
-  /// and reset by _initializeCall() when starting a new session.
+  void _onDailyClosing() {
+    // An SDK failure can initiate close before its error reaches the widget.
+    // Re-entering the wrapper joins the already-published native close future.
+    if (_cleanupFuture == null) {
+      unawaited(_cleanup(
+        leaveCall: false,
+        preserveMeetingToken: true,
+        preserveTokenRefreshAttempts: true,
+        preserveChatState: true,
+      ));
+    }
+  }
+
+  /// One widget cleanup root wraps one native cleanup root. A concurrent end
+  /// upgrades leave intent, and a full reset wins over reconnect preservation.
   Future<void> _cleanup({
     bool leaveCall = true,
     bool preserveMeetingToken = false,
     bool preserveTokenRefreshAttempts = false,
     bool preserveChatState = false,
-  }) async {
-    if (kDebugMode) print('Cleaning up resources...');
+  }) {
+    final active = _cleanupFuture;
+    if (active != null) {
+      _preserveCleanupMeetingToken &= preserveMeetingToken;
+      _preserveCleanupTokenAttempts &= preserveTokenRefreshAttempts;
+      _preserveCleanupChat &= preserveChatState;
+      _dailySession.close(leaveCall: leaveCall);
+      return active;
+    }
+    final completer = Completer<void>();
+    _cleanupFuture = completer.future;
+    _preserveCleanupMeetingToken = preserveMeetingToken;
+    _preserveCleanupTokenAttempts = preserveTokenRefreshAttempts;
+    _preserveCleanupChat = preserveChatState;
+    final chatMessages = _state.chatMessages;
+    final unread = _state.unreadChatCount;
+    final chatOpen = _state.isChatOpen;
 
-    final preservedChatMessages =
-        preserveChatState ? _state.chatMessages : const <_ChatMessage>[];
-    final preservedUnreadChatCount =
-        preserveChatState ? _state.unreadChatCount : 0;
-    final preservedChatOpen = preserveChatState ? _state.isChatOpen : false;
-
-    try {
-      _lifecycleTransitionId += 1;
+    _lifecycleTransitions.invalidate();
+    _callTimer.suspend();
+    if (!_disposed) {
       _chatFocusNode.unfocus();
-      if (!preserveChatState) {
-        _chatTextController.clear();
-      }
+      if (!preserveChatState) _chatTextController.clear();
+    }
+    for (final timer in List<Timer>.from(_activeTimers)) {
+      _cancelTrackedTimer(timer);
+    }
+    _cancelTrackedTimer(_remoteLeftTimer);
+    _remoteLeftTimer = null;
+    _remoteLeftNotified = false;
 
-      // 1. Cancel all timers first (stop any pending reconnects, retries, etc.)
-      for (final timer in List<Timer>.from(_activeTimers)) {
-        _cancelTrackedTimer(timer);
-      }
-      _cancelTrackedTimer(_remoteLeftTimer);
-      _remoteLeftTimer = null;
-      _remoteLeftNotified = false;
-
-      // 2. Cancel event subscription BEFORE leave() so that the
-      // CallState.left event does not trigger _scheduleReconnection.
+    final nativeClose = _dailySession.close(leaveCall: leaveCall);
+    unawaited(() async {
       try {
-        await _cancelTrackedSubscription(_eventSubscription);
-        _eventSubscription = null;
-      } catch (e) {
-        if (kDebugMode) print('Error cancelling event subscription: $e');
-      }
-
-      // 3. Disable local capture before leaving so iOS releases the
-      // camera/microphone indicator even if leave/dispose completes later.
-      await _disableLocalInputsForCleanup();
-
-      // 4. Stop Deepgram streaming
-      await _stopDeepgramStreaming();
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-      await _flushPendingCaptionLogs(force: true);
-
-      // 5. Leave call while connection is still alive
-      if (_callClient != null && leaveCall) {
-        try {
-          await _callClient!.leave();
-          // Brief wait for leave signal to be sent over WebSocket
-          await Future.delayed(const Duration(milliseconds: 200));
-        } catch (e) {
-          if (kDebugMode) print('Error leaving call: $e');
+        await nativeClose;
+        _remoteJoinTimes.clear();
+        _remoteTrackReady.clear();
+        _remoteCaptionClearGenerations.clear();
+        _remoteLegacyCaptionCounters.clear();
+        _remoteParticipantUiSignatures.clear();
+        _prioritySubscribedParticipants.clear();
+        _activeRemoteProfileConfigured = false;
+        _systemCallMarkedConnected = false;
+        _invalidateLocalCaptionClear();
+        if (!_preserveCleanupMeetingToken) {
+          _dynamicMeetingToken = null;
+          _dynamicRoomUrl = null;
         }
-      }
-
-      // 6. Cancel all remaining tracked subscriptions
-      for (final subscription in List<StreamSubscription>.from(
-        _activeSubscriptions,
-      )) {
-        try {
-          await _cancelTrackedSubscription(subscription);
-        } catch (e) {
-          if (kDebugMode) print('Error cancelling subscription: $e');
+        if (!_preserveCleanupTokenAttempts) _tokenRefreshAttempts = 0;
+        _stopDurationTimer(reset: true);
+        _resetCallCheckpointNotice();
+        if (mounted && !_disposed) {
+          final terminalError = terminalErrorAfterDailyCleanup(
+            hasTerminalError: _state.hasTerminalError,
+            error: _state.error,
+          );
+          _updateState(_CallState(
+            connectionState: terminalError.hasTerminalError
+                ? ConnectionState.failed
+                : ConnectionState.disconnected,
+            hasTerminalError: terminalError.hasTerminalError,
+            error: terminalError.error,
+            isChatOpen: _preserveCleanupChat && chatOpen,
+            unreadChatCount: _preserveCleanupChat ? unread : 0,
+            chatMessages: _preserveCleanupChat ? chatMessages : const [],
+          ));
         }
+      } catch (_) {
+        if (kDebugMode) print('Call cleanup failed');
+      } finally {
+        _cleanupFuture = null;
+        completer.complete();
       }
+    }());
+    return completer.future;
+  }
 
-      // 7. Clear video tracks before disposing controllers
-      await _setVideoTrack(
-        _localVideoController,
-        null,
-        debugContext: 'Error clearing local video track',
-      );
-      for (final controller in _state.remoteControllers.values) {
-        await _setVideoTrack(
-          controller,
-          null,
-          debugContext: 'Error clearing remote video track',
-        );
-      }
-
-      // Dispose video controllers
+  Future<void> _detachCallVideo() async {
+    final local = _localVideoController;
+    final remote =
+        List<VideoViewController>.of(_state.remoteControllers.values);
+    await _setVideoTrack(local, null, debugContext: 'Clear local video track');
+    for (final controller in remote) {
+      await _setVideoTrack(controller, null,
+          debugContext: 'Clear remote video track');
+    }
+    try {
+      local?.dispose();
+    } catch (_) {
+      if (kDebugMode) print('Call cleanup: local video dispose failed');
+    }
+    _localVideoController = null;
+    for (final controller in remote) {
       try {
-        _localVideoController?.dispose();
-        _localVideoController = null;
-      } catch (e) {
-        if (kDebugMode) print('Error disposing local video controller: $e');
+        controller.dispose();
+      } catch (_) {
+        if (kDebugMode) print('Call cleanup: remote video dispose failed');
       }
-
-      for (final controller in _state.remoteControllers.values) {
-        try {
-          controller.dispose();
-        } catch (e) {
-          if (kDebugMode) print('Error disposing remote video controller: $e');
-        }
-      }
-      _remoteJoinTimes.clear();
-      _remoteTrackReady.clear();
-      _remoteCaptionClearGenerations.clear();
-      _remoteLegacyCaptionCounters.clear();
-      _remoteParticipantUiSignatures.clear();
-      _prioritySubscribedParticipants.clear();
-      _activeRemoteProfileConfigured = false;
-      _systemCallMarkedConnected = false;
-      _invalidateLocalCaptionClear();
-      if (!preserveMeetingToken) {
-        _dynamicMeetingToken = null;
-        _dynamicRoomUrl = null;
-      }
-      if (!preserveTokenRefreshAttempts) {
-        _tokenRefreshAttempts = 0;
-      }
-      _stopDurationTimer(reset: true);
-      _resetCallCheckpointNotice();
-
-      // 8. Dispose call client last
-      final callClientToDispose = _callClient;
-      try {
-        await callClientToDispose?.dispose();
-        _callClient = null;
-      } catch (e) {
-        if (kDebugMode) print('Error disposing call client: $e');
-      }
-      _releaseProcessActiveCallClient(callClientToDispose);
-
-      // Close all stream controllers
-      for (final controller
-          in List<StreamController>.from(_activeControllers)) {
-        try {
-          await _closeTrackedController(controller);
-        } catch (e) {
-          if (kDebugMode) print('Error closing controller: $e');
-        }
-      }
-
-      // Reset state
-      if (mounted && !_disposed) {
-        _updateState(_CallState(
-          isChatOpen: preservedChatOpen,
-          unreadChatCount: preservedUnreadChatCount,
-          chatMessages: preservedChatMessages,
-        ));
-      }
-
-      if (kDebugMode) print('Cleanup completed');
-    } catch (e) {
-      if (kDebugMode) print('Cleanup error: $e');
     }
   }
 
@@ -6078,13 +4955,17 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     if (kDebugMode) print('Disposing widget...');
 
     _disposed = true;
+    unawaited(_deepgramTransport.dispose());
+    _callTimer.dispose();
     WidgetsBinding.instance.removeObserver(this);
 
     // End the native call UI (CallKit / ConnectionService) as a safety net.
     // This covers cases where the widget is disposed before participantLeft
     // fires (e.g. Firestore status-driven navigation).
     unawaited(_endSystemCallUi());
-    unawaited(_persistOwnCallChatMessages());
+    unawaited(_persistOwnCallChatMessages(
+      expectedGeneration: _callChatController.generation,
+    ));
 
     // Synchronous cleanup of timers
     for (final timer in List<Timer>.from(_activeTimers)) {
@@ -6099,10 +4980,6 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     _chatFocusNode.removeListener(_handleChatFocusChanged);
     _chatFocusNode.unfocus();
     _chatTextController.clear();
-
-    // Cancel event subscription synchronously to stop incoming events
-    unawaited(_cancelTrackedSubscription(_eventSubscription));
-    _eventSubscription = null;
 
     // Schedule async cleanup (leave call, dispose client)
     unawaited(_cleanup(leaveCall: true).whenComplete(() {

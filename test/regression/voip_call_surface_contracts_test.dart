@@ -153,68 +153,45 @@ void main() {
             '_sessionCallKitIds[sessionId] ?? _callKitIdForSession(sessionId)'),
       );
       expect(source, contains("'callKitId': callKitId"));
-      expect(source, contains('_processAcceptClaimedAtBySession'));
+      expect(source, contains('VoipAcceptLifecycle _acceptLifecycle'));
       expect(source, contains('Duplicate accept event (process gate)'));
       expect(
         source,
-        contains('_processAcceptClaimedAtBySession.remove(sessionId);'),
+        contains('_acceptLifecycle.invalidate(sessionId);'),
       );
 
       final handleAcceptIndex =
           source.indexOf('Future<void> _handleCallAccept');
-      final claimIndex =
-          source.indexOf('_recentAcceptBySession[sessionId] = acceptTime;');
-      final processClaimIndex =
-          source.indexOf('_tryClaimProcessAccept', handleAcceptIndex);
-      final handledIdIndex = source.indexOf(
-        '_handledCallKitAcceptIds.add(effectiveCallKitId);',
+      final duplicateGateIndex = source.indexOf(
+        '_acceptLifecycle.evaluate(',
         handleAcceptIndex,
       );
-      final acceptInProgressIndex = source.indexOf(
-        '_acceptInProgress.add(sessionId);',
+      final expiryIndex = source.indexOf(
+        'voipIncomingCallPayloadHasExpired(',
         handleAcceptIndex,
+      );
+      final processClaimIndex =
+          source.indexOf('_acceptLifecycle.begin(', handleAcceptIndex);
+      final permissionIndex =
+          source.indexOf('_ensureAcceptMediaPermissions()', handleAcceptIndex);
+      final generationGuardIndex = source.indexOf(
+        '_acceptLifecycle.isCurrent(acceptAttempt)',
+        permissionIndex,
+      );
+      final retryReleaseIndex = source.indexOf(
+        '_acceptLifecycle.releaseForRetry(acceptAttempt)',
+        generationGuardIndex,
       );
       final staleCallKitGuardIndex =
           source.indexOf('Ignoring accept for stale callKitId');
-      final duplicateTimeWindowIndex =
-          source.indexOf('Duplicate accept event (time window)');
-      final duplicateTimeReleaseIndex = source.indexOf(
-        '_releaseProcessAcceptClaim(sessionId);',
-        duplicateTimeWindowIndex,
-      );
-      final duplicateCallKitIndex =
-          source.indexOf('Duplicate accept event (callKitId)');
-      final duplicateCallKitReleaseIndex = source.indexOf(
-        '_releaseProcessAcceptClaim(sessionId);',
-        duplicateCallKitIndex,
-      );
-      final alreadyAcceptedIndex = source.indexOf('Call already accepted');
-      final alreadyAcceptedReleaseIndex = source.indexOf(
-        '_releaseProcessAcceptClaim(sessionId);',
-        alreadyAcceptedIndex,
-      );
-      final acceptInProgressGuardIndex =
-          source.indexOf('Accept already in progress');
-      final acceptInProgressReleaseIndex = source.indexOf(
-        '_releaseProcessAcceptClaim(sessionId);',
-        acceptInProgressGuardIndex,
-      );
 
-      expect(claimIndex, greaterThanOrEqualTo(0));
-      expect(processClaimIndex, greaterThanOrEqualTo(0));
       expect(staleCallKitGuardIndex, greaterThanOrEqualTo(0));
-      expect(duplicateTimeReleaseIndex, greaterThan(duplicateTimeWindowIndex));
-      expect(
-        duplicateCallKitReleaseIndex,
-        greaterThan(duplicateCallKitIndex),
-      );
-      expect(alreadyAcceptedReleaseIndex, greaterThan(alreadyAcceptedIndex));
-      expect(
-        acceptInProgressReleaseIndex,
-        greaterThan(acceptInProgressGuardIndex),
-      );
-      expect(handledIdIndex, greaterThan(claimIndex));
-      expect(acceptInProgressIndex, greaterThan(handledIdIndex));
+      expect(duplicateGateIndex, greaterThan(handleAcceptIndex));
+      expect(expiryIndex, greaterThan(duplicateGateIndex));
+      expect(processClaimIndex, greaterThan(expiryIndex));
+      expect(permissionIndex, greaterThan(processClaimIndex));
+      expect(generationGuardIndex, greaterThan(permissionIndex));
+      expect(retryReleaseIndex, greaterThan(generationGuardIndex));
     });
 
     test(
@@ -395,6 +372,10 @@ void main() {
           _curlyBlockSource(voipSource, 'Future<void> showIncomingCall({');
       final acceptSource =
           _curlyBlockSource(voipSource, 'Future<void> _handleCallAccept');
+      final acceptedSessionResolverSource = _curlyBlockSource(
+        voipSource,
+        'Future<void> _resolveAcceptedSession(',
+      );
       final declineSource =
           _curlyBlockSource(voipSource, 'Future<void> _handleCallDecline');
       final timeoutSource =
@@ -536,8 +517,12 @@ void main() {
         acceptSource,
         contains('acceptAction == VoipAcceptPayloadAction.openSession'),
       );
-      expect(acceptSource, contains('_callAcceptCallFunction(sessionId)'));
-      expect(acceptSource, contains('isTutor: true'));
+      expect(acceptSource, contains('unawaited(_resolveAcceptedSession('));
+      expect(
+        acceptedSessionResolverSource,
+        contains('_callAcceptCallFunction(attempt.sessionId)'),
+      );
+      expect(acceptedSessionResolverSource, contains('isTutor: true'));
       expect(declineSource, contains('_callDeclineCallFunction(sessionId)'));
       expect(timeoutSource,
           contains('Cloud Function processExpiredNotifications'));
@@ -607,25 +592,33 @@ void main() {
       expect(mainActivitySource, contains('android:turnScreenOn="true"'));
     });
 
-    test('MinimalDailyWidget blocks duplicate call clients process-wide', () {
+    test('Daily native lifetime is owned once and wired to cleanup phases', () {
       final source =
           _source('lib/custom_code/widgets/minimal_daily_widget.dart');
-
-      expect(source, contains('static CallClient? _processActiveCallClient;'));
-      expect(
-        source,
-        contains(
-            'static Completer<void>? _processActiveCallClientReleaseCompleter;'),
-      );
-      expect(source, contains('_hasProcessActiveCallClientConflict()'));
-      expect(source, contains('_waitForProcessActiveCallClientRelease()'));
-      expect(source, contains('_releaseProcessActiveCallClientLease()'));
       expect(source,
-          contains('_claimProcessActiveCallClient(createdCallClient);'));
-      expect(
-        source,
-        contains('_releaseProcessActiveCallClient(callClientToDispose);'),
-      );
+          contains('static final _processDailyLease = DailySessionLease();'));
+      expect(source, contains('lease: _processDailyLease'));
+      expect(source, contains('create: CallClient.create'));
+      expect(source, contains('events: (client) => client.events'));
+      expect(source, contains('onEvent: _handleCallEvent'));
+      expect(source, contains('onClosing: _onDailyClosing'));
+      expect(source, contains('disableInputs: _disableLocalInputsForCleanup'));
+      expect(source, contains('detachVideo: (_) => _detachCallVideo()'));
+      expect(source, contains('dispose: (client) => client.dispose()'));
+      expect(source, isNot(contains('_processActiveCallClient')));
+      expect(source, isNot(contains('_eventSubscription')));
+      final cleanup = _curlyBlockSource(source, 'Future<void> _cleanup(');
+      expect(cleanup, contains('_dailySession.close(leaveCall: leaveCall)'));
+      expect(cleanup, contains('return active;'));
+      expect(cleanup, contains('await nativeClose;'));
+      final promotion = _curlyBlockSource(
+          source, 'Future<void> _promoteToActiveCallIfReady(');
+      expect(promotion, contains('final client = _callClient;'));
+      expect('_dailySession.isCurrent(client)'.allMatches(promotion).length, 3);
+      final inputs =
+          _curlyBlockSource(source, 'Future<void> _updateInputSettings(');
+      expect(inputs, contains('_dailySession.runWithClient'));
+      expect(inputs, contains('if (!current) return;'));
     });
 
     test('MinimalDailyWidget marks connected sessions through callable', () {
@@ -660,25 +653,12 @@ void main() {
     test('session limit warning stays inside timer badge', () {
       final source =
           _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final badge = _source('lib/custom_code/widgets/call_duration_badge.dart');
 
       expect(
         RegExp(r'_CallCheckpointNotice\(\s*minutes:\s*-1').hasMatch(source),
         isFalse,
       );
-
-      final warningStart =
-          source.indexOf('void _maybeShowSessionLimitWarning()');
-      final autoEndStart =
-          source.indexOf('void _maybeAutoEndAtSessionLimit()', warningStart);
-      expect(warningStart, greaterThanOrEqualTo(0));
-      expect(autoEndStart, greaterThan(warningStart));
-
-      final warningSource = source.substring(warningStart, autoEndStart);
-      expect(
-        warningSource,
-        contains('_sessionLimitWarningShownFor = expiresAt;'),
-      );
-      expect(warningSource, isNot(contains('_showCallCheckpointNotice')));
 
       final badgeStart = source.indexOf('Widget _buildCallDurationBadge()');
       final noticeOverlayStart = source.indexOf(
@@ -689,8 +669,71 @@ void main() {
       expect(noticeOverlayStart, greaterThan(badgeStart));
 
       final badgeSource = source.substring(badgeStart, noticeOverlayStart);
-      expect(badgeSource, contains("'Осталась 1 минута до лимита'"));
-      expect(badgeSource, contains(": 'до лимита'"));
+      expect(badgeSource, contains('CallDurationBadge('));
+      expect(badge, contains("'Осталась 1 минута до лимита'"));
+      expect(badge, contains(": 'до лимита'"));
+    });
+
+    test('call timer owner receives live session input and owns cleanup', () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      expect(source, contains("import 'call_timer_controller.dart';"));
+      for (final input in [
+        'connectedAt: widget.sessionConnectedAt',
+        'expiresAt: widget.sessionExpiresAt',
+        'policy: widget.sessionPolicy',
+        'status: widget.sessionStatus',
+        'provisionalCountdown: widget.provisionalSessionLimitCountdown',
+        'isStudent: widget.isStudent == true',
+        'userRequestedEnd: _userRequestedEnd',
+      ]) {
+        expect(source, contains(input));
+      }
+      expect(source, isNot(contains('Timer.periodic(')));
+      expect(source, isNot(contains('CallLimitDecisionTracker()')));
+      expect(
+          source, contains('_callTimer.serverClockOffset = serverClockOffset'));
+      expect(source,
+          contains('void _startDurationTimer() => _callTimer.start();'));
+      expect(source, contains('_callTimer.stop(reset: reset)'));
+      final update = _curlyBlockSource(source, 'void _handleCallTimerUpdate(');
+      expect(update, contains('if (_disposed || !mounted) return;'));
+      expect(update,
+          contains('_callDurationNotifier.value = update.elapsedSeconds'));
+      expect(update, contains('if (update.shouldAutoEnd)'));
+      expect(update, contains('unawaited(_requestAutoEndAtSessionLimit())'));
+      expect(
+          update, contains('for (final minutes in update.checkpointMinutes)'));
+      final didUpdate = _curlyBlockSource(source, 'void didUpdateWidget(');
+      final sessionSwitch =
+          _curlyBlockSource(didUpdate, 'if (sessionIdChanged)');
+      expect(sessionSwitch, contains('_callTimer.resetLimitMarkers();'));
+      expect(sessionSwitch, contains('_callTimer.serverClockOffset = null;'));
+      expect(sessionSwitch,
+          contains('_resetCallCheckpointNotice(clearHistory: true);'));
+      final expirySwitch = _curlyBlockSource(didUpdate,
+          'if (oldWidget.sessionExpiresAt != widget.sessionExpiresAt)');
+      expect(expirySwitch, contains('_callTimer.resetLimitMarkers();'));
+      expect(expirySwitch, isNot(contains('clearHistory: true')));
+      expect(_curlyBlockSource(source, 'void _clearSessionLimitAutoEndMarker('),
+          contains('_callTimer.clearAutoEndRequest(expiresAt);'));
+      expect(_curlyBlockSource(source, 'void _resetCallCheckpointNotice('),
+          contains('_callTimer.clearCheckpointHistory();'));
+      final cleanup = _curlyBlockSource(source, 'Future<void> _cleanup(');
+      final suspend = cleanup.indexOf('_callTimer.suspend();');
+      final firstAwait = cleanup.indexOf('await ');
+      expect(suspend, greaterThanOrEqualTo(0));
+      expect(firstAwait, greaterThanOrEqualTo(0));
+      expect(suspend, lessThan(firstAwait));
+      expect(_curlyBlockSource(source, 'Future<void> _initializeCall('),
+          contains('_callTimer.resume();'));
+      final dispose = _curlyBlockSource(source, 'void dispose()');
+      final timerDispose = dispose.indexOf('_callTimer.dispose();');
+      final notifierDispose =
+          dispose.indexOf('_callDurationNotifier.dispose();');
+      expect(timerDispose, greaterThanOrEqualTo(0));
+      expect(notifierDispose, greaterThanOrEqualTo(0));
+      expect(timerDispose, lessThan(notifierDispose));
     });
 
     test('policy-backed connecting call stays in countdown timer mode', () {
@@ -698,6 +741,8 @@ void main() {
           'lib/shared_pages/video_call_page/video_call_page_widget.dart');
       final timerSource =
           _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final timerBadgeSource =
+          _source('lib/custom_code/widgets/call_duration_badge.dart');
       const policy = <String, dynamic>{'effectiveLimitSeconds': 300};
       final now = DateTime.utc(2026, 8, 24, 10);
       final expiresAt = now.add(const Duration(minutes: 5));
@@ -731,12 +776,12 @@ void main() {
         ),
       );
       expect(
-        timerSource,
-        contains('session_limit_ui.formatCallTimerDuration(totalSeconds)'),
+        timerBadgeSource,
+        contains('formatCallTimerDuration(displaySeconds)'),
       );
       expect(
         timerSource,
-        contains('session_limit_ui.resolveSessionLimitNow('),
+        contains('_callTimer.sessionLimitNow()'),
       );
       expect(
         pageSource,
@@ -751,7 +796,7 @@ void main() {
       );
       expect(
         timerSource,
-        contains('session_limit_ui.resolveSessionLimitDisplaySeconds('),
+        contains('_callTimer.remainingSeconds(now)'),
       );
     });
 
@@ -799,6 +844,108 @@ void main() {
       expect(emptyStateSource, contains('ConstrainedBox'));
     });
 
+    test(
+        'call participant identity wrappers delegate raw SDK and widget values',
+        () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      expect(
+        source,
+        contains(
+            "import 'call_participant_identity.dart' as participant_identity;"),
+      );
+      final remoteName = _curlyBlockSource(
+        source,
+        'String _participantDisplayName(',
+      );
+      final remoteLogId = _curlyBlockSource(
+        source,
+        'String _participantLogSpeakerId(',
+      );
+      final localName =
+          _curlyBlockSource(source, 'String _localParticipantName()');
+      final localId = _curlyBlockSource(source, 'String _localParticipantId()');
+
+      for (final wrapper in [remoteName, remoteLogId]) {
+        expect(wrapper, contains('ParticipantId participantId'));
+        expect(
+          'participants.all[participantId]'.allMatches(wrapper).length,
+          1,
+        );
+      }
+      for (final wrapper in [remoteName, remoteLogId, localName, localId]) {
+        expect(wrapper, isNot(contains('.trim()')));
+        expect(wrapper, isNot(contains('setState(')));
+        expect(wrapper, isNot(contains('if (')));
+      }
+      expect(remoteName, contains("String fallback = 'Собеседник'"));
+      expect(
+          remoteName,
+          contains(
+              'return participant_identity.resolveRemoteParticipantName('));
+      expect(remoteName, contains('username: participant?.info.username,'));
+      expect(remoteName, contains('fallback: fallback,'));
+      expect(
+          remoteLogId,
+          contains(
+              'return participant_identity.resolveRemoteCaptionLogSpeakerId('));
+      expect(remoteLogId, contains('userId: participant?.info.userId,'));
+      expect(remoteLogId, contains('participantSessionId: participantId.id,'));
+      expect(remoteLogId, contains('utteranceId: utteranceId,'));
+      expect(localName,
+          contains('return participant_identity.resolveLocalParticipantName('));
+      expect(
+          localName,
+          contains(
+              'dailyUsername: _callClient?.participants.local.info.username,'));
+      expect(localName, contains('configuredUsername: widget.username,'));
+      expect(localName, contains('isStudent: widget.isStudent,'));
+      expect(localId,
+          contains('return participant_identity.resolveLocalParticipantId('));
+      expect(localId, contains('_callClient?.participants.local.id.id,'));
+    });
+
+    test(
+        'call identity consumers keep caption-log writer separate from Daily ID',
+        () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final remoteChat = _curlyBlockSource(source, 'void _processChatMessage(');
+      final remoteCaption =
+          _curlyBlockSource(source, 'void _upsertRemoteCaption(');
+      final localLog =
+          _curlyBlockSource(source, 'void _enqueueLocalFinalCaptionLog(');
+      final remoteLog =
+          _curlyBlockSource(source, 'void _enqueueLegacyRemoteCaptionLog(');
+      final controllerWiring = source.substring(
+        source.indexOf('late final CallChatController _callChatController'),
+        source.indexOf('Timer? _localCaptionUiThrottleTimer'),
+      );
+      final localCaption =
+          _curlyBlockSource(source, 'void _flushLocalCaptionUpdate()');
+      final overlay =
+          _curlyBlockSource(source, 'Widget _buildCaptionsOverlay(');
+
+      expect(
+          remoteChat, contains('senderName: _participantDisplayName(from),'));
+      expect(remoteChat, contains('senderId: from.id,'));
+      expect(remoteCaption, contains('speakerId: participantId.id,'));
+      expect(localLog, contains('final writerId = _captionLogWriterId();'));
+      expect('speakerId: writerId,'.allMatches(localLog).length, 2);
+      expect(localLog, isNot(contains('_localParticipantId()')));
+      expect(localLog, contains('speakerName: _localParticipantName(),'));
+      expect(
+          remoteLog, contains('final speakerId = _participantLogSpeakerId('));
+      expect('speakerId: speakerId,'.allMatches(remoteLog).length, 2);
+      expect(remoteLog,
+          contains('speakerName: _participantDisplayName(participantId),'));
+      expect(controllerWiring, contains('id: _localParticipantId(),'));
+      expect(controllerWiring, contains('name: _localParticipantName(),'));
+      expect(localCaption, contains('speakerId: _localParticipantId(),'));
+      expect(overlay,
+          contains('label: _participantDisplayName(remoteEntry.key),'));
+    });
+
     test('call chat composer uses the shared iMessage-style control', () {
       final source =
           _source('lib/custom_code/widgets/minimal_daily_widget.dart');
@@ -806,120 +953,360 @@ void main() {
           _curlyBlockSource(source, 'Widget _buildChatComposer()');
 
       expect(composerSource, contains('ChatComposer('));
-      expect(composerSource, contains('isSending: _isSendingChatMessage'));
+      expect(
+          composerSource, contains('isSending: _callChatController.isSending'));
       expect(composerSource, contains('enabled: composerEnabled'));
       expect(composerSource, isNot(contains('Icons.send_rounded')));
     });
 
-    test('Deepgram caption failures are visible and persisted safely', () {
+    test('outgoing captions delegate only latest and sent-signature state', () {
       final source =
           _source('lib/custom_code/widgets/minimal_daily_widget.dart');
-
-      expect(source, contains('String? captionIssueCode'));
-      expect(source, contains('String? captionIssueMessage'));
-      expect(source, contains('clearCaptionIssue'));
-      expect(source, contains('_reportCaptionRuntimeIssue('));
-      expect(source, contains('_clearCaptionRuntimeIssue()'));
-      expect(source, contains('_captionDiagnosticLogDocumentId('));
-      expect(source, contains('reportedSpecificStartIssue'));
-      expect(source, contains('sessionIdAtStart'));
-      expect(source, contains('_deepgramStreamGeneration'));
-      expect(source, contains('_isCurrentDeepgramStreamGeneration('));
-      expect(source, contains('_handleDeepgramAudioSinkFailure('));
+      final enqueue =
+          _curlyBlockSource(source, 'void _queueOutgoingCaptionMessage(');
+      final flush = _curlyBlockSource(
+          source, 'Future<void> _flushOutgoingCaptionMessage(');
+      final clear = _curlyBlockSource(source, 'void _clearLocalCaptions()');
+      expect(source, contains("import 'outgoing_caption_buffer.dart';"));
       expect(source,
-          contains('_syncDeepgramWithMicrophoneState(forceRefresh: true)'));
-      expect(source, contains('_closeStaleDeepgramRecorder(recorder)'));
-      expect(source, contains('_participantLogSpeakerId('));
-      expect(source, contains('participant?.info.userId?.trim()'));
-      expect(source, contains('unawaited(_stopDeepgramStreaming());'));
-      expect(source, contains("source: 'caption_runtime_diagnostic'"));
-      expect(source, contains('diagnosticCode: normalizedCode'));
-      expect(source, contains("speakerRole: 'system'"));
-      expect(source, contains("'Субтитры временно недоступны'"));
+          contains('final OutgoingCaptionBuffer<_OutgoingCaptionMessage>'));
+      expect(source, isNot(contains('_pendingOutgoingCaptionMessage')));
+      expect(source, isNot(contains('_lastSentCaptionSignature')));
+      expect(
+          enqueue,
+          contains(
+              '_outgoingCaptionBuffer.enqueue(message, message.signature)'));
+      expect(flush, contains('_outgoingCaptionBuffer.takePending()'));
+      expect(flush,
+          contains('_outgoingCaptionBuffer.isDuplicate(pending.signature)'));
+      expect(flush, contains('_sendCaptionMessage(pending.value)'));
+      expect(flush, contains('if (didSend)'));
+      expect(flush,
+          contains('_outgoingCaptionBuffer.markSent(pending.signature)'));
+      expect(clear, contains('_outgoingCaptionBuffer.clear();'));
+    });
+
+    test(
+        'outgoing caption transport keeps throttle and overlapping flush policy',
+        () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final enqueue =
+          _curlyBlockSource(source, 'void _queueOutgoingCaptionMessage(');
+      final flush = _curlyBlockSource(
+          source, 'Future<void> _flushOutgoingCaptionMessage(');
+      final send =
+          _curlyBlockSource(source, 'Future<bool> _sendCaptionMessage(');
+      expect(
+          source, contains('static const int _captionSendThrottleMs = 200;'));
+      expect(enqueue, contains('if (immediate)'));
+      expect(enqueue,
+          contains('_cancelTrackedTimer(_remoteCaptionSendThrottleTimer)'));
+      expect(enqueue, contains('_remoteCaptionSendThrottleTimer = null;'));
+      expect(enqueue, contains('_scheduleOutgoingCaptionFlush();'));
+      expect(enqueue, contains('if (_remoteCaptionSendThrottleTimer != null)'));
+      expect(enqueue, contains('_createTrackedTimer('));
+      expect(enqueue, contains('_captionSendThrottleMs'));
+      expect(enqueue, isNot(contains('await _flushOutgoingCaptionMessage')));
+      expect(flush, isNot(contains('Future.wait')));
+      expect(flush, isNot(contains('catchError')));
+      expect(send, contains('_callClient!.sendAppMessage('));
+      expect(send, contains('dart_convert.jsonEncode(message.toJson())'));
+      expect(send, contains('message.text.trim().isEmpty'));
+      expect(send, contains('_state.microphoneEnabled'));
+      expect(send, contains('_hasRemoteParticipantPresent()'));
+      expect(send, contains('return false;'));
+    });
+
+    test(
+        'Deepgram transport ownership is delegated to an injectable controller',
+        () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final transport = _source(
+        'lib/custom_code/widgets/deepgram_transport_controller.dart',
+      );
+      final adapters = _source(
+        'lib/custom_code/widgets/deepgram_transport_adapters.dart',
+      );
+      expect(source, contains("import 'deepgram_transport_adapters.dart';"));
+      expect(
+          source,
+          contains(
+              'late final _deepgramTransport = createDeepgramTransportController('));
+      expect(source, contains('shouldRun: _shouldRunDeepgram'));
+      expect(source, contains('onMessage: _handleDeepgramMessage'));
+      expect(
+          source,
+          contains(
+              'finalizeCaptionAndFlush: _finalizeCurrentCaptionAndFlushLogs'));
+      expect(source, contains('clearCaption: _clearLocalCaptions'));
+      expect(
+          source,
+          contains(
+              'await _deepgramTransport.sync(forceRefresh: forceRefresh);'));
+      expect(source, contains('=> _deepgramTransport.stop();'));
+      expect(source, contains('unawaited(_deepgramTransport.dispose());'));
+      expect(source, isNot(contains('FlutterSoundRecorder? _recorder')));
+      expect(source, isNot(contains('IOWebSocketChannel? _deepgramChannel')));
+      expect(transport, contains('class DeepgramTransportController'));
+      expect(transport, contains('Future<void> stop()'));
+      expect(transport, contains('Future<void> dispose()'));
+      expect(transport, contains('_gate.beginStart()'));
+      expect(transport, contains('_stopSingleFlight.run(_performStop)'));
+      expect(transport, contains('await _finalizeCaptionAndFlush();'));
+      expect(adapters, contains('Permission.microphone.request()'));
+      expect(adapters, contains('FlutterSoundRecorder'));
+      expect(adapters, contains('IOWebSocketChannel.connect'));
+    });
+
+    test('Deepgram transport stop preserves final-frame and cleanup contracts',
+        () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final handler = _curlyBlockSource(source, 'void _handleDeepgramMessage(');
+      final transcript =
+          _curlyBlockSource(source, 'void _handleDeepgramTranscript(');
+      expect(handler, contains('_deepgramTransport.finalizing'));
+      expect(transcript, contains('_deepgramTransport.finalizing'));
+      expect(source, contains('stopCaptions: (_) async {'));
+      expect(source, contains('await _stopDeepgramStreaming();'));
+      expect(source, contains('await _flushPendingCaptionLogs(force: true);'));
+      expect(source, contains('_dailySession.close(leaveCall: leaveCall)'));
+    });
+
+    test('Deepgram credential refresh cannot poison a replacement session', () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final resolve = _curlyBlockSource(
+        source,
+        'Future<String?> _resolveDeepgramCredential(',
+      );
+      final didUpdate = _curlyBlockSource(source, 'void didUpdateWidget(');
+      expect(resolve, contains('final requestGeneration ='));
+      expect(resolve, contains('final requestSessionId = widget.sessionId'));
+      expect(
+        resolve,
+        contains('requestGeneration != _deepgramCredentialGeneration'),
+      );
+      expect(resolve, contains('widget.sessionId?.trim() != requestSessionId'));
+      expect(
+        resolve.indexOf('requestGeneration != _deepgramCredentialGeneration'),
+        lessThan(resolve.indexOf('_deepgramCredential = sanitized;')),
+      );
+      expect(
+        '_deepgramCredentialGeneration += 1;'.allMatches(didUpdate).length,
+        2,
+      );
+    });
+
+    test('Deepgram parser results route to existing widget effect owners', () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final handler = _curlyBlockSource(source, 'void _handleDeepgramMessage(');
+      expect(
+          source,
+          contains(
+              "import 'deepgram_message_parser.dart' as deepgram_parser;"));
+      expect(
+          handler, contains('deepgram_parser.parseDeepgramMessage(message)'));
+      expect(handler,
+          contains('case deepgram_parser.DeepgramMessageKind.ignored:'));
+      expect(
+          handler,
+          contains(
+              'case deepgram_parser.DeepgramMessageKind.invalidEnvelope:'));
+      expect(handler,
+          contains('case deepgram_parser.DeepgramMessageKind.serviceError:'));
+      expect(handler,
+          contains('case deepgram_parser.DeepgramMessageKind.utteranceEnd:'));
+      expect(
+          handler,
+          contains(
+              'case deepgram_parser.DeepgramMessageKind.finalizeCurrent:'));
+      expect(handler,
+          contains('case deepgram_parser.DeepgramMessageKind.transcript:'));
+      expect(handler, contains('transcript: parsed.transcript!'));
+      expect(handler, contains('isFinalSegment: parsed.isFinalSegment'));
+      expect(handler, contains('speechFinal: parsed.speechFinal'));
+      expect(handler, contains('confidence: parsed.confidence'));
+      expect(source, isNot(contains('bool _isDeepgramErrorFrame(')));
+      expect(source, isNot(contains('double? _readDouble(')));
+    });
+
+    test('Daily app-message decoding stays inside widget error boundary', () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final handler = _curlyBlockSource(source, 'void _handleAppMessage(');
+
+      expect(source, contains("import 'daily_app_message_decoder.dart';"));
+      expect(
+        handler,
+        contains('final payload = decodeDailyAppMessagePayload(message);'),
+      );
+      expect(source, isNot(contains('_decodeAppMessagePayload(')));
+
+      final mountedGuard = handler.indexOf('if (!mounted) return;');
+      final tryBlock = handler.indexOf('try {');
+      final decode = handler.indexOf('decodeDailyAppMessagePayload(message)');
+      final nullGuard = handler.indexOf('if (payload == null) return;');
+      final captionRoute = handler.indexOf("if (type == 'caption')");
+      final captionEffect =
+          handler.indexOf('_processCaptionMessage(payload, from)');
+      final chatRoute = handler.indexOf("else if (type == 'chat')");
+      final chatEffect = handler.indexOf(
+        "_processChatMessage(payload['text']?.toString() ?? '', from)",
+      );
+      final catchBlock = handler.indexOf('catch (_)');
+      final log =
+          handler.indexOf("print('Daily app message: invalid_payload')");
+
+      expect(mountedGuard, greaterThanOrEqualTo(0));
+      expect(mountedGuard, lessThan(tryBlock));
+      expect(tryBlock, lessThan(decode));
+      expect(decode, lessThan(nullGuard));
+      expect(nullGuard, lessThan(captionRoute));
+      expect(captionRoute, lessThan(captionEffect));
+      expect(captionEffect, lessThan(chatRoute));
+      expect(chatRoute, lessThan(chatEffect));
+      expect(chatEffect, lessThan(catchBlock));
+      expect(catchBlock, lessThan(log));
+    });
+
+    test('Deepgram frame routing remains inside widget guard and catch', () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final handler = _curlyBlockSource(source, 'void _handleDeepgramMessage(');
+      final guard = handler.indexOf('if (!mounted ||');
+      final guardedReturn = handler.indexOf('return;', guard);
+      final tryBlock = handler.indexOf('try {');
+      final catchBlock = handler.indexOf('} catch (_) {');
+      expect(guard, greaterThanOrEqualTo(0));
+      expect(guard, lessThan(guardedReturn));
+      expect(guardedReturn, lessThan(tryBlock));
+      expect(tryBlock, lessThan(catchBlock));
+      expect(handler, contains('_deepgramTransport.finalizing'));
+      expect(handler, contains('_state.microphoneEnabled'));
+      expect(handler, contains('_hasRemoteParticipantPresent()'));
+
+      for (final routedEffect in [
+        '_handleDeepgramUtteranceEnd();',
+        '_emitFinalUpdateForCurrentLocalCaption();',
+        '_handleDeepgramTranscript(',
+      ]) {
+        final effectIndex = handler.indexOf(routedEffect);
+        expect(effectIndex, greaterThan(tryBlock), reason: routedEffect);
+        expect(effectIndex, lessThan(catchBlock), reason: routedEffect);
+      }
+      expect(handler.indexOf('_cancelLocalUtteranceEndFallback();'),
+          lessThan(handler.indexOf('_handleDeepgramTranscript(')));
+      expect(handler, contains("code: 'deepgram_message_parse_failed'"));
+      expect(handler, contains("code: 'deepgram_error_frame'"));
+      expect(
+          handler,
+          contains(
+              'Субтитры временно недоступны: не удалось обработать ответ распознавания.'));
+      expect(
+          handler,
+          contains(
+              'Субтитры временно недоступны: сервис распознавания вернул ошибку.'));
+      final catchSource = handler.substring(catchBlock);
+      expect(catchSource, contains("code: 'deepgram_message_parse_failed'"));
+      expect(catchSource,
+          contains("print('Deepgram message: processing_failed')"));
+    });
+
+    test('Deepgram caption failures stay visible and persisted safely', () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final transport = _source(
+        'lib/custom_code/widgets/deepgram_transport_controller.dart',
+      );
       expect(source, contains("'caption_token_unavailable'"));
-      expect(source, contains("'deepgram_start_failed'"));
-      expect(source, contains("'deepgram_websocket_error'"));
       expect(source, contains("'deepgram_error_frame'"));
       expect(source, contains('DeepgramCredentialException'));
-      expect(source, contains('_isDeepgramErrorFrame('));
-      expect(source, contains('_flushPendingCaptionLogs(force: true)'));
-
-      final credentialFailureIndex =
-          source.indexOf("'caption_token_unavailable'");
-      final credentialReturnIndex =
-          source.indexOf('return;', credentialFailureIndex);
-      expect(credentialFailureIndex, greaterThanOrEqualTo(0));
-      expect(credentialReturnIndex, greaterThan(credentialFailureIndex));
-
-      final videoPageSource = _source(
-          'lib/shared_pages/video_call_page/video_call_page_widget.dart');
-      expect(videoPageSource, contains('DeepgramCredentialException'));
-      expect(videoPageSource, contains("'deepgram_token_grant_forbidden'"));
-      expect(videoPageSource, contains('throwOnFailure: true'));
-      expect(videoPageSource,
-          contains('!force &&\n        _deepgramTokenLoading'));
-
-      final rulesSource = _source('firebase/firestore.rules');
-      expect(rulesSource, contains('canWriteCaptionRuntimeDiagnostic'));
-      expect(rulesSource, contains('isSafeCaptionRuntimeDiagnosticText'));
-      expect(rulesSource, contains('isSafeCaptionRuntimeDiagnosticCode'));
-      expect(rulesSource, contains('isSafeCaptionRuntimeDiagnosticPair'));
-      expect(rulesSource, contains("'deepgram_token_grant_forbidden'"));
-      expect(rulesSource, contains('isReservedCaptionDiagnosticLogId'));
-      expect(rulesSource, contains('usesReservedCaptionDiagnosticSpeaker'));
-      expect(rulesSource, contains('canWritePeerLegacyCaptionLogData'));
-      expect(rulesSource, contains('isOtherSessionParticipantId'));
-      expect(rulesSource, contains('isCaptionLogIdForSpeaker'));
-      expect(rulesSource,
-          contains("logId == data.speakerId + '_' + string(data.utteranceId)"));
-      expect(rulesSource,
-          contains('data.utteranceId == resource.data.utteranceId'));
-      expect(rulesSource, contains("'caption_runtime_diagnostic'"));
-      expect(rulesSource, contains("'local_deepgram_final'"));
-      expect(rulesSource, contains("'peer_legacy_final'"));
-      expect(rulesSource, contains("data.speakerId == 'system'"));
-      expect(rulesSource,
-          contains('data.speakerName == resource.data.speakerName'));
       expect(
-          rulesSource, contains("logId == 'system_' + request.auth.uid + '_'"));
+          source, contains('deepgram_parser.DeepgramMessageKind.serviceError'));
+      expect(transport, contains("'deepgram_start_failed'"));
+      expect(transport, contains("'deepgram_websocket_error'"));
+      expect(transport, contains("'audio_stream_error'"));
+      expect(transport, isNot(contains(r'$error')));
+      expect(transport, isNot(contains('credential.toString')));
+
+      final genericCredentialIssue = _curlyBlockSource(
+        source,
+        'void _reportGenericCredentialUnavailable()',
+      );
       expect(
-          rulesSource,
+          genericCredentialIssue,
           contains(
-              "data.source in ['local_deepgram_final', 'peer_legacy_final']"));
+              'shouldReportGenericCaptionCredentialIssue(_state.captionIssueCode)'));
+      expect(genericCredentialIssue,
+          contains("code: 'caption_token_unavailable'"));
+      expect(source, isNot(contains(r': $error')));
+      expect(source, isNot(contains(r': $e')));
+    });
+
+    test('Daily native quarantine is terminal and does not schedule retry', () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final initialize =
+          _curlyBlockSource(source, 'Future<void> _initializeCall() async');
+      final quarantine =
+          _curlyBlockSource(source, 'void _showDailySessionQuarantine()');
+
+      expect(
+          initialize, contains('result == DailySessionOpenResult.quarantined'));
+      expect(initialize, contains('_dailySession.isQuarantined'));
+      expect(initialize, contains('shouldAttemptDailySessionInitialization('));
+      expect(initialize, contains('hasTerminalError: _state.hasTerminalError'));
+      expect(quarantine, contains('ConnectionState.failed'));
+      expect(quarantine, contains('hasTerminalError: true'));
+      expect(
+          quarantine, isNot(contains('_scheduleProcessActiveCallClientRetry')));
+
+      final build =
+          _curlyBlockSource(source, 'Widget build(BuildContext context)');
+      final status = _curlyBlockSource(source, 'String? _statusMessage()');
+      final errorDisplay =
+          _curlyBlockSource(source, 'Widget _buildErrorDisplay(');
+      final terminalScreen =
+          _curlyBlockSource(source, 'Widget _buildTerminalErrorScreen()');
+      final cleanup = _curlyBlockSource(source, 'Future<void> _cleanup(');
+      expect(build, contains('shouldRenderDailyTerminalError('));
+      expect(
+        build.indexOf('shouldRenderDailyTerminalError('),
+        lessThan(build.indexOf('shouldRenderDailyConnectingScreen(')),
+      );
+      expect(terminalScreen, contains('_buildErrorDisplay(allowRetry: false)'));
+      expect(status, contains('if (_state.hasTerminalError) return null;'));
+      expect(errorDisplay, contains('if (allowRetry) ...['));
+      expect(errorDisplay, contains("child: const Text('Повторить попытку')"));
+      expect(cleanup, contains('terminalErrorAfterDailyCleanup('));
+      expect(cleanup, contains('hasTerminalError: _state.hasTerminalError'));
+      expect(cleanup,
+          contains('hasTerminalError: terminalError.hasTerminalError'));
     });
 
     test('Deepgram stop persists a short unfinished caption before clearing',
         () {
       final source =
           _source('lib/custom_code/widgets/minimal_daily_widget.dart');
-      final messageGuardSource = _curlyBlockSource(
-        source,
-        'bool _canHandleDeepgramMessage(',
+      final transport = _source(
+        'lib/custom_code/widgets/deepgram_transport_controller.dart',
       );
-      final finalizeSource = _curlyBlockSource(
-        source,
-        'Future<void> _finalizeCurrentCaptionAndFlushLogs() async',
-      );
-      final stopSource = _curlyBlockSource(
-        source,
-        'Future<void> _stopDeepgramStreaming() async',
-      );
-
-      expect(messageGuardSource, contains('_deepgramFinalizing'));
+      final finalize = _curlyBlockSource(
+          source, 'Future<void> _finalizeCurrentCaptionAndFlushLogs() async');
+      expect(finalize, contains('_emitFinalUpdateForCurrentLocalCaption();'));
+      expect(finalize, contains('while (_outgoingCaptionFlushes.isNotEmpty)'));
       expect(
-        finalizeSource,
-        contains('_emitFinalUpdateForCurrentLocalCaption();'),
-      );
+          finalize, contains('await _flushPendingCaptionLogs(force: true);'));
+      expect(transport, contains('await _finalizeCaptionAndFlush();'));
+      expect(transport, contains('if (hadTransport) _clearCaption();'));
       expect(
-        finalizeSource,
-        contains('_flushPendingCaptionLogs(force: true)'),
-      );
-
-      final finalizeIndex =
-          stopSource.lastIndexOf('_finalizeCurrentCaptionAndFlushLogs()');
-      final clearIndex = stopSource.lastIndexOf('_clearLocalCaptions()');
-      expect(finalizeIndex, greaterThanOrEqualTo(0));
-      expect(clearIndex, greaterThan(finalizeIndex));
+          source,
+          contains(
+              '(!_state.microphoneEnabled && !_deepgramTransport.finalizing)'));
     });
 
     test('caption overlay remains available while chat is open', () {
@@ -1025,28 +1412,42 @@ void main() {
     test('tutor accept waits for backend room credentials before navigating',
         () {
       final source = _source('lib/services/voip_service.dart');
-
-      expect(
+      final resolve = _curlyBlockSource(
         source,
-        isNot(contains('Navigated to VideoCallPage (tutor, instant)')),
+        'Future<void> _resolveAcceptedSession(',
       );
-      expect(
+      final apply = _curlyBlockSource(
         source,
-        contains('Navigated to VideoCallPage (tutor, after acceptCall)'),
+        'void _applyAcceptedSessionResolution({',
       );
 
       final acceptCallIndex =
-          source.indexOf('_callAcceptCallFunction(sessionId)');
-      final tutorNavigateIndex = source.indexOf(
-        "sessionId: sessionId,\n              isTutor: true,\n              roomUrl: _lastRoomUrl",
+          resolve.indexOf('_callAcceptCallFunction(attempt.sessionId)');
+      final credentialsIndex = resolve
+          .indexOf('voipRoomCredentialsFromAcceptCallResponse(response)');
+      final applyResolutionIndex =
+          resolve.indexOf('_applyAcceptedSessionResolution(');
+      final resolvedGuardIndex = apply.indexOf(
+        'resolution.state != VoipAcceptedSessionResolutionState.resolved',
       );
+      final tutorNavigateIndex =
+          apply.indexOf('_navigateToVideoCallForAccept(');
       expect(acceptCallIndex, greaterThanOrEqualTo(0));
-      expect(tutorNavigateIndex, greaterThan(acceptCallIndex));
+      expect(credentialsIndex, greaterThan(acceptCallIndex));
+      expect(applyResolutionIndex, greaterThan(credentialsIndex));
+      expect(resolvedGuardIndex, greaterThanOrEqualTo(0));
+      expect(tutorNavigateIndex, greaterThan(resolvedGuardIndex));
     });
 
     test('CallKit accept opens existing foreground sessions without acceptCall',
         () {
       final source = _source('lib/services/voip_service.dart');
+      final accept =
+          _curlyBlockSource(source, 'Future<void> _handleCallAccept');
+      final resolve = _curlyBlockSource(
+        source,
+        'Future<void> _resolveAcceptedSession(',
+      );
 
       final credentialsHelperIndex = source.indexOf(
         'VoipRoomCredentials? voipRoomCredentialsFromAcceptedPayload',
@@ -1059,85 +1460,78 @@ void main() {
         'if (roomUrl == null)',
         roomUrlGuardIndex,
       );
-      final payloadCredentialsIndex = source.indexOf(
+      final payloadCredentialsIndex = accept.indexOf(
         'final payloadCredentials = voipRoomCredentialsFromAcceptedPayload(data);',
       );
-      final acceptActionIndex = source.indexOf(
+      final acceptActionIndex = accept.indexOf(
         'final acceptAction = voipAcceptActionFromPayload(data);',
         payloadCredentialsIndex,
       );
-      final acceptedRoleIndex = source.indexOf(
+      final acceptedRoleIndex = accept.indexOf(
         '_lastAcceptedIsTutor = payloadCredentials == null;',
         payloadCredentialsIndex,
       );
-      final payloadBranchIndex = source.indexOf(
+      final payloadBranchIndex = accept.indexOf(
         'acceptAction == VoipAcceptPayloadAction.openSession',
         acceptedRoleIndex,
       );
-      final studentNavigationIndex = source.indexOf(
-        'Student navigation triggered (no acceptCall)',
+      final noAcceptCallbackIndex = accept.indexOf(
+        'accept: () async => null',
         payloadBranchIndex,
       );
-      final acceptCallIndex = source.indexOf(
-        '_callAcceptCallFunction(sessionId)',
-        studentNavigationIndex,
+      final applyResolutionIndex = accept.indexOf(
+        '_applyAcceptedSessionResolution(',
+        noAcceptCallbackIndex,
       );
+      final acceptCallIndex =
+          resolve.indexOf('_callAcceptCallFunction(attempt.sessionId)');
 
       expect(credentialsHelperIndex, greaterThanOrEqualTo(0));
       expect(roomUrlGuardIndex, greaterThan(credentialsHelperIndex));
       expect(nullGuardIndex, greaterThan(roomUrlGuardIndex));
-      expect(payloadCredentialsIndex, greaterThan(nullGuardIndex));
+      expect(payloadCredentialsIndex, greaterThanOrEqualTo(0));
       expect(acceptActionIndex, greaterThan(payloadCredentialsIndex));
       expect(acceptedRoleIndex, greaterThan(payloadCredentialsIndex));
       expect(payloadBranchIndex, greaterThan(acceptedRoleIndex));
-      expect(studentNavigationIndex, greaterThan(payloadBranchIndex));
-      expect(acceptCallIndex, greaterThan(studentNavigationIndex));
+      expect(noAcceptCallbackIndex, greaterThan(payloadBranchIndex));
+      expect(applyResolutionIndex, greaterThan(noAcceptCallbackIndex));
+      expect(acceptCallIndex, greaterThanOrEqualTo(0));
       expect(source, isNot(contains('hasPayloadRoomUrl')));
       expect(source, isNot(contains('hasPayloadMeetingToken')));
     });
 
     test('tutor accept recovery navigates after backend commit is visible', () {
       final source = _source('lib/services/voip_service.dart');
-
-      final catchIndex =
-          source.indexOf("debugPrint('❌ VoIPService: acceptCall failed: \$e')");
-      final recoveryIndex = source.indexOf(
-        'if (await _tryRecoverActiveSession(sessionId))',
-        catchIndex,
+      final resolve = _curlyBlockSource(
+        source,
+        'Future<void> _resolveAcceptedSession(',
       );
-      final recoveryNavigateIndex = source.indexOf(
-        '_navigateToVideoCallForAccept(',
-        recoveryIndex,
-      );
-      final recoveryLogIndex = source.indexOf(
-        'Recovered accepted call after acceptCall error',
-        recoveryNavigateIndex,
-      );
-      final clearStateIndex = source.indexOf(
-        '_clearSessionState(sessionId);',
-        recoveryIndex,
-      );
-      final resolutionGuardIndex = source.indexOf(
-        'if (!didResolveAcceptedSession)',
-        recoveryIndex,
-      );
-      final unresolvedClearStateIndex = source.indexOf(
-        '_clearSessionState(sessionId);',
-        resolutionGuardIndex,
-      );
-      final navigationTriggeredIndex = source.indexOf(
-        '_markNavigationTriggeredForAccept(',
-        resolutionGuardIndex,
+      final apply = _curlyBlockSource(
+        source,
+        'void _applyAcceptedSessionResolution({',
       );
 
-      expect(catchIndex, greaterThanOrEqualTo(0));
-      expect(recoveryIndex, greaterThan(catchIndex));
-      expect(recoveryNavigateIndex, greaterThan(recoveryIndex));
-      expect(recoveryLogIndex, greaterThan(recoveryNavigateIndex));
-      expect(clearStateIndex, greaterThan(recoveryNavigateIndex));
-      expect(resolutionGuardIndex, greaterThan(clearStateIndex));
-      expect(unresolvedClearStateIndex, greaterThan(resolutionGuardIndex));
-      expect(navigationTriggeredIndex, greaterThan(unresolvedClearStateIndex));
+      final acceptIndex = resolve.indexOf('accept: () async {');
+      final recoveryIndex = resolve.indexOf(
+        'recover: () => _recoverActiveSession(attempt.sessionId)',
+      );
+      final applyIndex = resolve.indexOf('_applyAcceptedSessionResolution(');
+      final unresolvedIndex = apply.indexOf(
+        'resolution.state == VoipAcceptedSessionResolutionState.unresolved',
+      );
+      final clearStateIndex =
+          apply.indexOf('_clearSessionState(attempt.sessionId);');
+      final navigateIndex = apply.indexOf('_navigateToVideoCallForAccept(');
+      final navigationTriggeredIndex =
+          apply.indexOf('_markNavigationTriggeredForAccept(');
+
+      expect(acceptIndex, greaterThanOrEqualTo(0));
+      expect(recoveryIndex, greaterThan(acceptIndex));
+      expect(applyIndex, greaterThan(recoveryIndex));
+      expect(unresolvedIndex, greaterThanOrEqualTo(0));
+      expect(clearStateIndex, greaterThan(unresolvedIndex));
+      expect(navigateIndex, greaterThan(clearStateIndex));
+      expect(navigationTriggeredIndex, greaterThan(navigateIndex));
     });
 
     test('legacy student navigation actions wait for joinable room state', () {
@@ -1774,6 +2168,452 @@ void main() {
       expect(voipSource, contains("'accepted'"));
     });
 
+    test('caption persistence delegates queue state without moving Firebase',
+        () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final enqueue =
+          _curlyBlockSource(source, 'void _enqueueCaptionLogEntry(');
+      final flush =
+          _curlyBlockSource(source, 'Future<void> _flushPendingCaptionLogs(');
+
+      expect(source, contains("import 'caption_log_queue.dart';"));
+      expect(source,
+          contains('final CaptionLogQueue<_CaptionLogEntry> _captionLogQueue'));
+      expect(source, isNot(contains('_pendingCaptionLogEntries')));
+      expect(source, isNot(contains('_persistedCaptionLogIds')));
+      expect(source, isNot(contains('_captionLogFlushChain')));
+      expect(enqueue.indexOf('if (!_canPersistCaptionLogs())'),
+          lessThan(enqueue.indexOf('_captionLogQueue.enqueue(')));
+      expect(enqueue, contains('_captionLogQueue.enqueue(entry.logId, entry)'));
+      expect(
+          enqueue,
+          contains(
+              '_captionLogQueue.pendingCount >= _captionLogBatchThreshold'));
+      expect(flush, contains('_captionLogQueue.flush((queuedEntries) async'));
+      expect(flush, contains('final sessionRef = _captionLogSessionRef();'));
+      expect(flush, contains('final writerId = _captionLogWriterId();'));
+      expect(flush, contains('if (sessionRef == null || writerId == null)'));
+      expect(flush, contains('return false;'));
+    });
+
+    test('caption persistence keeps document ID, schema and merge batch', () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final flush =
+          _curlyBlockSource(source, 'Future<void> _flushPendingCaptionLogs(');
+      expect(flush, contains('FirebaseFirestore.instance.batch()'));
+      expect(flush, contains('for (final queuedEntry in queuedEntries)'));
+      expect(flush, contains('final entry = queuedEntry.value;'));
+      expect(flush,
+          contains('CaptionLogsRecord.createDoc(sessionRef, id: entry.logId)'));
+      expect(flush, contains('entry.toFirestoreData(writerId: writerId)'));
+      expect(flush, contains('SetOptions(merge: true)'));
+      expect(flush, contains('await batch.commit();'));
+      expect(flush.indexOf('await batch.commit();'),
+          lessThan(flush.indexOf('return true;')));
+    });
+
+    test('caption queue preserves debounce, threshold and current retry guards',
+        () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final enqueue =
+          _curlyBlockSource(source, 'void _enqueueCaptionLogEntry(');
+      final flush =
+          _curlyBlockSource(source, 'Future<void> _flushPendingCaptionLogs(');
+      expect(source,
+          contains('static const int _captionLogFlushDebounceMs = 1000;'));
+      expect(
+          source, contains('static const int _captionLogBatchThreshold = 8;'));
+      expect(enqueue, contains('_createTrackedTimer('));
+      expect(enqueue, contains('_captionLogFlushDebounceMs'));
+      expect(enqueue, contains('_flushPendingCaptionLogs(force: true)'));
+      expect(flush, contains('if (force)'));
+      expect(flush, contains('_cancelTrackedTimer(_captionLogFlushTimer)'));
+      expect(flush, contains(".catchError((Object _)"));
+      expect(flush, contains("print('Caption log flush: failed')"));
+      expect(flush, isNot(contains('sessionRef.path')));
+      expect(flush, contains('if (!_captionLogQueue.isEmpty &&'));
+      expect(flush, contains('_captionLogFlushTimer == null &&'));
+      expect(flush, contains('!_disposed'));
+      expect(flush, contains('_createTrackedTimer('));
+      expect(flush, contains('_captionLogFlushDebounceMs'));
+      expect(flush, contains('_flushPendingCaptionLogs(force: true)'));
+    });
+
+    test('session switch cancels caption timer before queue generation reset',
+        () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final didUpdate = _curlyBlockSource(source, 'void didUpdateWidget(');
+      final sessionSwitch =
+          _curlyBlockSource(didUpdate, 'if (sessionIdChanged)');
+      final cancel =
+          sessionSwitch.indexOf('_cancelTrackedTimer(_captionLogFlushTimer);');
+      final clearTimer = sessionSwitch.indexOf('_captionLogFlushTimer = null;');
+      final reset = sessionSwitch.indexOf('_captionLogQueue.reset();');
+      expect(cancel, greaterThanOrEqualTo(0));
+      expect(cancel, lessThan(clearTimer));
+      expect(clearTimer, lessThan(reset));
+      expect(
+          sessionSwitch, contains('_reportedCaptionRuntimeIssueCodes.clear()'));
+    });
+
+    test('local caption state and emission mapping delegate to the assembler',
+        () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      expect(source, contains("import 'local_caption_assembler.dart';"));
+      expect(source,
+          contains('final _localCaptionAssembler = LocalCaptionAssembler();'));
+      for (final oldField in [
+        '_localCaptionUtteranceId',
+        '_localCaptionRevision',
+        '_localUtteranceOpen',
+        '_localCommittedCaptionText',
+        '_localCurrentCaptionText',
+        '_localCaptionStartedAt',
+        '_localCaptionConfidence',
+      ]) {
+        expect(source, isNot(contains(oldField)));
+      }
+      final handler =
+          _curlyBlockSource(source, 'void _handleDeepgramTranscript(');
+      final finalUpdate = _curlyBlockSource(
+          source, 'bool _emitFinalUpdateForCurrentLocalCaption(');
+      expect(handler, contains('_localCaptionAssembler.acceptTranscript('));
+      expect(handler, contains('transcript: transcript,'));
+      expect(handler, contains('isFinalSegment: isFinalSegment,'));
+      expect(handler, contains('speechFinal: speechFinal,'));
+      expect(handler, contains('confidence: confidence,'));
+      expect(
+          handler.indexOf('_clearCaptionRuntimeIssue();'),
+          lessThan(
+              handler.indexOf('_localCaptionAssembler.acceptTranscript(')));
+      expect(handler, contains('if (!_deepgramTransport.finalizing &&'));
+      expect(
+          handler,
+          contains(
+              '(!_state.microphoneEnabled || !_hasRemoteParticipantPresent())'));
+      expect(
+          finalUpdate, contains('_localCaptionAssembler.prepareFinalUpdate()'));
+      expect(finalUpdate, contains('if (emission == null) return false;'));
+      for (final body in [handler, finalUpdate]) {
+        for (final field in [
+          'utteranceId',
+          'revision',
+          'text',
+          'startedAt',
+          'lastUpdateAt'
+        ]) {
+          expect(body, contains('$field: emission.$field,'));
+        }
+        expect(body, contains('emission.isFinal ?'));
+        expect(body, contains('? _CaptionPhase.finalCaption'));
+        expect(body, contains(': _CaptionPhase.interim,'));
+      }
+    });
+
+    test('local final caption dispatch and logging precede explicit close', () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final handler =
+          _curlyBlockSource(source, 'void _handleDeepgramTranscript(');
+      final finalUpdate = _curlyBlockSource(
+          source, 'bool _emitFinalUpdateForCurrentLocalCaption(');
+      for (final body in [handler, finalUpdate]) {
+        final local = body.indexOf('_queueLocalCaptionUpdate(');
+        final outgoing = body.indexOf('_queueOutgoingCaptionMessage(');
+        final log = body.indexOf('_enqueueLocalFinalCaptionLog(update);');
+        final close =
+            body.indexOf('_finalizeLocalUtterance(fallbackText: update.text);');
+        expect(local, greaterThanOrEqualTo(0));
+        expect(local, lessThan(outgoing));
+        expect(outgoing, lessThan(log));
+        expect(log, lessThan(close));
+        expect(body, isNot(contains('finally')));
+      }
+      expect(_curlyBlockSource(handler, 'if (speechFinal)'),
+          contains('_enqueueLocalFinalCaptionLog(update);'));
+      expect(handler, contains('immediate: speechFinal'));
+      expect(finalUpdate, contains('immediate: true'));
+      final close = _curlyBlockSource(source, 'void _finalizeLocalUtterance(');
+      expect(close, contains('if (finalText.isEmpty)'));
+      expect(close.indexOf('if (finalText.isEmpty)'),
+          lessThan(close.indexOf('_cancelLocalUtteranceEndFallback();')));
+      expect(
+          close.indexOf('_cancelLocalUtteranceEndFallback();'),
+          lessThan(close
+              .indexOf('_localCaptionAssembler.closeUtterance(finalText);')));
+      expect(close.indexOf('_localCaptionAssembler.closeUtterance(finalText);'),
+          lessThan(close.indexOf('_scheduleCaptionFadeAndClear(')));
+    });
+
+    test('local utterance-end timer retains snapshot guards and ownership', () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final fallback =
+          _curlyBlockSource(source, 'void _handleDeepgramUtteranceEnd(');
+      expect(fallback, contains('_localCaptionAssembler.currentText.isEmpty'));
+      expect(fallback,
+          contains('final utteranceId = _localCaptionAssembler.utteranceId;'));
+      expect(
+          fallback,
+          contains(
+              'final revisionAtSignal = _localCaptionAssembler.revision;'));
+      expect(fallback, contains('_createTrackedTimer('));
+      expect(fallback, contains('_captionUtteranceEndFallbackMs'));
+      expect(fallback,
+          contains('utteranceId != _localCaptionAssembler.utteranceId'));
+      expect(fallback,
+          contains('revisionAtSignal != _localCaptionAssembler.revision'));
+      expect(fallback, contains('if (!_localCaptionAssembler.isOpen ||'));
+      expect(
+          fallback
+              .indexOf('revisionAtSignal != _localCaptionAssembler.revision'),
+          lessThan(
+              fallback.indexOf('_emitFinalUpdateForCurrentLocalCaption();')));
+    });
+
+    test('local caption clear and persisted confidence use the same assembler',
+        () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final clear = _curlyBlockSource(source, 'void _clearLocalCaptions(');
+      final reset = clear.indexOf('_localCaptionAssembler.clear();');
+      expect(reset, greaterThanOrEqualTo(0));
+      for (final earlier in [
+        '_invalidateLocalCaptionClear();',
+        '_localUtteranceEndTimer = null;',
+        '_pendingLocalCaptionUpdate = null;',
+        '_outgoingCaptionBuffer.clear();',
+      ]) {
+        expect(clear.indexOf(earlier), greaterThanOrEqualTo(0));
+        expect(clear.indexOf(earlier), lessThan(reset));
+      }
+      expect(
+          reset, lessThan(clear.indexOf('if (_state.localCaption == null)')));
+      expect(_curlyBlockSource(source, 'void _enqueueLocalFinalCaptionLog('),
+          contains('confidence: _localCaptionAssembler.confidence,'));
+    });
+
+    test('remote caption handler binds the peer snapshot to tested policy', () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final handler = _curlyBlockSource(source, 'void _processCaptionMessage(');
+      expect(source,
+          contains("import 'caption_message_policy.dart' as caption_policy;"));
+      expect(handler, contains('final current = _state.remoteCaptions[from];'));
+      expect(handler, contains('caption_policy.resolveRemoteCaptionMessage('));
+      expect(handler, contains('payload,'));
+      expect(handler, contains('current: current == null'));
+      expect(handler, contains('utteranceId: current.utteranceId,'));
+      expect(handler, contains('revision: current.revision,'));
+      expect(handler, contains('text: current.text,'));
+      expect(handler,
+          contains('isFinal: current.phase == _CaptionPhase.finalCaption,'));
+      expect(handler, contains('isFadingOut: current.isFadingOut,'));
+      expect(handler,
+          contains('legacyCounter: _remoteLegacyCaptionCounters[from] ?? 0,'));
+      expect(_curlyBlockSource(source, 'String _normalizeCaptionText('),
+          contains('return caption_policy.normalizeCaptionText(rawText);'));
+      expect(source, isNot(contains('_nextLegacyRemoteUtteranceId(')));
+      expect(source, isNot(contains('_CaptionPhase.fromWire(')));
+    });
+
+    test('remote caption effects apply counter before update and legacy log',
+        () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final handler = _curlyBlockSource(source, 'void _processCaptionMessage(');
+      expect(handler,
+          contains('final counterUpdate = decision.legacyCounterUpdate;'));
+      expect(handler, contains('if (counterUpdate != null)'));
+      expect(handler, contains('final update = decision.update;'));
+      final counterWrite = handler
+          .indexOf('_remoteLegacyCaptionCounters[from] = counterUpdate;');
+      final skipUpdate = handler.indexOf('if (update == null) return;');
+      final renderUpdate = handler.indexOf('_upsertRemoteCaption(');
+      final logCondition = handler.indexOf('if (update.shouldLogLegacyFinal)');
+      expect(counterWrite, greaterThanOrEqualTo(0));
+      expect(counterWrite, lessThan(skipUpdate));
+      expect(skipUpdate, lessThan(renderUpdate));
+      expect(renderUpdate, lessThan(logCondition));
+      expect(handler, contains('participantId: from,'));
+      expect(handler, contains('utteranceId: update.utteranceId,'));
+      expect(handler, contains('revision: update.revision,'));
+      expect(handler, contains('text: update.text,'));
+      expect(handler, contains('update.isFinal ?'));
+      expect(handler, contains('? _CaptionPhase.finalCaption'));
+      expect(handler, contains(': _CaptionPhase.interim,'));
+      final logBody =
+          _curlyBlockSource(handler, 'if (update.shouldLogLegacyFinal)');
+      expect(logBody, contains('_enqueueLegacyRemoteCaptionLog('));
+      expect(logBody, contains('from,'));
+      expect(logBody, contains('utteranceId: update.utteranceId,'));
+      expect(logBody, contains('text: update.text,'));
+    });
+
+    test('remote caption UI timing and counter lifetime remain widget-owned',
+        () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final upsert = _curlyBlockSource(source, 'void _upsertRemoteCaption(');
+      expect(upsert, contains('final now = DateTime.now();'));
+      expect(
+          upsert, contains('_nextRemoteCaptionClearGeneration(participantId)'));
+      expect(upsert, contains('_updateCaptionState('));
+      expect(
+          upsert,
+          contains(
+              'startedAt: current != null && current.utteranceId == utteranceId'));
+      expect(upsert, contains('? current.startedAt'));
+      expect(upsert, contains('lastUpdateAt: now,'));
+      expect(upsert, contains('if (phase == _CaptionPhase.finalCaption)'));
+      expect(upsert, contains('_scheduleCaptionFadeAndClear('));
+      expect(upsert, contains('expectedGeneration: nextGeneration,'));
+      expect(upsert,
+          isNot(contains('current.phase == _CaptionPhase.finalCaption')));
+      expect(_curlyBlockSource(source, 'void _removeRemoteParticipant('),
+          contains('_remoteLegacyCaptionCounters.remove(id);'));
+      expect(_curlyBlockSource(source, 'Future<void> _cleanup('),
+          contains('_remoteLegacyCaptionCounters.clear();'));
+      expect(_curlyBlockSource(source, 'void _clearRemoteCaption('),
+          isNot(contains('_remoteLegacyCaptionCounters')));
+    });
+
+    test('Daily lifecycle queue keeps widget guards and diagnostic wiring', () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      expect(
+          source, contains("import 'daily_lifecycle_transition_queue.dart';"));
+      expect(
+          source,
+          contains(
+              'final _lifecycleTransitions = DailyLifecycleTransitionQueue('));
+      expect(source, contains('onError: (_) {'));
+      expect(source, contains("print('Daily lifecycle: transition_failed');"));
+      expect(source, isNot(contains('_lifecycleTransitionChain')));
+      expect(source, isNot(contains('_lifecycleTransitionId')));
+      expect(
+          _curlyBlockSource(
+              source, 'Future<void> _enqueueLifecycleTransition('),
+          contains('return _lifecycleTransitions.enqueue(action);'));
+
+      final guard =
+          _curlyBlockSource(source, 'bool _isCurrentLifecycleTransition(');
+      expect(guard, contains('return mounted &&'));
+      expect(guard, contains('!_disposed &&'));
+      expect(
+          guard, contains('_lifecycleTransitions.isCurrent(transitionId) &&'));
+      expect(guard,
+          contains('_state.connectionState == ConnectionState.connected;'));
+    });
+
+    test('Daily lifecycle effects keep cooperative checks around awaits', () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final background =
+          _curlyBlockSource(source, 'void _handleAppBackground()');
+      final foreground =
+          _curlyBlockSource(source, 'void _handleAppForeground()');
+      const guard = 'if (!_isCurrentLifecycleTransition(transitionId)) return;';
+      for (final handler in [background, foreground]) {
+        expect(
+            handler,
+            contains(
+                'if (_state.connectionState == ConnectionState.connected)'));
+        expect(handler, contains('unawaited(_enqueueLifecycleTransition('));
+        expect(handler.indexOf(guard), greaterThanOrEqualTo(0));
+        expect(handler.indexOf(guard),
+            lessThan(handler.indexOf('await _updateInputSettings(')));
+      }
+      expect(
+          background, contains('_resumeCameraEnabled = _state.cameraEnabled;'));
+      expect(background,
+          contains('_resumeMicrophoneEnabled = _state.microphoneEnabled;'));
+      expect(background, contains('camera: false, microphone: false'));
+      expect(foreground,
+          contains('final resumeCameraEnabled = _resumeCameraEnabled;'));
+      expect(
+          foreground,
+          contains(
+              'final resumeMicrophoneEnabled = _resumeMicrophoneEnabled;'));
+      expect(foreground, contains('camera: resumeCameraEnabled,'));
+      expect(foreground, contains('microphone: resumeMicrophoneEnabled,'));
+      expect(guard.allMatches(foreground).length, 2);
+      expect(foreground.lastIndexOf(guard),
+          greaterThan(foreground.indexOf('await _updateInputSettings(')));
+      expect(foreground.lastIndexOf(guard),
+          lessThan(foreground.indexOf('await _promoteToActiveCallIfReady();')));
+    });
+
+    test('Daily cleanup invalidates lifecycle tokens before async teardown',
+        () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final cleanup = _curlyBlockSource(source, 'Future<void> _cleanup(');
+      final invalidation =
+          cleanup.indexOf('_lifecycleTransitions.invalidate();');
+      expect(invalidation, greaterThanOrEqualTo(0));
+      expect(invalidation, lessThan(cleanup.indexOf('await ')));
+
+      final dispose = _curlyBlockSource(source, 'void dispose()');
+      expect(dispose.indexOf('_disposed = true;'), greaterThanOrEqualTo(0));
+      expect(dispose.indexOf('_disposed = true;'),
+          lessThan(dispose.indexOf('_cleanup(leaveCall: true)')));
+    });
+
+    test('Daily credential wrappers delegate to the tested pure rules', () {
+      final source =
+          _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      expect(
+          source,
+          contains(
+              "import 'daily_join_credentials.dart' as join_credentials;"));
+
+      // Native media clients cannot be started by these source-contract tests.
+      // Assert only their wiring; behavior is covered by direct helper tests.
+      const wrappers = {
+        'bool _isValidRoomUrl(String url)': 'isValidRoomUrl(url)',
+        'String? _sanitizeMeetingToken(String? token)':
+            'sanitizeMeetingToken(token)',
+        'String? _sanitizeRoomUrl(String? url)': 'sanitizeRoomUrl(url)',
+        'String? _sanitizeDeepgramCredential(String? value)':
+            'sanitizeDeepgramCredential(value)',
+      };
+      for (final entry in wrappers.entries) {
+        expect(_curlyBlockSource(source, entry.key),
+            contains('return join_credentials.${entry.value};'));
+      }
+
+      final token =
+          _curlyBlockSource(source, 'String? _effectiveMeetingToken()');
+      expect(token, contains('return join_credentials.effectiveMeetingToken('));
+      expect(token, contains('dynamicToken: _dynamicMeetingToken,'));
+      expect(token, contains('configuredToken: widget.meetingToken,'));
+
+      final room = _curlyBlockSource(source, 'String? _effectiveRoomUrl()');
+      expect(room, contains('return join_credentials.effectiveRoomUrl('));
+      expect(room, contains('dynamicRoomUrl: _dynamicRoomUrl,'));
+      expect(room, contains('configuredRoomUrl: widget.roomUrl,'));
+
+      final deepgram = _curlyBlockSource(
+          source, 'String? _configuredDeepgramCredentialFor(');
+      expect(deepgram,
+          contains('return join_credentials.configuredDeepgramCredential('));
+      expect(deepgram,
+          contains('primaryCredential: widgetInstance.deepgramCredential,'));
+      expect(
+          deepgram, contains('legacyApiKey: widgetInstance.deepgramApiKey,'));
+
+      expect(
+          _curlyBlockSource(source, 'bool _hasValidJoinData()'),
+          contains(
+              '_effectiveRoomUrl() != null && _effectiveMeetingToken() != null'));
+    });
+
     test('Daily token refresh keeps room URL and token paired', () {
       final videoCallSource = _source(
           'lib/shared_pages/video_call_page/video_call_page_widget.dart');
@@ -1970,27 +2810,28 @@ void main() {
     test('Daily call and chat controls have accessible labels', () {
       final dailyWidgetSource =
           _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final controlsSource =
+          _source('lib/custom_code/widgets/call_controls_bar.dart');
 
-      expect(dailyWidgetSource, contains("'Выключить камеру'"));
-      expect(dailyWidgetSource, contains("'Включить камеру'"));
+      expect(dailyWidgetSource, contains('CallControlsBar('));
+      expect(controlsSource, contains("'Выключить камеру'"));
+      expect(controlsSource, contains("'Включить камеру'"));
+      expect(controlsSource, contains("'Камера включена. Выключить камеру'"));
+      expect(controlsSource, contains("'Камера выключена. Включить камеру'"));
+      expect(controlsSource, contains("'Выключить микрофон'"));
+      expect(controlsSource, contains("'Включить микрофон'"));
       expect(
-          dailyWidgetSource, contains("'Камера включена. Выключить камеру'"));
-      expect(
-          dailyWidgetSource, contains("'Камера выключена. Включить камеру'"));
-      expect(dailyWidgetSource, contains("'Выключить микрофон'"));
-      expect(dailyWidgetSource, contains("'Включить микрофон'"));
-      expect(
-        dailyWidgetSource,
+        controlsSource,
         contains("'Микрофон включен. Выключить микрофон'"),
       );
       expect(
-        dailyWidgetSource,
+        controlsSource,
         contains("'Микрофон выключен. Включить микрофон'"),
       );
-      expect(dailyWidgetSource, contains('_chatControlTooltip()'));
-      expect(dailyWidgetSource, contains('_chatControlSemanticLabel()'));
-      expect(dailyWidgetSource, contains('toggled: semanticToggled'));
-      expect(dailyWidgetSource, contains("'Завершить звонок'"));
+      expect(controlsSource, contains('_chatControlTooltip()'));
+      expect(controlsSource, contains('_chatControlSemanticLabel()'));
+      expect(controlsSource, contains('toggled: semanticToggled'));
+      expect(controlsSource, contains("'Завершить звонок'"));
       expect(dailyWidgetSource, contains("message: 'Закрыть чат'"));
       expect(dailyWidgetSource, contains("'Отправить сообщение'"));
       expect(
@@ -2408,28 +3249,29 @@ void main() {
 
       final handleAcceptIndex =
           voipServiceSource.indexOf('Future<void> _handleCallAccept');
-      final acceptPermissionIndex = voipServiceSource.indexOf(
-        'await _ensureAcceptMediaPermissions()',
-        handleAcceptIndex,
-      );
-      final studentPrefetchIndex = voipServiceSource.indexOf(
-        'unawaited(_prefetchSessionTokensForAccept(sessionId));',
-        acceptPermissionIndex,
-      );
-      final acceptCallIndex = voipServiceSource.indexOf(
-        '_callAcceptCallFunction(sessionId)',
-        acceptPermissionIndex,
-      );
-      expect(handleAcceptIndex, greaterThanOrEqualTo(0));
-      expect(acceptPermissionIndex, greaterThan(handleAcceptIndex));
-      expect(studentPrefetchIndex, greaterThan(acceptPermissionIndex));
-      expect(acceptCallIndex, greaterThan(acceptPermissionIndex));
-      expect(
+      final handleAcceptSource = _curlyBlockSource(
         voipServiceSource,
-        contains('void _releaseProcessAcceptClaim(String sessionId)'),
+        'Future<void> _handleCallAccept',
       );
-      final releaseAcceptClaimIndex = voipServiceSource.indexOf(
-        '_releaseProcessAcceptClaim(sessionId);',
+      final resolveAcceptedSource = _curlyBlockSource(
+        voipServiceSource,
+        'Future<void> _resolveAcceptedSession(',
+      );
+      final acceptPermissionIndex = handleAcceptSource.indexOf(
+        'await _ensureAcceptMediaPermissions()',
+      );
+      final resolveScheduleIndex = handleAcceptSource.indexOf(
+        'unawaited(_resolveAcceptedSession(',
+        acceptPermissionIndex,
+      );
+      final acceptCallIndex = resolveAcceptedSource
+          .indexOf('_callAcceptCallFunction(attempt.sessionId)');
+      expect(handleAcceptIndex, greaterThanOrEqualTo(0));
+      expect(acceptPermissionIndex, greaterThanOrEqualTo(0));
+      expect(resolveScheduleIndex, greaterThan(acceptPermissionIndex));
+      expect(acceptCallIndex, greaterThanOrEqualTo(0));
+      final releaseAcceptClaimIndex = handleAcceptSource.indexOf(
+        '_acceptLifecycle.releaseForRetry(acceptAttempt);',
         acceptPermissionIndex,
       );
       expect(releaseAcceptClaimIndex, greaterThan(acceptPermissionIndex));

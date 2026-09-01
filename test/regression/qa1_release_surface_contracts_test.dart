@@ -137,19 +137,35 @@ void main() {
       expect(callEventCard, contains('Icons.phone_rounded'));
     });
 
-    test('minimal call surface persists own in-call chat after session end',
-        () {
+    test('minimal call surface delegates generation-safe in-call chat', () {
       final source =
           _source('lib/custom_code/widgets/minimal_daily_widget.dart');
+      final controller =
+          _source('lib/custom_code/widgets/call_chat_controller.dart');
       final functionIndex = _source('firebase/custom_cloud_functions/index.js');
       final persistFunction =
           _source('firebase/custom_cloud_functions/persist_call_chat.js');
 
+      expect(source, contains("import 'call_chat_controller.dart';"));
+      expect(source,
+          contains('late final CallChatController _callChatController'));
+      expect(source, contains('sendText: _sendCallChatText'));
+      expect(source, contains('persistBatch: _persistCallChatBatch'));
+      expect(source, contains('endSession: _endCallChatSession'));
       expect(source, contains("httpsCallable('persistCallChat')"));
-      expect(source, contains('_ownSentChatMessages.add(message)'));
-      expect(source, contains('_endSessionAndPersistCallChat'));
-      expect(source, contains('ValueListenableBuilder<int>'));
-      expect(source, contains("ValueKey(showRemoteVideo"));
+      expect(source, contains("httpsCallable('endSession')"));
+      expect(source, contains('_callChatController.resetSession();'));
+      expect(source,
+          contains('_callChatController.endSessionAndPersist(endReason)'));
+      expect(source, isNot(contains('_ownSentChatMessages')));
+      expect(source, isNot(contains('_callChatSendBarrier')));
+      expect(controller,
+          contains('CallChatPersistenceCoordinator<CallChatMessage>'));
+      expect(controller, contains('_persistence.recordMessage();'));
+      expect(controller, contains('await Future.wait(waits);'));
+      expect(controller, contains('await _persistence.persist('));
+      expect(controller, contains('_persistence.reset();'));
+      expect(controller, contains('List<CallChatMessage>.unmodifiable'));
       expect(functionIndex, contains('exports.persistCallChat'));
       expect(persistFunction, contains('inCallSessionRef'));
       expect(persistFunction, contains('incall'));

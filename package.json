@@ -7,7 +7,8 @@
   },
   "scripts": {
     "backend:ci": "bash audit/scripts/run_backend_ci_checks.sh",
-    "backend:checks": "bash audit/scripts/run_backend_checks.sh"
+    "backend:checks": "bash audit/scripts/run_backend_checks.sh",
+    "firestore:rules:test": "bash audit/scripts/run_firestore_rules_tests.sh"
   },
   "devDependencies": {
     "firebase-tools": "15.14.0"

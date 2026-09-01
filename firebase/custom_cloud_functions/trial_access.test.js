@@ -5,6 +5,7 @@ const {
   buildTrialCallAccessDecision,
   isPaidPremium,
   isTrialSubscription,
+  markSessionTrialCallContextsConnectedInTransaction,
   reconcileTrialCallInTransaction,
   reserveTrialCallInTransaction,
 } = require("./trial_access");
@@ -150,4 +151,35 @@ test("expired reservation leases become a bounded technical retry", () => {
   assert.equal(result.reason, "retry_cooldown");
   assert.equal(writes.length, 1);
   assert.equal(writes[0][1].technicalRetryCount, 1);
+});
+
+test("connection evidence ignores stale call ids and preserves first marker", () => {
+  const transaction = fakeTransaction();
+  const firstMarker = timestamp(now - 1000);
+  const result = markSessionTrialCallContextsConnectedInTransaction({
+    transaction,
+    contexts: [
+      {
+        ref: {path: "users/a/trialAccess/current"},
+        trialCallId: "current-session",
+        snap: snap({
+          trialCallStatus: "inProgress",
+          trialCallId: "newer-session",
+        }),
+      },
+      {
+        ref: {path: "users/b/trialAccess/current"},
+        trialCallId: "current-session",
+        snap: snap({
+          trialCallStatus: "inProgress",
+          trialCallId: "current-session",
+          bothJoinedAt: firstMarker,
+        }),
+      },
+    ],
+    serverTimestamp: timestamp(now),
+  });
+
+  assert.deepEqual(result, {participantCount: 2, updated: 0});
+  assert.equal(transaction.writes.length, 0);
 });

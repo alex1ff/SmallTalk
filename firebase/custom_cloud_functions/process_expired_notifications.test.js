@@ -624,13 +624,17 @@ test("notification timeout backend either hands off or expires terminal pair", (
   );
 
   const terminalBranchIndex = source.indexOf("if (!nextTutor) {");
-  const terminalReleaseIndex = source.indexOf(
-    "await releaseSessionPairLocksInTransaction({",
+  const terminalPrepareIndex = source.indexOf(
+    "await prepareSessionPairLockReleaseInTransaction({",
     terminalBranchIndex,
+  );
+  const terminalApplyIndex = source.indexOf(
+    "applyPreparedSessionPairLockReleaseWrites({",
+    terminalPrepareIndex,
   );
   const terminalSessionUpdateIndex = source.indexOf(
     "transaction.update(sessionRef, {",
-    terminalReleaseIndex,
+    terminalApplyIndex,
   );
   const expiredStatusIndex = source.indexOf(
     "status: VIDEO_SESSION_STATUS.EXPIRED",
@@ -662,8 +666,9 @@ test("notification timeout backend either hands off or expires terminal pair", (
   );
 
   assert.ok(terminalBranchIndex > 0);
-  assert.ok(terminalReleaseIndex > terminalBranchIndex);
-  assert.ok(terminalSessionUpdateIndex > terminalReleaseIndex);
+  assert.ok(terminalPrepareIndex > terminalBranchIndex);
+  assert.ok(terminalApplyIndex > terminalPrepareIndex);
+  assert.ok(terminalSessionUpdateIndex > terminalApplyIndex);
   assert.ok(expiredStatusIndex > terminalSessionUpdateIndex);
   assert.ok(expireReasonIndex > expiredStatusIndex);
   assert.ok(handoffNotificationIndex > terminalSessionUpdateIndex);

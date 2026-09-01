@@ -24,6 +24,7 @@ const {
   releaseSessionPairLocksInTransaction,
   reserveDirectPairInTransaction,
   reserveMatchPair,
+  reserveMatchPairInTransaction,
   stopSessionSearchRequestsInTransaction,
   validateSearchRequestForPairLock,
 } = require("./match_pair_lock");
@@ -175,9 +176,7 @@ function createFakeFirestore(seed = {}, {
       for (let attempt = 1; attempt <= maxTransactionAttempts; attempt += 1) {
         let hasWrites = false;
         const pendingWrites = [];
-        const attemptWrites = [];
         const readVersions = new Map();
-        const writeLog = retryOnConcurrentModification ? attemptWrites : writes;
         const transaction = {
           async get(ref) {
             if (hasWrites) {
@@ -197,7 +196,6 @@ function createFakeFirestore(seed = {}, {
             ) {
               throw new Error(`Document already exists: ${ref.path}`);
             }
-            writeLog.push({type: "create", path: ref.path, data});
             pendingWrites.push({type: "create", path: ref.path, data});
           },
           update(ref, data) {
@@ -205,8 +203,11 @@ function createFakeFirestore(seed = {}, {
             if (!store.has(ref.path)) {
               throw new Error(`Document does not exist: ${ref.path}`);
             }
-            writeLog.push({type: "update", path: ref.path, data});
             pendingWrites.push({type: "update", path: ref.path, data});
+          },
+          set(ref, data, options = {}) {
+            hasWrites = true;
+            pendingWrites.push({type: "set", path: ref.path, data, options});
           },
         };
         const result = await callback(transaction);
@@ -220,13 +221,23 @@ function createFakeFirestore(seed = {}, {
           if (staleRead) {
             continue;
           }
-          writes.push(...attemptWrites);
+          writes.push(...pendingWrites);
         }
         for (const write of pendingWrites) {
           if (write.type === "create") {
             store.set(write.path, write.data);
+          } else if (write.type === "set") {
+            store.set(
+                write.path,
+                write.options?.merge ?
+                  {...(store.get(write.path) || {}), ...write.data} :
+                  write.data,
+            );
           } else {
             store.set(write.path, {...store.get(write.path), ...write.data});
+          }
+          if (!retryOnConcurrentModification) {
+            writes.push(write);
           }
           versions.set(write.path, (versions.get(write.path) || 0) + 1);
         }
@@ -670,6 +681,173 @@ test("reserveMatchPair atomically locks two student participants", async () => {
   assert.equal(responderRequest.matchedRole, "student");
   assert.equal(store.get("users/student-a").currentSessionId, "session-ab");
   assert.equal(store.get("users/student-b").currentSessionId, "session-ab");
+});
+
+test("trial pair lock leaves both participants unchanged when responder fails", async () => {
+  const trialExpiresAt = timestampFromMillis(
+    fixedNowMillis + 30 * 60 * 1000,
+  );
+  const requesterTrial = {
+    trialCallStatus: "eligible",
+    trialCallWindowExpiresAt: trialExpiresAt,
+    attemptCount: 0,
+    technicalRetryCount: 0,
+  };
+  const responderTrial = {
+    trialCallStatus: "inProgress",
+    trialCallId: "stale-session",
+    trialCallWindowExpiresAt: trialExpiresAt,
+    reservationLeaseExpiresAt: timestampFromMillis(fixedNowMillis - 1),
+    attemptCount: 1,
+    technicalRetryCount: 0,
+  };
+  const {db, store, writes} = createFakeFirestore({
+    "users/student-a": studentUser({
+      subscription: {
+        productId: "expatlio_trial_1_Month",
+        periodType: "TRIAL",
+        expiresAt: trialExpiresAt,
+      },
+    }),
+    "users/student-b": studentUser({
+      subscription: {
+        productId: "expatlio_trial_1_Month",
+        periodType: "TRIAL",
+        expiresAt: trialExpiresAt,
+      },
+    }),
+    "searchRequests/student-a": activeSearchRequest("student-a"),
+    "searchRequests/student-b": activeSearchRequest("student-b"),
+    "users/student-a/trialAccess/current": requesterTrial,
+    "users/student-b/trialAccess/current": responderTrial,
+  });
+
+  const result = await db.runTransaction((transaction) =>
+    reserveMatchPairInTransaction({
+      db,
+      transaction,
+      requesterId: "student-a",
+      responderId: "student-b",
+      responderRole: "student",
+      requesterSearchRequestId: "request-student-a",
+      responderSearchRequestId: "request-student-b",
+      sessionRef: db.collection("videoSessions").doc("session-trial-partial"),
+      sessionData: {language: "en"},
+      nowMillis: fixedNowMillis,
+      serverTimestamp,
+      lockExpiresAt: timestampFromMillis(fixedNowMillis + 45_000),
+      finalizationExpiresAt: timestampFromMillis(
+          fixedNowMillis + 90_000,
+      ),
+    }));
+
+  assert.deepEqual(result, {
+    locked: false,
+    reason: "responder_retry_cooldown",
+  });
+  assert.deepEqual(writes, []);
+  assert.equal(store.get("videoSessions/session-trial-partial"), undefined);
+  assert.deepEqual(
+      store.get("users/student-a/trialAccess/current"),
+      requesterTrial,
+  );
+  assert.deepEqual(
+      store.get("users/student-b/trialAccess/current"),
+      responderTrial,
+  );
+});
+
+test("trial pair lock can read and reserve the next candidate", async () => {
+  const trialExpiresAt = timestampFromMillis(
+    fixedNowMillis + 30 * 60 * 1000,
+  );
+  const requesterTrial = {
+    trialCallStatus: "eligible",
+    trialCallWindowExpiresAt: trialExpiresAt,
+    attemptCount: 0,
+    technicalRetryCount: 0,
+  };
+  const staleResponderTrial = {
+    trialCallStatus: "inProgress",
+    trialCallId: "stale-session",
+    trialCallWindowExpiresAt: trialExpiresAt,
+    reservationLeaseExpiresAt: timestampFromMillis(fixedNowMillis - 1),
+    attemptCount: 1,
+    technicalRetryCount: 0,
+  };
+  const eligibleResponderTrial = {
+    trialCallStatus: "eligible",
+    trialCallWindowExpiresAt: trialExpiresAt,
+    attemptCount: 0,
+    technicalRetryCount: 0,
+  };
+  const trialSubscription = {
+    productId: "expatlio_trial_1_Month",
+    periodType: "TRIAL",
+    expiresAt: trialExpiresAt,
+  };
+  const {db, store} = createFakeFirestore({
+    "users/student-a": studentUser({subscription: trialSubscription}),
+    "users/student-b": studentUser({subscription: trialSubscription}),
+    "users/student-c": studentUser({subscription: trialSubscription}),
+    "searchRequests/student-a": activeSearchRequest("student-a"),
+    "searchRequests/student-b": activeSearchRequest("student-b"),
+    "searchRequests/student-c": activeSearchRequest("student-c"),
+    "users/student-a/trialAccess/current": requesterTrial,
+    "users/student-b/trialAccess/current": staleResponderTrial,
+    "users/student-c/trialAccess/current": eligibleResponderTrial,
+  });
+  const sessionRef = db.collection("videoSessions")
+      .doc("session-trial-next-candidate");
+
+  const results = await db.runTransaction(async (transaction) => {
+    const rejected = await reserveMatchPairInTransaction({
+      db,
+      transaction,
+      requesterId: "student-a",
+      responderId: "student-b",
+      responderRole: "student",
+      requesterSearchRequestId: "request-student-a",
+      responderSearchRequestId: "request-student-b",
+      sessionRef,
+      sessionData: {language: "en"},
+      nowMillis: fixedNowMillis,
+      serverTimestamp,
+      lockExpiresAt: timestampFromMillis(fixedNowMillis + 45_000),
+      finalizationExpiresAt: timestampFromMillis(fixedNowMillis + 90_000),
+    });
+    const accepted = await reserveMatchPairInTransaction({
+      db,
+      transaction,
+      requesterId: "student-a",
+      responderId: "student-c",
+      responderRole: "student",
+      requesterSearchRequestId: "request-student-a",
+      responderSearchRequestId: "request-student-c",
+      sessionRef,
+      sessionData: {language: "en"},
+      nowMillis: fixedNowMillis,
+      serverTimestamp,
+      lockExpiresAt: timestampFromMillis(fixedNowMillis + 45_000),
+      finalizationExpiresAt: timestampFromMillis(fixedNowMillis + 90_000),
+    });
+    return {rejected, accepted};
+  });
+
+  assert.deepEqual(results.rejected, {
+    locked: false,
+    reason: "responder_retry_cooldown",
+  });
+  assert.equal(results.accepted.locked, true);
+  assert.deepEqual(
+      store.get("users/student-b/trialAccess/current"),
+      staleResponderTrial,
+  );
+  assert.equal(
+      store.get("videoSessions/session-trial-next-candidate")
+          .currentResponderId,
+      "student-c",
+  );
 });
 
 test("fresh v2 foreground students auto-accept in pair lock", async () => {

@@ -115,6 +115,29 @@ bool shouldUseSessionLimitCountdown({
   return expiresAt != null && sessionPolicy != null && sessionPolicy.isNotEmpty;
 }
 
+bool shouldRunCallDurationTimer({
+  required String? sessionStatus,
+  required bool isDailyConnected,
+  required bool hasRemoteParticipant,
+  required bool hasServerConnectedAt,
+}) {
+  return (sessionStatus ?? '').trim().toLowerCase() == 'active' &&
+      isDailyConnected &&
+      hasRemoteParticipant &&
+      hasServerConnectedAt;
+}
+
+int resolveAuthoritativeCallDurationSeconds({
+  required DateTime? serverConnectedAt,
+  required DateTime serverAlignedNow,
+}) {
+  if (serverConnectedAt == null) {
+    return 0;
+  }
+  final elapsed = serverAlignedNow.difference(serverConnectedAt).inSeconds;
+  return elapsed < 0 ? 0 : elapsed;
+}
+
 bool shouldUseProvisionalSessionLimitCountdown({
   required bool hasJoinCredentials,
   required bool hasAuthoritativeCountdown,

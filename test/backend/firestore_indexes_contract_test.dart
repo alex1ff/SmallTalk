@@ -4,7 +4,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('events list query index is present', () {
+  test('event list query indexes are present for private and public sources',
+      () {
     final config = jsonDecode(
       File('firebase/firestore.indexes.json').readAsStringSync(),
     ) as Map<String, dynamic>;
@@ -16,19 +17,21 @@ void main() {
       {'fieldPath': 'startsAt', 'order': 'ASCENDING'},
     ];
 
-    final matchingIndexes = indexes.where((index) {
-      final data = index as Map<String, dynamic>;
-      return data['collectionGroup'] == 'events' &&
-          data['queryScope'] == 'COLLECTION' &&
-          _fieldsEqual(data['fields'] as List<dynamic>, expectedFields);
-    }).toList(growable: false);
+    for (final collection in ['events', 'events_public']) {
+      final matchingIndexes = indexes.where((index) {
+        final data = index as Map<String, dynamic>;
+        return data['collectionGroup'] == collection &&
+            data['queryScope'] == 'COLLECTION' &&
+            _fieldsEqual(data['fields'] as List<dynamic>, expectedFields);
+      }).toList(growable: false);
 
-    expect(
-      matchingIndexes,
-      hasLength(1),
-      reason: 'events list queries require status/country/city/startsAt ASC '
-          'in this exact order.',
-    );
+      expect(
+        matchingIndexes,
+        hasLength(1),
+        reason: '$collection list queries require '
+            'status/country/city/startsAt ASC in this exact order.',
+      );
+    }
   });
 }
 

@@ -22,6 +22,9 @@ import 'services/voip_service.dart';
 import 'services/match_coordinator.dart';
 import 'services/firebase_app_check_service.dart';
 import 'services/user_presence_service.dart';
+import 'services/error_reporting/app_error_boundary.dart';
+import 'services/error_reporting/error_reporter.dart';
+import 'services/error_reporting/platform_error_sink.dart';
 import 'custom_code/actions/check_active_session_and_navigate.dart' as actions;
 import 'shared_pages/video_call_page/video_call_page_widget.dart';
 
@@ -31,7 +34,16 @@ import 'services/subscription_service.dart';
 // 🔔 Background VoIP handler
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await initFirebase();
+  WidgetsFlutterBinding.ensureInitialized();
+  AppErrorBoundary.install(ErrorReporting.reporter);
+  try {
+    await initFirebase();
+  } catch (error, stackTrace) {
+    _reportFirebaseInitializationFailure(error, stackTrace);
+    return;
+  }
+  ErrorReporting.attachSink(
+      createPlatformErrorReportSink(AppEnvironment.current));
 
   debugPrint('🔔 Background message received: ${message.messageId}');
   debugPrint(
@@ -70,27 +82,62 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   }
 }
 
+void _reportFirebaseInitializationFailure(
+  Object error,
+  StackTrace stackTrace,
+) {
+  ErrorReporting.reporter.captureFatal(
+    feature: ErrorFeature.bootstrap,
+    code: AppErrorCode.firebaseInitializeFailed,
+    error: error,
+    stackTrace: stackTrace,
+  );
+  debugPrint('❌ Firebase initialization failed: $error');
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  AppErrorBoundary.install(ErrorReporting.reporter);
   GoRouter.optionURLReflectsImperativeAPIs = true;
   usePathUrlStrategy();
 
-  // 🔔 Register background handler
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  // 🔔 Register background handler before Firebase initialization so an
+  // incoming message cannot race the bootstrap sequence. The plugin may
+  // reject registration when Firebase is unavailable; the fallback app must
+  // still be able to start in that case.
+  try {
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    debugPrint('🔔 VoIP background handler registered');
+  } catch (error) {
+    debugPrint('⚠️ VoIP background handler registration skipped: $error');
+  }
   unawaited(VoIPService().startEarlyCallKitEventHandling());
-  debugPrint('🔔 VoIP background handler registered');
 
-  await initFirebase();
-  await initializeFirebaseAppCheck();
+  var firebaseReady = true;
+  try {
+    await initFirebase();
+  } catch (error, stackTrace) {
+    firebaseReady = false;
+    _reportFirebaseInitializationFailure(error, stackTrace);
+  }
+  if (firebaseReady) {
+    ErrorReporting.attachSink(
+        createPlatformErrorReportSink(AppEnvironment.current));
+    await initializeFirebaseAppCheck();
+  } else {
+    debugPrint('⚠️ Firebase unavailable; showing bootstrap fallback.');
+  }
 
   // 💳 Configure RevenueCat as soon as Firebase is up. Safe to ignore
   // failure: the service degrades gracefully and the auth stream
   // (firebase_user_provider.dart) will retry logInUser on next signal.
-  unawaited(SubscriptionService.instance
-      .configure(initialAppUserId: FirebaseAuth.instance.currentUser?.uid)
-      .catchError((Object e) {
-    debugPrint('⚠️ main: SubscriptionService.configure failed: $e');
-  }));
+  if (firebaseReady) {
+    unawaited(SubscriptionService.instance
+        .configure(initialAppUserId: FirebaseAuth.instance.currentUser?.uid)
+        .catchError((Object e) {
+      debugPrint('⚠️ main: SubscriptionService.configure failed: $e');
+    }));
+  }
 
   final appState = FFAppState();
   await Future.wait([
@@ -101,8 +148,36 @@ void main() async {
 
   runApp(ChangeNotifierProvider(
     create: (context) => appState,
-    child: MyApp(),
+    child: firebaseReady ? MyApp() : const _FirebaseUnavailableApp(),
   ));
+}
+
+class _FirebaseUnavailableApp extends StatelessWidget {
+  const _FirebaseUnavailableApp();
+
+  @override
+  Widget build(BuildContext context) {
+    final isRussian =
+        WidgetsBinding.instance.platformDispatcher.locale.languageCode == 'ru';
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'Expatlio',
+      home: Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              isRussian
+                  ? 'Сервис временно недоступен. Попробуйте открыть приложение позже.'
+                  : 'The service is temporarily unavailable. Please try opening the app later.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 18),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class MyApp extends StatefulWidget {
@@ -164,7 +239,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         await VoIPService().setCallActionHandlingReady(true);
       }
       debugPrint('✅ VoIP Service initialized successfully');
-    } catch (e) {
+    } catch (e, st) {
+      ErrorReporting.reporter.captureNonFatal(
+        feature: ErrorFeature.voip,
+        code: AppErrorCode.voipInitializeFailed,
+        error: e,
+        stackTrace: st,
+        sessionId: _authServiceUserId,
+      );
       debugPrint('❌ VoIP Service initialization failed: $e');
     }
   }
@@ -188,7 +270,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       if (mounted) {
         safeSetState(() {});
       }
-    } catch (e) {
+    } catch (e, st) {
+      ErrorReporting.reporter.captureNonFatal(
+        feature: ErrorFeature.auth,
+        code: AppErrorCode.authRefreshFailed,
+        error: e,
+        stackTrace: st,
+      );
       debugPrint('⚠️ Failed to refresh Firebase Auth user on resume: $e');
     }
   }

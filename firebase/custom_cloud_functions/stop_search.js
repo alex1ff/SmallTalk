@@ -207,11 +207,6 @@ function timestampToMillis(value) {
   return Number.isFinite(millis) ? millis : null;
 }
 
-function timestampToIsoString(value) {
-  const millis = timestampToMillis(value);
-  return millis === null ? null : new Date(millis).toISOString();
-}
-
 function buildStopSearchDecision({
   requestExists,
   requestData = {},

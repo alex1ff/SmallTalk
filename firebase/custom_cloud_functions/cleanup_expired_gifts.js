@@ -26,7 +26,7 @@ exports.cleanupExpiredGifts = functions
       const now = admin.firestore.Timestamp.now();
 
       let cleaned = 0;
-      let scanned = 0;
+      let scanned;
 
       try {
         // Firestore composite query: any user whose gift bucket has

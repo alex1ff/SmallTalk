@@ -8,7 +8,6 @@ const {
   MATCH_DECISION,
   MATCH_DELIVERY,
   MATCH_PROTOCOL_VERSION,
-  MATCH_STAGE,
   MATCH_SURFACE,
   claimCallKitDispatch,
   finalizeCallKitDelivery,

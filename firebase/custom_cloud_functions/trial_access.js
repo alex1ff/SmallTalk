@@ -177,14 +177,12 @@ function buildTrialCallAccessDecision({
   };
 }
 
-function reserveTrialCallInTransaction({
-  transaction,
-  trialRef,
-  trialSnap,
+function buildTrialCallReservationPlan({
+  trialData = {},
   requestId,
   nowMillis = Date.now(),
 } = {}) {
-  const data = trialSnap && trialSnap.exists ? trialSnap.data() || {} : {};
+  const data = trialData && typeof trialData === "object" ? trialData : {};
   const status = normalizeTrialStatus(data.trialCallStatus);
   const deadline = timestampToMillis(data.trialCallWindowExpiresAt);
   const retryNotBeforeAt = timestampToMillis(data.retryNotBeforeAt);
@@ -200,29 +198,32 @@ function reserveTrialCallInTransaction({
     technicalRetryCount += 1;
     if (deadline == null || deadline <= nowMillis ||
         technicalRetryCount > TRIAL_MAX_TECHNICAL_RETRIES) {
-      transaction.set(trialRef, {
-        trialCallStatus: "expired",
-        terminationReason: "technical_failure",
-        lastEndedAt: admin.firestore.Timestamp.fromMillis(nowMillis),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      }, {merge: true});
-      return {allowed: false, reason: "trial_call_consumed"};
+      return {
+        allowed: false,
+        reason: "trial_call_consumed",
+        writeData: {
+          trialCallStatus: "expired",
+          terminationReason: "technical_failure",
+          lastEndedAt: admin.firestore.Timestamp.fromMillis(nowMillis),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+      };
     }
-    transaction.set(trialRef, {
-      trialCallStatus: "eligible",
-      technicalRetryCount,
-      trialCallId: null,
-      reservationLeaseExpiresAt: null,
-      retryNotBeforeAt: admin.firestore.Timestamp.fromMillis(
-          nowMillis + TRIAL_RETRY_COOLDOWN_MS,
-      ),
-      terminationReason: "technical_failure",
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    }, {merge: true});
     return {
       allowed: false,
       reason: "retry_cooldown",
       retryAfterMillis: nowMillis + TRIAL_RETRY_COOLDOWN_MS,
+      writeData: {
+        trialCallStatus: "eligible",
+        technicalRetryCount,
+        trialCallId: null,
+        reservationLeaseExpiresAt: null,
+        retryNotBeforeAt: admin.firestore.Timestamp.fromMillis(
+            nowMillis + TRIAL_RETRY_COOLDOWN_MS,
+        ),
+        terminationReason: "technical_failure",
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
     };
   }
   if (status !== "eligible" || deadline == null || deadline <= nowMillis) {
@@ -241,27 +242,65 @@ function reserveTrialCallInTransaction({
   }
   if (attemptCount >= TRIAL_MAX_ATTEMPTS ||
       technicalRetryCount > TRIAL_MAX_TECHNICAL_RETRIES) {
-    transaction.set(trialRef, {
-      trialCallStatus: "expired",
-      terminationReason: "expired",
-      lastEndedAt: admin.firestore.Timestamp.fromMillis(nowMillis),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    }, {merge: true});
-    return {allowed: false, reason: "trial_call_consumed"};
+    return {
+      allowed: false,
+      reason: "trial_call_consumed",
+      writeData: {
+        trialCallStatus: "expired",
+        terminationReason: "expired",
+        lastEndedAt: admin.firestore.Timestamp.fromMillis(nowMillis),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+    };
   }
 
   const trialCallId = normalizeString(requestId) || `trial_${crypto.randomUUID()}`;
-  transaction.set(trialRef, {
-    trialCallStatus: "inProgress",
+  return {
+    allowed: true,
     trialCallId,
-    attemptCount: attemptCount + 1,
-    reservationLeaseExpiresAt: admin.firestore.Timestamp.fromMillis(
-        nowMillis + TRIAL_RESERVATION_LEASE_MS),
-    lastLifecycleAt: admin.firestore.Timestamp.fromMillis(nowMillis),
-    retryNotBeforeAt: null,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-  }, {merge: true});
-  return {allowed: true, trialCallId};
+    writeData: {
+      trialCallStatus: "inProgress",
+      trialCallId,
+      attemptCount: attemptCount + 1,
+      reservationLeaseExpiresAt: admin.firestore.Timestamp.fromMillis(
+          nowMillis + TRIAL_RESERVATION_LEASE_MS),
+      lastLifecycleAt: admin.firestore.Timestamp.fromMillis(nowMillis),
+      retryNotBeforeAt: null,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+  };
+}
+
+function applyTrialCallReservationPlanInTransaction({
+  transaction,
+  trialRef,
+  plan = {},
+} = {}) {
+  const {writeData, ...result} = plan;
+  if (writeData) {
+    transaction.set(trialRef, writeData, {merge: true});
+  }
+  return result;
+}
+
+function reserveTrialCallInTransaction({
+  transaction,
+  trialRef,
+  trialSnap,
+  requestId,
+  nowMillis = Date.now(),
+} = {}) {
+  const trialData = trialSnap && trialSnap.exists ? trialSnap.data() || {} : {};
+  const plan = buildTrialCallReservationPlan({
+    trialData,
+    requestId,
+    nowMillis,
+  });
+  return applyTrialCallReservationPlanInTransaction({
+    transaction,
+    trialRef,
+    plan,
+  });
 }
 
 function reconcileTrialCallInTransaction({
@@ -365,6 +404,49 @@ async function reconcileSessionTrialCallsInTransaction({
   }));
 }
 
+async function readSessionTrialCallContextsInTransaction({
+  db,
+  transaction,
+  sessionId,
+  sessionData = {},
+} = {}) {
+  const entries = Object.entries(sessionTrialCallIds(sessionData, sessionId));
+  return Promise.all(entries.map(async ([uid, trialCallId]) => {
+    const ref = trialAccessRef(db, uid);
+    return {ref, trialCallId, snap: await transaction.get(ref)};
+  }));
+}
+
+/**
+ * Records trusted two-party connection evidence for every trial participant.
+ * Callers must read contexts before queuing any other transaction writes.
+ */
+function markSessionTrialCallContextsConnectedInTransaction({
+  transaction,
+  contexts = [],
+  serverTimestamp = admin.firestore.FieldValue.serverTimestamp(),
+} = {}) {
+  let updated = 0;
+  for (const context of contexts) {
+    const data = context.snap?.exists ? context.snap.data() || {} : {};
+    if (normalizeString(data.trialCallId) !==
+          normalizeString(context.trialCallId) ||
+        data.bothJoinedAt != null) {
+      continue;
+    }
+    transaction.set(context.ref, {
+      bothJoinedAt: serverTimestamp,
+      lastLifecycleAt: serverTimestamp,
+      updatedAt: serverTimestamp,
+    }, {merge: true});
+    updated += 1;
+  }
+  return {
+    participantCount: contexts.length,
+    updated,
+  };
+}
+
 module.exports = {
   PAID_PERIOD_TYPES,
   PREMIUM_PRODUCT_IDS,
@@ -377,6 +459,8 @@ module.exports = {
   TRIAL_RETRY_COOLDOWN_MS,
   TRIAL_WINDOW_MS,
   buildTrialCallAccessDecision,
+  buildTrialCallReservationPlan,
+  applyTrialCallReservationPlanInTransaction,
   hasActiveSubscription,
   isPaidPremium,
   isTrialSubscription,
@@ -384,6 +468,8 @@ module.exports = {
   reserveTrialCallInTransaction,
   reconcileTrialCallInTransaction,
   reconcileSessionTrialCallsInTransaction,
+  readSessionTrialCallContextsInTransaction,
+  markSessionTrialCallContextsConnectedInTransaction,
   sessionTrialCallIds,
   subscriptionProductId,
   subscriptionPeriodType,

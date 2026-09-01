@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 const assert = require('node:assert/strict');
 const { createRequire } = require('module');
 
@@ -948,6 +949,32 @@ async function runRulesChecks() {
 
   result.pass = result.failures.length === 0;
   return result;
+}
+
+function runCallLifecycleEmulatorCheck() {
+  const testPath = path.join(
+    repoRoot,
+    'firebase',
+    'custom_cloud_functions',
+    'call_lifecycle_emulator.test.js',
+  );
+  const child = spawnSync(
+    process.execPath,
+    ['--test', testPath],
+    {
+      cwd: repoRoot,
+      env: process.env,
+      encoding: 'utf8',
+      maxBuffer: 8 * 1024 * 1024,
+    },
+  );
+  const output = `${child.stdout || ''}${child.stderr || ''}`.trim();
+  return {
+    pass: child.status === 0,
+    exitCode: child.status,
+    signal: child.signal,
+    output: output.slice(-12000),
+  };
 }
 
 async function runConcurrentEndSessionCheck() {
@@ -3118,6 +3145,7 @@ async function main() {
   output.checks.userMatchProfileSync =
     await runUserMatchProfileSyncCheck();
   output.checks.createVideoSessionLoad = await runCreateVideoSessionLoadTest();
+  output.checks.callLifecycleEmulator = runCallLifecycleEmulatorCheck();
 
   output.finishedAt = new Date().toISOString();
 
@@ -3134,7 +3162,8 @@ async function main() {
     output.checks.teacherBoostRanking.pass &&
     output.checks.teacherVerificationRequestFlow.pass &&
     output.checks.userMatchProfileSync.pass &&
-    output.checks.createVideoSessionLoad.pass;
+    output.checks.createVideoSessionLoad.pass &&
+    output.checks.callLifecycleEmulator.pass;
   const triggerDeliveryPass =
     output.checks.unlockProcessorIntegration.deliveryPass &&
     output.checks.teacherVerificationRequestFlow.deliveryPass &&
@@ -3156,6 +3185,7 @@ async function main() {
     userMatchProfileDeliveryPass:
       output.checks.userMatchProfileSync.deliveryPass,
     loadPass: output.checks.createVideoSessionLoad.pass,
+    callLifecycleEmulatorPass: output.checks.callLifecycleEmulator.pass,
     unlockProcessorDeliveryPass:
       output.checks.unlockProcessorIntegration.deliveryPass,
     triggerDeliveryPass,

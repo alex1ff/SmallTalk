@@ -82,9 +82,9 @@ async function authorizedJson(url, {method = "GET", body} = {}) {
       lastError = error;
     }
     if (attempt + 1 < API_ATTEMPTS) {
-      await new Promise((resolve) =>
-        setTimeout(resolve, 1000 * (attempt + 1)),
-      );
+      await new Promise((resolve) => {
+        setTimeout(resolve, 1000 * (attempt + 1));
+      });
     }
   }
   throw lastError || new Error("Google API request failed");
@@ -141,7 +141,9 @@ async function publishRepairRun(projectId, region) {
 async function waitForRepairRun(projectId, previousUpdatedAt) {
   const deadline = Date.now() + RUN_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+    await new Promise((resolve) => {
+      setTimeout(resolve, POLL_INTERVAL_MS);
+    });
     const state = await readRepairState(projectId);
     if (updatedAtValue(state) && updatedAtValue(state) !== previousUpdatedAt) {
       return state;

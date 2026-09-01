@@ -21,16 +21,38 @@ function readSource(relativePath) {
   return fs.readFileSync(path.join(__dirname, "..", "..", relativePath), "utf8");
 }
 
+function readVoipTokenRegistrySource() {
+  return readSource("lib/services/voip_token_registry.dart");
+}
+
 function readFunctionSource(fileName) {
   return fs.readFileSync(path.join(__dirname, fileName), "utf8");
 }
 
 test("VoIP token registration uses server-owned callable storage", () => {
   const source = readSource("lib/services/voip_service.dart");
+  const registrySource = readVoipTokenRegistrySource();
 
   assert.match(source, /httpsCallable\('registerVoipToken'\)/);
-  assert.match(source, /'clearAll': true/);
-  assert.doesNotMatch(source, /substring\(0,\s*20\)/);
+  assert.match(source, /_tokenRegistry\.saveFcmToken/);
+  assert.match(source, /_tokenRegistry\.syncPushKitToken/);
+  assert.match(source, /invokeRegistration:\s*_invokeVoipTokenRegistration/);
+  assert.match(registrySource, /'clearAll': true/);
+  for (const sourceText of [source, registrySource]) {
+    // Client code must not mention the persisted token field names at all.
+    // This catches writes assembled before the Firestore call (reverse-order
+    // maps) that a call-chain regex cannot reliably identify.
+    assert.doesNotMatch(sourceText, /\bvoip(?:Push)?Token\b/);
+    assert.doesNotMatch(
+      sourceText,
+      /collection\(\s*['"]users['"]\s*\)[\s\S]{0,300}(?:voipToken|voipPushToken)/,
+    );
+    assert.doesNotMatch(
+      sourceText,
+      /FirebaseFirestore(?:\.instance)?[\s\S]{0,300}(?:voipToken|voipPushToken)/,
+    );
+    assert.doesNotMatch(sourceText, /substring\(0,\s*20\)/);
+  }
   assert.doesNotMatch(
     source,
     /collection\('users'\)\.doc\(user\.uid\)\.update\(\{\s*'voipToken'/s,

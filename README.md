@@ -8,7 +8,7 @@ Flutter/Firebase platform for live language practice. The app matches compatible
 - callable Cloud Functions and Firestore/Storage rules for privileged state transitions;
 - server-owned matchmaking, call lifecycle, entitlement, and moderation decisions;
 - Daily-based video sessions, VoIP notifications, translation, and post-call feedback;
-- 1,972 Flutter tests plus 215 focused backend event-contract tests.
+- 1,972 Flutter tests plus focused backend lifecycle/event-contract tests.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for component ownership, trust boundaries, and the main call lifecycle.
 
@@ -38,12 +38,36 @@ flutter test
 The backend checks use repository-pinned dependencies:
 
 ```bash
-npm ci --prefix firebase/functions
+npm ci --ignore-scripts
 npm ci --prefix firebase/custom_cloud_functions
 npm run backend:ci
 ```
 
-`backend:ci` validates every backend JavaScript file and runs the focused event contract suite without production access. The broader `npm run backend:checks` emulator harness remains available for environment and security-rule audits; it writes detailed evidence under `audit/` and is intentionally separate from the deterministic release gate.
+`firebase/custom_cloud_functions` is the only maintained and configured
+Functions codebase. `backend:ci` validates every backend JavaScript file and
+runs the focused event/lifecycle contract suite without production access. The
+broader `npm run backend:checks` emulator harness remains available for
+environment, security-rule, and call/trial lifecycle transaction audits; it
+writes detailed evidence under `audit/` and is intentionally separate from the
+deterministic release gate.
+
+To verify the production source inventory without deploying anything, use an
+account with read access to the Firebase project:
+
+```bash
+npm --prefix firebase/custom_cloud_functions run inventory:backend-source
+```
+
+The command fails if a deployed function belongs to a codebase other than
+`custom_cloud_functions`.
+
+To update the sanitized, versioned production snapshot (IDs, regions,
+runtimes, hashes, service accounts and triggers; no environment values or
+logs), run:
+
+```bash
+npm --prefix firebase/custom_cloud_functions run inventory:backend-source:snapshot
+```
 
 ## Project structure
 
@@ -80,4 +104,4 @@ Run the complete release check from a clean checkout:
 ./scripts/local_ci.sh
 ```
 
-It installs locked Flutter and Node dependencies, audits runtime packages for high-severity advisories, runs static analysis, the complete Flutter suite, backend syntax validation, and 215 event-contract tests. The command must pass before `main` is considered releasable.
+It installs locked Flutter and Node dependencies, audits runtime packages for high-severity advisories, runs static analysis, the complete Flutter suite, backend syntax validation, and the deterministic event/lifecycle contract tests. The command must pass before `main` is considered releasable.

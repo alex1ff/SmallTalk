@@ -15,7 +15,6 @@ function buildStudentCallAccessDecision({
   userRole,
   userData = {},
   trialData = null,
-  usageData = null,
   nowMillis = Date.now(),
 }) {
   if (userRole !== "student") {

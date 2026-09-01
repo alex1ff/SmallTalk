@@ -85,14 +85,19 @@ test("direct call response does not expose common search status", () => {
 });
 
 test("common search endpoint rejects direct call targets", () => {
-  const source = readFunctionSource("start_search.js");
+  const entryPolicySource = readFunctionSource("start_search_entry_policy.js");
+  const endpointSource = readFunctionSource("start_search.js");
 
-  assert.match(source, /function hasDirectCallTarget\(payload = \{\}\)/);
-  assert.match(source, /payload\.directTutorId/);
-  assert.match(source, /payload\.directUserId/);
-  assert.match(source, /payload\.targetUserId/);
-  assert.match(source, /payload\.targetTutorId/);
-  assert.match(source, /payload\.teacherId/);
-  assert.match(source, /payload\.tutorId/);
-  assert.match(source, /direct_call_not_supported/);
+  assert.match(
+    endpointSource,
+    /normalizeStartSearchInput,\n\s+throwAccessDecision,\n} = require\("\.\/start_search_entry_policy"\)/,
+  );
+  assert.match(entryPolicySource, /function hasDirectCallTarget\(payload = \{\}\)/);
+  assert.match(entryPolicySource, /payload\.directTutorId/);
+  assert.match(entryPolicySource, /payload\.directUserId/);
+  assert.match(entryPolicySource, /payload\.targetUserId/);
+  assert.match(entryPolicySource, /payload\.targetTutorId/);
+  assert.match(entryPolicySource, /payload\.teacherId/);
+  assert.match(entryPolicySource, /payload\.tutorId/);
+  assert.match(entryPolicySource, /direct_call_not_supported/);
 });

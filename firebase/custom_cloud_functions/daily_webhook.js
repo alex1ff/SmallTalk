@@ -20,6 +20,10 @@ const {
   stopSessionSearchRequestsInTransaction,
 } = require("./match_pair_lock");
 const {
+  markSessionTrialCallContextsConnectedInTransaction,
+  readSessionTrialCallContextsInTransaction,
+} = require("./trial_access");
+const {
   buildRoomJoinParticipantMetadata,
 } = require("./room_join_signals");
 
@@ -467,6 +471,13 @@ async function applyDailyWebhookSessionUpdateWritesInTransaction({
 }) {
   const shouldStopSearchRequests =
     decision.update?.status === VIDEO_SESSION_STATUS.ACTIVE;
+  const trialContexts = decision.connectedMarked === true ?
+    await readSessionTrialCallContextsInTransaction({
+      db,
+      transaction,
+      sessionId,
+      sessionData,
+    }) : [];
   if (shouldStopSearchRequests) {
     await stopSearchRequests({
       db,
@@ -480,6 +491,12 @@ async function applyDailyWebhookSessionUpdateWritesInTransaction({
   }
 
   transaction.update(sessionRef, decision.update);
+  if (trialContexts.length > 0) {
+    markSessionTrialCallContextsConnectedInTransaction({
+      transaction,
+      contexts: trialContexts,
+    });
+  }
 
   return {
     stoppedSearchRequests: shouldStopSearchRequests,

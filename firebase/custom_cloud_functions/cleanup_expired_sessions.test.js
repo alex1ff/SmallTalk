@@ -1200,11 +1200,11 @@ test("cleanupExpiredSessions runs every minute as an expiry backstop", () => {
   assert.match(source, /getSessionCleanupDeadlineMillis\(freshData\)/);
   assert.match(
     source,
-    /releaseSessionPairLocksInTransaction\(\{[\s\S]*buildExpiredSessionReleaseOptions\(\{/,
+    /prepareSessionPairLockReleaseInTransaction\(\{[\s\S]*buildExpiredSessionReleaseOptions\(\{[\s\S]*reconcileSessionTrialCallsInTransaction\(\{[\s\S]*applyPreparedSessionPairLockReleaseWrites\(\{/,
   );
   assert.match(
     source,
-    /releaseSessionPairLocksInTransaction\(\{[\s\S]*buildPendingResponseTimeoutReleaseOptions\(\{/,
+    /prepareSessionPairLockReleaseInTransaction\(\{[\s\S]*buildPendingResponseTimeoutReleaseOptions\(\{[\s\S]*reconcileSessionTrialCallsInTransaction\(\{[\s\S]*applyPreparedSessionPairLockReleaseWrites\(\{/,
   );
   assert.match(source, /dailyRoomName:\s*resolveDailyRoomName\(freshData\)/);
   assert.match(source, /await deleteDailyRoomForSession\(\{/);

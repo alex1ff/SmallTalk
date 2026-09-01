@@ -735,6 +735,9 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                       );
                     },
                     sessionStatus: sessionStatus,
+                    sessionConnectedAt: _connectedCallStartedAt(
+                      videoCallPageVideoSessionsRecord,
+                    ),
                     isStudent: isStudent,
                     deepgramCredential: _nonEmpty(_deepgramAccessToken),
                     deepgramLanguage: resolvedLanguage,

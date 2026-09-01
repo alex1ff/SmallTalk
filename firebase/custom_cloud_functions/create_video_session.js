@@ -1073,7 +1073,7 @@ exports.createVideoSession = functions
         let selectedTriedTutors = [];
         let finalSessionData = null;
         let nextTriedTutors = [];
-        let lockResult = null;
+        let lockResult;
         const skippedLockCandidateIds = [];
         while (true) {
           const nextCandidate = await findNextCallableCandidateInTransaction({
@@ -1088,7 +1088,6 @@ exports.createVideoSession = functions
               locked: false,
               reason: "no_callable_candidates",
             };
-            nextTriedTutors = nextCandidate.triedCandidateIds;
             break;
           }
 
@@ -1331,6 +1330,9 @@ exports.__private__ = {
   orderCandidatesByMatchQuality,
 };
 
+// Retained as a tested recovery contract until the legacy tutor handoff is
+// migrated to the active matchmaking owner.
+// eslint-disable-next-line no-unused-vars
 async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) {
   try {
     const db = admin.firestore();
@@ -1471,7 +1473,6 @@ async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) 
 
     console.log("✅ Firestore notification created for tutor:", nextTutor);
 
-    // 🔔 Отправляем VoIP push преподавателю
     console.log("📲 Sending VoIP push to tutor...");
     try {
       await sendVoipPushToTutor(nextTutor, {

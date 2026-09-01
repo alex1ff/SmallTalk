@@ -642,7 +642,6 @@ async function applyTransferEvent({db, parsed, transactionRef}) {
       return {duplicate: false, destinationId};
     }
     const sourceRef = sourceRefs[sourceIndex];
-    const sourceId = sourceIds[sourceIndex];
     const sourceData = sourceSnaps[sourceIndex].data() || {};
     const sourceSubscription = sourceData.subscription || {};
     const applySourceEvent = shouldApplySubscriptionEvent(

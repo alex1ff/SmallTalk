@@ -1162,6 +1162,72 @@ void main() {
       expect(acceptCallInvoked, isFalse);
     });
 
+    test('later queued accept expiry is rechecked after async dispatch',
+        () async {
+      const firstSessionId = 'early-blocking-session';
+      const expiringSessionId = 'early-expiring-session';
+      final firstPermissionCheckStarted = Completer<void>();
+      final releaseFirstPermissionCheck = Completer<void>();
+      final acceptedSessions = <String>[];
+      var permissionChecks = 0;
+
+      service.debugEnsureMediaPermissionsOverride = () async {
+        permissionChecks += 1;
+        if (permissionChecks == 1) {
+          firstPermissionCheckStarted.complete();
+          await releaseFirstPermissionCheck.future;
+        }
+        return true;
+      };
+      service.debugAcceptCallOverride = (sessionId) async {
+        acceptedSessions.add(sessionId);
+        return <String, dynamic>{
+          'status': 'connected',
+          'roomUrl': 'https://daily.test/$sessionId',
+          'meetingToken': 'token-$sessionId',
+          'roomName': sessionId,
+        };
+      };
+      service.debugPrefetchSessionTokensOverride = (_) async {};
+      service.debugMarkNavigationTriggeredOverride = ({
+        required sessionId,
+        required isTutor,
+      }) async {};
+      service.debugNavigateToVideoCallOverride = ({
+        required sessionId,
+        required isTutor,
+        roomUrl,
+        meetingToken,
+        roomName,
+      }) {};
+
+      await service.debugHandleCallKitAcceptEventForTesting({
+        'id': deterministicCallKitIdForTest(firstSessionId),
+        'sessionId': firstSessionId,
+      });
+      await service.debugHandleCallKitAcceptEventForTesting({
+        'id': deterministicCallKitIdForTest(expiringSessionId),
+        'sessionId': expiringSessionId,
+        'expiresAt': DateTime.now()
+            .add(const Duration(seconds: 1))
+            .toUtc()
+            .toIso8601String(),
+      });
+
+      service.debugSetInitializedForTesting(true);
+      final drain = service.debugSetCallActionHandlingReadyForTesting(true);
+      await firstPermissionCheckStarted.future
+          .timeout(const Duration(seconds: 1));
+      await Future<void>.delayed(const Duration(milliseconds: 1100));
+      releaseFirstPermissionCheck.complete();
+      await drain.timeout(const Duration(seconds: 2));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(permissionChecks, 1);
+      expect(acceptedSessions, [firstSessionId]);
+      expect(service.debugPendingCallKitActionCountForTesting, 0);
+    });
+
     test('early action queue is bounded', () async {
       final maxCount = service.debugPendingCallKitActionMaxCountForTesting;
 
@@ -3745,6 +3811,56 @@ void main() {
       });
       expect(service.debugAcceptedSessionForTesting('session-a'), isTrue);
       expect(service.debugAcceptInProgressForTesting('session-a'), isFalse);
+    });
+
+    test('late acceptCall after clear and user switch cannot navigate',
+        () async {
+      final started = Completer<void>();
+      final response = Completer<Map<String, dynamic>>();
+      var navigations = 0;
+      var prefetches = 0;
+      var marks = 0;
+
+      service.debugEnsureMediaPermissionsOverride = () async => true;
+      service.debugAcceptCallOverride = (_) {
+        started.complete();
+        return response.future;
+      };
+      service.debugNavigateToVideoCallOverride = ({
+        required sessionId,
+        required isTutor,
+        roomUrl,
+        meetingToken,
+        roomName,
+      }) {
+        navigations++;
+      };
+      service.debugPrefetchSessionTokensOverride = (_) async {
+        prefetches++;
+      };
+      service.debugMarkNavigationTriggeredOverride = ({
+        required sessionId,
+        required isTutor,
+      }) async {
+        marks++;
+      };
+
+      await service.debugHandleCallAcceptForTesting({'sessionId': 'session-a'});
+      await started.future;
+      service.debugClearSessionStateForTesting('session-a');
+      service.debugCurrentUserIdOverride = 'other-user';
+      response.complete({
+        'status': 'connected',
+        'roomUrl': 'https://daily.test/stale-room',
+        'meetingToken': 'stale-token',
+      });
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(navigations, 0);
+      expect(prefetches, 0);
+      expect(marks, 0);
+      expect(service.debugAcceptedSessionForTesting('session-a'), isFalse);
     });
   });
 }

@@ -23,6 +23,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:purchases_flutter/purchases_flutter.dart';
+import 'error_reporting/error_reporter.dart';
 
 /// Public RevenueCat API keys. These are SAFE to commit — RC public keys
 /// are designed to live in client code; the SECRET key (used server-side
@@ -100,6 +101,16 @@ class SubscriptionProductIds {
   static const String trialMonthly = 'expatlio_trial_1_Month';
   static const List<String> all = [monthly, quarterly, trialMonthly];
 }
+
+@visibleForTesting
+bool shouldReportPurchaseError(PurchasesErrorCode code) =>
+    !<PurchasesErrorCode>{
+      PurchasesErrorCode.purchaseCancelledError,
+      PurchasesErrorCode.paymentPendingError,
+      PurchasesErrorCode.operationAlreadyInProgressError,
+      PurchasesErrorCode.purchaseNotAllowedError,
+      PurchasesErrorCode.productAlreadyPurchasedError,
+    }.contains(code);
 
 String? subscriptionProductIdForStoreProduct(StoreProduct product) {
   final productId = product.identifier.trim();
@@ -802,14 +813,30 @@ class SubscriptionService {
   ) async {
     try {
       return await _runCommerce(action);
-    } on PlatformException catch (e) {
+    } on PlatformException catch (e, st) {
       final errorCode = PurchasesErrorHelper.getErrorCode(e);
       if (errorCode == PurchasesErrorCode.purchaseCancelledError) {
         return null;
       }
+      if (shouldReportPurchaseError(errorCode)) {
+        ErrorReporting.reporter.captureNonFatal(
+          feature: ErrorFeature.purchase,
+          code: AppErrorCode.purchaseFailed,
+          error: e,
+          stackTrace: st,
+        );
+      }
       debugPrint(
         '❌ SubscriptionService.purchase failed: code=$errorCode '
         'message=${e.message}',
+      );
+      rethrow;
+    } catch (error, st) {
+      ErrorReporting.reporter.captureNonFatal(
+        feature: ErrorFeature.purchase,
+        code: AppErrorCode.purchaseFailed,
+        error: error,
+        stackTrace: st,
       );
       rethrow;
     }

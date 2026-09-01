@@ -1,35 +1,40 @@
-# VoIP Implementation TODO
+# VoIP validation backlog
 
-## ✅ Completed
-- [x] Add VoIP dependencies (callkit, FCM)
-- [x] Create VoIPService class
-- [x] Integrate in main.dart with background handler
-- [x] Configure iOS Info.plist
-- [x] Configure Android AndroidManifest.xml
-- [x] Push code to develop branch
+Production flows `acceptCall`, incoming push delivery, navigation,
+decline/end/timeout and token registration уже реализованы. Этот файл содержит
+только остающиеся проверки; архитектурная работа ведётся в
+[`tech_debt/P1-08-voip-service-decomposition.md`](tech_debt/P1-08-voip-service-decomposition.md).
 
-## 🚧 Next Steps
+## Local automation
 
-### High Priority
-- [ ] Update Cloud Function `acceptCall` to send VoIP push
-- [ ] Create VoIP Certificate in Apple Developer
-- [ ] Upload VoIP Certificate to Firebase Cloud Messaging
-- [ ] Implement navigation to VideoCallPage
-- [ ] Test on real iOS device
-- [ ] Test on real Android device
+- [x] duplicate/stale Accept и process-level dedupe;
+- [x] early action readiness, TTL, priority, bound и user targeting;
+- [x] Decline/Timeout idempotency и stale CallKit identity;
+- [x] cold-start accepted-call recovery и navigation retry;
+- [x] denied media permissions и server-ended tombstones;
+- [x] foreground/background payload identity checks.
 
-### Medium Priority
-- [ ] Implement `_handleCallDecline()` - call Cloud Function
-- [ ] Implement `_handleCallEnded()` - call Cloud Function
-- [ ] Add error handling for failed calls
+## Physical iOS
 
-### Testing Checklist
-- [ ] FCM token saves to Firestore
-- [ ] VoIP push received
-- [ ] CallKit UI shows
-- [ ] Accept button works
-- [ ] Decline button works
-- [ ] Timeout works (45 sec)
-- [ ] Works from closed state
-- [ ] Works from background
-- [ ] Works over lock screen
+- [ ] PushKit token registration/rotation;
+- [ ] foreground/background/terminated delivery;
+- [ ] CallKit lock-screen UI;
+- [ ] Accept/Decline/Timeout/End exactly once;
+- [ ] accept after relaunch restores one correct session;
+- [ ] logout/login does not replay the previous user's action.
+
+## Physical Android
+
+- [ ] FCM token registration/rotation;
+- [ ] foreground/background/terminated delivery;
+- [ ] full-screen incoming UI and lock screen;
+- [ ] Accept/Decline/Timeout/End exactly once;
+- [ ] OEM battery restrictions documented for tested devices;
+- [ ] logout/login does not replay the previous user's action.
+
+## Release evidence
+
+- [ ] Record device/OS/build and initial lifecycle state for each smoke;
+- [ ] Record session ID only; never include push token, room URL or meeting token;
+- [ ] Attach failure logs with secrets redacted;
+- [ ] Do not mark P1-08 fully complete until both platform smoke matrices pass.

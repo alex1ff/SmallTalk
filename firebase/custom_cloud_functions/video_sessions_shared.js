@@ -430,10 +430,6 @@ function readTeacherAccreditationStatus(userData = {}) {
   return "";
 }
 
-function isApprovedTeacherFromLegacy(userData = {}) {
-  return readTeacherAccreditationStatus(userData) === "approved";
-}
-
 function isApprovedTeacher(userData = {}) {
   return readTeacherAccreditationStatus(userData) === "approved";
 }

@@ -27,14 +27,6 @@ function dailyEvent(overrides = {}) {
     version: "1.0.0",
     type: "participant.joined",
     id: "ptcpt-join-event-a",
-    payload: {
-      room: "session_room_a",
-      user_id: "student-a",
-      user_name: "Student A",
-      session_id: "daily-session-a",
-      joined_at: NOW_SECONDS + 1,
-      owner: true,
-    },
     event_ts: NOW_SECONDS + 1,
     ...overrides,
     payload: {

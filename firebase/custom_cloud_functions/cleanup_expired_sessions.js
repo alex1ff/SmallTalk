@@ -21,7 +21,8 @@ const {
   SEARCH_REQUEST_STATUS,
 } = require("./search_requests");
 const {
-  releaseSessionPairLocksInTransaction,
+  applyPreparedSessionPairLockReleaseWrites,
+  prepareSessionPairLockReleaseInTransaction,
 } = require("./match_pair_lock");
 const {
   MATCH_DECISION,
@@ -668,6 +669,23 @@ exports.cleanupExpiredSessions = functions
               ...freshData,
               participantStates: protocolV2ParticipantStates,
             } : freshData;
+            const preparedRelease =
+              await prepareSessionPairLockReleaseInTransaction({
+                db,
+                transaction,
+                ...(isProtocolV2 ?
+                  {
+                    ...protocolV2ReleaseOptions,
+                    sessionData: releaseSessionData,
+                  } :
+                  buildPendingResponseTimeoutReleaseOptions({
+                  sessionId: doc.id,
+                  sessionData: freshData,
+                  serverTimestamp:
+                    admin.firestore.FieldValue.serverTimestamp(),
+                  fieldDelete: admin.firestore.FieldValue.delete(),
+                  })),
+              });
             await reconcileSessionTrialCallsInTransaction({
               db,
               transaction,
@@ -677,20 +695,9 @@ exports.cleanupExpiredSessions = functions
               technicalFailure: true,
               nowMillis: pendingResponseCleanupDeadlineMillis,
             });
-            await releaseSessionPairLocksInTransaction({
-              db,
+            applyPreparedSessionPairLockReleaseWrites({
               transaction,
-              ...(isProtocolV2 ?
-                {
-                  ...protocolV2ReleaseOptions,
-                  sessionData: releaseSessionData,
-                } :
-                buildPendingResponseTimeoutReleaseOptions({
-                sessionId: doc.id,
-                sessionData: freshData,
-                serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
-                fieldDelete: admin.firestore.FieldValue.delete(),
-                })),
+              prepared: preparedRelease,
             });
             queuePendingResponseTimeoutCleanup({
               writer: transaction,
@@ -761,6 +768,18 @@ exports.cleanupExpiredSessions = functions
             Math.max(0, Math.floor(
                 (cleanupDeadlineMillis - connectedStartMillis) / 1000,
             )) : 0;
+          const preparedRelease =
+            await prepareSessionPairLockReleaseInTransaction({
+              db,
+              transaction,
+              ...buildExpiredSessionReleaseOptions({
+                sessionId: doc.id,
+                sessionData: freshData,
+                serverTimestamp:
+                  admin.firestore.FieldValue.serverTimestamp(),
+                fieldDelete: admin.firestore.FieldValue.delete(),
+              }),
+            });
           await reconcileSessionTrialCallsInTransaction({
             db,
             transaction,
@@ -770,15 +789,9 @@ exports.cleanupExpiredSessions = functions
             technicalFailure: connectedStartMillis <= 0,
             nowMillis: cleanupDeadlineMillis,
           });
-          await releaseSessionPairLocksInTransaction({
-            db,
+          applyPreparedSessionPairLockReleaseWrites({
             transaction,
-            ...buildExpiredSessionReleaseOptions({
-              sessionId: doc.id,
-              sessionData: freshData,
-              serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
-              fieldDelete: admin.firestore.FieldValue.delete(),
-            }),
+            prepared: preparedRelease,
           });
           const cleanupPayload = queueExpiredSessionCleanup({
             writer: transaction,
