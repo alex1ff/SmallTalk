@@ -3,6 +3,7 @@ import '/components/student_pay_intro.dart';
 import '/components/student_pay_plan.dart';
 import '/components/student_pay_plan_card.dart';
 import '/components/student_pay_restore_purchases_button.dart';
+import '/components/student_pay_catalog_error.dart';
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_util.dart';
@@ -18,23 +19,32 @@ export 'pay_model.dart';
 
 typedef StudentPayCatalogLoader = Future<Map<String, String>> Function();
 typedef StudentPayPurchaseHandler = Future<void> Function(String productId);
+typedef StudentPayRestoreHandler = Future<bool> Function();
 
 class PayWidget extends StatefulWidget {
   const PayWidget({super.key, this.premiumOnly = false})
       : _catalogLoader = null,
-        _purchaseHandler = null;
+        _purchaseHandler = null,
+        _restoreHandler = null,
+        _trialOfferEligibleOverride = null;
 
   @visibleForTesting
   const PayWidget.withPaymentGateway({
     super.key,
     required StudentPayCatalogLoader catalogLoader,
     required StudentPayPurchaseHandler purchaseHandler,
+    StudentPayRestoreHandler? restoreHandler,
+    bool trialOfferEligible = false,
+    this.premiumOnly = false,
   })  : _catalogLoader = catalogLoader,
         _purchaseHandler = purchaseHandler,
-        premiumOnly = false;
+        _restoreHandler = restoreHandler,
+        _trialOfferEligibleOverride = trialOfferEligible;
 
   final StudentPayCatalogLoader? _catalogLoader;
   final StudentPayPurchaseHandler? _purchaseHandler;
+  final StudentPayRestoreHandler? _restoreHandler;
+  final bool? _trialOfferEligibleOverride;
   final bool premiumOnly;
 
   static String routeName = 'Pay';
@@ -47,76 +57,148 @@ class PayWidget extends StatefulWidget {
 const _trialPlan = StudentPayPlan(
   kind: StudentPayPlanKind.trialMonthly,
   productId: SubscriptionProductIds.trialMonthly,
-  title: 'Trial',
-  subtitle: '3 дня бесплатно',
+  title: '1 месяц',
+  subtitle: '3 дня бесплатно, затем полный доступ',
   periodLabel: 'мес',
-  icon: Icons.play_circle_outline_rounded,
+  icon: Icons.calendar_today_rounded,
   badge: '3 ДНЯ БЕСПЛАТНО',
-  features: [
-    'Один пробный звонок',
-    'Начните звонок в течение 30 минут',
-    'Отмена до списания оплаты',
-  ],
+  features: [],
 );
 
-const _paidPlans = [
-  StudentPayPlan(
-    kind: StudentPayPlanKind.monthly,
-    productId: SubscriptionProductIds.monthly,
-    title: 'Basic',
-    subtitle: 'Для старта изучения языка',
-    periodLabel: 'мес',
-    icon: FFIcons.kwallet02,
-    features: [
-      'До 10 звонков в месяц',
-      'Базовый словарь',
-      'Субтитры в звонках',
-    ],
-  ),
-  StudentPayPlan(
-    kind: StudentPayPlanKind.quarterly,
-    productId: SubscriptionProductIds.quarterly,
-    title: 'Pro',
-    subtitle: 'Полный доступ ко всем возможностям',
-    periodLabel: '3 мес',
-    icon: Icons.auto_awesome_rounded,
-    badge: 'ПОПУЛЯРНЫЙ',
-    features: [
-      'Безлимитные звонки',
-      'Расширенный словарь и флэшкарты',
-      'Перевод в реальном времени',
-      'Приоритетная поддержка',
-    ],
-  ),
-];
+const _monthlyPlan = StudentPayPlan(
+  kind: StudentPayPlanKind.monthly,
+  productId: SubscriptionProductIds.monthly,
+  title: '1 месяц',
+  subtitle: 'Оплата ежемесячно',
+  periodLabel: 'мес',
+  icon: FFIcons.kwallet02,
+  features: [],
+);
+
+const _quarterlyPlan = StudentPayPlan(
+  kind: StudentPayPlanKind.quarterly,
+  productId: SubscriptionProductIds.quarterly,
+  title: '3 месяца',
+  subtitle: 'Оплата сразу за 3 месяца',
+  periodLabel: '3 мес',
+  icon: Icons.auto_awesome_rounded,
+  badge: 'ВЫГОДНЕЕ',
+  features: [],
+);
+
+@visibleForTesting
+List<StudentPayPlan> resolveStudentPayPlans({
+  required bool paidOnly,
+  required bool catalogLoaded,
+  required bool trialOfferEligible,
+  required Set<String> availableProductIds,
+}) {
+  bool available(String productId) =>
+      !catalogLoaded || availableProductIds.contains(productId);
+
+  if (paidOnly) {
+    return [
+      if (available(SubscriptionProductIds.monthly)) _monthlyPlan,
+      if (available(SubscriptionProductIds.quarterly)) _quarterlyPlan,
+    ];
+  }
+
+  final monthly =
+      trialOfferEligible && available(SubscriptionProductIds.trialMonthly)
+          ? _trialPlan
+          : available(SubscriptionProductIds.monthly)
+              ? _monthlyPlan
+              : available(SubscriptionProductIds.trialMonthly)
+                  ? _monthlyPlan.copyWith(
+                      productId: SubscriptionProductIds.trialMonthly,
+                    )
+                  : null;
+
+  return [
+    if (monthly != null) monthly,
+    if (available(SubscriptionProductIds.quarterly)) _quarterlyPlan,
+  ];
+}
+
+@visibleForTesting
+bool hasVerifiedThreeDayTrialOffer({
+  required SubscriptionIntroEligibility eligibility,
+  required StoreProduct? product,
+}) {
+  if (eligibility != SubscriptionIntroEligibility.eligible) return false;
+  final intro = product?.introductoryPrice;
+  return intro != null &&
+      intro.price == 0 &&
+      intro.cycles == 1 &&
+      intro.periodUnit == PeriodUnit.day &&
+      intro.periodNumberOfUnits == 3;
+}
+
+typedef StudentPayPurchaseTarget = ({
+  Package? package,
+  StoreProduct? storeProduct,
+});
+
+@visibleForTesting
+StudentPayPurchaseTarget resolveStudentPayPurchaseTarget({
+  required String productId,
+  required Map<String, Package> packagesByProductId,
+  required Map<String, StoreProduct> storeProductsByProductId,
+}) {
+  final package = packagesByProductId[productId];
+  return (
+    package: package,
+    storeProduct: package == null ? storeProductsByProductId[productId] : null,
+  );
+}
+
+@visibleForTesting
+String resolveDefaultStudentPayProductId({
+  required List<StudentPayPlan> plans,
+  required bool preferQuarterly,
+  String? currentProductId,
+}) {
+  if (plans.isEmpty) return '';
+
+  bool contains(String productId) =>
+      plans.any((plan) => plan.productId == productId);
+
+  if (preferQuarterly && contains(SubscriptionProductIds.quarterly)) {
+    return SubscriptionProductIds.quarterly;
+  }
+  if (currentProductId == SubscriptionProductIds.quarterly &&
+      contains(SubscriptionProductIds.quarterly)) {
+    return SubscriptionProductIds.quarterly;
+  }
+  if ((currentProductId == SubscriptionProductIds.monthly ||
+          currentProductId == SubscriptionProductIds.trialMonthly) &&
+      contains(SubscriptionProductIds.monthly)) {
+    return SubscriptionProductIds.monthly;
+  }
+  return plans.first.productId;
+}
 
 class _PayWidgetState extends State<PayWidget> {
   late PayModel _model;
   final scaffoldKey = GlobalKey<ScaffoldState>();
 
-  StudentPayPlanKind _selected = StudentPayPlanKind.quarterly;
+  String? _selectedProductId;
   Map<String, Package> _packagesByProductId = const {};
   Map<String, StoreProduct> _storeProductsByProductId = const {};
   Map<String, String> _injectedPricesByProductId = const {};
   bool _isLoadingPackages = true;
   bool _isPurchasing = false;
   bool _isRestoringPurchases = false;
+  bool _catalogLoadScheduled = false;
+  SubscriptionCatalogStatus _catalogStatus =
+      SubscriptionCatalogStatus.noProducts;
+  SubscriptionIntroEligibility _trialEligibility =
+      SubscriptionIntroEligibility.unknown;
 
   @override
   void initState() {
     super.initState();
     _model = createModel(context, () => PayModel());
-    if (widget._catalogLoader == null &&
-        currentUserDocument != null &&
-        !hasActiveSubscription(currentUserDocument)) {
-      _selected = StudentPayPlanKind.trialMonthly;
-    } else if (widget._catalogLoader == null &&
-        isTrialSubscription(currentUserDocument)) {
-      _selected = StudentPayPlanKind.monthly;
-    }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadPackages();
-    });
   }
 
   @override
@@ -125,34 +207,113 @@ class _PayWidgetState extends State<PayWidget> {
     super.dispose();
   }
 
-  List<StudentPayPlan> get _visiblePlans {
-    if (widget.premiumOnly ||
-        widget._catalogLoader != null ||
-        currentUserDocument == null) {
-      return _paidPlans;
-    }
-    if (!hasActiveSubscription(currentUserDocument)) {
-      return const [_trialPlan];
-    }
-    if (isTrialSubscription(currentUserDocument)) {
-      return _paidPlans;
-    }
-    return _paidPlans;
+  bool get _paidOnly =>
+      widget.premiumOnly || hasActiveSubscription(currentUserDocument);
+
+  bool get _isAwaitingUserDocument =>
+      widget._catalogLoader == null &&
+      !hasCurrentUserDocumentForUid(currentUserUid);
+
+  void _scheduleInitialCatalogLoad() {
+    if (_catalogLoadScheduled) return;
+    _catalogLoadScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _loadPackages();
+      }
+    });
+  }
+
+  Set<String> get _availableProductIds => {
+        ..._injectedPricesByProductId.keys,
+        ..._packagesByProductId.keys,
+        ..._storeProductsByProductId.keys,
+      };
+
+  StoreProduct? _storeProductFor(String productId) =>
+      _packagesByProductId[productId]?.storeProduct ??
+      _storeProductsByProductId[productId];
+
+  bool get _hasVerifiedThreeDayTrial {
+    final override = widget._trialOfferEligibleOverride;
+    if (override != null) return override;
+    return hasVerifiedThreeDayTrialOffer(
+      eligibility: _trialEligibility,
+      product: _storeProductFor(SubscriptionProductIds.trialMonthly),
+    );
+  }
+
+  List<StudentPayPlan> get _visiblePlans => resolveStudentPayPlans(
+        paidOnly: _paidOnly,
+        catalogLoaded: !_isLoadingPackages,
+        trialOfferEligible: _hasVerifiedThreeDayTrial,
+        availableProductIds: _availableProductIds,
+      ).map(_localizedPlan).toList(growable: false);
+
+  StudentPayPlan _localizedPlan(StudentPayPlan plan) {
+    return switch (plan.kind) {
+      StudentPayPlanKind.trialMonthly => plan.copyWith(
+          title: _localized('1 месяц', '1 month'),
+          subtitle: _localized(
+            '3 дня бесплатно, затем полный доступ',
+            '3 days free, then full access',
+          ),
+          periodLabel: _localized('мес', 'month'),
+          badge: _localized('3 ДНЯ БЕСПЛАТНО', '3 DAYS FREE'),
+        ),
+      StudentPayPlanKind.monthly => plan.copyWith(
+          title: _localized('1 месяц', '1 month'),
+          subtitle: _localized('Оплата ежемесячно', 'Billed monthly'),
+          periodLabel: _localized('мес', 'month'),
+        ),
+      StudentPayPlanKind.quarterly => plan.copyWith(
+          title: _localized('3 месяца', '3 months'),
+          subtitle: _localized(
+            'Оплата сразу за 3 месяца',
+            'Billed every 3 months',
+          ),
+          periodLabel: _localized('3 мес', '3 months'),
+          badge: _localized('ВЫГОДНЕЕ', 'BEST VALUE'),
+        ),
+    };
   }
 
   StudentPayPlan get _selectedPlan {
     final plans = _visiblePlans;
+    if (plans.isEmpty) {
+      return _paidOnly ? _quarterlyPlan : _monthlyPlan;
+    }
+    final requestedProductId = _selectedProductId;
+    final selectedProductId = requestedProductId != null &&
+            plans.any((plan) => plan.productId == requestedProductId)
+        ? requestedProductId
+        : _defaultProductId(plans);
     return plans.firstWhere(
-      (plan) => plan.kind == _selected,
+      (plan) => plan.productId == selectedProductId,
       orElse: () => plans.first,
     );
   }
 
-  Package? get _selectedPackage =>
-      _packagesByProductId[_selectedPlan.productId];
+  String _defaultProductId(List<StudentPayPlan> plans) {
+    return resolveDefaultStudentPayProductId(
+      plans: plans,
+      preferQuarterly:
+          widget.premiumOnly || isTrialSubscription(currentUserDocument),
+      currentProductId: currentUserDocument?.subscription?.productId,
+    );
+  }
+
+  StudentPayPurchaseTarget get _selectedPurchaseTarget =>
+      resolveStudentPayPurchaseTarget(
+        productId: _selectedPlan.productId,
+        packagesByProductId: _packagesByProductId,
+        storeProductsByProductId: _storeProductsByProductId,
+      );
+
+  Package? get _selectedPackage => _selectedPurchaseTarget.package;
 
   StoreProduct? get _selectedStoreProduct =>
-      _storeProductsByProductId[_selectedPlan.productId];
+      _selectedPurchaseTarget.storeProduct;
 
   Future<void> _loadPackages() async {
     if (mounted) {
@@ -183,7 +344,11 @@ class _PayWidgetState extends State<PayWidget> {
       }
       safeSetState(() {
         _injectedPricesByProductId = Map.unmodifiable(prices);
+        _catalogStatus = prices.isEmpty
+            ? SubscriptionCatalogStatus.noProducts
+            : SubscriptionCatalogStatus.ready;
         _isLoadingPackages = false;
+        _selectedProductId = _defaultProductId(_visiblePlans);
       });
       return;
     }
@@ -192,13 +357,16 @@ class _PayWidgetState extends State<PayWidget> {
     List<StoreProduct> storeProducts = const [];
     SubscriptionCatalogResult catalogResult;
     try {
-      catalogResult =
-          await SubscriptionService.instance.loadSubscriptionCatalog().timeout(
-                const Duration(seconds: 25),
-                onTimeout: () => const SubscriptionCatalogResult(
-                  status: SubscriptionCatalogStatus.timedOut,
-                ),
-              );
+      catalogResult = await SubscriptionService.instance
+          .loadSubscriptionCatalog(
+            includeTrialEligibility: !_paidOnly,
+          )
+          .timeout(
+            const Duration(seconds: 25),
+            onTimeout: () => const SubscriptionCatalogResult(
+              status: SubscriptionCatalogStatus.timedOut,
+            ),
+          );
       packages = catalogResult.packages;
       storeProducts = catalogResult.storeProducts;
     } catch (e, st) {
@@ -223,7 +391,13 @@ class _PayWidgetState extends State<PayWidget> {
       _packagesByProductId = mapSubscriptionPackagesByProductId(packages);
       _storeProductsByProductId =
           mapSubscriptionStoreProductsByProductId(storeProducts);
+      _catalogStatus = catalogResult.status;
+      _trialEligibility = catalogResult.trialEligibility;
       _isLoadingPackages = false;
+      final plans = _visiblePlans;
+      if (!plans.any((plan) => plan.productId == _selectedProductId)) {
+        _selectedProductId = _defaultProductId(plans);
+      }
     });
 
     if (!catalogResult.hasAnyProduct && mounted) {
@@ -292,6 +466,49 @@ class _PayWidgetState extends State<PayWidget> {
       _packagesByProductId.containsKey(plan.productId) ||
       _storeProductsByProductId.containsKey(plan.productId);
 
+  String _actionLabelFor(StudentPayPlan plan) {
+    final price = _priceFor(plan);
+    if (plan.kind == StudentPayPlanKind.trialMonthly &&
+        _hasVerifiedThreeDayTrial) {
+      return _localized(
+        'Попробовать 3 дня бесплатно',
+        'Try 3 days free',
+      );
+    }
+    if (isTrialSubscription(currentUserDocument)) {
+      return _localized(
+        'Начать Premium сейчас · $price',
+        'Start Premium now · $price',
+      );
+    }
+    return switch (plan.kind) {
+      StudentPayPlanKind.quarterly => _localized(
+          'Оформить 3 месяца · $price',
+          'Get 3 months · $price',
+        ),
+      StudentPayPlanKind.monthly ||
+      StudentPayPlanKind.trialMonthly =>
+        _localized(
+          'Оформить месяц · $price',
+          'Get 1 month · $price',
+        ),
+    };
+  }
+
+  String _termsTextFor(StudentPayPlan plan) {
+    if (plan.kind == StudentPayPlanKind.trialMonthly &&
+        _hasVerifiedThreeDayTrial) {
+      return _localized(
+        '3 дня бесплатно, затем ${_priceFor(plan)} в месяц. Автопродление, отмена в любой момент.',
+        '3 days free, then ${_priceFor(plan)} per month. Auto-renews; cancel anytime.',
+      );
+    }
+    return _localized(
+      'Подписка продлевается автоматически. Отмена в любой момент.',
+      'Subscription renews automatically. Cancel anytime.',
+    );
+  }
+
   Future<bool> _waitForServerSubscriptionMirror([String? productId]) async {
     final userRef = currentUserReference;
     if (userRef == null) return false;
@@ -327,7 +544,7 @@ class _PayWidgetState extends State<PayWidget> {
   }
 
   Future<void> _purchaseSelectedPlan() async {
-    if (_isPurchasing || _isLoadingPackages) {
+    if (_isPurchasing || _isRestoringPurchases || _isLoadingPackages) {
       return;
     }
 
@@ -450,6 +667,23 @@ class _PayWidgetState extends State<PayWidget> {
     });
 
     try {
+      final restoreHandler = widget._restoreHandler;
+      if (restoreHandler != null) {
+        final hasActivePurchase = await restoreHandler();
+        if (!mounted) return;
+        _showSnackBar(
+          hasActivePurchase
+              ? _localized(
+                  'Покупки восстановлены.',
+                  'Purchases restored.',
+                )
+              : _localized(
+                  'Активных покупок для восстановления не найдено.',
+                  'No active purchases were found to restore.',
+                ),
+        );
+        return;
+      }
       final info = await SubscriptionService.instance.restorePurchases();
       if (!mounted) {
         return;
@@ -506,6 +740,42 @@ class _PayWidgetState extends State<PayWidget> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget._catalogLoader != null) {
+      _scheduleInitialCatalogLoad();
+      return _buildPaywall(context);
+    }
+    return AuthUserStreamWidget(
+      builder: (context) {
+        if (_isAwaitingUserDocument) {
+          return _buildUserDocumentLoading(context);
+        }
+        _scheduleInitialCatalogLoad();
+        return _buildPaywall(context);
+      },
+    );
+  }
+
+  Widget _buildUserDocumentLoading(BuildContext context) {
+    return Scaffold(
+      key: scaffoldKey,
+      backgroundColor: ExpatlioDesign.background,
+      body: Column(
+        children: [
+          BasicPageHeader(
+            title: _localized('Тарифы', 'Plans'),
+            onBack: () => context.safePop(),
+          ),
+          const Expanded(
+            child: Center(
+              child: CircularProgressIndicator.adaptive(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaywall(BuildContext context) {
     return GestureDetector(
       onTap: () {
         FocusScope.of(context).unfocus();
@@ -536,24 +806,31 @@ class _PayWidgetState extends State<PayWidget> {
                       children: [
                         const StudentPayIntro(),
                         const SizedBox(height: ExpatlioDesign.space24),
-                        for (final plan in _visiblePlans) ...[
-                          StudentPayPlanCard(
-                            plan: plan,
-                            selected: _selectedPlan.kind == plan.kind,
-                            price: _priceFor(plan),
-                            priceAvailable: _hasPackageFor(plan),
-                            onTap: () {
-                              safeSetState(() {
-                                _selected = plan.kind;
-                              });
-                            },
-                          ),
-                          if (plan != _visiblePlans.last)
-                            const SizedBox(height: ExpatlioDesign.space12),
-                        ],
+                        if (!_isLoadingPackages && _visiblePlans.isEmpty)
+                          StudentPayCatalogError(
+                            message: _catalogFailureMessage(_catalogStatus),
+                            onRetry: _loadPackages,
+                          )
+                        else
+                          for (final plan in _visiblePlans) ...[
+                            StudentPayPlanCard(
+                              plan: plan,
+                              selected:
+                                  _selectedPlan.productId == plan.productId,
+                              price: _priceFor(plan),
+                              priceAvailable: _hasPackageFor(plan),
+                              onTap: () {
+                                safeSetState(() {
+                                  _selectedProductId = plan.productId;
+                                });
+                              },
+                            ),
+                            if (plan != _visiblePlans.last)
+                              const SizedBox(height: ExpatlioDesign.space12),
+                          ],
                         const SizedBox(height: ExpatlioDesign.space16),
                         StudentPayRestorePurchasesButton(
-                          isBusy: _isRestoringPurchases,
+                          isBusy: _isRestoringPurchases || _isPurchasing,
                           onPressed: _restorePurchases,
                         ),
                       ],
@@ -567,15 +844,12 @@ class _PayWidgetState extends State<PayWidget> {
         bottomNavigationBar: StudentPayBottomBar(
           plan: _selectedPlan,
           price: _priceFor(_selectedPlan),
-          actionLabel: isTrialSubscription(currentUserDocument)
-              ? _localized(
-                  'Начать Premium сейчас · ${_priceFor(_selectedPlan)}/${_selectedPlan.periodLabel}',
-                  'Start Premium now · ${_priceFor(_selectedPlan)}/${_selectedPlan.periodLabel}',
-                )
-              : null,
+          actionLabel: _actionLabelFor(_selectedPlan),
+          termsText: _termsTextFor(_selectedPlan),
           canPurchase: _hasPackageFor(_selectedPlan),
-          isBusy: _isPurchasing,
+          isBusy: _isPurchasing || _isRestoringPurchases,
           isLoading: _isLoadingPackages,
+          retryLabel: _localized('Повторить загрузку', 'Try again'),
           onPressed: _hasPackageFor(_selectedPlan)
               ? _purchaseSelectedPlan
               : _loadPackages,

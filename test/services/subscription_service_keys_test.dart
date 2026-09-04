@@ -241,6 +241,33 @@ void main() {
         SubscriptionCatalogStatus.networkUnavailable,
       );
     });
+
+    test('maps introductory eligibility without optimistic fallbacks', () {
+      expect(
+        subscriptionIntroEligibilityFromRevenueCat(
+          IntroEligibilityStatus.introEligibilityStatusEligible,
+        ),
+        SubscriptionIntroEligibility.eligible,
+      );
+      expect(
+        subscriptionIntroEligibilityFromRevenueCat(
+          IntroEligibilityStatus.introEligibilityStatusIneligible,
+        ),
+        SubscriptionIntroEligibility.ineligible,
+      );
+      expect(
+        subscriptionIntroEligibilityFromRevenueCat(
+          IntroEligibilityStatus.introEligibilityStatusNoIntroOfferExists,
+        ),
+        SubscriptionIntroEligibility.ineligible,
+      );
+      expect(
+        subscriptionIntroEligibilityFromRevenueCat(
+          IntroEligibilityStatus.introEligibilityStatusUnknown,
+        ),
+        SubscriptionIntroEligibility.unknown,
+      );
+    });
   });
 
   group('SubscriptionService identity coordinator', () {
@@ -310,6 +337,43 @@ void main() {
         SubscriptionProductIds.all.toSet(),
       );
       expect(sdk.productsCalls, 1);
+      expect(catalog.trialEligibility, SubscriptionIntroEligibility.eligible);
+      expect(sdk.eligibilityCalls, 1);
+    });
+
+    test('eligibility failure keeps catalog usable and fails closed', () async {
+      final sdk = _FakeRevenueCatSdk()
+        ..eligibilityError = StateError('eligibility unavailable');
+      final service = SubscriptionService.forTesting(
+        sdk: sdk,
+        apiKey: 'appl_test',
+      );
+      await service.logInUser('uid-1');
+
+      final catalog = await service.loadSubscriptionCatalog();
+
+      expect(catalog.status, SubscriptionCatalogStatus.ready);
+      expect(catalog.hasAnyProduct, isTrue);
+      expect(catalog.trialEligibility, SubscriptionIntroEligibility.error);
+    });
+
+    test('paid-only catalog skips introductory eligibility lookup', () async {
+      final sdk = _FakeRevenueCatSdk()
+        ..eligibilityError = StateError('must not be called');
+      final service = SubscriptionService.forTesting(
+        sdk: sdk,
+        apiKey: 'appl_test',
+      );
+      await service.logInUser('uid-1');
+
+      final catalog = await service.loadSubscriptionCatalog(
+        includeTrialEligibility: false,
+      );
+
+      expect(catalog.status, SubscriptionCatalogStatus.ready);
+      expect(catalog.hasAnyProduct, isTrue);
+      expect(catalog.trialEligibility, SubscriptionIntroEligibility.unknown);
+      expect(sdk.eligibilityCalls, 0);
     });
 
     test('times out a hung offering request without blocking restore or retry',
@@ -496,6 +560,10 @@ class _FakeRevenueCatSdk implements RevenueCatSdkAdapter {
   int offeringsCalls = 0;
   int productsCalls = 0;
   int customerInfoCalls = 0;
+  int eligibilityCalls = 0;
+  IntroEligibilityStatus eligibilityStatus =
+      IntroEligibilityStatus.introEligibilityStatusEligible;
+  Object? eligibilityError;
   Object? offeringsError;
   Completer<void>? offeringsGate;
   Completer<void>? purchaseGate;
@@ -563,6 +631,21 @@ class _FakeRevenueCatSdk implements RevenueCatSdkAdapter {
   Future<List<StoreProduct>> getProducts(List<String> productIds) async {
     productsCalls += 1;
     return productIds.map(_storeProduct).toList();
+  }
+
+  @override
+  Future<Map<String, IntroEligibility>>
+      checkTrialOrIntroductoryPriceEligibility(List<String> productIds) async {
+    eligibilityCalls += 1;
+    final error = eligibilityError;
+    if (error != null) throw error;
+    return {
+      for (final productId in productIds)
+        productId: IntroEligibility.fromJson({
+          'status': eligibilityStatus.index,
+          'description': eligibilityStatus.name,
+        }),
+    };
   }
 
   @override

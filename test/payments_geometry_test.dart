@@ -11,6 +11,7 @@ import 'package:small_talk/backend/backend.dart';
 import 'package:small_talk/backend/schema/enums/enums.dart';
 import 'package:small_talk/components/payment_transaction_row.dart';
 import 'package:small_talk/components/student_pay_bottom_bar.dart';
+import 'package:small_talk/components/student_pay_catalog_error.dart';
 import 'package:small_talk/components/student_pay_plan.dart';
 import 'package:small_talk/components/student_pay_plan_card.dart';
 import 'package:small_talk/components/teacher_payment_transactions_stream_rows.dart';
@@ -55,7 +56,6 @@ const _textScaler = TextScaler.linear(1.3);
 
 typedef _PlanGeometry = ({
   Rect card,
-  Rect icon,
   Rect price,
   Rect selection,
 });
@@ -131,8 +131,6 @@ void main() {
           await tester.pump(const Duration(milliseconds: 200));
           return (
             card: tester.getRect(find.byKey(studentPayPlanCardKey(plan.kind))),
-            icon: tester
-                .getRect(find.byKey(studentPayPlanIconSlotKey(plan.kind))),
             price: tester
                 .getRect(find.byKey(studentPayPlanPriceSlotKey(plan.kind))),
             selection: tester.getRect(
@@ -174,13 +172,177 @@ void main() {
         expect(error, loading);
         expect(loaded, loading);
         expect(selected, loading);
-        expect(loading.price.height, _textScaler.scale(30.0));
-        expect(loading.icon.size, const Size.square(52.0));
+        expect(
+          loading.price.height,
+          closeTo(_textScaler.scale(28.0), 0.001),
+        );
         expect(loading.selection.size, const Size.square(28.0));
         expect(tester.takeException(), isNull);
       },
     );
   }
+
+  testWidgets('new user sees trial month and immediate quarterly purchase',
+      (tester) async {
+    _configureView(tester);
+    String? purchasedProductId;
+
+    await tester.pumpWidget(
+      _localizedApp(
+        home: PayWidget.withPaymentGateway(
+          catalogLoader: () async => const {
+            SubscriptionProductIds.trialMonthly: '999 ₽',
+            SubscriptionProductIds.quarterly: '1 999 ₽',
+          },
+          trialOfferEligible: true,
+          purchaseHandler: (productId) async {
+            purchasedProductId = productId;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(
+        studentPayPlanCardKey(StudentPayPlanKind.trialMonthly),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(studentPayPlanCardKey(StudentPayPlanKind.monthly)),
+      findsNothing,
+    );
+    expect(
+      find.byKey(studentPayPlanCardKey(StudentPayPlanKind.quarterly)),
+      findsOneWidget,
+    );
+    expect(find.text('Попробовать 3 дня бесплатно'), findsOneWidget);
+
+    final quarterlyCard =
+        find.byKey(studentPayPlanCardKey(StudentPayPlanKind.quarterly));
+    await tester.ensureVisible(quarterlyCard);
+    await tester.tap(quarterlyCard);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Оформить 3 месяца'), findsOneWidget);
+
+    await tester.tap(find.byKey(studentPayPurchaseCtaKey));
+    await tester.pump();
+    expect(purchasedProductId, SubscriptionProductIds.quarterly);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('premium-only flow hides trial and defaults to 3 months',
+      (tester) async {
+    _configureView(tester);
+
+    await tester.pumpWidget(
+      _localizedApp(
+        home: PayWidget.withPaymentGateway(
+          catalogLoader: () async => const {
+            SubscriptionProductIds.trialMonthly: '999 ₽',
+            SubscriptionProductIds.monthly: '999 ₽',
+            SubscriptionProductIds.quarterly: '1 999 ₽',
+          },
+          trialOfferEligible: true,
+          premiumOnly: true,
+          purchaseHandler: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(studentPayPlanCardKey(StudentPayPlanKind.trialMonthly)),
+      findsNothing,
+    );
+    expect(
+      find.byKey(studentPayPlanCardKey(StudentPayPlanKind.monthly)),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(studentPayPlanCardKey(StudentPayPlanKind.quarterly)),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Оформить 3 месяца'), findsOneWidget);
+  });
+
+  testWidgets('restore and purchase actions disable each other',
+      (tester) async {
+    _configureView(tester);
+    final restoreCompleter = Completer<bool>();
+    final purchaseCompleter = Completer<void>();
+    var purchaseCalls = 0;
+
+    await tester.pumpWidget(
+      _localizedApp(
+        home: PayWidget.withPaymentGateway(
+          catalogLoader: () async => const {
+            SubscriptionProductIds.monthly: '499 ₽',
+            SubscriptionProductIds.quarterly: '1 299 ₽',
+          },
+          purchaseHandler: (_) {
+            purchaseCalls += 1;
+            return purchaseCompleter.future;
+          },
+          restoreHandler: () => restoreCompleter.future,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final restoreButton = find.text('Восстановить покупки');
+    await tester.ensureVisible(restoreButton);
+    await tester.tap(restoreButton);
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsWidgets);
+    await tester.tap(find.byKey(studentPayPurchaseCtaKey));
+    await tester.pump();
+    expect(purchaseCalls, 0);
+
+    restoreCompleter.complete(false);
+    await tester.pumpAndSettle();
+    expect(find.text('Восстановить покупки'), findsOneWidget);
+    expect(find.textContaining('не найдено'), findsOneWidget);
+
+    await tester.tap(find.byKey(studentPayPurchaseCtaKey));
+    await tester.pump();
+    expect(purchaseCalls, 1);
+    expect(
+      tester.widget<TextButton>(find.byType(TextButton)).onPressed,
+      isNull,
+    );
+
+    purchaseCompleter.complete();
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('selected plan exposes selected semantics', (tester) async {
+    _configureView(tester);
+    final semantics = tester.ensureSemantics();
+
+    await tester.pumpWidget(
+      _componentApp(
+        StudentPayPlanCard(
+          plan: _monthlyPlan,
+          selected: true,
+          price: '499 ₽',
+          priceAvailable: true,
+          onTap: () {},
+        ),
+      ),
+    );
+
+    final semanticsFinder = find.bySemanticsLabel(
+      RegExp(r'Basic, 499 ₽'),
+    );
+    expect(semanticsFinder, findsOneWidget);
+    final node = tester.getSemantics(semanticsFinder);
+    expect(node.flagsCollection.isSelected, isTrue);
+    expect(node.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
+    semantics.dispose();
+  });
 
   testWidgets(
       'pay page wires package error/retry/tariff/purchase without geometry shifts',
@@ -209,9 +371,13 @@ void main() {
     catalog.requests[0].completeError(StateError('catalog unavailable'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 250));
-    final error = _payPageGeometry(tester);
-    expect(find.text('Недоступно'), findsNWidgets(2));
-    expect(error, loading);
+    expect(find.byKey(studentPayCatalogErrorKey), findsOneWidget);
+    expect(find.text('Недоступно'), findsNothing);
+    expect(
+      find.text(
+          'App Store не вернул цены. Проверьте продукты для этого приложения.'),
+      findsOneWidget,
+    );
 
     await tester.tap(find.byKey(studentPayPurchaseCtaKey));
     await tester.pump();
@@ -226,7 +392,15 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
     final loaded = _payPageGeometry(tester);
-    expect(find.textContaining('499 ₽', findRichText: true), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(
+          studentPayPlanPriceSlotKey(StudentPayPlanKind.monthly),
+        ),
+        matching: find.textContaining('499 ₽', findRichText: true),
+      ),
+      findsOneWidget,
+    );
     expect(
       find.descendant(
         of: find.byKey(
@@ -238,13 +412,15 @@ void main() {
     );
     expect(loaded, loading);
 
-    await tester.tap(
-      find.byKey(studentPayPlanCardKey(StudentPayPlanKind.monthly)),
-    );
+    final monthlyCard =
+        find.byKey(studentPayPlanCardKey(StudentPayPlanKind.monthly));
+    await tester.ensureVisible(monthlyCard);
+    await tester.pumpAndSettle();
+    await tester.tap(monthlyCard);
     await tester.pump(const Duration(milliseconds: 200));
     final selectedMonthly = _payPageGeometry(tester);
-    expect(find.textContaining('Выбрать Basic'), findsOneWidget);
-    expect(selectedMonthly, loading);
+    expect(find.textContaining('Оформить месяц'), findsOneWidget);
+    _expectPayPageSizesEqual(selectedMonthly, loading);
 
     await tester.tap(find.byKey(studentPayPurchaseCtaKey));
     await tester.pump();
@@ -257,7 +433,7 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(purchasing, loading);
+    _expectPayPageSizesEqual(purchasing, loading);
     expect(tester.takeException(), isNull);
 
     purchaseCompleter.complete();
@@ -283,6 +459,8 @@ void main() {
             isBusy: isBusy,
             isLoading: isLoading,
             onPressed: () {},
+            termsText: 'Отмена в любой момент',
+            retryLabel: 'Повторить загрузку',
           ),
         ),
       );
@@ -329,10 +507,35 @@ void main() {
     expect(error, loading);
     expect(loaded, loading);
     expect(purchasing, loading);
-    expect(loading.bar.height, 110.0);
+    expect(loading.bar.height, 136.0);
     expect(loading.cta.height, 52.0);
     expect(loading.content.height, 52.0);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('purchase terms are not truncated', (tester) async {
+    _configureView(tester);
+    const terms =
+        '3 дня бесплатно, затем 999 ₽ в месяц. Автопродление, отмена в любой момент.';
+
+    await tester.pumpWidget(
+      _bottomBarApp(
+        StudentPayBottomBar(
+          plan: _monthlyPlan,
+          price: '999 ₽',
+          canPurchase: true,
+          isBusy: false,
+          isLoading: false,
+          onPressed: () {},
+          termsText: terms,
+          retryLabel: 'Повторить загрузку',
+        ),
+      ),
+    );
+
+    final termsWidget = tester.widget<Text>(find.text(terms));
+    expect(termsWidget.maxLines, isNull);
+    expect(termsWidget.overflow, isNull);
   });
 
   testWidgets('payout card section keeps row slots across async states',
@@ -799,11 +1002,6 @@ void main() {
         card: tester.getRect(
           find.byKey(studentPayPlanCardKey(StudentPayPlanKind.quarterly)),
         ),
-        icon: tester.getRect(
-          find.byKey(
-            studentPayPlanIconSlotKey(StudentPayPlanKind.quarterly),
-          ),
-        ),
         price: tester.getRect(
           find.byKey(
             studentPayPlanPriceSlotKey(StudentPayPlanKind.quarterly),
@@ -837,6 +1035,8 @@ void main() {
             isBusy: false,
             isLoading: loading,
             onPressed: () {},
+            termsText: 'Cancel anytime',
+            retryLabel: 'Try again',
           ),
           locale: const Locale('en'),
           textScaler: scaler,
@@ -958,6 +1158,20 @@ _PayPageGeometry _payPageGeometry(WidgetTester tester) {
     purchaseContent:
         tester.getRect(find.byKey(studentPayPurchaseContentSlotKey)),
   );
+}
+
+void _expectPayPageSizesEqual(
+  _PayPageGeometry actual,
+  _PayPageGeometry expected,
+) {
+  expect(actual.monthlyCard.size, expected.monthlyCard.size);
+  expect(actual.monthlyPrice.size, expected.monthlyPrice.size);
+  expect(actual.quarterlyCard.size, expected.quarterlyCard.size);
+  expect(actual.quarterlyPrice.size, expected.quarterlyPrice.size);
+  expect(actual.restoreButton.size, expected.restoreButton.size);
+  expect(actual.bottomBar.size, expected.bottomBar.size);
+  expect(actual.purchaseCta.size, expected.purchaseCta.size);
+  expect(actual.purchaseContent.size, expected.purchaseContent.size);
 }
 
 _CardSectionGeometry _cardSectionGeometry(WidgetTester tester) {

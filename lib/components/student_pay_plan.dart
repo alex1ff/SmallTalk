@@ -22,4 +22,26 @@ class StudentPayPlan {
   final IconData icon;
   final List<String> features;
   final String? badge;
+
+  StudentPayPlan copyWith({
+    StudentPayPlanKind? kind,
+    String? productId,
+    String? title,
+    String? subtitle,
+    String? periodLabel,
+    IconData? icon,
+    List<String>? features,
+    String? badge,
+  }) {
+    return StudentPayPlan(
+      kind: kind ?? this.kind,
+      productId: productId ?? this.productId,
+      title: title ?? this.title,
+      subtitle: subtitle ?? this.subtitle,
+      periodLabel: periodLabel ?? this.periodLabel,
+      icon: icon ?? this.icon,
+      features: features ?? this.features,
+      badge: badge ?? this.badge,
+    );
+  }
 }

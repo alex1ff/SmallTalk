@@ -217,6 +217,8 @@ abstract interface class RevenueCatSdkAdapter {
   Future<CustomerInfo> logIn(String appUserId);
   Future<Offerings> getOfferings();
   Future<List<StoreProduct>> getProducts(List<String> productIds);
+  Future<Map<String, IntroEligibility>>
+      checkTrialOrIntroductoryPriceEligibility(List<String> productIds);
   Future<CustomerInfo> purchase(PurchaseParams params);
   Future<CustomerInfo> restorePurchases();
   void addCustomerInfoUpdateListener(
@@ -263,6 +265,11 @@ class PurchasesRevenueCatSdkAdapter implements RevenueCatSdkAdapter {
       );
 
   @override
+  Future<Map<String, IntroEligibility>>
+      checkTrialOrIntroductoryPriceEligibility(List<String> productIds) =>
+          Purchases.checkTrialOrIntroductoryPriceEligibility(productIds);
+
+  @override
   Future<CustomerInfo> purchase(PurchaseParams params) async =>
       (await Purchases.purchase(params)).customerInfo;
 
@@ -286,6 +293,28 @@ enum SubscriptionCatalogStatus {
   networkUnavailable,
   timedOut,
   failed,
+}
+
+enum SubscriptionIntroEligibility {
+  eligible,
+  ineligible,
+  unknown,
+  error,
+}
+
+@visibleForTesting
+SubscriptionIntroEligibility subscriptionIntroEligibilityFromRevenueCat(
+  IntroEligibilityStatus status,
+) {
+  return switch (status) {
+    IntroEligibilityStatus.introEligibilityStatusEligible =>
+      SubscriptionIntroEligibility.eligible,
+    IntroEligibilityStatus.introEligibilityStatusIneligible ||
+    IntroEligibilityStatus.introEligibilityStatusNoIntroOfferExists =>
+      SubscriptionIntroEligibility.ineligible,
+    IntroEligibilityStatus.introEligibilityStatusUnknown =>
+      SubscriptionIntroEligibility.unknown,
+  };
 }
 
 @visibleForTesting
@@ -320,12 +349,14 @@ class SubscriptionCatalogResult {
     required this.status,
     this.packages = const <Package>[],
     this.storeProducts = const <StoreProduct>[],
+    this.trialEligibility = SubscriptionIntroEligibility.unknown,
     this.error,
   });
 
   final SubscriptionCatalogStatus status;
   final List<Package> packages;
   final List<StoreProduct> storeProducts;
+  final SubscriptionIntroEligibility trialEligibility;
   final Object? error;
 
   bool get hasAnyProduct => packages.isNotEmpty || storeProducts.isNotEmpty;
@@ -708,13 +739,16 @@ class SubscriptionService {
     }
   }
 
-  Future<SubscriptionCatalogResult> loadSubscriptionCatalog() async {
+  Future<SubscriptionCatalogResult> loadSubscriptionCatalog({
+    bool includeTrialEligibility = true,
+  }) async {
     Offerings? offerings;
     List<StoreProduct> directProducts = const [];
     Object? offeringsError;
     Object? productsError;
+    var trialEligibility = SubscriptionIntroEligibility.unknown;
 
-    await Future.wait<void>([
+    final requests = <Future<void>>[
       (() async {
         try {
           offerings = await ensureOfferingsLoaded();
@@ -731,7 +765,32 @@ class SubscriptionService {
           debugPrint('⚠️ RevenueCat direct products unavailable: $error\n$st');
         }
       })(),
-    ]);
+    ];
+    if (includeTrialEligibility) {
+      requests.add(() async {
+        try {
+          final identity = await _ensureIdentityReady();
+          await _assertIdentityCurrent(identity);
+          final eligibility =
+              await _sdk.checkTrialOrIntroductoryPriceEligibility(
+            const [SubscriptionProductIds.trialMonthly],
+          ).timeout(_catalogRequestTimeout);
+          await _assertIdentityCurrent(identity);
+          final status =
+              eligibility[SubscriptionProductIds.trialMonthly]?.status;
+          if (status != null) {
+            trialEligibility =
+                subscriptionIntroEligibilityFromRevenueCat(status);
+          }
+        } catch (error, st) {
+          trialEligibility = SubscriptionIntroEligibility.error;
+          debugPrint(
+            '⚠️ RevenueCat trial eligibility unavailable: $error\n$st',
+          );
+        }
+      }());
+    }
+    await Future.wait<void>(requests);
 
     final packages = offerings == null
         ? const <Package>[]
@@ -759,6 +818,7 @@ class SubscriptionService {
                 ? subscriptionCatalogStatusForError(error)
                 : SubscriptionCatalogStatus.configurationUnavailable,
         error: error,
+        trialEligibility: trialEligibility,
       );
     }
 
@@ -771,6 +831,7 @@ class SubscriptionService {
       status: status,
       packages: List<Package>.unmodifiable(packages),
       storeProducts: List<StoreProduct>.unmodifiable(productsById.values),
+      trialEligibility: trialEligibility,
       error: error,
     );
   }

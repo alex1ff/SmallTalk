@@ -10,6 +10,7 @@ void main() {
     expect(pageSource, contains("'/components/student_pay_intro.dart'"));
     expect(pageSource, contains('StudentPayPlanCard('));
     expect(pageSource, contains('StudentPayBottomBar('));
+    expect(pageSource, contains('StudentPayCatalogError('));
     expect(pageSource, contains('StudentPayRestorePurchasesButton('));
     expect(
         pageSource, contains('mapSubscriptionPackagesByProductId(packages)'));

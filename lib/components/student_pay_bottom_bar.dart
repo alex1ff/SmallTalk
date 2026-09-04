@@ -16,6 +16,8 @@ class StudentPayBottomBar extends StatelessWidget {
     required this.isBusy,
     required this.isLoading,
     required this.onPressed,
+    required this.termsText,
+    required this.retryLabel,
     this.actionLabel,
   });
 
@@ -25,6 +27,8 @@ class StudentPayBottomBar extends StatelessWidget {
   final bool isBusy;
   final bool isLoading;
   final VoidCallback onPressed;
+  final String termsText;
+  final String retryLabel;
   final String? actionLabel;
 
   @override
@@ -59,49 +63,67 @@ class StudentPayBottomBar extends StatelessWidget {
             heightFactor: 1.0,
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 520.0),
-              child: InkWell(
-                borderRadius:
-                    BorderRadius.circular(ExpatlioDesign.buttonRadius),
-                onTap: isBusy || isLoading ? null : onPressed,
-                child: Container(
-                  key: studentPayPurchaseCtaKey,
-                  width: double.infinity,
-                  height: ExpatlioDesign.buttonHeight,
-                  decoration: BoxDecoration(
-                    color: ExpatlioDesign.primary,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  InkWell(
                     borderRadius:
                         BorderRadius.circular(ExpatlioDesign.buttonRadius),
-                  ),
-                  alignment: Alignment.center,
-                  child: SizedBox.expand(
-                    key: studentPayPurchaseContentSlotKey,
-                    child: Center(
-                      child: isBusy || isLoading
-                          ? const SizedBox(
-                              width: 24.0,
-                              height: 24.0,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.5,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Colors.white,
+                    onTap: isBusy || isLoading ? null : onPressed,
+                    child: Container(
+                      key: studentPayPurchaseCtaKey,
+                      width: double.infinity,
+                      height: ExpatlioDesign.buttonHeight,
+                      decoration: BoxDecoration(
+                        color: isBusy || isLoading
+                            ? ExpatlioDesign.primary.withValues(alpha: 0.7)
+                            : ExpatlioDesign.primary,
+                        borderRadius:
+                            BorderRadius.circular(ExpatlioDesign.buttonRadius),
+                      ),
+                      alignment: Alignment.center,
+                      child: SizedBox.expand(
+                        key: studentPayPurchaseContentSlotKey,
+                        child: Center(
+                          child: isBusy || isLoading
+                              ? const SizedBox(
+                                  width: 24.0,
+                                  height: 24.0,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
+                                )
+                              : Text(
+                                  canPurchase
+                                      ? resolvedActionLabel
+                                      : retryLabel,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.center,
+                                  style: ExpatlioDesign.buttonTextStyle(
+                                    context,
+                                    color: ExpatlioDesign.card,
+                                  ).copyWith(height: 1.2),
                                 ),
-                              ),
-                            )
-                          : Text(
-                              canPurchase
-                                  ? resolvedActionLabel
-                                  : 'Повторить загрузку',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.center,
-                              style: ExpatlioDesign.buttonTextStyle(
-                                context,
-                                color: ExpatlioDesign.card,
-                              ).copyWith(height: 1.2),
-                            ),
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                  const SizedBox(height: ExpatlioDesign.space8),
+                  Text(
+                    termsText,
+                    textAlign: TextAlign.center,
+                    style: ExpatlioDesign.textStyle(
+                      context,
+                      color: ExpatlioDesign.muted,
+                      size: 11.0,
+                      height: 1.25,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
