@@ -1,3 +1,4 @@
+const {activeSearchDeadlineMillis} = require("./active_search_deadline");
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const {
@@ -11,7 +12,6 @@ const {
   SEARCH_REQUEST_STATUS,
   SEARCH_REQUEST_TIMING,
   buildInitialSearchRequestData,
-  normalizeAppState,
   normalizeSearchRequestFilters,
 } = require("./search_requests");
 const {
@@ -93,34 +93,13 @@ function isReusableSearchRequest(requestData = {}, nowMillis = Date.now()) {
     return false;
   }
 
-  const expiresAtMillis = timestampToMillis(requestData.expiresAt);
+  const expiresAtMillis = activeSearchDeadlineMillis(requestData);
   if (expiresAtMillis === null || expiresAtMillis <= nowMillis) {
     return false;
   }
 
   if (status === SEARCH_REQUEST_STATUS.MATCHED) {
     return true;
-  }
-
-  const heartbeatAtMillis = timestampToMillis(requestData.heartbeatAt);
-  const staleCutoffMillis =
-    nowMillis - SEARCH_REQUEST_TIMING.HEARTBEAT_STALE_SECONDS * 1000;
-  if (heartbeatAtMillis === null || heartbeatAtMillis < staleCutoffMillis) {
-    return false;
-  }
-
-  const isBackgroundSearch =
-    normalizeAppState(requestData.appState) ===
-      SEARCH_REQUEST_APP_STATE.BACKGROUND;
-  const backgroundExpiresAtMillis = timestampToMillis(
-      requestData.backgroundExpiresAt,
-  );
-  if (
-    isBackgroundSearch &&
-    backgroundExpiresAtMillis !== null &&
-    backgroundExpiresAtMillis <= nowMillis
-  ) {
-    return false;
   }
 
   return true;
@@ -150,7 +129,7 @@ function buildStartSearchResponse({
       normalizeString(requestData.matchedSessionId) ||
       null,
     pairAttemptId: normalizeString(requestData.pairAttemptId) || null,
-    expiresAt: timestampToIsoString(requestData.expiresAt),
+    expiresAt: timestampToIsoString(activeSearchDeadlineMillis(requestData)),
     errorCode: null,
     reused,
     ...(Number(requestData.matchProtocolVersion) >= MATCH_PROTOCOL_VERSION ? {
@@ -335,7 +314,7 @@ function buildReusedSearchRequestRefresh({
   preserveMatchBinding = false,
 }) {
   const expiresAt = timestampFromMillis(
-      nowMillis + SEARCH_REQUEST_TIMING.MAX_SEARCH_SECONDS * 1000,
+      activeSearchDeadlineMillis(requestData),
   );
   const backgroundExpiresAt =
     input.appState === SEARCH_REQUEST_APP_STATE.BACKGROUND ?

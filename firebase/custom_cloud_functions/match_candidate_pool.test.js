@@ -148,7 +148,7 @@ function activeRequest(overrides = {}) {
     filters: {preferredLevel: "B1", levelRank: 3},
     status: SEARCH_REQUEST_STATUS.ACTIVE,
     appState: "foreground",
-    createdAt: timestampFromMillis(fixedNowMillis - 120 * 1000),
+    createdAt: timestampFromMillis(fixedNowMillis - 60 * 1000),
     heartbeatAt: timestampFromMillis(fixedNowMillis - 30 * 1000),
     expiresAt: timestampFromMillis(fixedNowMillis + 8 * 60 * 1000),
     backgroundExpiresAt: null,
@@ -314,28 +314,28 @@ test("active student candidates come only from fresh active search requests", ()
       appState: "background",
       backgroundExpiresAt: timestampFromMillis(fixedNowMillis - 1),
     }), fixedNowMillis),
-    {valid: false, reason: "background_expired"},
+    {valid: false, reason: "not_foreground"},
   );
   assert.deepEqual(
     validateActiveStudentSearchRequest(activeRequest({
       appState: "background",
       backgroundExpiresAt: null,
     }), fixedNowMillis),
-    {valid: false, reason: "background_expired"},
+    {valid: false, reason: "not_foreground"},
   );
   assert.deepEqual(
     validateActiveStudentSearchRequest(activeRequest({
       appState: "background",
       backgroundExpiresAt: "not-a-date",
     }), fixedNowMillis),
-    {valid: false, reason: "background_expired"},
+    {valid: false, reason: "not_foreground"},
   );
   assert.equal(
     isActiveStudentSearchRequest(activeRequest({
       appState: "background",
       backgroundExpiresAt: timestampFromMillis(fixedNowMillis + 1),
     }), fixedNowMillis),
-    true,
+    false,
   );
   assert.equal(
     isActiveStudentSearchRequest(activeRequest({
@@ -1528,7 +1528,7 @@ test("collectMatchCandidatePool combines queue students and teachers", async () 
   const db = fakeDb({
     studentRequestDocs: [
       doc("student-a", activeRequest({
-        createdAt: timestampFromMillis(fixedNowMillis - 120 * 1000),
+        createdAt: timestampFromMillis(fixedNowMillis - 60 * 1000),
       })),
     ],
     teacherDocs: [
@@ -1568,7 +1568,7 @@ test("collectMatchCandidatePool can scan only active students", async () => {
   const db = fakeDb({
     studentRequestDocs: [
       doc("student-a", activeRequest({
-        createdAt: timestampFromMillis(fixedNowMillis - 120 * 1000),
+        createdAt: timestampFromMillis(fixedNowMillis - 60 * 1000),
       })),
     ],
     teacherDocs: [
@@ -1772,7 +1772,7 @@ test("collectMatchCandidatePool ranks mutual student filter quality", async () =
         userId: "student-mutual-above-minimum",
         userRef: {id: "student-mutual-above-minimum"},
         filters: {preferredLevel: "A2", levelRank: 2},
-        createdAt: timestampFromMillis(fixedNowMillis - 120 * 1000),
+        createdAt: timestampFromMillis(fixedNowMillis - 60 * 1000),
       })),
       doc("student-mutual-exact", activeRequest({
         requestId: "request-student-mutual-exact",
@@ -1870,7 +1870,7 @@ test("collectMatchCandidatePool scans beyond limit for mutual student quality", 
         userId: "student-mutual-adjacent",
         userRef: {id: "student-mutual-adjacent"},
         filters: {preferredLevel: "B2", levelRank: 4},
-        createdAt: timestampFromMillis(fixedNowMillis - 120 * 1000),
+        createdAt: timestampFromMillis(fixedNowMillis - 60 * 1000),
       })),
       doc("student-mutual-exact", activeRequest({
         requestId: "request-student-mutual-exact",
@@ -1924,7 +1924,7 @@ test("collectMatchCandidatePool scans beyond limit for exact student level", asy
         userId: "student-adjacent",
         userRef: {id: "student-adjacent"},
         filters: {},
-        createdAt: timestampFromMillis(fixedNowMillis - 120 * 1000),
+        createdAt: timestampFromMillis(fixedNowMillis - 60 * 1000),
       })),
       doc("student-exact", activeRequest({
         requestId: "request-student-exact",
@@ -2415,14 +2415,14 @@ test("collectMatchCandidatePool temporarily allows same-day repeat history", asy
         userId: "student-repeat",
         userRef: {id: "student-repeat"},
         filters: {},
-        createdAt: timestampFromMillis(fixedNowMillis - 180 * 1000),
+        createdAt: timestampFromMillis(fixedNowMillis - 100 * 1000),
       })),
       doc("student-ok", activeRequest({
         requestId: "request-student-ok",
         userId: "student-ok",
         userRef: {id: "student-ok"},
         filters: {},
-        createdAt: timestampFromMillis(fixedNowMillis - 140 * 1000),
+        createdAt: timestampFromMillis(fixedNowMillis - 80 * 1000),
       })),
     ],
     teacherDocs: [
@@ -2753,19 +2753,19 @@ test("collectMatchCandidatePool scans past users already in call", async () => {
         requestId: "request-student-in-call",
         userId: "student-in-call",
         userRef: {id: "student-in-call"},
-        createdAt: timestampFromMillis(fixedNowMillis - 180 * 1000),
+        createdAt: timestampFromMillis(fixedNowMillis - 100 * 1000),
       })),
       doc("student-session", activeRequest({
         requestId: "request-student-session",
         userId: "student-session",
         userRef: {id: "student-session"},
-        createdAt: timestampFromMillis(fixedNowMillis - 160 * 1000),
+        createdAt: timestampFromMillis(fixedNowMillis - 90 * 1000),
       })),
       doc("student-a", activeRequest({
         requestId: "request-student-a",
         userId: "student-a",
         userRef: {id: "student-a"},
-        createdAt: timestampFromMillis(fixedNowMillis - 140 * 1000),
+        createdAt: timestampFromMillis(fixedNowMillis - 80 * 1000),
       })),
     ],
     teacherDocs: [
@@ -2825,19 +2825,19 @@ test("collectMatchCandidatePool scans past students without call access", async 
         requestId: "request-student-no-access",
         userId: "student-no-access",
         userRef: {id: "student-no-access"},
-        createdAt: timestampFromMillis(fixedNowMillis - 180 * 1000),
+        createdAt: timestampFromMillis(fixedNowMillis - 100 * 1000),
       })),
       doc("student-limit", activeRequest({
         requestId: "request-student-limit",
         userId: "student-limit",
         userRef: {id: "student-limit"},
-        createdAt: timestampFromMillis(fixedNowMillis - 160 * 1000),
+        createdAt: timestampFromMillis(fixedNowMillis - 90 * 1000),
       })),
       doc("student-a", activeRequest({
         requestId: "request-student-a",
         userId: "student-a",
         userRef: {id: "student-a"},
-        createdAt: timestampFromMillis(fixedNowMillis - 140 * 1000),
+        createdAt: timestampFromMillis(fixedNowMillis - 80 * 1000),
       })),
     ],
     userDocsById: {

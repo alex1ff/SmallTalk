@@ -57,8 +57,8 @@ test("search request timing constants match product timeouts", () => {
   assert.deepEqual(SEARCH_REQUEST_TIMING, {
     HEARTBEAT_INTERVAL_SECONDS: 30,
     HEARTBEAT_STALE_SECONDS: 90,
-    MAX_SEARCH_SECONDS: 600,
-    BACKGROUND_MAX_SEARCH_SECONDS: 600,
+    MAX_SEARCH_SECONDS: 120,
+    BACKGROUND_MAX_SEARCH_SECONDS: 120,
   });
 });
 

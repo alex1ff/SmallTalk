@@ -110,3 +110,30 @@ test("admin can get an individual search request for support diagnostics", async
 
   await assertSucceeds(admin.firestore().doc("searchRequests/student-a").get());
 });
+
+test("passive queue permits only owner get; consent and deliveries stay server-only", async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await db.doc("passiveSearches/student-a").set({userId: "student-a", status: "waiting"});
+    await db.doc("passiveSearchOperations/consent-a").set({userId: "student-a"});
+    await db.doc("passiveSearchDeliveries/delivery-a").set({recipientId: "student-a"});
+  });
+  const owner = testEnv.authenticatedContext("student-a").firestore();
+  const other = testEnv.authenticatedContext("student-b").firestore();
+  const adminClient = testEnv.authenticatedContext("admin", {admin: true}).firestore();
+  await assertSucceeds(owner.doc("passiveSearches/student-a").get());
+  await assertFails(other.doc("passiveSearches/student-a").get());
+  await assertFails(testEnv.unauthenticatedContext().firestore().doc("passiveSearches/student-a").get());
+  for (const db of [owner, other, adminClient]) {
+    await assertFails(db.collection("passiveSearches").get());
+    await assertFails(db.doc("passiveSearches/student-a").set({userId: "student-b"}));
+    await assertFails(db.doc("passiveSearches/student-a").update({status: "matched"}));
+    await assertFails(db.doc("passiveSearches/student-a").delete());
+    for (const path of ["passiveSearchOperations/consent-a", "passiveSearchDeliveries/delivery-a"]) {
+      await assertFails(db.doc(path).get());
+      await assertFails(db.doc(path).set({status: "matched"}));
+      await assertFails(db.doc(path).update({status: "matched"}));
+      await assertFails(db.doc(path).delete());
+    }
+  }
+});

@@ -247,6 +247,11 @@ async function sendVoipPushToStudentResponder(
   }
 
   const responderData = responderDoc.data() || {};
+  // This transport is shared with teacher delivery. Trust the stored role,
+  // never a client payload or the historical function name.
+  if (require("./video_sessions_shared").normalizeRole(responderData.role) !== "native_speaker") {
+    return {sent: false, reason: "student_native_disabled"};
+  }
   const callExpiresAtMillis = Date.parse(normalizeString(callData.expiresAt));
   if (Number.isFinite(callExpiresAtMillis) &&
       callExpiresAtMillis <= Date.now()) {

@@ -1263,6 +1263,9 @@ async function sendVoipPushToStudent(studentId, callData) {
     }
 
     const studentData = studentDoc.data();
+    // Legacy teacher acceptance must not open a native surface for the student.
+    if (normalizeRole(studentData?.role) === "student") return;
+
     const bundleId = process.env.IOS_BUNDLE_ID || "com.appwave.expatlio";
     const voipTopic =
       process.env.IOS_VOIP_TOPIC ||

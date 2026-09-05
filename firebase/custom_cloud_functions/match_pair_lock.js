@@ -1,3 +1,4 @@
+const {activeSearchDeadlineMillis} = require("./active_search_deadline");
 const admin = require("firebase-admin");
 const {
   SEARCH_REQUEST_APP_STATE,
@@ -164,25 +165,13 @@ function isSearchRequestFreshForPairLock(
     return false;
   }
 
-  const expiresAtMillis = timestampToMillis(
-    requestData[SEARCH_REQUEST_FIELD.EXPIRES_AT],
-  );
+  const expiresAtMillis = activeSearchDeadlineMillis(requestData);
   if (expiresAtMillis === null || expiresAtMillis <= nowMillis) {
     return false;
   }
 
   const appState = normalizeString(requestData[SEARCH_REQUEST_FIELD.APP_STATE]);
-  const backgroundExpiresAtMillis = timestampToMillis(
-    requestData[SEARCH_REQUEST_FIELD.BACKGROUND_EXPIRES_AT],
-  );
-  if (appState === SEARCH_REQUEST_APP_STATE.BACKGROUND) {
-    if (
-      backgroundExpiresAtMillis === null ||
-      backgroundExpiresAtMillis <= nowMillis
-    ) {
-      return false;
-    }
-  }
+  if (appState !== SEARCH_REQUEST_APP_STATE.FOREGROUND) return false;
 
   return true;
 }
@@ -1428,6 +1417,8 @@ async function reserveMatchPairInTransaction({
   lockExpiresAt,
   finalizationExpiresAt,
   pairAttemptId = "",
+  passiveResponder = null,
+  now = null,
 }) {
   const normalizedRequesterId = normalizeDocumentId(requesterId);
   const normalizedResponderId = normalizeDocumentId(responderId);
@@ -1472,7 +1463,7 @@ async function reserveMatchPairInTransaction({
     requesterUserSnapshot,
     responderUserSnapshot,
     requesterSearchSnapshot,
-    responderSearchSnapshot,
+    storedResponderSearchSnapshot,
     responderPrivateTokenSnapshot,
     requesterTrialSnapshot,
     responderTrialSnapshot,
@@ -1488,6 +1479,19 @@ async function reserveMatchPairInTransaction({
     transaction.get(requesterTrialRef),
     responderTrialRef ? transaction.get(responderTrialRef) : null,
   ]);
+
+  if (now) nowMillis = now();
+
+  // The callable reads and validates the consent in this same transaction. A
+  // synthetic active request is written only after every pair check succeeds.
+  if (passiveResponder && (
+    storedResponderSearchSnapshot?.data()?.requestId !==
+      passiveResponder.sourceSearchRequestId ||
+    hasSearchRequestSessionState(storedResponderSearchSnapshot?.data() || {})
+  )) return buildPairLockFailure("responder_source_changed");
+  const responderSearchSnapshot = passiveResponder ? {
+    exists: true, data: () => passiveResponder.requestData,
+  } : storedResponderSearchSnapshot;
 
   if (sessionSnapshot.exists) {
     return buildPairLockFailure("session_already_exists");
@@ -1761,7 +1765,7 @@ async function reserveMatchPairInTransaction({
   });
 
   if (responderSearchRef) {
-    transaction.update(responderSearchRef, buildSearchRequestPairLockUpdate({
+    const responderLockUpdate = buildSearchRequestPairLockUpdate({
       sessionId,
       pairAttemptId: finalPairAttemptId,
       otherUserId: normalizedRequesterId,
@@ -1769,7 +1773,14 @@ async function reserveMatchPairInTransaction({
       matchedResponderId: normalizedResponderId,
       serverTimestamp,
       lockExpiresAt,
-    }));
+    });
+    if (passiveResponder) {
+      transaction.set(responderSearchRef, {
+        ...passiveResponder.requestData, ...responderLockUpdate,
+      });
+    } else {
+      transaction.update(responderSearchRef, responderLockUpdate);
+    }
   }
 
   return {
@@ -1988,6 +1999,7 @@ async function reserveMatchPair({
   pairAttemptId = "",
   sessionData = {},
   nowMillis = Date.now(),
+  now = null,
   lockTtlSeconds = MATCH_PAIR_LOCK_TTL_SECONDS,
   serverTimestamp = admin.firestore.FieldValue.serverTimestamp(),
   timestampFromMillis = admin.firestore.Timestamp.fromMillis,
@@ -2021,6 +2033,7 @@ async function reserveMatchPair({
     sessionRef,
     sessionData,
     nowMillis,
+    now,
     serverTimestamp,
     lockExpiresAt,
     finalizationExpiresAt,

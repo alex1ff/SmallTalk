@@ -1,3 +1,4 @@
+const {activeSearchDeadlineMillis} = require("./active_search_deadline");
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const {
@@ -150,7 +151,7 @@ function buildHeartbeatResponse({
     requestId: normalizeString(requestData.requestId) || null,
     sessionId: readRequestSessionId(requestData),
     pairAttemptId: normalizeString(requestData.pairAttemptId) || null,
-    expiresAt: timestampToIsoString(requestData.expiresAt),
+    expiresAt: timestampToIsoString(activeSearchDeadlineMillis(requestData)),
     errorCode: null,
     heartbeat,
     reason,
@@ -347,7 +348,7 @@ function buildHeartbeatSearchDecision({
     });
   }
 
-  const expiresAtMillis = timestampToMillis(requestData.expiresAt);
+  const expiresAtMillis = activeSearchDeadlineMillis(requestData);
   if (expiresAtMillis === null || expiresAtMillis <= nowMillis) {
     return buildHeartbeatTerminalDecision({
       userId,
@@ -367,21 +368,6 @@ function buildHeartbeatSearchDecision({
       reason: "background_expired",
       stopReason: "background_timeout",
       errorMessage: "Search request expired in background",
-      serverTimestamp,
-      fieldDelete,
-    });
-  }
-
-  const heartbeatAtMillis = timestampToMillis(requestData.heartbeatAt);
-  const staleCutoffMillis =
-    nowMillis - SEARCH_REQUEST_TIMING.HEARTBEAT_STALE_SECONDS * 1000;
-  if (heartbeatAtMillis === null || heartbeatAtMillis < staleCutoffMillis) {
-    return buildHeartbeatTerminalDecision({
-      userId,
-      requestData,
-      reason: "stale",
-      stopReason: "heartbeat_stale",
-      errorMessage: "Search request heartbeat is stale",
       serverTimestamp,
       fieldDelete,
     });

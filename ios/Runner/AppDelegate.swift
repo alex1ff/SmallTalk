@@ -177,6 +177,19 @@ private func incomingCallDurationMilliseconds(
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
 
+    if let registrar = registrar(forPlugin: "SmallTalkTimeZone") {
+      FlutterMethodChannel(
+        name: "smalltalk/timezone",
+        binaryMessenger: registrar.messenger()
+      ).setMethodCallHandler { call, result in
+        if call.method == "getTimeZone" {
+          result(TimeZone.current.identifier)
+        } else {
+          result(FlutterMethodNotImplemented)
+        }
+      }
+    }
+
     voipRegistry = PKPushRegistry(queue: DispatchQueue.main)
     voipRegistry?.delegate = self
     voipRegistry?.desiredPushTypes = [PKPushType.voIP]

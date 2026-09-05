@@ -1,3 +1,4 @@
+const {operationId} = require("./passive_search_policy");
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const {
@@ -189,6 +190,7 @@ async function startSearchCallable(data, context, options = {}) {
     userId,
     requestId,
   );
+  const attemptRef = db.collection("activeSearchAttempts").doc(operationId(userId, requestId));
   const nowMillis = Date.now();
   const serverTimestamp = admin.firestore.FieldValue.serverTimestamp();
 
@@ -206,8 +208,11 @@ async function startSearchCallable(data, context, options = {}) {
       );
     }
 
+    const attemptSnapshot = await transaction.get(attemptRef);
     const usageSnapshot = await transaction.get(usageRef);
     const searchRequestSnapshot = await transaction.get(searchRequestRef);
+    const passiveRef = db.collection("passiveSearches").doc(userId);
+    const passiveSnapshot = await transaction.get(passiveRef);
     const requesterData = requesterSnapshot.data() || {};
     const requesterRole = normalizeRole(requesterData.role);
     if (!isSupportedSessionRole(requesterRole)) {
@@ -221,6 +226,11 @@ async function startSearchCallable(data, context, options = {}) {
     const existingRequestData = searchRequestSnapshot.exists ?
       searchRequestSnapshot.data() || {} :
       null;
+    if (attemptSnapshot.exists && existingRequestData?.requestId !== requestId) {
+      const closedRequest = {...attemptSnapshot.data(), status: SEARCH_REQUEST_STATUS.EXPIRED};
+      return {response: buildStartSearchResponse({userId, requestData: closedRequest, reused: true}),
+        requestData: closedRequest, requesterData, reused: true, shouldTryStudentPair: false};
+    }
     const cancellationIntentData = cancellationIntentSnap?.exists ?
       cancellationIntentSnap.data() || {} :
       {};
@@ -251,6 +261,14 @@ async function startSearchCallable(data, context, options = {}) {
         reused: true,
         shouldTryStudentPair: false,
       };
+    }
+    // Retrying the same completed operation cannot create a fresh deadline.
+    if (existingRequestData && input.requestId === existingRequestData.requestId &&
+        !canReuseSearchRequestForUser({requestData: existingRequestData, userId, nowMillis})) {
+      return {response: buildStartSearchResponse({userId,
+        requestData: existingRequestData, reused: true}),
+      requestData: existingRequestData, requesterData, reused: true,
+      shouldTryStudentPair: false};
     }
     const accessDecision = buildStartSearchAccessDecision({
       requesterRole,
@@ -291,6 +309,7 @@ async function startSearchCallable(data, context, options = {}) {
         serverTimestamp,
         preserveMatchBinding,
       });
+      if (!preserveMatchBinding) refreshedRequestData.passiveBroadcastReady = false;
       transaction.update(searchRequestRef, refreshedRequestData);
       const response = preserveMatchBinding ?
         buildCurrentMatchedStartSearchResponse({
@@ -326,6 +345,17 @@ async function startSearchCallable(data, context, options = {}) {
       nowMillis,
       serverTimestamp,
     });
+    nextRequestData.passiveBroadcastReady = false;
+    const passive = passiveSnapshot.data() || {};
+    if (passive.status === "waiting") {
+      const stopped = {status: "stopped", stopReason: "active_search_started",
+        updatedAt: serverTimestamp};
+      transaction.set(passiveRef, stopped, {merge: true});
+      transaction.set(db.collection("passiveSearchOperations")
+        .doc(operationId(userId, passive.requestId)), stopped, {merge: true});
+    }
+    transaction.set(attemptRef, {userId, requestId,
+      createdAt: nextRequestData.createdAt, expiresAt: nextRequestData.expiresAt});
     transaction.set(searchRequestRef, nextRequestData);
 
     return {
@@ -398,10 +428,21 @@ async function startSearchCallable(data, context, options = {}) {
       return matchResult.response;
     }
     if (matchResult.response) {
-      return matchResult.response;
+      startResult.response = matchResult.response;
     }
   }
 
+  if (startResult.requestData.status === SEARCH_REQUEST_STATUS.ACTIVE) {
+    await db.runTransaction(async (transaction) => {
+      const current = await transaction.get(searchRequestRef);
+      const request = current.data() || {};
+      if (request.requestId === startResult.requestData.requestId &&
+          request.status === SEARCH_REQUEST_STATUS.ACTIVE &&
+          !hasCurrentMatchedSession(request)) {
+        transaction.update(searchRequestRef, {passiveBroadcastReady: true});
+      }
+    });
+  }
   return startResult.response;
 }
 

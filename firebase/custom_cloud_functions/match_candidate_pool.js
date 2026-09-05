@@ -1,3 +1,4 @@
+const {activeSearchDeadlineMillis} = require("./active_search_deadline");
 const { evaluateTutorAvailabilityWindow } = require("./availability");
 const {
   buildStudentCallAccessDecision,
@@ -634,9 +635,7 @@ function validateActiveStudentSearchRequest(
     return {valid: false, reason: "stale_heartbeat"};
   }
 
-  const expiresAtMillis = timestampToMillis(
-    requestData[SEARCH_REQUEST_FIELD.EXPIRES_AT],
-  );
+  const expiresAtMillis = activeSearchDeadlineMillis(requestData);
   if (expiresAtMillis === null || expiresAtMillis <= safeNowMillis) {
     return {valid: false, reason: "expired_request"};
   }
@@ -644,15 +643,8 @@ function validateActiveStudentSearchRequest(
   const appState = normalizeString(
     requestData[SEARCH_REQUEST_FIELD.APP_STATE],
   );
-  const backgroundExpiresAtMillis = timestampToMillis(
-    requestData[SEARCH_REQUEST_FIELD.BACKGROUND_EXPIRES_AT],
-  );
-  if (
-    appState === "background" &&
-    (backgroundExpiresAtMillis === null ||
-      backgroundExpiresAtMillis <= safeNowMillis)
-  ) {
-    return {valid: false, reason: "background_expired"};
+  if (appState !== "foreground") {
+    return {valid: false, reason: "not_foreground"};
   }
 
   return {valid: true, reason: "active"};
@@ -1599,6 +1591,12 @@ module.exports = {
   DEFAULT_SCAN_MAX_PAGES,
   DEFAULT_SCAN_PAGE_SIZE,
   MATCH_CANDIDATE_SOURCE,
+  buildCandidateMatchQuality,
+  readCandidateLocation,
+  readCandidateLevelValue,
+  readPreferredLocation,
+  readBlockedUserIds,
+  readSearchRequestExcludedCandidateIds,
   buildActiveStudentSearchRequestsQuery,
   buildAvailableTeachersQuery,
   buildStudentQueueCandidateFromDocs,

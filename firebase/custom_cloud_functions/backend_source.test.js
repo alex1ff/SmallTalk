@@ -278,7 +278,7 @@ cat "\${FAKE_INVENTORY_JSON}"
   });
   assert.equal(recovered.status, 0, recovered.stderr);
   assert.equal(fs.readFileSync(attemptFile, "utf8"), "3");
-  assert.match(recovered.stdout, /"inspectedFunctions": 63/);
+  assert.match(recovered.stdout, /"inspectedFunctions": 68/);
 
   fs.rmSync(attemptFile);
   const failed = spawnSync("bash", [scriptPath, "--json"], {

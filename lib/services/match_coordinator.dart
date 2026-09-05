@@ -403,6 +403,7 @@ class MatchCoordinator extends ChangeNotifier with WidgetsBindingObserver {
   final Set<String> _locallyAcceptedPairs = <String>{};
   final Set<String> _locallyCancelledPairs = <String>{};
   final Set<String> _locallyCancelledSessionIds = <String>{};
+  final Set<String> _locallyCancelledSearchRequestIds = <String>{};
   final Set<String> _navigationInFlight = <String>{};
   final Set<String> _navigatedPairs = <String>{};
   final Map<String, _MatchActionIntent> _actionIntents =
@@ -502,6 +503,7 @@ class MatchCoordinator extends ChangeNotifier with WidgetsBindingObserver {
     _locallyAcceptedPairs.clear();
     _locallyCancelledPairs.clear();
     _locallyCancelledSessionIds.clear();
+    _locallyCancelledSearchRequestIds.clear();
     _navigationInFlight.clear();
     _navigatedPairs.clear();
     _actionIntents.clear();
@@ -749,7 +751,8 @@ class MatchCoordinator extends ChangeNotifier with WidgetsBindingObserver {
     if (session == null) return;
     final pairKey = _pairKey(session.sessionId, session.pairAttemptId);
     if (_locallyCancelledPairs.contains(pairKey) ||
-        _locallyCancelledSessionIds.contains(session.sessionId)) {
+        _locallyCancelledSessionIds.contains(session.sessionId) ||
+        _searchWasLocallyCancelled(session)) {
       return;
     }
     if (matchShouldClaimInApp(
@@ -1236,6 +1239,27 @@ class MatchCoordinator extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  /// Stop can precede the transaction that creates a passive responder's
+  /// session. Bind cancellation to the consent/request id before a session id
+  /// exists, so later user/session snapshots cannot start navigation.
+  void noteLocalSearchCancellation(String requestId) {
+    final normalized = _matchString(requestId);
+    if (normalized != null) _locallyCancelledSearchRequestIds.add(normalized);
+  }
+
+  bool isSearchLocallyCancelled(String requestId) =>
+      _locallyCancelledSearchRequestIds.contains(requestId);
+
+  bool _searchWasLocallyCancelled(MatchSessionState session) {
+    final requesterId = _matchString(session.raw['requesterId']) ??
+        _matchString(session.raw['studentId']);
+    final ids = _matchMap(session.raw['searchRequestIds']);
+    final requestId = _matchString(
+        ids[requesterId == session.userId ? 'requester' : 'responder']);
+    return requestId != null &&
+        _locallyCancelledSearchRequestIds.contains(requestId);
+  }
+
   void noteIncomingCallKit(Map<String, dynamic> payload) {
     final sessionId = _payloadString(payload, 'sessionId');
     if (sessionId == null) return;
@@ -1388,6 +1412,7 @@ class MatchCoordinator extends ChangeNotifier with WidgetsBindingObserver {
     if (current == null ||
         _locallyCancelledPairs.contains(pairKey) ||
         _locallyCancelledSessionIds.contains(session.sessionId) ||
+        _searchWasLocallyCancelled(current) ||
         current.sessionId != session.sessionId ||
         current.pairAttemptId != session.pairAttemptId ||
         !matchCanNavigate(

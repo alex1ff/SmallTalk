@@ -18,6 +18,7 @@ const {
 } = require("./daily_room_cleanup");
 const {
   isSupportedSessionRole,
+  normalizeRole,
   VIDEO_SESSION_STATUS,
 } = require("./video_sessions_shared");
 const {
@@ -612,6 +613,9 @@ async function sendVoipPushToTutor(tutorId, callData) {
     }
 
     const tutorData = tutorDoc.data();
+    if (normalizeRole(tutorData?.role) !== "native_speaker") {
+      return {sent: false, reason: "student_native_disabled"};
+    }
     const bundleId = process.env.IOS_BUNDLE_ID || "com.appwave.expatlio";
     const voipTopic =
       process.env.IOS_VOIP_TOPIC ||

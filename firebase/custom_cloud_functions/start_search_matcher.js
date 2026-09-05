@@ -245,6 +245,7 @@ async function tryCreateStudentPairForSearchRequest({
         nowMillis: lockNowMillis,
       }),
       nowMillis: lockNowMillis,
+      now: Date.now,
     });
 
     if (lockResult.locked) {

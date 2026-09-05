@@ -148,3 +148,12 @@ const requestWithdrawal = require("./request_withdrawal.js");
 exports.requestWithdrawal = requestWithdrawal.requestWithdrawal;
 const cleanupExpiredGifts = require("./cleanup_expired_gifts.js");
 exports.cleanupExpiredGifts = cleanupExpiredGifts.cleanupExpiredGifts;
+
+const passiveSearch = require("./passive_search");
+exports.joinPassiveSearch = passiveSearch.joinPassiveSearch;
+exports.leavePassiveSearch = passiveSearch.leavePassiveSearch;
+exports.connectPassiveSearch = passiveSearch.connectPassiveSearch;
+exports.notifyPassiveSearchPartners = require("./passive_search_notifications")
+  .notifyPassiveSearchPartners;
+exports.notifyPassiveSearchOnJoin = require("./passive_search_notifications")
+  .notifyPassiveSearchOnJoin;

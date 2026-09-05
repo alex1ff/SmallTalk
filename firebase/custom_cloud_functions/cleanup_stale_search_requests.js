@@ -1,3 +1,4 @@
+const {activeSearchDeadlineMillis} = require("./active_search_deadline");
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const {
@@ -89,6 +90,11 @@ function isStaleSearchRequest(requestData = {}, nowMillis = Date.now()) {
     return false;
   }
 
+  // A short active attempt can resume in foreground until its fixed deadline.
+  const deadline = activeSearchDeadlineMillis(requestData);
+  if (!hasSessionBinding(requestData) && requestData.createdAt &&
+      deadline !== null && deadline > nowMillis) return false;
+
   const heartbeatAtMillis = timestampToMillis(requestData.heartbeatAt);
   return heartbeatAtMillis === null ||
     heartbeatAtMillis < staleCutoffMillisFor(nowMillis);
@@ -106,7 +112,7 @@ function isExpiredUnmatchedSearchRequest(
     return false;
   }
 
-  const expiresAtMillis = timestampToMillis(requestData.expiresAt);
+  const expiresAtMillis = activeSearchDeadlineMillis(requestData);
   return expiresAtMillis !== null && expiresAtMillis <= nowMillis;
 }
 

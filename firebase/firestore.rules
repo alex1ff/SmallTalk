@@ -51,6 +51,10 @@ service cloud.firestore {
         'eventReports',
         'chatMessageReports',
         'searchRequests',
+        'passiveSearches',
+        'activeSearchAttempts',
+        'passiveSearchOperations',
+        'passiveSearchDeliveries',
         'translationCache',
         'translationRateLimits',
         'aiFeedbackRateLimits',
@@ -1358,6 +1362,20 @@ service cloud.firestore {
 
     // Call lifecycle and generated call integrations. Lifecycle documents are
     // server-created; clients receive only participant-scoped reads and narrow updates.
+    match /passiveSearches/{userId} {
+      allow get: if request.auth != null && request.auth.uid == userId;
+      allow list, write: if false;
+    }
+    match /activeSearchAttempts/{operationId} {
+      allow read, write: if false;
+    }
+    match /passiveSearchOperations/{operationId} {
+      allow read, write: if false;
+    }
+    match /passiveSearchDeliveries/{deliveryId} {
+      allow read, write: if false;
+    }
+
     match /searchRequests/{userId} {
       allow get: if isAdmin() || isSelf(userId);
       allow list, create, update, delete: if false;

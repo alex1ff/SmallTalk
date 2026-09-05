@@ -20,6 +20,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'services/voip_service.dart';
 import 'services/match_coordinator.dart';
+import 'services/partner_availability_notifications.dart';
 import 'services/firebase_app_check_service.dart';
 import 'services/user_presence_service.dart';
 import 'services/error_reporting/app_error_boundary.dart';
@@ -322,6 +323,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
     _appStateNotifier = AppStateNotifier.instance;
     _router = createRouter(_appStateNotifier);
+    unawaited(PartnerAvailabilityNotifications.instance.start());
     userStream = smallTalkFirebaseUserStream();
     _userStreamSub = userStream.listen((user) {
       final wasLoggedIn = _appStateNotifier.loggedIn;
@@ -337,6 +339,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         }
       }
       final userId = user.uid;
+      PartnerAvailabilityNotifications.instance.setUser(
+        user.loggedIn ? userId : null,
+      );
       if (user.loggedIn && userId != null && userId.isNotEmpty) {
         if (!wasLoggedIn) {
           UserPresenceService.instance.start();
@@ -387,6 +392,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     _authServiceGeneration += 1;
     _authServiceUserId = null;
     unawaited(VoIPService().setCallActionHandlingReady(false));
+    unawaited(PartnerAvailabilityNotifications.instance.dispose());
     unawaited(MatchCoordinator.instance.stop());
 
     super.dispose();

@@ -206,7 +206,7 @@ test("reused unbound search upgrades capability but matched attempt does not", (
     timestampFromMillis,
   });
   assert.equal(upgraded.matchProtocolVersion, 2);
-  assert.ok(upgraded.expiresAt.toMillis() > base.expiresAt.toMillis());
+  assert.equal(upgraded.expiresAt.toMillis(), base.expiresAt.toMillis());
 
   const matched = buildReusedSearchRequestRefresh({
     requestData: {
@@ -2672,7 +2672,7 @@ test("student pair responder call data omits room credentials", () => {
   assert.equal(Object.hasOwn(fcmMessage.data, "meetingToken"), false);
 });
 
-test("student responder transport preserves early result contracts", async () => {
+test("teacher transport: student responder transport preserves early result contracts", async () => {
   assert.deepEqual(
     await sendVoipPushToStudentResponder("", {}),
     {sent: false, reason: "missing_responder"},
@@ -2698,7 +2698,7 @@ test("student responder transport preserves early result contracts", async () =>
       firestore: {
         collection: () => ({
           doc: () => ({
-            get: async () => ({exists: true, data: () => ({})}),
+            get: async () => ({exists: true, data: () => ({role: "native_speaker", })}),
           }),
         }),
       },
@@ -2716,7 +2716,7 @@ test("student responder transport preserves early result contracts", async () =>
       firestore: {
         collection: () => ({
           doc: () => ({
-            get: async () => ({exists: true, data: () => ({})}),
+            get: async () => ({exists: true, data: () => ({role: "native_speaker", })}),
           }),
         }),
       },
@@ -2737,7 +2737,7 @@ test("student responder transport preserves early result contracts", async () =>
           doc: () => ({
             get: async () => ({
               exists: true,
-              data: () => ({matchProtocolPlatform: "ios"}),
+              data: () => ({role: "native_speaker", matchProtocolPlatform: "ios"}),
             }),
           }),
         }),
@@ -2759,7 +2759,7 @@ test("student responder transport preserves early result contracts", async () =>
   });
 });
 
-test("student responder APNS failure is preserved when FCM is missing", async () => {
+test("teacher transport: student responder APNS failure is preserved when FCM is missing", async () => {
   let fcmSendCount = 0;
   const result = await sendVoipPushToStudentResponder(
     "student-b",
@@ -2776,7 +2776,7 @@ test("student responder APNS failure is preserved when FCM is missing", async ()
           doc: () => ({
             get: async () => ({
               exists: true,
-              data: () => ({displayName: "Waiting Student"}),
+              data: () => ({role: "native_speaker", displayName: "Waiting Student"}),
             }),
           }),
         }),
@@ -2809,7 +2809,7 @@ test("student responder APNS failure is preserved when FCM is missing", async ()
   assert.equal(fcmSendCount, 0);
 });
 
-test("student responder APNS success skips FCM fallback", async () => {
+test("teacher transport: student responder APNS success skips FCM fallback", async () => {
   let apnsSendCount = 0;
   let fcmSendCount = 0;
   const controller = new AbortController();
@@ -2828,7 +2828,7 @@ test("student responder APNS success skips FCM fallback", async () => {
           doc: () => ({
             get: async () => ({
               exists: true,
-              data: () => ({displayName: "Waiting Student"}),
+              data: () => ({role: "native_speaker", displayName: "Waiting Student"}),
             }),
           }),
         }),
@@ -2861,7 +2861,7 @@ test("student responder APNS success skips FCM fallback", async () => {
   assert.equal(fcmSendCount, 0);
 });
 
-test("migrated iOS responder keeps APNS timeout ambiguous after FCM wake", async () => {
+test("teacher transport: migrated iOS responder keeps APNS timeout ambiguous after FCM wake", async () => {
   let fcmSendCount = 0;
   let apnsAbortReason = "";
   const controller = new AbortController();
@@ -2880,7 +2880,7 @@ test("migrated iOS responder keeps APNS timeout ambiguous after FCM wake", async
           doc: () => ({
             get: async () => ({
               exists: true,
-              data: () => ({displayName: "Waiting Student"}),
+              data: () => ({role: "native_speaker", displayName: "Waiting Student"}),
             }),
           }),
         }),
@@ -2923,7 +2923,7 @@ test("migrated iOS responder keeps APNS timeout ambiguous after FCM wake", async
   assert.equal(fcmSendCount, 1);
 });
 
-test("migrated iOS responder treats definitive APNS failure as undelivered", async () => {
+test("teacher transport: migrated iOS responder treats definitive APNS failure as undelivered", async () => {
   let fcmSendCount = 0;
   const result = await sendVoipPushToStudentResponder(
     "student-b",
@@ -2940,7 +2940,7 @@ test("migrated iOS responder treats definitive APNS failure as undelivered", asy
           doc: () => ({
             get: async () => ({
               exists: true,
-              data: () => ({displayName: "Waiting Student"}),
+              data: () => ({role: "native_speaker", displayName: "Waiting Student"}),
             }),
           }),
         }),
@@ -2976,7 +2976,7 @@ test("migrated iOS responder treats definitive APNS failure as undelivered", asy
   assert.equal(fcmSendCount, 1);
 });
 
-test("Android responder can use FCM as the native delivery channel", async () => {
+test("teacher transport: Android responder can use FCM as the native delivery channel", async () => {
   const result = await sendVoipPushToStudentResponder(
     "student-b",
     {sessionId: "session-ab", callerName: "Ana", language: "en"},
@@ -2986,7 +2986,7 @@ test("Android responder can use FCM as the native delivery channel", async () =>
           doc: () => ({
             get: async () => ({
               exists: true,
-              data: () => ({matchProtocolPlatform: "android"}),
+              data: () => ({role: "native_speaker", matchProtocolPlatform: "android"}),
             }),
           }),
         }),
@@ -3003,7 +3003,7 @@ test("Android responder can use FCM as the native delivery channel", async () =>
   assert.deepEqual(result, {sent: true, channel: "fcm"});
 });
 
-test("student responder push result preserves APNS and FCM failures", async () => {
+test("teacher transport: student responder push result preserves APNS and FCM failures", async () => {
   const deliveryOrder = [];
   const result = await sendVoipPushToStudentResponder(
     "student-b",
@@ -3020,7 +3020,7 @@ test("student responder push result preserves APNS and FCM failures", async () =
           doc: () => ({
             get: async () => ({
               exists: true,
-              data: () => ({displayName: "Waiting Student"}),
+              data: () => ({role: "native_speaker", displayName: "Waiting Student"}),
             }),
           }),
         }),
@@ -3150,7 +3150,7 @@ test("stale background responder notification is cancelled safely", async () => 
   );
 });
 
-test("background responder stale-before-push flow cancels notification", async () => {
+test("student native disabled: background responder stale-before-push flow cancels notification", async () => {
   const notificationPath = "notifications/session-ab_student-b";
   const nowMillis = Date.now();
   const store = new Map([
@@ -3206,6 +3206,7 @@ test("background responder stale-before-push flow cancels notification", async (
     }),
   };
 
+  const originalStore = new Map(store);
   const result = await maybeNotifyBackgroundStudentResponder({
     db: fakeDb,
     sessionId: "session-ab",
@@ -3223,19 +3224,14 @@ test("background responder stale-before-push flow cancels notification", async (
       });
     },
   });
+  assert.deepEqual(result, {shouldNotify: false, reason: "student_native_disabled"});
+  assert.deepEqual(store, originalStore);
 
-  assert.equal(result.shouldNotify, false);
-  assert.equal(result.reason, "stale_before_push");
-  assert.equal(store.get(notificationPath).status, "cancelled");
-  assert.equal(
-    store.get(notificationPath).cancelReason,
-    "stale_before_push",
-  );
-  assert.equal(store.get(notificationPath).sessionId, "session-ab");
-  assert.equal(store.get(notificationPath).recipientId, "student-b");
+
+  assert.equal(store.get(notificationPath), originalStore.get(notificationPath));
 });
 
-test("background responder stale-before-push preserves accept race", async () => {
+test("student native disabled: background responder stale-before-push preserves accept race", async () => {
   const notificationPath = "notifications/session-ab_student-b";
   const nowMillis = Date.now();
   const store = new Map([
@@ -3303,6 +3299,7 @@ test("background responder stale-before-push preserves accept race", async () =>
     },
   };
 
+  const originalStore = new Map(store);
   const result = await maybeNotifyBackgroundStudentResponder({
     db: fakeDb,
     sessionId: "session-ab",
@@ -3310,18 +3307,14 @@ test("background responder stale-before-push preserves accept race", async () =>
     responderSearchRequestDocId: "student-b",
     requesterData: {displayName: "Joining Student"},
   });
+  assert.deepEqual(result, {shouldNotify: false, reason: "student_native_disabled"});
+  assert.deepEqual(store, originalStore);
 
-  assert.equal(result.shouldNotify, false);
-  assert.equal(result.reason, "accept_finalization_in_progress");
-  assert.equal(result.staleReason, "accept_in_progress");
-  assert.equal(store.get(notificationPath).status, "sent");
-  assert.equal(
-    Object.hasOwn(store.get(notificationPath), "cancelledAt"),
-    false,
-  );
+
+  assert.equal(store.get(notificationPath), originalStore.get(notificationPath));
 });
 
-test("background responder stale-before-push cancel preserves accept race", async () => {
+test("student native disabled: background responder stale-before-push cancel preserves accept race", async () => {
   const notificationPath = "notifications/session-ab_student-b";
   const nowMillis = Date.now();
   const store = new Map([
@@ -3396,6 +3389,7 @@ test("background responder stale-before-push cancel preserves accept race", asyn
     },
   };
 
+  const originalStore = new Map(store);
   const result = await maybeNotifyBackgroundStudentResponder({
     db: fakeDb,
     sessionId: "session-ab",
@@ -3403,18 +3397,14 @@ test("background responder stale-before-push cancel preserves accept race", asyn
     responderSearchRequestDocId: "student-b",
     requesterData: {displayName: "Joining Student"},
   });
+  assert.deepEqual(result, {shouldNotify: false, reason: "student_native_disabled"});
+  assert.deepEqual(store, originalStore);
 
-  assert.equal(result.shouldNotify, false);
-  assert.equal(result.reason, "accept_finalization_in_progress");
-  assert.equal(result.staleReason, "accept_in_progress");
-  assert.equal(store.get(notificationPath).status, "sent");
-  assert.equal(
-    Object.hasOwn(store.get(notificationPath), "cancelledAt"),
-    false,
-  );
+
+  assert.equal(store.get(notificationPath), originalStore.get(notificationPath));
 });
 
-test("background responder notify flow creates notification and sends push", async () => {
+test("student native disabled: background responder notify flow creates notification and sends push", async () => {
   const notificationPath = "notifications/session-ab_student-b";
   const nowMillis = Date.now();
   const store = new Map([
@@ -3471,6 +3461,7 @@ test("background responder notify flow creates notification and sends push", asy
   };
   const pushCalls = [];
 
+  const originalStore = new Map(store);
   const result = await maybeNotifyBackgroundStudentResponder({
     db: fakeDb,
     sessionId: "session-ab",
@@ -3485,48 +3476,14 @@ test("background responder notify flow creates notification and sends push", asy
       return {sent: true, channel: "test"};
     },
   });
+  assert.deepEqual(result, {shouldNotify: false, reason: "student_native_disabled"});
+  assert.deepEqual(store, originalStore);
+  assert.equal(pushCalls.length, 0);
 
-  assert.equal(result.shouldNotify, true);
-  assert.equal(result.reason, "background_responder");
-  assert.equal(result.pushResult.sent, true);
-  assert.equal(pushCalls.length, 1);
-  assert.equal(pushCalls[0].responderId, "student-b");
-  assert.equal(pushCalls[0].callData.sessionId, "session-ab");
-  assert.equal(pushCalls[0].callData.callerName, "Joining Student");
-  assert.equal(pushCalls[0].callData.callerId, "student-a");
-  assert.equal(pushCalls[0].callData.callerPhoto, "joining-photo");
-  assert.equal(pushCalls[0].callData.language, "en");
-  assert.equal(pushCalls[0].callData.scenario, "student_student");
-  assert.equal(pushCalls[0].callData.requesterId, "student-a");
-  assert.equal(pushCalls[0].callData.responderId, "student-b");
-  assert.equal(pushCalls[0].callData.requesterRole, "student");
-  assert.equal(pushCalls[0].callData.responderRole, "student");
-  assert.equal(pushCalls[0].callData.navRole, "student");
-  assert.equal(pushCalls[0].callData.acceptMode, "responder_accepts");
-  assert.equal(
-    pushCalls[0].callData.callKitId,
-    buildCallKitIdForSession("session-ab"),
-  );
-  assert.equal(pushCalls[0].callData.notificationId, "session-ab_student-b");
-  assert.equal(pushCalls[0].callData.searchRequestId, "");
-  assert.ok(pushCalls[0].callData.expiresAt);
-  assert.equal(pushCalls[0].callData.roomUrl, "");
-  assert.equal(pushCalls[0].callData.roomName, "");
-  assert.equal(pushCalls[0].callData.tokenStrategy, "accept_call");
-  assert.equal(Object.hasOwn(pushCalls[0].callData, "meetingToken"), false);
-  assert.equal(store.get(notificationPath).status, "sent");
-  assert.equal(store.get(notificationPath).recipientId, "student-b");
-  assert.equal(store.get(notificationPath).sessionId, "session-ab");
-  assert.ok(store.get(notificationPath).pushSentAt);
-  assert.equal(store.get(notificationPath).pushChannel, "test");
-  assert.ok(store.get(notificationPath).updatedAt);
-  assert.deepEqual(store.get(notificationPath).studentInfo, {
-    name: "Joining Student",
-    photo: "joining-photo",
-  });
+  assert.equal(store.get(notificationPath), originalStore.get(notificationPath));
 });
 
-test("background responder finalization failure keeps notification id for retry", async () => {
+test("student native disabled: background responder finalization failure keeps notification id for retry", async () => {
   const notificationPath = "notifications/session-ab_student-b";
   const nowMillis = Date.now();
   const store = new Map([
@@ -3565,6 +3522,7 @@ test("background responder finalization failure keeps notification id for retry"
 
   const originalConsoleError = console.error;
   let result;
+  const originalStore = new Map(store);
   try {
     console.error = () => {};
     result = await maybeNotifyBackgroundStudentResponder({
@@ -3584,24 +3542,14 @@ test("background responder finalization failure keeps notification id for retry"
   } finally {
     console.error = originalConsoleError;
   }
+  assert.deepEqual(result, {shouldNotify: false, reason: "student_native_disabled"});
+  assert.deepEqual(store, originalStore);
 
-  assert.equal(pushSendCount, 1);
-  assert.equal(result.shouldNotify, false);
-  assert.equal(result.reason, "push_finalization_failed");
-  assert.equal(result.staleReason, "finalization_down");
-  assert.equal(result.notificationId, "session-ab_student-b");
-  assert.deepEqual(result.pushResult, {
-    sent: true,
-    channel: "test",
-  });
-  assert.equal(
-    shouldRetryBackgroundStudentMatchAfterNotifyResult(result),
-    true,
-  );
-  assert.equal(store.get(notificationPath).status, "sent");
+  assert.equal(pushSendCount, 0);
+  assert.equal(store.get(notificationPath), originalStore.get(notificationPath));
 });
 
-test("background responder notify flow cancels stale state after push", async () => {
+test("student native disabled: background responder notify flow cancels stale state after push", async () => {
   const notificationPath = "notifications/session-ab_student-b";
   const nowMillis = Date.now();
   const store = new Map([
@@ -3657,6 +3605,7 @@ test("background responder notify flow cancels stale state after push", async ()
     }),
   };
 
+  const originalStore = new Map(store);
   const result = await maybeNotifyBackgroundStudentResponder({
     db: fakeDb,
     sessionId: "session-ab",
@@ -3672,15 +3621,11 @@ test("background responder notify flow cancels stale state after push", async ()
       return {sent: true, channel: "test"};
     },
   });
+  assert.deepEqual(result, {shouldNotify: false, reason: "student_native_disabled"});
+  assert.deepEqual(store, originalStore);
 
-  assert.equal(result.shouldNotify, false);
-  assert.equal(result.reason, "stale_after_push");
-  assert.equal(result.pushResult.sent, true);
-  assert.equal(store.get(notificationPath).status, "cancelled");
-  assert.equal(store.get(notificationPath).cancelReason, "stale_after_push");
-  assert.ok(store.get(notificationPath).pushSentAt);
-  assert.equal(store.get(notificationPath).pushChannel, "test");
-  assert.ok(store.get(notificationPath).cancelledAt);
+
+  assert.equal(store.get(notificationPath), originalStore.get(notificationPath));
 });
 
 test("background responder push success preserves terminal notifications", async () => {
@@ -4024,7 +3969,7 @@ test("background responder post-push finalization preserves accept race", async 
   }
 });
 
-test("background responder notify flow records push failure metadata", async () => {
+test("student native disabled: background responder notify flow records push failure metadata", async () => {
   const notificationPath = "notifications/session-ab_student-b";
   const nowMillis = Date.now();
   const store = new Map([
@@ -4080,6 +4025,7 @@ test("background responder notify flow records push failure metadata", async () 
     }),
   };
 
+  const originalStore = new Map(store);
   const result = await maybeNotifyBackgroundStudentResponder({
     db: fakeDb,
     sessionId: "session-ab",
@@ -4090,21 +4036,14 @@ test("background responder notify flow records push failure metadata", async () 
       throw new Error("network unavailable");
     },
   });
+  assert.deepEqual(result, {shouldNotify: false, reason: "student_native_disabled"});
+  assert.deepEqual(store, originalStore);
 
-  assert.equal(result.shouldNotify, true);
-  assert.equal(result.pushResult.sent, false);
-  assert.equal(result.pushResult.reason, "push_failed");
-  assert.equal(result.pushResult.error, "network unavailable");
-  assert.equal(store.get(notificationPath).status, "sent");
-  assert.equal(
-    store.get(notificationPath).lastPushError,
-    "network unavailable",
-  );
-  assert.ok(store.get(notificationPath).lastPushFailedAt);
-  assert.ok(store.get(notificationPath).updatedAt);
+
+  assert.equal(store.get(notificationPath), originalStore.get(notificationPath));
 });
 
-test("background responder notify flow cancels stale state after push failure", async () => {
+test("student native disabled: background responder notify flow cancels stale state after push failure", async () => {
   const notificationPath = "notifications/session-ab_student-b";
   const nowMillis = Date.now();
   const store = new Map([
@@ -4160,6 +4099,7 @@ test("background responder notify flow cancels stale state after push failure", 
     }),
   };
 
+  const originalStore = new Map(store);
   const result = await maybeNotifyBackgroundStudentResponder({
     db: fakeDb,
     sessionId: "session-ab",
@@ -4179,21 +4119,14 @@ test("background responder notify flow cancels stale state after push failure", 
       };
     },
   });
+  assert.deepEqual(result, {shouldNotify: false, reason: "student_native_disabled"});
+  assert.deepEqual(store, originalStore);
 
-  assert.equal(result.shouldNotify, false);
-  assert.equal(result.reason, "stale_after_push");
-  assert.equal(result.pushResult.sent, false);
-  assert.equal(store.get(notificationPath).status, "cancelled");
-  assert.equal(store.get(notificationPath).cancelReason, "stale_after_push");
-  assert.equal(
-    store.get(notificationPath).staleReason,
-    "responder_not_background",
-  );
-  assert.equal(store.get(notificationPath).lastPushError, "network unavailable");
-  assert.ok(store.get(notificationPath).lastPushFailedAt);
+
+  assert.equal(store.get(notificationPath), originalStore.get(notificationPath));
 });
 
-test("background responder timeout ignores late push success", async () => {
+test("student native disabled: background responder timeout ignores late push success", async () => {
   const notificationPath = "notifications/session-ab_student-b";
   const nowMillis = Date.now();
   const store = new Map([
@@ -4249,6 +4182,7 @@ test("background responder timeout ignores late push success", async () => {
     }),
   };
 
+  const originalStore = new Map(store);
   const result = await maybeNotifyBackgroundStudentResponder({
     db: fakeDb,
     sessionId: "session-ab",
@@ -4262,21 +4196,14 @@ test("background responder timeout ignores late push success", async () => {
       }, 15);
     }),
   });
-  await new Promise((resolve) => {
-    setTimeout(resolve, 25);
-  });
+  assert.deepEqual(result, {shouldNotify: false, reason: "student_native_disabled"});
+  assert.deepEqual(store, originalStore);
 
-  assert.equal(result.shouldNotify, true);
-  assert.equal(result.pushResult.sent, false);
-  assert.equal(result.pushResult.reason, "push_failed");
-  assert.equal(result.pushResult.error, "push_timeout");
-  assert.equal(store.get(notificationPath).status, "sent");
-  assert.equal(store.get(notificationPath).lastPushError, "push_timeout");
-  assert.equal(Object.hasOwn(store.get(notificationPath), "pushSentAt"), false);
-  assert.equal(Object.hasOwn(store.get(notificationPath), "pushChannel"), false);
+
+  assert.equal(store.get(notificationPath), originalStore.get(notificationPath));
 });
 
-test("background responder notify flow records unsent push result", async () => {
+test("student native disabled: background responder notify flow records unsent push result", async () => {
   const notificationPath = "notifications/session-ab_student-b";
   const nowMillis = Date.now();
   const store = new Map([
@@ -4332,6 +4259,7 @@ test("background responder notify flow records unsent push result", async () => 
     }),
   };
 
+  const originalStore = new Map(store);
   const result = await maybeNotifyBackgroundStudentResponder({
     db: fakeDb,
     sessionId: "session-ab",
@@ -4343,17 +4271,14 @@ test("background responder notify flow records unsent push result", async () => 
       reason: "missing_tokens",
     }),
   });
+  assert.deepEqual(result, {shouldNotify: false, reason: "student_native_disabled"});
+  assert.deepEqual(store, originalStore);
 
-  assert.equal(result.shouldNotify, true);
-  assert.equal(result.pushResult.sent, false);
-  assert.equal(result.pushResult.reason, "missing_tokens");
-  assert.equal(store.get(notificationPath).status, "sent");
-  assert.equal(store.get(notificationPath).lastPushError, "missing_tokens");
-  assert.ok(store.get(notificationPath).lastPushFailedAt);
-  assert.ok(store.get(notificationPath).updatedAt);
+
+  assert.equal(store.get(notificationPath), originalStore.get(notificationPath));
 });
 
-test("background responder notify flow records unexpected push result", async () => {
+test("student native disabled: background responder notify flow records unexpected push result", async () => {
   const notificationPath = "notifications/session-ab_student-b";
   const nowMillis = Date.now();
   const store = new Map([
@@ -4409,6 +4334,7 @@ test("background responder notify flow records unexpected push result", async ()
     }),
   };
 
+  const originalStore = new Map(store);
   const result = await maybeNotifyBackgroundStudentResponder({
     db: fakeDb,
     sessionId: "session-ab",
@@ -4417,17 +4343,14 @@ test("background responder notify flow records unexpected push result", async ()
     requesterData: {displayName: "Joining Student"},
     pushSender: async () => ({reason: "empty_result"}),
   });
+  assert.deepEqual(result, {shouldNotify: false, reason: "student_native_disabled"});
+  assert.deepEqual(store, originalStore);
 
-  assert.equal(result.shouldNotify, true);
-  assert.equal(result.pushResult.sent, false);
-  assert.equal(result.pushResult.reason, "empty_result");
-  assert.equal(result.pushResult.error, "empty_result");
-  assert.equal(store.get(notificationPath).status, "sent");
-  assert.equal(store.get(notificationPath).lastPushError, "empty_result");
-  assert.ok(store.get(notificationPath).lastPushFailedAt);
+
+  assert.equal(store.get(notificationPath), originalStore.get(notificationPath));
 });
 
-test("background responder notify flow records combined push errors", async () => {
+test("student native disabled: background responder notify flow records combined push errors", async () => {
   const notificationPath = "notifications/session-ab_student-b";
   const nowMillis = Date.now();
   const store = new Map([
@@ -4483,6 +4406,7 @@ test("background responder notify flow records combined push errors", async () =
     }),
   };
 
+  const originalStore = new Map(store);
   const result = await maybeNotifyBackgroundStudentResponder({
     db: fakeDb,
     sessionId: "session-ab",
@@ -4495,16 +4419,11 @@ test("background responder notify flow records combined push errors", async () =
       error: "apns: apns unavailable; fcm: fcm unavailable",
     }),
   });
+  assert.deepEqual(result, {shouldNotify: false, reason: "student_native_disabled"});
+  assert.deepEqual(store, originalStore);
 
-  assert.equal(result.shouldNotify, true);
-  assert.equal(result.pushResult.sent, false);
-  assert.equal(result.pushResult.reason, "fcm_failed");
-  assert.equal(
-    store.get(notificationPath).lastPushError,
-    "apns: apns unavailable; fcm: fcm unavailable",
-  );
-  assert.ok(store.get(notificationPath).lastPushFailedAt);
-  assert.ok(store.get(notificationPath).updatedAt);
+
+  assert.equal(store.get(notificationPath), originalStore.get(notificationPath));
 });
 
 test("expired active and terminal requests are not reusable", () => {
@@ -4524,7 +4443,7 @@ test("expired active and terminal requests are not reusable", () => {
   );
 });
 
-test("stale active search request is not reusable", () => {
+test("stale active search request is reusable until its immutable deadline", () => {
   assert.equal(
     isReusableSearchRequest({
       status: SEARCH_REQUEST_STATUS.ACTIVE,
@@ -4534,11 +4453,11 @@ test("stale active search request is not reusable", () => {
       ),
       expiresAt: futureTimestamp(3),
     }, fixedNowMillis),
-    false,
+    true,
   );
 });
 
-test("background expired active search request is not reusable", () => {
+test("background expired active search request is reusable until its immutable deadline", () => {
   assert.equal(
     isReusableSearchRequest({
       status: SEARCH_REQUEST_STATUS.ACTIVE,
@@ -4547,7 +4466,7 @@ test("background expired active search request is not reusable", () => {
       backgroundExpiresAt: timestampFromMillis(fixedNowMillis),
       expiresAt: futureTimestamp(3),
     }, fixedNowMillis),
-    false,
+    true,
   );
 });
 
@@ -4564,7 +4483,7 @@ test("background active search request is reusable before background deadline", 
   );
 });
 
-test("background active search request is not reusable with stale heartbeat", () => {
+test("background active search request is reusable until its immutable deadline with stale heartbeat", () => {
   assert.equal(
     isReusableSearchRequest({
       status: SEARCH_REQUEST_STATUS.ACTIVE,
@@ -4576,7 +4495,7 @@ test("background active search request is not reusable with stale heartbeat", ()
       backgroundExpiresAt: timestampFromMillis(fixedNowMillis + 60 * 1000),
       expiresAt: futureTimestamp(3),
     }, fixedNowMillis),
-    false,
+    true,
   );
 });
 
@@ -4833,7 +4752,12 @@ if (!hasFirestoreEmulator) {
   const wrappedDeclineCall = testEnv.wrap(declineCall);
   const wrappedProcessExpiredNotifications =
     testEnv.wrap(processExpiredNotifications);
-  const wrappedStartSearch = testEnv.wrap(startSearch);
+  const invokeStartSearch = testEnv.wrap(startSearch);
+  const wrappedStartSearch = (data = {}, context) => invokeStartSearch({
+    appState: "foreground",
+    matchProtocolVersion: 2,
+    ...data,
+  }, context);
   let uidCounter = 0;
 
   async function clearTestDatabase() {
@@ -4869,11 +4793,8 @@ if (!hasFirestoreEmulator) {
     ].join("-");
   }
 
-  function cityKeyForUid(uid) {
-    return `city_${uid}`
-      .toLowerCase()
-      .replace(/[^a-z0-9_-]/g, "_")
-      .slice(0, 80);
+  function cityKeyForUid() {
+    return "new_york";
   }
 
   function authContext(uid) {
@@ -5043,21 +4964,31 @@ if (!hasFirestoreEmulator) {
 
     const waitingResponse = await wrappedStartSearch({
       preferredPartnerLevel: "B1",
-      appState: "background",
-      platform: "ios",
-    }, authContext(waitingUid));
-    let pushedCallData = null;
-    const joiningResponse = await startSearchCallable({
-      preferredPartnerLevel: "B1",
       appState: "foreground",
       platform: "ios",
-    }, authContext(joiningUid), {
-      backgroundStudentResponderPushSender: async (responderId, callData) => {
-        pushedCallData = callData;
-        assert.equal(responderId, waitingUid);
-        assert.equal(callData.searchRequestId, waitingResponse.requestId);
-        return {sent: true, channel: "test_voip"};
-      },
+    }, authContext(waitingUid));
+    const joiningResponse = await startSearchCallable({
+      preferredPartnerLevel: "B1", appState: "foreground", platform: "ios",
+      matchProtocolVersion: 2,
+    }, authContext(joiningUid), {});
+    // Seed an incoming notification left by a pre-passive-search deployment.
+    // Recovery must still clean up these old records without sending new calls.
+    await db.collection("videoSessions").doc(joiningResponse.sessionId).update({
+      matchProtocolVersion: 1,
+      confirmationVersion: 1,
+      participantStates: admin.firestore.FieldValue.delete(),
+    });
+    await searchRequestRef(waitingUid).update({appState: "background",
+      backgroundExpiresAt: emulatorFutureTimestamp(1)});
+    const legacy = await require("./start_search_notification_store")
+      .createBackgroundStudentResponderIncomingCall({db, sessionId: joiningResponse.sessionId,
+        responderId: waitingUid, responderSearchRequestDocId: waitingUid,
+        requesterData: {displayName: "Joining Student"}});
+    assert.equal(legacy.shouldNotify, true, JSON.stringify(legacy));
+    await db.collection("notifications").doc(legacy.notificationId).update({
+      status: "sent",
+      // This fixture represents a notification created before protocol v2.
+      matchProtocolVersion: 1,
     });
     const notificationQuery = await db
       .collection("notifications")
@@ -5070,8 +5001,6 @@ if (!hasFirestoreEmulator) {
     assert.equal(waitingResponse.status, "active");
     assert.equal(joiningResponse.status, "matched");
     assert.equal(joiningResponse.matchedUserId, waitingUid);
-    assert.ok(pushedCallData);
-    assert.equal(pushedCallData.sessionId, joiningResponse.sessionId);
     assert.equal(matchingNotifications.length, 1);
     assert.equal(matchingNotifications[0].data.status, "sent");
 
@@ -5203,15 +5132,15 @@ if (!hasFirestoreEmulator) {
     await deleteDoc(searchRequestRef(uid));
     await seedStudent(uid);
 
-    const first = await wrappedStartSearch({
+    const first = await wrappedStartSearch({appState: "foreground",
       preferredPartnerLevel: "B1",
       preferredCountry: "US",
       cityKey,
     }, authContext(uid));
-    const second = await wrappedStartSearch({
+    const second = await wrappedStartSearch({appState: "foreground",
       preferredPartnerLevel: "C2",
-      preferredCountry: "DE",
-      cityKey: "another_city",
+      preferredCountry: "ID",
+      cityKey: "bali",
     }, authContext(uid));
     const snapshot = await searchRequestRef(uid).get();
 
@@ -5244,10 +5173,10 @@ if (!hasFirestoreEmulator) {
       profileCity: {key: cityKey},
     });
 
-    const waitingResponse = await wrappedStartSearch({
+    const waitingResponse = await wrappedStartSearch({appState: "foreground",
       preferredPartnerLevel: "B1",
     }, authContext(waitingUid));
-    const joiningResponse = await wrappedStartSearch({
+    const joiningResponse = await wrappedStartSearch({appState: "foreground",
       preferredPartnerLevel: "B1",
     }, authContext(joiningUid));
 
@@ -5386,7 +5315,7 @@ if (!hasFirestoreEmulator) {
     assert.equal(waitingNotifications.empty, true);
   });
 
-  test("startSearch callable notifies background student responder", async () => {
+  test("startSearch callable never notifies background student responder", async () => {
     const waitingUid = uniqueId("student-background-waiting");
     const joiningUid = uniqueId("student-background-joining");
     const cityKey = cityKeyForUid(`${waitingUid}-${joiningUid}`);
@@ -5453,65 +5382,10 @@ if (!hasFirestoreEmulator) {
       .filter((item) => item.data.sessionId === joiningResponse.sessionId);
 
     assert.equal(waitingResponse.status, "active");
-    assert.equal(joiningResponse.status, "matched");
-    assert.equal(joiningResponse.matchedUserId, waitingUid);
-    assert.equal(matchingNotifications.length, 1);
-    assert.equal(matchingNotifications[0].data.type, "incoming_call");
-    assert.equal(matchingNotifications[0].data.status, "sent");
-    assert.equal(matchingNotifications[0].data.recipientId, waitingUid);
-    assert.equal(matchingNotifications[0].data.scenario, "student_student");
-    assert.equal(matchingNotifications[0].data.requesterId, joiningUid);
-    assert.equal(matchingNotifications[0].data.responderId, waitingUid);
-    assert.equal(matchingNotifications[0].data.requesterRole, "student");
-    assert.equal(matchingNotifications[0].data.responderRole, "student");
-    assert.equal(matchingNotifications[0].data.navRole, "student");
-    assert.equal(matchingNotifications[0].data.acceptMode, "responder_accepts");
-    assert.equal(
-      matchingNotifications[0].data.searchRequestId,
-      waitingResponse.requestId,
-    );
-    assert.equal(
-      matchingNotifications[0].data.callKitId,
-      pushedCallData.callKitId,
-    );
-    assert.equal(
-      matchingNotifications[0].data.notificationId,
-      matchingNotifications[0].id,
-    );
-    assert.equal(
-      matchingNotifications[0].data.tokenStrategy,
-      "accept_call",
-    );
-    assert.equal(
-      matchingNotifications[0].data.payloadExpiresAt,
-      pushedCallData.expiresAt,
-    );
-    assert.equal(
-      typeof matchingNotifications[0].data.expiresAt.toMillis,
-      "function",
-    );
-    assert.equal(
-      matchingNotifications[0].data.roomName,
-      pushedCallData.roomName,
-    );
-    assert.equal(pushSendCount, 1);
-    assert.equal(pushedCallData.sessionId, joiningResponse.sessionId);
-    assert.equal(pushedCallData.notificationId, matchingNotifications[0].id);
-    assert.equal(matchingNotifications[0].data.pushChannel, "test_voip");
-    assert.ok(matchingNotifications[0].data.pushSentAt);
-    assert.equal(
-      matchingNotifications[0].data.studentInfo.name,
-      "Joining Student",
-    );
-    assert.equal(
-      matchingNotifications[0].data.studentInfo.photo,
-      "joining-photo",
-    );
-    assert.equal(matchingNotifications[0].data.roomUrl, "");
-    assert.equal(
-      Object.hasOwn(matchingNotifications[0].data, "meetingToken"),
-      false,
-    );
+    assert.equal(joiningResponse.status, "active");
+    assert.equal(matchingNotifications.length, 0);
+    assert.equal(pushSendCount, 0);
+    assert.equal(pushedCallData, null);
   });
 
   test("declineCall restores student requester search", async () => {
@@ -5605,7 +5479,7 @@ if (!hasFirestoreEmulator) {
     assert.equal(typeof notificationData.expiredAt.toMillis, "function");
   });
 
-  test("startSearch callable retries when background student push fails", async () => {
+  test("startSearch callable never attempts background student push or fallback", async () => {
     const waitingUid = uniqueId("student-background-push-fail-waiting");
     const joiningUid = uniqueId("student-background-push-fail-joining");
     const cityKey = cityKeyForUid(`${waitingUid}-${joiningUid}`);
@@ -5653,28 +5527,13 @@ if (!hasFirestoreEmulator) {
     const matchingNotifications = notificationQuery.docs
       .map((doc) => ({id: doc.id, data: doc.data()}))
       .filter((item) => item.data.studentInfo?.name === "Joining Student");
-    assert.equal(matchingNotifications.length, 1);
-    const notification = matchingNotifications[0].data;
-    const sessionSnapshot = await db
-      .collection("videoSessions")
-      .doc(notification.sessionId)
-      .get();
-    const sessionData = sessionSnapshot.data();
-
+    assert.equal(matchingNotifications.length, 0);
     assert.equal(waitingResponse.status, "active");
     assert.equal(joiningResponse.status, "active");
-    assert.equal(joiningResponse.matchedUserId, undefined);
-    assert.equal(pushSendCount, 1);
+    assert.equal(pushSendCount, 0);
     assert.equal(joiningRequest.status, SEARCH_REQUEST_STATUS.ACTIVE);
-    assert.deepEqual(joiningRequest.excludedCandidateIds, [waitingUid]);
-    assert.equal(joiningRequest.currentSessionId, null);
-    assert.equal(waitingRequest.status, SEARCH_REQUEST_STATUS.CANCELLED);
-    assert.equal(notification.status, "cancelled");
-    assert.equal(notification.cancelReason, "background_student_push_failed");
-    assert.equal(notification.lastPushError, "missing_tokens");
-    assert.equal(sessionSnapshot.exists, true);
-    assert.equal(sessionData.status, "cancelled");
-    assert.equal(sessionData.cancelReason, "background_student_push_failed");
+    assert.deepEqual(joiningRequest.excludedCandidateIds, []);
+    assert.equal(waitingRequest.status, SEARCH_REQUEST_STATUS.ACTIVE);
   });
 
   test("startSearch callable matches teacher and creates incoming call", async () => {
@@ -5689,25 +5548,27 @@ if (!hasFirestoreEmulator) {
     await seedStudent(studentUid, {
       display_name: "Student",
       photo_url: "student-photo",
-      Country_NS: {code: "FR"},
-      profileCity: {key: cityKey},
+      Country_NS: {code: "US", cityKey},
+      profileCity: {key: cityKey, countryCode: "US"},
     });
     await seedTeacher(teacherUid, {
       display_name: "Teacher",
       photo_url: "teacher-photo",
       level: null,
-      Country_NS: {code: "FR"},
-      profileCity: {key: cityKey},
+      Country_NS: {code: "US", cityKey},
+      profileCity: {key: cityKey, countryCode: "US"},
     });
     await db.collection("userPrivateTokens").doc(teacherUid).set({
       voipPushToken: `push-${teacherUid}`,
+      voipPushTokenUpdatedAt: admin.firestore.Timestamp.now(),
     });
 
     let teacherPushSendCount = 0;
     let teacherPushCallData = null;
-    const response = await startSearchCallable({
+    const response = await startSearchCallable({appState: "foreground",
       preferredPartnerLevel: "C1",
-      countryCode: "FR",
+      countryCode: "US",
+      cityKey: "new_york",
     }, authContext(studentUid), {
       teacherResponderPushSender: async (responderId, callData) => {
         teacherPushSendCount += 1;
@@ -5950,7 +5811,7 @@ if (!hasFirestoreEmulator) {
       voipPushToken: `push-${teacherUid}`,
     });
 
-    const response = await startSearchCallable({
+    const response = await startSearchCallable({appState: "foreground",
       preferredPartnerLevel: "B1",
     }, authContext(studentUid), {
       teacherResponderPushSender: async (responderId) => {
@@ -6257,29 +6118,8 @@ if (!hasFirestoreEmulator) {
     );
     await assertNoSearchRequestForUser(studentUid);
     await assertNoSearchRequestForUser(teacherUid);
-    assert.equal(sentPushes.length, 2);
-    const studentPush = sentPushes[1];
-    assert.equal(studentPush.token, `fcm-${studentUid}`);
-    assert.equal(studentPush.data.type, "incoming_call");
-    assert.equal(studentPush.data.sessionId, createResponse.sessionId);
-    assert.equal(studentPush.data.recipientId, studentUid);
-    assert.equal(studentPush.data.callerId, teacherUid);
-    assert.equal(studentPush.data.scenario, "student_teacher");
-    assert.equal(studentPush.data.requesterId, studentUid);
-    assert.equal(studentPush.data.responderId, teacherUid);
-    assert.equal(studentPush.data.requesterRole, "student");
-    assert.equal(studentPush.data.responderRole, "native_speaker");
-    assert.equal(studentPush.data.navRole, "student");
-    assert.equal(studentPush.data.acceptMode, "open_session");
-    assert.equal(
-      studentPush.data.callKitId,
-      buildCallKitIdForSession(createResponse.sessionId),
-    );
-    assert.equal(studentPush.data.searchRequestId, "");
-    assert.equal(studentPush.data.roomUrl, acceptResponse.roomUrl);
-    assert.equal(studentPush.data.roomName, acceptResponse.roomName);
-    assert.equal(studentPush.data.meetingToken, "");
-    assert.equal(studentPush.data.tokenStrategy, "payload_room");
+    assert.equal(sentPushes.length, 1);
+    assert.equal(sentPushes.some((push) => push.token === `fcm-${studentUid}`), false);
   });
 
   test("direct teacher call decline cancels without search restore", async () => {
@@ -6768,7 +6608,7 @@ if (!hasFirestoreEmulator) {
       voipPushToken: `push-${teacherUid}`,
     });
 
-    const response = await startSearchCallable({
+    const response = await startSearchCallable({appState: "foreground",
       preferredPartnerLevel: "B1",
     }, authContext(studentUid), {
       teacherResponderPushSender: async (responderId) => {
@@ -6849,7 +6689,7 @@ if (!hasFirestoreEmulator) {
       });
 
       const startSearchStartedAtMillis = Date.now();
-      const response = await startSearchCallable({
+      const response = await startSearchCallable({appState: "foreground",
         preferredPartnerLevel: "B1",
       }, authContext(studentUid), {
         teacherResponderPushSender: async (responderId) => {
@@ -6980,7 +6820,7 @@ if (!hasFirestoreEmulator) {
           appState: "foreground",
         }, authContext(waitingUid));
         const waitingCreatedAt = admin.firestore.Timestamp.fromMillis(
-          Date.now() - studentCreatedMinutesAgo * 60 * 1000,
+          Date.now() - studentCreatedMinutesAgo * 10 * 1000,
         );
         await searchRequestRef(waitingUid).update({
           createdAt: waitingCreatedAt,
@@ -6990,7 +6830,7 @@ if (!hasFirestoreEmulator) {
         await seedTeacher(teacherUid, {
           profileCity: {key: cityKey},
           availableSince: admin.firestore.Timestamp.fromMillis(
-            Date.now() - teacherAvailableMinutesAgo * 60 * 1000,
+            Date.now() - teacherAvailableMinutesAgo * 10 * 1000,
           ),
         });
         await db.collection("userPrivateTokens").doc(teacherUid).set({
@@ -7000,6 +6840,7 @@ if (!hasFirestoreEmulator) {
         let teacherPushSendCount = 0;
         const response = await startSearchCallable({
           appState: "foreground",
+          matchProtocolVersion: expectedResponderRole === "student" ? 2 : 1,
         }, authContext(requesterUid), {
           teacherResponderPushSender: async (responderId, callData) => {
             teacherPushSendCount += 1;
@@ -7112,7 +6953,7 @@ if (!hasFirestoreEmulator) {
       }, authContext(adjacentStudentUid));
       await searchRequestRef(adjacentStudentUid).update({
         createdAt: admin.firestore.Timestamp.fromMillis(
-          Date.now() - 10 * 60 * 1000,
+          Date.now() - 100 * 1000,
         ),
         updatedAt: admin.firestore.Timestamp.now(),
         heartbeatAt: admin.firestore.Timestamp.now(),
@@ -7133,6 +6974,7 @@ if (!hasFirestoreEmulator) {
       const response = await startSearchCallable({
         preferredPartnerLevel: "B1",
         appState: "foreground",
+        matchProtocolVersion: 2,
       }, authContext(requesterUid), {
         teacherResponderPushSender: async (responderId, callData) => {
           teacherPushSendCount += 1;
@@ -7226,7 +7068,7 @@ if (!hasFirestoreEmulator) {
       }, authContext(lowerStudentUid));
       await searchRequestRef(lowerStudentUid).update({
         createdAt: admin.firestore.Timestamp.fromMillis(
-          Date.now() - 10 * 60 * 1000,
+          Date.now() - 100 * 1000,
         ),
         updatedAt: admin.firestore.Timestamp.now(),
         heartbeatAt: admin.firestore.Timestamp.now(),
@@ -7237,7 +7079,7 @@ if (!hasFirestoreEmulator) {
       }, authContext(higherStudentUid));
       await searchRequestRef(higherStudentUid).update({
         createdAt: admin.firestore.Timestamp.fromMillis(
-          Date.now() - 2 * 60 * 1000,
+          Date.now() - 20 * 1000,
         ),
         updatedAt: admin.firestore.Timestamp.now(),
         heartbeatAt: admin.firestore.Timestamp.now(),
@@ -7312,7 +7154,7 @@ if (!hasFirestoreEmulator) {
     const now = admin.firestore.Timestamp.now();
     let sessionId = "";
 
-    async function seedActiveStudentSearchRequest(uid, createdMinutesAgo) {
+    async function seedActiveStudentSearchRequest(uid, createdSecondsAgo) {
       await searchRequestRef(uid).set({
         requestId: `request-${uid}`,
         userId: uid,
@@ -7329,8 +7171,9 @@ if (!hasFirestoreEmulator) {
         appState: SEARCH_REQUEST_APP_STATE.FOREGROUND,
         appStateUpdatedAt: now,
         platform: "test",
+        matchProtocolVersion: 2,
         createdAt: admin.firestore.Timestamp.fromMillis(
-          Date.now() - createdMinutesAgo * 60 * 1000,
+          Date.now() - createdSecondsAgo * 1000,
         ),
         updatedAt: now,
         heartbeatAt: now,
@@ -7361,25 +7204,29 @@ if (!hasFirestoreEmulator) {
       await Promise.all(refsToDelete.map(deleteDoc));
       await seedStudent(requesterUid, {
         display_name: "Requester Student",
-        profileCity: {key: cityKey},
+        Country_NS: {code: "US", cityKey},
+        profileCity: {key: cityKey, countryCode: "US"},
         blockedUsers: [`users/${requesterBlockedUid}`],
       });
       await seedStudent(requesterBlockedUid, {
         display_name: "Blocked By Requester",
-        profileCity: {key: cityKey},
+        Country_NS: {code: "US", cityKey},
+        profileCity: {key: cityKey, countryCode: "US"},
       });
       await seedStudent(candidateBlockedUid, {
         display_name: "Candidate Blocked Requester",
-        profileCity: {key: cityKey},
+        Country_NS: {code: "US", cityKey},
+        profileCity: {key: cityKey, countryCode: "US"},
         blockedUsers: [{id: requesterUid}],
       });
       await seedStudent(validUid, {
         display_name: "Valid Student",
-        profileCity: {key: cityKey},
+        Country_NS: {code: "US", cityKey},
+        profileCity: {key: cityKey, countryCode: "US"},
       });
-      await seedActiveStudentSearchRequest(requesterBlockedUid, 9);
-      await seedActiveStudentSearchRequest(candidateBlockedUid, 8);
-      await seedActiveStudentSearchRequest(validUid, 7);
+      await seedActiveStudentSearchRequest(requesterBlockedUid, 90);
+      await seedActiveStudentSearchRequest(candidateBlockedUid, 80);
+      await seedActiveStudentSearchRequest(validUid, 70);
 
       const response = await wrappedStartSearch({
         preferredPartnerLevel: "B1",
@@ -7773,8 +7620,8 @@ if (!hasFirestoreEmulator) {
     });
 
     const responses = await Promise.all([
-      wrappedStartSearch({preferredPartnerLevel: "B1"}, authContext(firstUid)),
-      wrappedStartSearch({preferredPartnerLevel: "B1"}, authContext(secondUid)),
+      wrappedStartSearch({appState: "foreground", preferredPartnerLevel: "B1"}, authContext(firstUid)),
+      wrappedStartSearch({appState: "foreground", preferredPartnerLevel: "B1"}, authContext(secondUid)),
     ]);
     const firstRequest = (await searchRequestRef(firstUid).get()).data();
     const secondRequest = (await searchRequestRef(secondUid).get()).data();
@@ -7819,11 +7666,11 @@ if (!hasFirestoreEmulator) {
       profileCity: {key: cityKey},
     });
 
-    const waitingResponse = await wrappedStartSearch({
+    const waitingResponse = await wrappedStartSearch({appState: "foreground",
       preferredPartnerLevel: "B1",
     }, authContext(waitingUid));
     const results = await Promise.allSettled(
-      Array.from({length: 5}, () => wrappedStartSearch({
+      Array.from({length: 5}, () => wrappedStartSearch({appState: "foreground",
         preferredPartnerLevel: "B1",
       }, authContext(joiningUid))),
     );
@@ -7916,7 +7763,7 @@ if (!hasFirestoreEmulator) {
 
       try {
         const results = await Promise.allSettled(
-          Array.from({length: 5}, (_, index) => wrappedStartSearch({
+          Array.from({length: 5}, (_, index) => wrappedStartSearch({appState: "foreground",
             preferredPartnerLevel: index % 2 === 0 ? "B1" : "C2",
           }, authContext(uid))),
         );
@@ -8016,7 +7863,7 @@ if (!hasFirestoreEmulator) {
       lastError: null,
     });
 
-    const response = await wrappedStartSearch({}, authContext(uid));
+    const response = await wrappedStartSearch({appState: "foreground", }, authContext(uid));
     const snapshot = await searchRequestRef(uid).get();
 
     assert.equal(response.reused, false);
@@ -8067,7 +7914,7 @@ if (!hasFirestoreEmulator) {
         lastError: null,
       });
 
-      const response = await wrappedStartSearch({
+      const response = await wrappedStartSearch({appState: "foreground",
         preferredPartnerLevel: "C2",
       }, authContext(uid));
       const snapshot = await searchRequestRef(uid).get();
@@ -8128,7 +7975,7 @@ if (!hasFirestoreEmulator) {
         lastError: null,
       });
 
-      const response = await wrappedStartSearch({}, authContext(uid));
+      const response = await wrappedStartSearch({appState: "foreground", }, authContext(uid));
       const snapshot = await searchRequestRef(uid).get();
 
       assert.equal(response.reused, true);
@@ -8185,7 +8032,7 @@ if (!hasFirestoreEmulator) {
       lastError: {code: "old"},
     });
 
-    const response = await wrappedStartSearch({}, authContext(uid));
+    const response = await wrappedStartSearch({appState: "foreground", }, authContext(uid));
     const snapshot = await searchRequestRef(uid).get();
     const requestData = snapshot.data();
 
@@ -8213,7 +8060,7 @@ if (!hasFirestoreEmulator) {
     });
 
     await assert.rejects(
-      () => wrappedStartSearch({}, authContext(uid)),
+      () => wrappedStartSearch({appState: "foreground", }, authContext(uid)),
       (error) =>
         error.code === "failed-precondition" &&
         error.message === "Active subscription is required" &&
@@ -8228,7 +8075,7 @@ if (!hasFirestoreEmulator) {
     const beforeUser = (await userRef(uid).get()).data();
 
     await assert.rejects(
-      () => wrappedStartSearch({}, authContext(uid)),
+      () => wrappedStartSearch({appState: "foreground", }, authContext(uid)),
       (error) =>
         error.code === "failed-precondition" &&
         error.message === "Active subscription is required" &&
@@ -8263,7 +8110,7 @@ if (!hasFirestoreEmulator) {
     });
 
     await assert.rejects(
-      () => wrappedStartSearch({}, authContext(uid)),
+      () => wrappedStartSearch({appState: "foreground", }, authContext(uid)),
       (error) =>
         error.code === "failed-precondition" &&
         error.message === "Please wait before retrying" &&

@@ -930,6 +930,11 @@ for (const [caseName, responderOverrides] of [
       timestampFromMillis,
     });
 
+    if (caseName === "background") {
+      assert.equal(result.locked, false);
+      assert.equal(result.reason, "responder_search_stale");
+      return;
+    }
     assert.equal(result.locked, true);
     assert.equal(result.finalizationRequested, false);
     const session = store.get(`videoSessions/${result.sessionId}`);
@@ -963,7 +968,7 @@ test("teacher pair never uses foreground student auto-accept", () => {
   assert.equal(session.participantStates["teacher-a"].decision, "pending");
 });
 
-test("background heartbeat during pair lock disables foreground auto-accept",
+test("background heartbeat during pair lock prevents reservation",
     async () => {
       let injected = false;
       const {db, store, versions} = createFakeFirestore({
@@ -1005,11 +1010,9 @@ test("background heartbeat during pair lock disables foreground auto-accept",
         timestampFromMillis,
       });
 
-      assert.equal(result.locked, true);
-      assert.equal(result.finalizationRequested, false);
-      const session = store.get("videoSessions/session-v2-lifecycle-race");
-      assert.equal(session.matchStage, "awaiting_initial_dispatch");
-      assert.equal(session.participantStates["student-b"].decision, "pending");
+      assert.equal(result.locked, false);
+      assert.equal(result.reason, "responder_search_stale");
+      assert.equal(store.has("videoSessions/session-v2-lifecycle-race"), false);
     });
 
 test("reserveMatchPair locks teacher through user document", async () => {

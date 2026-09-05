@@ -87,7 +87,32 @@ class ActiveSearchRecoveryState {
     }
   }
 
-  DateTime? get expiresAt => activeSearchDateTime(data['expiresAt']);
+  DateTime? get expiresAt => activeSearchDeadline(data);
+
+  bool canOfferPassiveQueue({DateTime? now}) {
+    if (activeSearchNonEmpty(data['passiveConsentRequestId']) != null) return false;
+    if (!exists || !belongsToUser || requestId == null || sessionId != null) {
+      return false;
+    }
+    if (!const {'active', 'searching', 'expired'}.contains(status))
+      return false;
+    final stopReason = activeSearchNonEmpty(data['stopReason']);
+    if (stopReason != null &&
+        !const {
+          'expired',
+          'search_expired',
+          'max_duration_exceeded',
+          'background_expired',
+          'stale_heartbeat',
+          'heartbeat_stale',
+          'search_timeout',
+          'background_timeout',
+        }.contains(stopReason)) {
+      return false;
+    }
+    final deadline = expiresAt;
+    return deadline != null && !deadline.isAfter(now ?? DateTime.now());
+  }
 
   Duration remainingSearchDuration({DateTime? now}) {
     final expiresAtValue = expiresAt;
@@ -108,6 +133,14 @@ String? activeSearchNonEmpty(dynamic value) {
   return text;
 }
 
+DateTime? activeSearchDeadline(Map<String, dynamic> data) {
+  final expiresAt = activeSearchDateTime(data['expiresAt']);
+  final createdAt = activeSearchDateTime(data['createdAt']);
+  if (createdAt == null) return expiresAt;
+  final maximum = createdAt.add(const Duration(minutes: 2));
+  return expiresAt == null || maximum.isBefore(expiresAt) ? maximum : expiresAt;
+}
+
 DateTime? activeSearchDateTime(dynamic value) {
   if (value is Timestamp) {
     return value.toDate();
@@ -121,6 +154,7 @@ DateTime? activeSearchDateTime(dynamic value) {
   if (value is num) {
     return DateTime.fromMillisecondsSinceEpoch(value.toInt());
   }
+  if (value is String) return DateTime.tryParse(value);
   return null;
 }
 
@@ -221,18 +255,13 @@ bool activeSearchRequestIsExpired(
   }
 
   final effectiveNow = now ?? DateTime.now();
-  final expiresAt = activeSearchDateTime(data['expiresAt']);
+  final expiresAt = activeSearchDeadline(data);
   if (expiresAt == null || !expiresAt.isAfter(effectiveNow)) {
     return true;
   }
 
-  final heartbeatAt = activeSearchDateTime(data['heartbeatAt']);
-  if (heartbeatAt == null) {
-    return true;
-  }
-  if (effectiveNow.difference(heartbeatAt) > activeSearchHeartbeatStaleAfter) {
-    return true;
-  }
+  // A resumed client may refresh its heartbeat until the immutable deadline.
+  // Stale/background clients remain excluded from matching on the server.
 
   if (activeSearchNonEmpty(data['appState']) == 'background') {
     final backgroundExpiresAt =

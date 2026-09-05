@@ -27,6 +27,12 @@ const REQUIRED_DEPLOY_TARGETS = [
 ];
 
 const REQUIRED_FUNCTIONS = [
+  {id: "notifyPassiveSearchOnJoin", trigger: "firestore"},
+  {id: "joinPassiveSearch", trigger: "callable"},
+  {id: "leavePassiveSearch", trigger: "callable"},
+  {id: "connectPassiveSearch", trigger: "callable"},
+  {id: "notifyPassiveSearchPartners", trigger: "firestore"},
+
   {id: "cleanupUserCallIntegrationsOnDelete", trigger: "auth"},
   {
     id: "createVideoSession",

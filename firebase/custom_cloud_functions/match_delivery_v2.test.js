@@ -125,29 +125,29 @@ function seedForSession(session) {
 }
 
 test("dispatch claim publishes preparing notification with other caller id", async () => {
-  const session = v2Session();
+  const session = v2Session({scenario: "student_teacher"});
   const {db, store} = createFakeFirestore(seedForSession(session));
   const before = Date.now();
   const result = await claimProtocolV2CallKitDispatch({
     db,
     sessionId: "session-a",
     pairAttemptId: "pair-a",
-    participantId: "student-a",
+    participantId: "teacher-a",
     dispatchId: "dispatch-a",
     nowMillis: before,
   });
 
   assert.equal(result.shouldNotify, true);
-  assert.equal(result.pushPayload.studentId, "student-b");
+  assert.equal(result.pushPayload.studentId, "student-a");
   assert.equal(result.pushPayload.matchProtocolVersion, "2");
   assert.equal(result.pushPayload.pairAttemptId, "pair-a");
   const notification = store.get(`notifications/${result.notificationId}`);
   assert.equal(notification.status, "preparing");
-  assert.equal(notification.callKitId, "call-student-a");
+  assert.equal(notification.callKitId, "call-teacher-a");
   assert.ok(notification.payloadExpiresAt);
   const updatedSession = store.get("videoSessions/session-a");
   assert.equal(
-    updatedSession.participantStates["student-a"].delivery,
+    updatedSession.participantStates["teacher-a"].delivery,
     MATCH_DELIVERY.DISPATCHING,
   );
   assert.ok(updatedSession.responseExpiresAt.toMillis() >= before + 45_000);
@@ -158,20 +158,20 @@ test("dispatch claim publishes preparing notification with other caller id", asy
 });
 
 test("successful route finalizes preparing notification as sent", async () => {
-  const session = v2Session();
+  const session = v2Session({scenario: "student_teacher"});
   const {db, store} = createFakeFirestore(seedForSession(session));
   const result = await routeProtocolV2Participant({
     db,
     sessionId: "session-a",
     pairAttemptId: "pair-a",
-    participantId: "student-b",
+    participantId: "teacher-a",
     preDispatchWait: async () => {},
     pushSender: async () => ({sent: true, channel: "apns_voip"}),
   });
   assert.equal(result.pushResult.sent, true);
   assert.equal(
     store.get("videoSessions/session-a")
-      .participantStates["student-b"].delivery,
+      .participantStates["teacher-a"].delivery,
     MATCH_DELIVERY.SENT,
   );
   assert.equal(
@@ -182,20 +182,20 @@ test("successful route finalizes preparing notification as sent", async () => {
 
 test("in-flight dispatch keeps durable stage until its lease can be reclaimed", async () => {
   const now = Date.now();
-  const session = v2Session();
+  const session = v2Session({scenario: "student_teacher"});
   session.matchStage = "awaiting_initial_dispatch";
   const claimedPeer = transitionParticipantState({
-    state: session.participantStates["student-b"],
+    state: session.participantStates["student-a"],
     action: MATCH_ACTION.CLAIM_IN_APP,
     actionId: "claim-peer",
   });
-  session.participantStates["student-b"] = claimedPeer.state;
+  session.participantStates["student-a"] = claimedPeer.state;
   const {db, store} = createFakeFirestore(seedForSession(session));
   const firstClaim = await claimProtocolV2CallKitDispatch({
     db,
     sessionId: "session-a",
     pairAttemptId: "pair-a",
-    participantId: "student-a",
+    participantId: "teacher-a",
     dispatchId: "dispatch-crashed",
     nowMillis: now,
   });
@@ -206,12 +206,12 @@ test("in-flight dispatch keeps durable stage until its lease can be reclaimed", 
     lockResult: {
       sessionId: "session-a",
       pairAttemptId: "pair-a",
-      responderId: "student-b",
+      responderId: "teacher-a",
     },
     requesterId: "student-a",
-    responderRole: "student",
+    responderRole: "native_speaker",
     studentPreDispatchWait: async () => {},
-    studentPushSender: async () => {
+    teacherPushSender: async () => {
       throw new Error("must not duplicate an active dispatch");
     },
   });
@@ -225,7 +225,7 @@ test("in-flight dispatch keeps durable stage until its lease can be reclaimed", 
     db,
     sessionId: "session-a",
     pairAttemptId: "pair-a",
-    participantId: "student-a",
+    participantId: "teacher-a",
     dispatchId: "dispatch-recovered",
     nowMillis: now + CALLKIT_DISPATCH_LEASE_MS + 1,
   });
@@ -233,38 +233,18 @@ test("in-flight dispatch keeps durable stage until its lease can be reclaimed", 
   assert.equal(reclaimed.dispatchId, "dispatch-recovered");
 });
 
-test("definitive failure allows bounded foreground recovery", async () => {
+test("students never dispatch native calls during recovery", async () => {
   const session = v2Session();
   const {db, store} = createFakeFirestore(seedForSession(session));
-  const result = await routeProtocolV2Participant({
-    db,
-    sessionId: "session-a",
-    pairAttemptId: "pair-a",
-    participantId: "student-b",
-    preDispatchWait: async () => {},
-    pushSender: async () => ({sent: false, reason: "missing_tokens"}),
-    definitiveRecoveryWait: async () => {
-      const latest = store.get("videoSessions/session-a");
-      const recovered = transitionParticipantState({
-        state: latest.participantStates["student-b"],
-        action: MATCH_ACTION.CLAIM_IN_APP,
-        actionId: "foreground-recovery",
-      });
-      store.set("videoSessions/session-a", {
-        ...latest,
-        participantStates: {
-          ...latest.participantStates,
-          "student-b": recovered.state,
-        },
-      });
-    },
-  });
-  assert.equal(result.recoveredAfterDeliveryFailure, true);
-  assert.equal(
-    store.get("videoSessions/session-a")
-      .participantStates["student-b"].surface,
-    MATCH_SURFACE.IN_APP,
-  );
+  for (const participantId of session.participantIds) {
+    const result = await routeProtocolV2Participant({db, sessionId: "session-a",
+      pairAttemptId: "pair-a", participantId,
+      pushSender: async () => {throw new Error("student native dispatch forbidden");},
+    });
+    assert.equal(result.reason, "student_native_disabled");
+    assert.equal(result.shouldNotify, false);
+  }
+  assert.equal([...store.keys()].some((key) => key.startsWith("notifications/")), false);
 });
 
 test("missing FCM fallback after ambiguous APNs failure stays unknown", () => {
@@ -396,14 +376,14 @@ test("foreground wait exits as soon as app moves to background", async () => {
 });
 
 test("cancel during deferred push cannot resurrect notification", async () => {
-  const session = v2Session();
+  const session = v2Session({scenario: "student_teacher"});
   const {db, store} = createFakeFirestore(seedForSession(session));
   const cancellations = [];
   const result = await routeProtocolV2Participant({
     db,
     sessionId: "session-a",
     pairAttemptId: "pair-a",
-    participantId: "student-b",
+    participantId: "teacher-a",
     preDispatchWait: async () => {},
     pushSender: async (_participantId, callData) => {
       store.set("videoSessions/session-a", {
@@ -429,23 +409,23 @@ test("cancel during deferred push cannot resurrect notification", async () => {
   );
   assert.equal(cancellations.length, 1);
   assert.equal(cancellations[0].pairAttemptId, "pair-a");
-  assert.equal(cancellations[0].callKitId, "call-student-b");
+  assert.equal(cancellations[0].callKitId, "call-teacher-a");
 });
 
 test("accept while push is in flight preserves accepted notification", async () => {
-  const session = v2Session();
+  const session = v2Session({scenario: "student_teacher"});
   const {db, store} = createFakeFirestore(seedForSession(session));
   const cancellations = [];
   const result = await routeProtocolV2Participant({
     db,
     sessionId: "session-a",
     pairAttemptId: "pair-a",
-    participantId: "student-b",
+    participantId: "teacher-a",
     preDispatchWait: async () => {},
     pushSender: async (_participantId, callData) => {
       const latest = store.get("videoSessions/session-a");
       const accepted = transitionParticipantState({
-        state: latest.participantStates["student-b"],
+        state: latest.participantStates["teacher-a"],
         action: MATCH_ACTION.ACCEPT,
         actionId: "accept-during-push",
       });
@@ -453,7 +433,7 @@ test("accept while push is in flight preserves accepted notification", async () 
         ...latest,
         participantStates: {
           ...latest.participantStates,
-          "student-b": accepted.state,
+          "teacher-a": accepted.state,
         },
       });
       const notificationPath = `notifications/${callData.notificationId}`;
@@ -473,7 +453,7 @@ test("accept while push is in flight preserves accepted notification", async () 
   assert.equal(cancellations.length, 0);
   assert.equal(
     store.get("videoSessions/session-a")
-      .participantStates["student-b"].delivery,
+      .participantStates["teacher-a"].delivery,
     MATCH_DELIVERY.SENT,
   );
   assert.equal(
@@ -483,19 +463,19 @@ test("accept while push is in flight preserves accepted notification", async () 
 });
 
 test("accept can finish before push finalizer observes connecting", async () => {
-  const session = v2Session();
+  const session = v2Session({scenario: "student_teacher"});
   const {db, store} = createFakeFirestore(seedForSession(session));
   const cancellations = [];
   const result = await routeProtocolV2Participant({
     db,
     sessionId: "session-a",
     pairAttemptId: "pair-a",
-    participantId: "student-b",
+    participantId: "teacher-a",
     preDispatchWait: async () => {},
     pushSender: async (_participantId, callData) => {
       const latest = store.get("videoSessions/session-a");
       const accepted = transitionParticipantState({
-        state: latest.participantStates["student-b"],
+        state: latest.participantStates["teacher-a"],
         action: MATCH_ACTION.ACCEPT,
         actionId: "accept-and-connect-during-push",
       });
@@ -504,7 +484,7 @@ test("accept can finish before push finalizer observes connecting", async () => 
         status: "connecting",
         participantStates: {
           ...latest.participantStates,
-          "student-b": accepted.state,
+          "teacher-a": accepted.state,
         },
       });
       const notificationPath = `notifications/${callData.notificationId}`;
@@ -524,7 +504,7 @@ test("accept can finish before push finalizer observes connecting", async () => 
   assert.equal(cancellations.length, 0);
   assert.equal(
     store.get("videoSessions/session-a")
-      .participantStates["student-b"].delivery,
+      .participantStates["teacher-a"].delivery,
     MATCH_DELIVERY.SENT,
   );
 });
@@ -593,7 +573,7 @@ test("CallKit timeout accepts small client/server clock skew", () => {
   }), false);
 });
 
-test("teacher accept stages the student CallKit route without connecting early", async () => {
+test("teacher accepts while student continues exclusively in app", async () => {
   const session = v2Session({scenario: "student_teacher"});
   session.participantStates["teacher-a"] = {
     ...session.participantStates["teacher-a"],
@@ -616,7 +596,7 @@ test("teacher accept stages the student CallKit route without connecting early",
     },
   });
   assert.equal(response.status, "pending_confirmation");
-  assert.deepEqual(pushedParticipants, ["student-a"]);
+  assert.deepEqual(pushedParticipants, []);
   const updated = store.get("videoSessions/session-a");
   assert.equal(updated.matchStage, "awaiting_acceptance");
   assert.equal(
@@ -625,7 +605,7 @@ test("teacher accept stages the student CallKit route without connecting early",
   );
   assert.equal(
     updated.participantStates["student-a"].delivery,
-    MATCH_DELIVERY.SENT,
+    MATCH_DELIVERY.PENDING,
   );
 });
 

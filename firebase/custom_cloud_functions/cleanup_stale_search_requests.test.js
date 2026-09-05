@@ -268,7 +268,7 @@ test("expired unmatched search request cleanup uses expiresAt cutoff", () => {
   );
 });
 
-test("10 minutes without pair expires active search request", () => {
+test("120 seconds without pair expires active search request", () => {
   const writerOperations = [];
   const writer = {
     update(ref, data) {
@@ -294,7 +294,7 @@ test("10 minutes without pair expires active search request", () => {
         matchedRole: null,
         pairAttemptId: null,
         heartbeatAt: timestampFromMillis(fixedNowMillis - 30 * 1000),
-        createdAt: timestampFromMillis(searchStartedAtMillis),
+        createdAt: timestampFromMillis(searchStartedAtMillis + 1),
         expiresAt: timestampFromMillis(fixedNowMillis + 1),
       }),
     },

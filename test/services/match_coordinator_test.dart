@@ -934,6 +934,25 @@ void main() {
       expect(navigations, isEmpty);
     });
 
+    test(
+        'cancelled passive consent suppresses session arriving before queue response',
+        () async {
+      await start();
+      coordinator.noteLocalSearchCancellation('passive-consent');
+      sessionController.add({
+        ...v2Session(
+            status: 'connecting', surface: 'in_app', decision: 'accepted'),
+        'requesterId': 'student-b',
+        'searchRequestIds': {
+          'requester': 'active',
+          'responder': 'passive-consent'
+        },
+      });
+      await flushCoordinator();
+      expect(navigations, isEmpty);
+      expect(actions, isEmpty);
+    });
+
     test('user link has priority and null snapshots unlink stale session',
         () async {
       await coordinator.startForUser('student-a');

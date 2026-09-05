@@ -20,6 +20,8 @@ import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/flutter_flow/nav/nav.dart';
 import 'package:small_talk/shared_pages/video_call_page/video_call_page_widget.dart';
 import 'package:small_talk/services/nearby_partner_count_cache.dart';
+import 'package:small_talk/services/passive_search_service.dart';
+import 'package:small_talk/components/passive_search_panel.dart';
 import 'package:small_talk/services/nearby_partner_preview_cache.dart';
 import 'package:small_talk/students_pages/students_dashboard/students_dashboard_widget.dart';
 import 'package:small_talk/students_pages/waiting_for_teacher_page/waiting_for_teacher_page_widget.dart';
@@ -179,6 +181,18 @@ void main() {
   setUp(() {
     TestWidgetsFlutterBinding.instance
         .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    Duration? searchClockOffset;
+    StudentsDashboardWidget.debugSearchClock = () {
+      final clockNow = TestWidgetsFlutterBinding.instance.clock.now();
+      searchClockOffset ??= DateTime.now().difference(clockNow);
+      return clockNow.add(searchClockOffset!);
+    };
+    StudentsDashboardWidget.debugPassiveSearchService = PassiveSearchService(
+      watch: (_) => const Stream.empty(),
+      prepareNotifications: () async => true,
+      readTimeZone: () async => 'Asia/Yekaterinburg',
+      invoke: (name, data) async => {'status': 'stopped'},
+    );
     _permissionStatus = _permissionGranted;
     _permissionStatusByPermission = <int, int>{};
     _checkPermissionStatusCallCount = 0;
@@ -252,6 +266,8 @@ void main() {
   });
 
   tearDown(() {
+    StudentsDashboardWidget.debugSearchClock = null;
+    StudentsDashboardWidget.debugPassiveSearchService = null;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_permissionsChannel, null);
     StudentsDashboardWidget.debugActiveSessionReader = null;
@@ -2096,7 +2112,8 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('student dashboard ignores expired search recovery',
+  testWidgets(
+      'student dashboard offers queue for naturally expired search recovery',
       (tester) async {
     const userId = 'student-recover-expired-search-ui-test';
     setActiveStudent(userId);
@@ -2121,9 +2138,9 @@ void main() {
     await tester.pump();
     await tester.idle();
 
-    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.byType(PassiveSearchPanel), findsOneWidget);
     expect(find.text('Ищем собеседника'), findsNothing);
-    expect(find.text('Остановить поиск'), findsNothing);
+    expect(find.text('Остановить поиск'), findsOneWidget);
     expect(heartbeatPayloads, isEmpty);
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -2809,9 +2826,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 2100));
     await tester.pump();
 
-    expect(find.text('Пока никого не нашли'), findsOneWidget);
-    expect(find.text('Начать поиск'), findsOneWidget);
-    expect(find.text('Остановить поиск'), findsNothing);
+    expect(find.byType(PassiveSearchPanel), findsOneWidget);
+    expect(find.text('Начать поиск'), findsNothing);
+    expect(find.text('Остановить поиск'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
@@ -2851,15 +2868,13 @@ void main() {
     await tester.idle();
     await tester.pump();
 
-    expect(find.text('Пока никого не нашли'), findsOneWidget);
-    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.byType(PassiveSearchPanel), findsOneWidget);
+    expect(find.text('Начать поиск'), findsNothing);
     expect(find.text('Ищем собеседника'), findsNothing);
-    expect(find.text('Остановить поиск'), findsNothing);
+    expect(find.text('Остановить поиск'), findsOneWidget);
     expect(heartbeatPayloads, isEmpty);
-    expect(stoppedSessionIds, [null]);
-    expect(stopPayloads, [
-      <String, dynamic>{'requestId': requestId},
-    ]);
+    expect(stoppedSessionIds, isEmpty);
+    expect(stopPayloads, isEmpty);
 
     await tester.pump(StudentsDashboardWidget.heartbeatSearchInterval);
     await tester.pump();
@@ -5291,7 +5306,7 @@ void main() {
     expect(observedSearchState.hasActiveSearch, isFalse);
   });
 
-  testWidgets('startup recovery treats stale active search as expired',
+  testWidgets('startup recovery refreshes stale active search within deadline',
       (tester) async {
     const userId = 'student-startup-stale-search-test';
     final observedSearchState = await runStartupSearchRecoveryTest(
@@ -5310,11 +5325,11 @@ void main() {
     expect(observedSearchState!.exists, isTrue);
     expect(observedSearchState.belongsToUser, isTrue);
     expect(observedSearchState.isLiveStatus, isTrue);
-    expect(observedSearchState.isExpired, isTrue);
-    expect(observedSearchState.hasActiveSearch, isFalse);
+    expect(observedSearchState.isExpired, isFalse);
+    expect(observedSearchState.hasActiveSearch, isTrue);
   });
 
-  testWidgets('startup recovery treats missing heartbeat as expired',
+  testWidgets('startup recovery refreshes missing heartbeat within deadline',
       (tester) async {
     const userId = 'student-startup-missing-heartbeat-search-test';
     final observedSearchState = await runStartupSearchRecoveryTest(
@@ -5330,8 +5345,8 @@ void main() {
 
     expect(observedSearchState, isNotNull);
     expect(observedSearchState!.isLiveStatus, isTrue);
-    expect(observedSearchState.isExpired, isTrue);
-    expect(observedSearchState.hasActiveSearch, isFalse);
+    expect(observedSearchState.isExpired, isFalse);
+    expect(observedSearchState.hasActiveSearch, isTrue);
   });
 
   testWidgets('startup recovery treats missing expiresAt as expired',
@@ -5404,7 +5419,8 @@ void main() {
     expect(observedSearchState.hasActiveSearch, isTrue);
   });
 
-  testWidgets('startup recovery rejects closed background stale heartbeat',
+  testWidgets(
+      'startup recovery resumes background stale heartbeat within deadline',
       (tester) async {
     const userId = 'student-startup-background-stale-search-test';
     final now = DateTime(2026, 1, 1, 12);
@@ -5427,8 +5443,8 @@ void main() {
     expect(observedSearchState!.exists, isTrue);
     expect(observedSearchState.belongsToUser, isTrue);
     expect(observedSearchState.isLiveStatus, isTrue);
-    expect(observedSearchState.isExpired, isTrue);
-    expect(observedSearchState.hasActiveSearch, isFalse);
+    expect(observedSearchState.isExpired, isFalse);
+    expect(observedSearchState.hasActiveSearch, isTrue);
   });
 
   testWidgets('startup recovery rejects mismatched search owner',
@@ -7504,55 +7520,41 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('student dashboard shows no match state after ten minutes',
+  testWidgets('student dashboard offers passive queue after two minutes',
       (tester) async {
     setActiveStudent('student-no-match-timeout-test');
-
     await tester.pumpWidget(
       _buildDashboardTestApp(const StudentsDashboardWidget()),
     );
     await tester.pump();
-
-    await tester.tap(
-      find.ancestor(
-        of: find.text('Начать поиск'),
-        matching: find.byType(InkWell),
-      ),
-    );
+    await tester
+        .tap(find.widgetWithText(StudentStartSearchButton, 'Начать поиск'));
     await tester.pump();
-
     expect(find.text('Ищем собеседника'), findsOneWidget);
-
-    await tester.pump(const Duration(minutes: 10));
+    await tester.pump(const Duration(minutes: 2));
     await tester.pump();
-
-    expect(find.text('Пока никого не нашли'), findsOneWidget);
-    final startSearchButton =
-        find.widgetWithText(StudentStartSearchButton, 'Начать поиск');
-    expect(startSearchButton, findsOneWidget);
-    expect(startSearchButton.hitTestable(), findsOneWidget);
-    expect(
-      tester.widget<StudentStartSearchButton>(startSearchButton).isActive,
-      isFalse,
-    );
-    expect(find.text('Остановить поиск'), findsNothing);
+    expect(find.byType(PassiveSearchPanel), findsOneWidget);
+    expect(find.text('30 мин'), findsOneWidget);
+    expect(find.text('60 мин'), findsOneWidget);
+    expect(find.text('Весь день (до 00:00)'), findsOneWidget);
+    final stop =
+        find.widgetWithText(StudentStartSearchButton, 'Остановить поиск');
+    expect(stop.hitTestable(), findsOneWidget);
+    expect(tester.widget<StudentStartSearchButton>(stop).isActive, isTrue);
     expect(find.text('Ищем собеседника'), findsNothing);
-    expect(find.text('Соединяем'), findsNothing);
-    expect(find.text('Не удалось начать поиск'), findsNothing);
-
-    await tester.tap(
-      startSearchButton,
-    );
+    await tester.tap(stop);
     await tester.pump();
-
-    expect(find.text('Ищем собеседника'), findsOneWidget);
-    expect(find.text('Пока никого не нашли'), findsNothing);
-
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.byType(PassiveSearchPanel), findsNothing);
+    await tester
+        .tap(find.widgetWithText(StudentStartSearchButton, 'Начать поиск'));
+    await tester.pump();
+    expect(find.text('Осталось 02:00'), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
   testWidgets(
-      'student dashboard notifies after two minutes and keeps searching',
+      'student dashboard stops active search after two minutes without joining implicitly',
       (tester) async {
     setActiveStudent('student-search-notice-test');
     final stoppedSessionIds = <String?>[];
@@ -7587,11 +7589,11 @@ void main() {
 
     expect(
       find.text(
-        'Все собеседники заняты. Вы можете свернуть приложение, мы уведомим вас.',
+        'Сейчас все собеседники заняты. Вы можете встать в очередь — приложение можно закрыть, мы уведомим вас.',
       ),
       findsOneWidget,
     );
-    expect(find.text('Ищем собеседника'), findsOneWidget);
+    expect(find.text('Ищем собеседника'), findsNothing);
     expect(find.textContaining('Осталось '), findsNothing);
     expect(find.text('Остановить поиск'), findsOneWidget);
     expect(stoppedSessionIds, isEmpty);
@@ -7629,7 +7631,7 @@ void main() {
     await tester.pump(const Duration(minutes: 10));
     await tester.pump();
 
-    expect(find.text('Пока никого не нашли'), findsNothing);
+    expect(find.byType(PassiveSearchPanel), findsNothing);
     expect(find.text('Начать поиск'), findsOneWidget);
     expect(_checkPermissionStatusCallCount, permissionChecksAfterStart);
     expect(_requestPermissionsCallCount, permissionRequestsAfterStart);
@@ -8647,7 +8649,8 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('pair session stream clears stale no match timeout',
+  testWidgets(
+      'pair session created after active deadline does not bypass queue choice',
       (tester) async {
     final activeSessionController = StreamController<VideoSessionsRecord?>();
     addTearDown(activeSessionController.close);
@@ -8672,7 +8675,7 @@ void main() {
       ),
     );
     await tester.pump();
-    await tester.pump(const Duration(minutes: 9, seconds: 59));
+    await tester.pump(const Duration(minutes: 1, seconds: 59));
 
     activeSessionController.add(
       sessionFixture('session-prevents-timeout-test', 'searching'),
@@ -8681,29 +8684,29 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
     await tester.pump();
 
-    expect(find.text('Пока никого не нашли'), findsOneWidget);
+    expect(find.byType(PassiveSearchPanel), findsOneWidget);
 
     activeSessionController.add(
       sessionFixture('session-prevents-timeout-test', 'pending_confirmation'),
     );
     await tester.pump();
 
-    expect(find.text('Соединяем'), findsOneWidget);
-    expect(find.text('Пока никого не нашли'), findsNothing);
+    expect(find.byType(PassiveSearchPanel), findsOneWidget);
+    expect(find.text('Соединяем'), findsNothing);
 
     activeSessionController.add(
       sessionFixture('session-prevents-timeout-test', 'ended'),
     );
     await tester.pump();
 
-    expect(find.text('Пока никого не нашли'), findsNothing);
-    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.byType(PassiveSearchPanel), findsOneWidget);
+    expect(find.text('Начать поиск'), findsNothing);
 
     activeSessionController.add(null);
     await tester.pump();
 
-    expect(find.text('Пока никого не нашли'), findsNothing);
-    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.byType(PassiveSearchPanel), findsOneWidget);
+    expect(find.text('Начать поиск'), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
@@ -9089,6 +9092,273 @@ void main() {
     expect(find.text('Остановить поиск'), findsOneWidget);
     expect(find.text('Ищем собеседника'), findsOneWidget);
 
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  for (final duration in PassiveSearchDuration.values) {
+    testWidgets(
+        'passive queue joins ${duration.value} only after explicit choice',
+        (tester) async {
+      setActiveStudent('student-queue-${duration.value}');
+      final calls = <Map<String, dynamic>>[];
+      var permissions = 0;
+      final service = PassiveSearchService(
+        watch: (_) => const Stream.empty(),
+        prepareNotifications: () async {
+          permissions++;
+          return true;
+        },
+        readTimeZone: () async => 'America/New_York',
+        invoke: (name, data) async {
+          calls.add({'name': name, ...data});
+          return {
+            'status': 'waiting',
+            'requestId': data['requestId'],
+            'expiresAt': StudentsDashboardWidget.debugSearchClock!()
+                .add(const Duration(minutes: 30))
+                .toIso8601String()
+          };
+        },
+      );
+      await tester.pumpWidget(_buildDashboardTestApp(
+        StudentsDashboardWidget(passiveSearchService: service),
+      ));
+      await tester.pump();
+      await tester
+          .tap(find.widgetWithText(StudentStartSearchButton, 'Начать поиск'));
+      await tester.pump();
+      await tester.pump(const Duration(minutes: 2));
+      await tester.pump();
+      expect(calls, isEmpty);
+      expect(permissions, 0);
+      await tester
+          .tap(find.byKey(ValueKey('passive-duration-${duration.value}')));
+      await tester.pump();
+      expect(permissions, 1);
+      expect(calls.single['name'], 'joinPassiveSearch');
+      expect(calls.single['duration'], duration.value);
+      expect(calls.single['searchRequestId'], isNotEmpty);
+      expect(calls.single['requestId'], isNot(calls.single['searchRequestId']));
+      expect(find.textContaining('Вы в очереди до'), findsOneWidget);
+      expect(find.text('Остановить поиск'), findsOneWidget);
+      expect(find.text('Ищем собеседника'), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
+  testWidgets('passive queue refuses notification denial without joining',
+      (tester) async {
+    setActiveStudent('student-passive-permission-denied');
+    var calls = 0;
+    final service = PassiveSearchService(
+      watch: (_) => const Stream.empty(),
+      prepareNotifications: () async => false,
+      invoke: (_, __) async {
+        calls++;
+        return {};
+      },
+    );
+    await tester.pumpWidget(_buildDashboardTestApp(
+      StudentsDashboardWidget(
+          passiveSearchService: service,
+          activeSearchRecoveryReader: (_) async => activeSearchRecoveryState(
+                userId: 'student-passive-permission-denied',
+                requestId: 'expired',
+                expiresAt: StudentsDashboardWidget.debugSearchClock!()
+                    .subtract(const Duration(seconds: 1)),
+              )),
+    ));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('passive-duration-30')));
+    await tester.pump();
+    expect(calls, 0);
+    expect(find.textContaining('Разрешите уведомления'), findsOneWidget);
+    expect(find.text('30 мин'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('passive queue restores without restarting and expires once',
+      (tester) async {
+    setActiveStudent('student-passive-restoration');
+    final state = PassiveSearchState(
+        requestId: 'consent',
+        status: 'waiting',
+        sourceSearchRequestId: 'source',
+        expiresAt: StudentsDashboardWidget.debugSearchClock!()
+            .add(const Duration(seconds: 2)));
+    var starts = 0;
+    final service = PassiveSearchService(watch: (_) => Stream.value(state));
+    await tester.pumpWidget(_buildDashboardTestApp(
+      StudentsDashboardWidget(
+          passiveSearchService: service,
+          startSearchRequest: (_) async {
+            starts++;
+            return {};
+          }),
+    ));
+    await tester.pump();
+    expect(find.textContaining('Вы в очереди до'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsOneWidget);
+    expect(starts, 0);
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump();
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.byType(PassiveSearchPanel), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('passive queue stop during join cannot restore late success',
+      (tester) async {
+    const userId = 'student-stop-passive-inflight';
+    setActiveStudent(userId);
+    final joining = Completer<Map<String, dynamic>>();
+    final calls = <Map<String, dynamic>>[];
+    final service = PassiveSearchService(
+      watch: (_) => const Stream.empty(),
+      prepareNotifications: () async => true,
+      invoke: (name, data) async {
+        calls.add({'name': name, ...data});
+        if (name == 'joinPassiveSearch') return joining.future;
+        return {'status': 'stopped'};
+      },
+    );
+    await tester.pumpWidget(_buildDashboardTestApp(
+      StudentsDashboardWidget(
+          passiveSearchService: service,
+          activeSearchRecoveryReader: (_) async => activeSearchRecoveryState(
+                userId: userId,
+                requestId: 'expired',
+                expiresAt: StudentsDashboardWidget.debugSearchClock!()
+                    .subtract(const Duration(seconds: 1)),
+              )),
+    ));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('passive-duration-30')));
+    await tester.pump();
+    await tester
+        .tap(find.widgetWithText(StudentStartSearchButton, 'Остановить поиск'));
+    await tester.pump();
+    expect(calls.map((c) => c['name']),
+        ['joinPassiveSearch', 'leavePassiveSearch']);
+    expect(calls.first['requestId'], calls.last['requestId']);
+    joining.complete({
+      'status': 'waiting',
+      'requestId': calls.first['requestId'],
+      'expiresAt': StudentsDashboardWidget.debugSearchClock!()
+          .add(const Duration(minutes: 30))
+          .toIso8601String()
+    });
+    await tester.pump();
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.byType(PassiveSearchPanel), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets(
+      'passive queue failed stop remains actionable and retries same consent',
+      (tester) async {
+    setActiveStudent('student-passive-stop-retry');
+    final calls = <Map<String, dynamic>>[];
+    final state = PassiveSearchState(
+        requestId: 'consent',
+        status: 'waiting',
+        sourceSearchRequestId: 'source',
+        expiresAt: StudentsDashboardWidget.debugSearchClock!()
+            .add(const Duration(minutes: 30)));
+    final service = PassiveSearchService(
+      watch: (_) => Stream.value(state),
+      invoke: (name, data) async {
+        calls.add(data);
+        if (calls.length == 1) throw StateError('offline');
+        return {'status': 'stopped'};
+      },
+    );
+    await tester.pumpWidget(_buildDashboardTestApp(
+      StudentsDashboardWidget(passiveSearchService: service),
+    ));
+    await tester.pump();
+    final stop =
+        find.widgetWithText(StudentStartSearchButton, 'Остановить поиск');
+    await tester.tap(stop);
+    await tester.pump();
+    expect(find.textContaining('Не удалось остановить поиск.'), findsOneWidget);
+    expect(stop, findsOneWidget);
+    await tester.tap(stop);
+    await tester.pump();
+    expect(calls, [
+      {'requestId': 'consent'},
+      {'requestId': 'consent'}
+    ]);
+    expect(find.text('Начать поиск'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('passive queue choices fit small screen with large text',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 520);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    setActiveStudent('student-passive-compact');
+    await tester.pumpWidget(_buildDashboardTestApp(
+      const StudentsDashboardWidget(
+          initialSearchState: StudentDashboardSearchState.choosingQueue),
+      textScaleFactor: 1.8,
+    ));
+    await tester.pump();
+    expect(find.byType(PassiveSearchPanel), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('passive queue terminal snapshot wins over delayed join response',
+      (tester) async {
+    const userId = 'student-passive-terminal-race';
+    setActiveStudent(userId);
+    final snapshots = StreamController<PassiveSearchState?>();
+    addTearDown(snapshots.close);
+    final joining = Completer<Map<String, dynamic>>();
+    String? consent;
+    final service = PassiveSearchService(
+      watch: (_) => snapshots.stream,
+      prepareNotifications: () async => true,
+      invoke: (_, data) {
+        consent = data['requestId'] as String;
+        return joining.future;
+      },
+    );
+    await tester.pumpWidget(_buildDashboardTestApp(
+      StudentsDashboardWidget(
+          passiveSearchService: service,
+          activeSearchRecoveryReader: (_) async => activeSearchRecoveryState(
+                userId: userId,
+                requestId: 'source',
+                expiresAt: StudentsDashboardWidget.debugSearchClock!()
+                    .subtract(const Duration(seconds: 1)),
+              )),
+    ));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('passive-duration-30')));
+    await tester.pump();
+    snapshots.add(PassiveSearchState(
+        requestId: consent!,
+        status: 'stopped',
+        sourceSearchRequestId: 'source',
+        expiresAt: StudentsDashboardWidget.debugSearchClock!()
+            .add(const Duration(minutes: 30))));
+    await tester.pump();
+    joining.complete({
+      'status': 'waiting',
+      'requestId': consent,
+      'expiresAt': StudentsDashboardWidget.debugSearchClock!()
+          .add(const Duration(minutes: 30))
+          .toIso8601String()
+    });
+    await tester.pump();
+    expect(find.text('Начать поиск'), findsOneWidget);
+    expect(find.textContaining('Вы в очереди до'), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 

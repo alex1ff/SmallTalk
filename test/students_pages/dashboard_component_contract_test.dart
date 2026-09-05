@@ -163,25 +163,17 @@ void main() {
     expect(source, contains("'requestId': requestId"));
   });
 
-  test('local search timeout stops backend search request', () {
+  test('local search timeout offers explicit passive consent without manual stop', () {
     final source = File(
-            'lib/students_pages/students_dashboard/students_dashboard_widget.dart')
-        .readAsStringSync();
-    final timeoutStart = source.indexOf('void _startSearchTimeoutTimer');
-    final heartbeatStart =
-        source.indexOf('Map<String, dynamic> _normalizeCallableMap');
-    final timeoutSource = source.substring(timeoutStart, heartbeatStart);
-
-    expect(timeoutStart, isNot(-1));
-    expect(heartbeatStart, greaterThan(timeoutStart));
-    expect(timeoutSource, contains('String? activeSearchRequestId'));
-    expect(
-      timeoutSource,
-      contains('activeSearchRequestId ?? _activeSearchRequestId'),
-    );
-    expect(timeoutSource, contains('_clearSearchHeartbeatTimer()'));
-    expect(timeoutSource, contains('_stopActiveSearchRequest('));
-    expect(timeoutSource, contains('activeSearchRequestId: expiredRequestId'));
+      'lib/students_pages/students_dashboard/students_dashboard_widget.dart',
+    ).readAsStringSync();
+    final start = source.indexOf('void _handleForegroundSearchNoticeDue');
+    final end = source.indexOf('void _showForegroundSearchNoticeIfNeeded', start);
+    final transition = source.substring(start, end);
+    expect(transition, contains('StudentDashboardSearchState.choosingQueue'));
+    expect(transition, contains('_clearSearchHeartbeatTimer()'));
+    expect(transition, isNot(contains('_stopActiveSearchRequest(')));
+    expect(transition, isNot(contains('_passiveSearch.join(')));
   });
 
   test('student dashboard maps active video session status to search UI', () {
@@ -197,7 +189,7 @@ void main() {
     expect(source, contains('StudentDashboardSearchState.noMatchFound'));
     expect(source, contains('StudentDashboardSearchState.error'));
     expect(source, contains('StudentDashboardSearchErrorReason'));
-    expect(source, contains('Duration(minutes: 10)'));
+    expect(source, contains('Duration(minutes: 2)'));
     expect(
       source,
       contains('StudentDashboardSearchState.connecting'),

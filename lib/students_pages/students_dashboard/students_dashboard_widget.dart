@@ -13,6 +13,8 @@ import '/flutter_flow/flutter_flow_util.dart';
 import '/flutter_flow/permissions_util.dart';
 import '/services/user_match_profile.dart';
 import '/services/active_search_recovery.dart';
+import '/services/passive_search_service.dart';
+import '/components/passive_search_panel.dart';
 import '/services/nearby_partner_count_cache.dart';
 import '/services/nearby_partner_preview_cache.dart';
 import '/services/match_coordinator.dart';
@@ -42,6 +44,8 @@ enum StudentDashboardSearchState {
   searching,
   connecting,
   noMatchFound,
+  choosingQueue,
+  passiveWaiting,
   error,
 }
 
@@ -89,6 +93,7 @@ class StudentsDashboardWidget extends StatefulWidget {
     this.activeSearchRecoveryReader,
     this.partnerCountLoader,
     this.partnerPreviewLoader,
+    this.passiveSearchService,
   })  : this.zn = zn ?? false,
         this.topUpSuccess = topUpSuccess ?? false;
 
@@ -104,6 +109,10 @@ class StudentsDashboardWidget extends StatefulWidget {
       activeSearchRecoveryReader;
   final PartnerCountLoader? partnerCountLoader;
   final PartnerPreviewLoader? partnerPreviewLoader;
+  final PassiveSearchService? passiveSearchService;
+
+  static PassiveSearchService? debugPassiveSearchService;
+  static DateTime Function()? debugSearchClock;
 
   static Future<VideoSessionsRecord?> Function(DocumentReference sessionRef)?
       debugActiveSessionReader;
@@ -128,7 +137,7 @@ class StudentsDashboardWidget extends StatefulWidget {
   static const Duration activeSearchRecoveryRetryDelay = Duration(seconds: 2);
   static const int activeSearchRecoveryMaxAttemptsAfterFailure = 3;
   static const Duration foregroundSearchNoticeDelay = Duration(minutes: 2);
-  static const Duration searchDuration = Duration(minutes: 10);
+  static const Duration searchDuration = Duration(minutes: 2);
 
   static String routeName = 'Students_Dashboard';
   static String routePath = '/studentsDashboard';
@@ -165,6 +174,31 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
   String? _suppressedActiveSessionId;
   String? _suppressedActiveSearchUserId;
   String? _lastActiveSessionId;
+  final Set<String> _suppressedPassiveRequestIds = <String>{};
+  StreamSubscription<PassiveSearchState?>? _passiveSubscription;
+  Timer? _passiveExpiryTimer;
+  String? _passiveUserId;
+  PassiveSearchState? _passiveState;
+  String? _queueSourceSearchRequestId;
+  String? _handledQueueSourceSearchRequestId;
+  String? _passiveOperationId;
+  bool _passiveBusy = false;
+  bool _passiveStopping = false;
+  int _passiveGeneration = 0;
+  String? _passiveError;
+  DateTime? _activeSearchDeadline;
+
+  PassiveSearchService get _passiveSearch =>
+      widget.passiveSearchService ??
+      StudentsDashboardWidget.debugPassiveSearchService ??
+      PassiveSearchService.instance;
+  DateTime _searchNow() =>
+      StudentsDashboardWidget.debugSearchClock?.call() ?? DateTime.now();
+
+  bool get _showingQueue =>
+      _searchState == StudentDashboardSearchState.choosingQueue ||
+      _searchState == StudentDashboardSearchState.passiveWaiting;
+
   Timer? _searchTimeoutTimer;
   Timer? _foregroundSearchNoticeTimer;
   Timer? _foregroundSearchCountdownTimer;
@@ -181,8 +215,6 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
   bool _searchHeartbeatOwnedByCoordinator = false;
   String _searchAppState = 'foreground';
   Duration? _foregroundSearchCountdownRemaining;
-  bool _foregroundSearchNoticePending = false;
-  bool _foregroundSearchNoticeShown = false;
   String? _autoOpenedSessionId;
   final Set<String> _terminalV2SessionReconciliations = <String>{};
   final Set<String> _foregroundAcceptStartedSessionIds = <String>{};
@@ -195,7 +227,9 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
   bool get _showLegacyDashboard => false;
   bool _isStopSearchState(StudentDashboardSearchState searchState) =>
       searchState == StudentDashboardSearchState.searching ||
-      searchState == StudentDashboardSearchState.connecting;
+      searchState == StudentDashboardSearchState.connecting ||
+      searchState == StudentDashboardSearchState.choosingQueue ||
+      searchState == StudentDashboardSearchState.passiveWaiting;
 
   bool _showsSearchStatus(StudentDashboardSearchState searchState) =>
       searchState != StudentDashboardSearchState.idle;
@@ -361,6 +395,249 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       (_lastActiveSessionId != expectedSessionId ||
           _lastActiveSessionSearchState == StudentDashboardSearchState.idle);
 
+  void _watchPassiveSearchForUser(String userId) {
+    if (_passiveUserId == userId) return;
+    _passiveGeneration++;
+    _passiveUserId = userId;
+    _passiveState = null;
+    _passiveOperationId = null;
+    _handledQueueSourceSearchRequestId = null;
+    _passiveExpiryTimer?.cancel();
+    unawaited(_passiveSubscription?.cancel());
+    _passiveSubscription = _passiveSearch.watchForUser(userId).listen((state) {
+      if (!mounted || _passiveUserId != userId) return;
+      if (state != null &&
+          _suppressedPassiveRequestIds.contains(state.requestId)) {
+        return;
+      }
+      final previousState = _passiveState;
+      _passiveState = state;
+      _passiveExpiryTimer?.cancel();
+      if (state == null && previousState != null &&
+          _searchState == StudentDashboardSearchState.passiveWaiting &&
+          !_passiveStopping) {
+        _handledQueueSourceSearchRequestId = previousState.sourceSearchRequestId;
+        _passiveGeneration++;
+        safeSetState(() {
+          _passiveBusy = false;
+          _passiveOperationId = null;
+          _searchState = StudentDashboardSearchState.idle;
+        });
+        return;
+      }
+      if (state != null && state.isWaiting(_searchNow())) {
+        _passiveExpiryTimer = Timer(
+          state.expiresAt!.difference(_searchNow()),
+          _expirePassiveQueueIfNeeded,
+        );
+        if (!_isStartingSearch &&
+            !_passiveStopping &&
+            _searchState != StudentDashboardSearchState.searching &&
+            _searchState != StudentDashboardSearchState.connecting) {
+          _clearSearchTimeoutTimer();
+          _clearForegroundSearchNoticeTimer();
+          _clearSearchHeartbeatTimer();
+          safeSetState(() {
+            _passiveOperationId = state.requestId;
+            _queueSourceSearchRequestId = state.sourceSearchRequestId;
+            _searchState = StudentDashboardSearchState.passiveWaiting;
+          });
+        }
+      } else if (state != null) {
+        _handledQueueSourceSearchRequestId = state.sourceSearchRequestId;
+        if (_showingQueue &&
+            !_passiveStopping &&
+            (state.sourceSearchRequestId == _queueSourceSearchRequestId ||
+                state.requestId == _passiveOperationId)) {
+          _passiveGeneration++;
+          safeSetState(() {
+            _passiveBusy = false;
+            _searchState = StudentDashboardSearchState.idle;
+            _passiveOperationId = null;
+          });
+        }
+      }
+    }, onError: (Object error) {
+      debugPrint('StudentsDashboard: passive queue read failed: $error');
+      if (mounted && _showingQueue) {
+        safeSetState(() => _passiveError = _queueErrorText(
+              'Не удалось обновить очередь. Проверьте подключение.',
+              'Could not refresh the waiting list. Check your connection.',
+            ));
+      }
+    });
+  }
+
+  String _queueErrorText(String ru, String en) =>
+      FFLocalizations.of(context).getVariableText(ruText: ru, enText: en);
+
+  void _expirePassiveQueueIfNeeded() {
+    final state = _passiveState;
+    if (!mounted || state == null || state.isWaiting(_searchNow())) return;
+    _handledQueueSourceSearchRequestId = state.sourceSearchRequestId;
+    if (_searchState == StudentDashboardSearchState.passiveWaiting) {
+      safeSetState(() {
+        _searchState = StudentDashboardSearchState.idle;
+        _passiveOperationId = null;
+        _passiveState = null;
+      });
+    }
+  }
+
+  Future<void> _joinPassiveQueue(PassiveSearchDuration duration) async {
+    final sourceId = _queueSourceSearchRequestId;
+    if (_passiveBusy || _passiveStopping || sourceId == null) return;
+    final generation = ++_passiveGeneration;
+    final userId = _currentSearchUserId();
+    final operationId = _passiveOperationId ??= const Uuid().v4();
+    bool current() =>
+        mounted &&
+        generation == _passiveGeneration &&
+        userId == _currentSearchUserId();
+    safeSetState(() {
+      _passiveBusy = true;
+      _passiveError = null;
+    });
+    try {
+      if (!await _passiveSearch.enableNotifications()) {
+        if (current()) {
+          safeSetState(() => _passiveError = _queueErrorText(
+                'Разрешите уведомления в настройках устройства, чтобы получать приглашения.',
+                'Allow notifications in device settings to receive invitations.',
+              ));
+        }
+        return;
+      }
+      if (!current()) return;
+      final state = await _passiveSearch.join(
+        searchRequestId: sourceId,
+        requestId: operationId,
+        duration: duration,
+        locale: FFLocalizations.of(context).languageCode,
+      );
+      if (!current()) return;
+      if (!state.isWaiting(_searchNow())) {
+        throw StateError('passive_search_not_waiting');
+      }
+      safeSetState(() {
+        _passiveState = state;
+        _searchState = StudentDashboardSearchState.passiveWaiting;
+      });
+      _passiveExpiryTimer?.cancel();
+      _passiveExpiryTimer = Timer(
+        state.expiresAt!.difference(_searchNow()),
+        _expirePassiveQueueIfNeeded,
+      );
+    } catch (error) {
+      debugPrint('StudentsDashboard: passive queue join failed: $error');
+      if (current()) {
+        safeSetState(() => _passiveError = _queueErrorText(
+              'Не удалось встать в очередь. Проверьте подключение и повторите.',
+              'Could not join the waiting list. Check your connection and retry.',
+            ));
+      }
+    } finally {
+      if (current()) safeSetState(() => _passiveBusy = false);
+    }
+  }
+
+  Future<void> _stopQueueActiveSearch(
+      {String? sourceId, String? sessionId}) async {
+    if (sessionId != null) {
+      MatchCoordinator.instance.noteLocalCancellation(sessionId);
+      if (MatchCoordinator.instance.currentSession?.sessionId == sessionId &&
+          MatchCoordinator.instance.hasCancellableV2Match) {
+        final stopped = await MatchCoordinator.instance
+            .cancelCurrentMatch()
+            .timeout(StudentsDashboardWidget.stopSearchRequestTimeout);
+        if (!stopped) throw StateError('stop_search_failed');
+        return;
+      }
+    }
+    final override = widget.stopSearchRequest ??
+        StudentsDashboardWidget.debugStopSearchRequest;
+    if (override != null) {
+      final result = await override(sessionId)
+          .timeout(StudentsDashboardWidget.stopSearchRequestTimeout);
+      if (result != null &&
+          !_isStopSearchResponseSuccess(result,
+              hasExplicitSessionId: sessionId != null)) {
+        throw StateError('stop_search_failed');
+      }
+    } else {
+      final result = await _passiveSearch.stopActive(
+        requestId: sourceId,
+        sessionId: sessionId,
+      );
+      if (!_isStopSearchResponseSuccess(result,
+          hasExplicitSessionId: sessionId != null)) {
+        throw StateError('stop_search_failed');
+      }
+    }
+  }
+
+  Future<void> _stopPassiveQueue() async {
+    if (_passiveStopping) return;
+    final generation = ++_passiveGeneration;
+    final operationId = _passiveOperationId ?? _passiveState?.requestId;
+    final sourceId = _queueSourceSearchRequestId;
+    final userId = _currentSearchUserId();
+    bool current() =>
+        mounted &&
+        generation == _passiveGeneration &&
+        userId == _currentSearchUserId();
+    if (operationId != null) {
+      MatchCoordinator.instance.noteLocalSearchCancellation(operationId);
+    }
+    if (sourceId != null) {
+      MatchCoordinator.instance.noteLocalSearchCancellation(sourceId);
+    }
+    if (operationId != null) _suppressedPassiveRequestIds.add(operationId);
+    safeSetState(() {
+      _passiveStopping = true;
+      _passiveBusy = false;
+      _passiveError = null;
+    });
+    try {
+      String? sessionId;
+      if (operationId != null) {
+        final result = await _passiveSearch.leave(operationId);
+        if (_currentSearchUserId() != userId) return;
+        if (result['status'] != 'stopped')
+          throw StateError('queue_stop_failed');
+        sessionId = result['sessionId']?.toString();
+      }
+      if (sourceId != null || sessionId != null) {
+        // A successful connection may have won the transaction immediately
+        // before Stop. Cancel that session too, using existing lifecycle rules.
+        await _stopQueueActiveSearch(
+          sourceId: sessionId == null ? sourceId : null,
+          sessionId: sessionId,
+        );
+      }
+      if (!current()) return;
+      _passiveExpiryTimer?.cancel();
+      safeSetState(() {
+        _handledQueueSourceSearchRequestId = sourceId;
+        _searchState = StudentDashboardSearchState.idle;
+        _passiveOperationId = null;
+        _passiveState = null;
+        _queueSourceSearchRequestId = null;
+      });
+    } catch (error) {
+      debugPrint('StudentsDashboard: passive queue stop failed: $error');
+      if (operationId != null) _suppressedPassiveRequestIds.remove(operationId);
+      if (current()) {
+        safeSetState(() => _passiveError = _queueErrorText(
+              'Не удалось остановить поиск. Проверьте подключение и нажмите еще раз.',
+              'Could not stop searching. Check your connection and try again.',
+            ));
+      }
+    } finally {
+      if (current()) safeSetState(() => _passiveStopping = false);
+    }
+  }
+
   void _clearSearchTimeoutTimer() {
     _searchTimeoutTimer?.cancel();
     _searchTimeoutTimer = null;
@@ -372,90 +649,57 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     _foregroundSearchCountdownTimer?.cancel();
     _foregroundSearchCountdownTimer = null;
     _foregroundSearchCountdownRemaining = null;
-    _foregroundSearchNoticePending = false;
-    _foregroundSearchNoticeShown = false;
   }
 
-  void _startForegroundSearchNoticeTimer({
-    Duration elapsed = Duration.zero,
-  }) {
+  void _startForegroundSearchNoticeTimer({Duration elapsed = Duration.zero}) {
     _clearForegroundSearchNoticeTimer();
-    final remaining =
-        StudentsDashboardWidget.foregroundSearchNoticeDelay - elapsed;
-    if (remaining <= Duration.zero) {
-      _handleForegroundSearchNoticeDue();
-      return;
+    _activeSearchDeadline ??= _searchNow().add(
+      StudentsDashboardWidget.searchDuration - elapsed,
+    );
+    void updateCountdown() {
+      final remaining = _activeSearchDeadline!.difference(_searchNow());
+      if (remaining <= Duration.zero) {
+        _handleForegroundSearchNoticeDue();
+        return;
+      }
+      _foregroundSearchCountdownRemaining = remaining;
+      if (mounted) safeSetState(() {});
     }
 
-    _foregroundSearchCountdownRemaining = remaining;
+    updateCountdown();
+    if (_searchState != StudentDashboardSearchState.searching) return;
     _foregroundSearchCountdownTimer = Timer.periodic(
       const Duration(seconds: 1),
-      (_) {
-        final currentRemaining = _foregroundSearchCountdownRemaining;
-        if (currentRemaining == null) return;
-        final nextRemaining = currentRemaining - const Duration(seconds: 1);
-        if (nextRemaining <= Duration.zero) {
-          _handleForegroundSearchNoticeDue();
-          return;
-        }
-        if (mounted && _searchState == StudentDashboardSearchState.searching) {
-          safeSetState(() {
-            _foregroundSearchCountdownRemaining = nextRemaining;
-          });
-        }
-      },
+      (_) => updateCountdown(),
     );
+    final remaining = _activeSearchDeadline!.difference(_searchNow());
     _foregroundSearchNoticeTimer = Timer(
-      remaining,
+      remaining.isNegative ? Duration.zero : remaining,
       _handleForegroundSearchNoticeDue,
     );
-    if (mounted) {
-      safeSetState(() {});
-    }
   }
 
   void _handleForegroundSearchNoticeDue() {
-    _foregroundSearchNoticeTimer?.cancel();
-    _foregroundSearchNoticeTimer = null;
-    _foregroundSearchCountdownTimer?.cancel();
-    _foregroundSearchCountdownTimer = null;
-    if (_searchState != StudentDashboardSearchState.searching) {
-      _foregroundSearchCountdownRemaining = null;
+    if (!mounted || _searchState != StudentDashboardSearchState.searching)
       return;
-    }
-
-    _foregroundSearchCountdownRemaining = null;
-    _foregroundSearchNoticePending = true;
-    if (mounted) {
-      safeSetState(() {});
-    }
-    _showForegroundSearchNoticeIfNeeded();
+    _queueSourceSearchRequestId ??=
+        _activeSearchRequestId ?? _pendingStartSearchRequestId;
+    _clearSearchTimeoutTimer();
+    _clearForegroundSearchNoticeTimer();
+    _clearSearchHeartbeatTimer();
+    safeSetState(() {
+      _searchState = StudentDashboardSearchState.choosingQueue;
+      _passiveError = null;
+    });
   }
 
   void _showForegroundSearchNoticeIfNeeded() {
-    if (!mounted ||
-        _foregroundSearchNoticeShown ||
-        !_foregroundSearchNoticePending ||
-        _searchAppState != 'foreground' ||
-        _searchState != StudentDashboardSearchState.searching) {
-      return;
+    if (_searchState == StudentDashboardSearchState.searching &&
+        _activeSearchDeadline != null &&
+        !_activeSearchDeadline!.isAfter(_searchNow())) {
+      _handleForegroundSearchNoticeDue();
     }
-
-    _foregroundSearchNoticeShown = true;
-    _foregroundSearchNoticePending = false;
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        content: Text(
-          FFLocalizations.of(context).getVariableText(
-            ruText:
-                'Все собеседники заняты. Вы можете свернуть приложение, мы уведомим вас.',
-            enText:
-                'All partners are busy. You can minimize the app and we will notify you.',
-          ),
-        ),
-      ),
-    );
+    _expirePassiveQueueIfNeeded();
   }
 
   String? _foregroundSearchCountdownText() {
@@ -464,7 +708,8 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
         _searchState != StudentDashboardSearchState.searching) {
       return null;
     }
-    final totalSeconds = remaining.inSeconds.clamp(0, 99 * 60 + 59).toInt();
+    final totalSeconds =
+        (remaining.inMilliseconds / 1000).ceil().clamp(0, 99 * 60 + 59).toInt();
     final minutes = totalSeconds ~/ 60;
     final seconds = totalSeconds % 60;
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
@@ -506,40 +751,14 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     String? activeSearchRequestId,
   ]) {
     _clearSearchTimeoutTimer();
-    if (duration <= Duration.zero) {
-      if (mounted && _searchState == StudentDashboardSearchState.searching) {
-        final expiredRequestId =
-            activeSearchRequestId ?? _activeSearchRequestId;
-        _clearForegroundSearchNoticeTimer();
-        _clearSearchHeartbeatTimer();
-        safeSetState(() {
-          _searchState = StudentDashboardSearchState.noMatchFound;
-          _matchedSearchSessionId = null;
-        });
-        unawaited(_stopActiveSearchRequest(
-          null,
-          activeSearchRequestId: expiredRequestId,
-        ));
-      }
+    _queueSourceSearchRequestId ??= activeSearchRequestId;
+    _activeSearchDeadline ??= _searchNow().add(duration);
+    final remaining = _activeSearchDeadline!.difference(_searchNow());
+    if (remaining <= Duration.zero) {
+      _handleForegroundSearchNoticeDue();
       return;
     }
-    _searchTimeoutTimer = Timer(duration, () {
-      if (!mounted || _searchState != StudentDashboardSearchState.searching) {
-        return;
-      }
-
-      final expiredRequestId = activeSearchRequestId ?? _activeSearchRequestId;
-      _clearForegroundSearchNoticeTimer();
-      _clearSearchHeartbeatTimer();
-      safeSetState(() {
-        _searchState = StudentDashboardSearchState.noMatchFound;
-        _matchedSearchSessionId = null;
-      });
-      unawaited(_stopActiveSearchRequest(
-        null,
-        activeSearchRequestId: expiredRequestId,
-      ));
-    });
+    _searchTimeoutTimer = Timer(remaining, _handleForegroundSearchNoticeDue);
   }
 
   Map<String, dynamic> _normalizeCallableMap(dynamic data) {
@@ -601,6 +820,15 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     };
     if (!inactiveReasons.contains(errorCode) &&
         !inactiveReasons.contains(reason)) {
+      return;
+    }
+
+    if ((expiredReasons.contains(errorCode) ||
+            expiredReasons.contains(reason)) &&
+        _activeSearchDeadline != null &&
+        !_activeSearchDeadline!.isAfter(_searchNow())) {
+      _queueSourceSearchRequestId = requestId;
+      _handleForegroundSearchNoticeDue();
       return;
     }
 
@@ -766,7 +994,13 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
         return;
       }
 
-      if (state.canResumeUnboundSearch) {
+      if (state.canOfferPassiveQueue(now: _searchNow()) &&
+          state.requestId != _handledQueueSourceSearchRequestId) {
+        safeSetState(() {
+          _queueSourceSearchRequestId = state.requestId;
+          _searchState = StudentDashboardSearchState.choosingQueue;
+        });
+      } else if (state.canResumeUnboundSearch) {
         _resumeRecoveredUnboundSearch(state);
       }
       return;
@@ -796,7 +1030,10 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       return;
     }
 
-    final remainingSearchDuration = state.remainingSearchDuration();
+    final remainingSearchDuration =
+        state.remainingSearchDuration(now: _searchNow());
+    _queueSourceSearchRequestId = requestId;
+    _activeSearchDeadline = _searchNow().add(remainingSearchDuration);
     _clearActiveSearchRecoveryRetryTimer();
     _clearSearchTimeoutTimer();
     _clearForegroundSearchNoticeTimer();
@@ -1250,7 +1487,8 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       _clearForegroundSearchNoticeTimer();
       _clearSearchHeartbeatTimer();
       _recoveredConnectionSessionId = null;
-      if (_searchState == StudentDashboardSearchState.searching ||
+      if (_showingQueue ||
+          _searchState == StudentDashboardSearchState.searching ||
           _searchState == StudentDashboardSearchState.connecting ||
           _searchState == StudentDashboardSearchState.noMatchFound) {
         _searchState = StudentDashboardSearchState.idle;
@@ -1278,15 +1516,16 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
         sessionId != null &&
         !_isActiveSessionSuppressed(sessionId)) {
       if (sessionSearchState == StudentDashboardSearchState.searching &&
-          _searchState == StudentDashboardSearchState.noMatchFound) {
+          (_showingQueue ||
+              _searchState == StudentDashboardSearchState.noMatchFound)) {
         return _searchState;
       }
 
       final pairFound =
           sessionSearchState == StudentDashboardSearchState.connecting;
-      final staleLocalResult =
+      final staleLocalResult = _showingQueue ||
           _searchState == StudentDashboardSearchState.searching ||
-              _searchState == StudentDashboardSearchState.noMatchFound;
+          _searchState == StudentDashboardSearchState.noMatchFound;
       if (pairFound && staleLocalResult) {
         _clearSearchTimeoutTimer();
         _clearForegroundSearchNoticeTimer();
@@ -2591,6 +2830,11 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     String? visibleSessionId,
     bool hasActiveCallSession,
   ) async {
+    if (visibleSearchState == StudentDashboardSearchState.choosingQueue ||
+        visibleSearchState == StudentDashboardSearchState.passiveWaiting) {
+      await _stopPassiveQueue();
+      return;
+    }
     if (_isStopSearchState(visibleSearchState)) {
       if (_ignoreStopSearchUntilNextFrame) {
         return;
@@ -2679,6 +2923,10 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
         _matchedSearchSessionId = null;
         _suppressedActiveSessionId = null;
         _suppressedActiveSearchUserId = null;
+        _queueSourceSearchRequestId = null;
+        _passiveOperationId = null;
+        _passiveState = null;
+        _activeSearchDeadline = null;
       });
       _startForegroundSearchNoticeTimer();
 
@@ -2694,6 +2942,9 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       if (requestId == null) {
         throw Exception('startSearch did not return requestId');
       }
+      _queueSourceSearchRequestId = requestId;
+      final serverDeadline = searchDateTime(startSearchData['expiresAt']);
+      if (serverDeadline != null) _activeSearchDeadline = serverDeadline;
       final sessionId = _normalizedResponseString(startSearchData, 'sessionId');
       final status = _normalizedResponseString(startSearchData, 'status');
       final reusedSearchRequest = _responseBool(startSearchData, 'reused');
@@ -2723,6 +2974,8 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       });
       if (nextSearchState == StudentDashboardSearchState.searching) {
         _startSearchTimeoutTimer();
+        _startForegroundSearchNoticeTimer();
+        if (_showingQueue) return;
         final protocolV2 =
             _responseInt(startSearchData, 'matchProtocolVersion') >=
                 matchProtocolVersion;
@@ -2811,6 +3064,27 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     required String? activeSessionId,
     required bool hasActiveCallSession,
   }) {
+    if (searchState == StudentDashboardSearchState.choosingQueue ||
+        searchState == StudentDashboardSearchState.passiveWaiting) {
+      return SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            _buildStartSearchButton(
+                context, searchState, activeSessionId, hasActiveCallSession),
+            PassiveSearchPanel(
+              expiresAt:
+                  searchState == StudentDashboardSearchState.passiveWaiting
+                      ? _passiveState?.expiresAt
+                      : null,
+              busy: _passiveBusy || _passiveStopping,
+              error: _passiveError,
+              onChoose: _joinPassiveQueue,
+            ),
+          ]),
+        ),
+      );
+    }
     return LayoutBuilder(
       builder: (context, constraints) {
         final availableHeight = constraints.maxHeight.toDouble();
@@ -2884,7 +3158,10 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
           ruText: 'Ищем собеседника',
           enText: 'Looking for a partner',
         ),
-      StudentDashboardSearchState.idle => '',
+      StudentDashboardSearchState.choosingQueue ||
+      StudentDashboardSearchState.passiveWaiting ||
+      StudentDashboardSearchState.idle =>
+        '',
     };
     final showProgress = _isStopSearchState(searchState);
     final countdown = _foregroundSearchCountdownText();
@@ -3274,6 +3551,9 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     _clearForegroundSearchNoticeTimer();
     _clearSearchHeartbeatTimer();
     _clearActiveSearchRecoveryRetryTimer();
+    _passiveGeneration++;
+    unawaited(_passiveSubscription?.cancel());
+    _passiveExpiryTimer?.cancel();
     _model.dispose();
 
     super.dispose();
@@ -3296,6 +3576,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
             }
 
             final user = currentUserDocument!;
+            _watchPassiveSearchForUser(currentUserUid);
             _maybeRecoverActiveSearchForUser(user);
             return Stack(
               children: [

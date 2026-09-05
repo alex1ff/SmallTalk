@@ -186,52 +186,9 @@ function searchRequestMatchesProtocolV2Attempt({
     boundSessionIds.includes(sessionId);
 }
 
-function findInAppParticipantsNeedingCallKitEscalation({
-  sessionData = {},
-  searchDataByParticipantId = {},
-  freshParticipantIds = [],
-  nowMillis = Date.now(),
-  freshnessMillis = IN_APP_FINALIZATION_FRESHNESS_MS,
-} = {}) {
-  const freshIds = new Set(freshParticipantIds.map(normalizeString));
-  const sessionId = normalizeString(sessionData.sessionId);
-  const pairAttemptId = normalizeString(sessionData.pairAttemptId);
-  return (sessionData.participantIds || []).map(normalizeString)
-    .filter(Boolean)
-    .filter((participantId) => {
-      const state = normalizeParticipantState(
-        sessionData.participantStates?.[participantId],
-        sessionData.participantRoles?.[participantId],
-      );
-      if (
-        state.role !== "student" ||
-        state.surface !== MATCH_SURFACE.IN_APP ||
-        state.decision !== MATCH_DECISION.ACCEPTED ||
-        freshIds.has(participantId)
-      ) {
-        return false;
-      }
-      const requestData = searchDataByParticipantId[participantId] || {};
-      if (!searchRequestMatchesProtocolV2Attempt({
-        requestData,
-        sessionId,
-        pairAttemptId,
-      })) {
-        return true;
-      }
-      if (
-        normalizeString(requestData.appState) ===
-          SEARCH_REQUEST_APP_STATE.BACKGROUND
-      ) {
-        return true;
-      }
-      const lifecycleMillis = Math.max(
-        timestampToMillis(requestData.appStateUpdatedAt) || 0,
-        timestampToMillis(requestData.heartbeatAt) || 0,
-      );
-      return lifecycleMillis <= 0 ||
-        nowMillis - lifecycleMillis > freshnessMillis;
-    });
+function findInAppParticipantsNeedingCallKitEscalation() {
+  // Students only connect in app. Backgrounding cannot authorize a native call.
+  return [];
 }
 
 function buildCallKitLifecycleEscalation({
@@ -247,6 +204,7 @@ function buildCallKitLifecycleEscalation({
       sessionData.participantRoles?.[participantId],
     );
     if (
+      current.role === "student" ||
       current.surface !== MATCH_SURFACE.IN_APP ||
       current.decision !== MATCH_DECISION.ACCEPTED
     ) {
@@ -374,6 +332,10 @@ async function claimProtocolV2CallKitDispatch({
       sessionData.participantStates?.[normalizedParticipantId],
       sessionData.participantRoles?.[normalizedParticipantId],
     );
+    if (currentState.role !== "native_speaker") {
+      return {shouldNotify: false, reason: "student_native_disabled",
+        participantState: currentState};
+    }
     const responseExpiresAtMillis = timestampToMillis(
       sessionData.responseExpiresAt || sessionData.confirmationExpiresAt,
     );

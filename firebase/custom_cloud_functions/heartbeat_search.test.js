@@ -268,24 +268,18 @@ test("heartbeat does not revive stale or expired requests", () => {
     timestampFromMillis,
   });
 
-  assert.equal(stale.update.status, "expired");
-  assert.equal(stale.update.stopReason, "heartbeat_stale");
-  assert.equal(stale.update.activeSessionId, fieldDelete);
-  assert.equal(stale.update.currentSessionId, null);
-  assert.deepEqual(stale.update.lastError, {
-    code: "heartbeat_stale",
-    message: "Search request heartbeat is stale",
-  });
-  assert.equal(stale.response.reason, "stale");
+  assert.equal(stale.update.status, undefined);
+  assert.equal(stale.update.heartbeatAt, serverTimestamp);
+  assert.equal(stale.response.heartbeat, true);
   assert.equal(expired.update.status, "expired");
   assert.equal(expired.update.stopReason, "search_timeout");
   assert.equal(expired.response.reason, "expired");
   assert.equal(backgroundExpired.update.status, "expired");
   assert.equal(backgroundExpired.update.stopReason, "background_timeout");
   assert.equal(backgroundExpired.response.reason, "background_expired");
-  assert.equal(closedBackgroundStale.update.status, "expired");
-  assert.equal(closedBackgroundStale.update.stopReason, "heartbeat_stale");
-  assert.equal(closedBackgroundStale.response.reason, "stale");
+  assert.equal(closedBackgroundStale.update.status, undefined);
+  assert.equal(closedBackgroundStale.update.appState, "foreground");
+  assert.equal(closedBackgroundStale.response.heartbeat, true);
   assert.equal(sessionBoundExpired.update, null);
   assert.equal(sessionBoundExpired.response.reason, "expired");
   assert.equal(sessionBoundExpired.response.sessionId, "session-a");
@@ -554,7 +548,8 @@ if (!hasFirestoreEmulator) {
       assert.equal(response.reason, "updated");
       assert.equal(response.searchRequestId, uid);
       assert.equal(response.requestId, "request-active");
-      assert.equal(response.expiresAt, new Date(beforeExpiresAt).toISOString());
+      assert.equal(response.expiresAt, new Date(Math.min(beforeExpiresAt,
+        beforeData.createdAt.toMillis() + 120000)).toISOString());
       assert.equal(requestData.status, "active");
       assert.equal(requestData.requestId, "request-active");
       assert.equal(requestData.appState, "background");
