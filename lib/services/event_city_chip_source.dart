@@ -84,25 +84,15 @@ class EventCityChipSource {
     }
 
     final chips = <EventCityChip>[];
-    final recentIdentities = await _recentStore.load();
-    for (final identity in recentIdentities) {
-      if (chips.length >= maxChips) {
-        return List.unmodifiable(chips);
-      }
-      final city = catalog.resolve(identity.countryCode, identity.cityKey);
-      if (city == null || !seen.add(city.identity)) {
-        continue;
-      }
-      chips.add(
-        EventCityChip(
-          city: city,
-          source: EventCitySelectionSource.recent,
-        ),
-      );
-    }
-
-    for (final city
-        in catalog.popularCities(countryCodeHint: countryCodeHint)) {
+    final recentIdentities = (await _recentStore.load())
+        .map((identity) => catalog
+            .resolveSupported(identity.countryCode, identity.cityKey)
+            ?.identity)
+        .whereType<String>()
+        .toSet();
+    // History identifies the analytics source, but neither it nor a country
+    // hint changes the same four-location order used throughout the app.
+    for (final city in catalog.supportedCities) {
       if (chips.length >= maxChips) {
         break;
       }
@@ -112,7 +102,9 @@ class EventCityChipSource {
       chips.add(
         EventCityChip(
           city: city,
-          source: EventCitySelectionSource.static,
+          source: recentIdentities.contains(city.identity)
+              ? EventCitySelectionSource.recent
+              : EventCitySelectionSource.static,
         ),
       );
     }

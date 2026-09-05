@@ -1,4 +1,5 @@
 import '/backend/backend.dart';
+import 'supported_location_catalog.dart';
 import 'event_city_catalog.dart';
 
 enum EventCityResolutionStatus {
@@ -7,6 +8,7 @@ enum EventCityResolutionStatus {
   staleCatalogVersion,
   invalidIdentity,
   unknownCatalogCity,
+  inconsistentUserLocation,
 }
 
 class EventCityResolutionResult {
@@ -26,11 +28,26 @@ EventCityResolutionResult resolveSelectedEventCityFromUserProfile({
   required UsersRecord? user,
   required EventCityCatalog catalog,
 }) {
-  return resolveSelectedEventCityFromProfileCity(
+  final profileResult = resolveSelectedEventCityFromProfileCity(
     profileCity:
         user != null && user.hasProfileCity() ? user.profileCity : null,
     catalog: catalog,
   );
+  if (!profileResult.hasResolvedCity) {
+    return profileResult;
+  }
+  final countryLocation = resolveSupportedCountryStruct(
+    user != null && user.hasCountryNS() ? user.countryNS : null,
+  );
+  final profileLocation = resolveSupportedProfileCity(user?.profileCity);
+  if (countryLocation == null ||
+      profileLocation == null ||
+      countryLocation.identity != profileLocation.identity) {
+    return const EventCityResolutionResult._(
+      status: EventCityResolutionStatus.inconsistentUserLocation,
+    );
+  }
+  return profileResult;
 }
 
 String? resolveEventCityCountryCodeHintFromUserProfile({
@@ -81,7 +98,7 @@ EventCityResolutionResult resolveSelectedEventCityFromProfileCity({
     );
   }
 
-  final city = catalog.resolve(identity.countryCode, identity.cityKey);
+  final city = catalog.resolveSupported(identity.countryCode, identity.cityKey);
   if (city == null) {
     return const EventCityResolutionResult._(
       status: EventCityResolutionStatus.unknownCatalogCity,

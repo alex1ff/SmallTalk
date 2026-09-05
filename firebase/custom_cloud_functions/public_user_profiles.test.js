@@ -40,15 +40,16 @@ test("public profile projection exposes only non-private matching fields", () =>
       },
       Country_NS: {
         code: "US",
-        nameEn: "United States",
-        nameRu: "SShA",
+        cityKey: "new_york",
+        nameEn: "New York, US",
+        nameRu: "New York, US",
         flag: "us",
       },
       countryCode: "IT",
       cityKey: "rome",
       profileCity: {
-        countryCode: "RU",
-        cityKey: "moscow",
+        countryCode: "US",
+        cityKey: "new_york",
       },
       level: "Fluent",
       rating: {
@@ -96,9 +97,14 @@ test("public profile projection exposes only non-private matching fields", () =>
     },
     Country_NS: {
       code: "US",
-      nameEn: "United States",
-      nameRu: "SShA",
+      cityKey: "new_york",
+      nameEn: "New York, US",
+      nameRu: "New York, US",
       flag: "us",
+    },
+    profileCity: {
+      countryCode: "US",
+      cityKey: "new_york",
     },
     level: "Fluent",
     ratingAverage: 4.7,
@@ -113,7 +119,10 @@ test("public profile projection exposes only non-private matching fields", () =>
   }
   assert.equal(profile.countryCode, undefined);
   assert.equal(profile.cityKey, undefined);
-  assert.equal(profile.profileCity, undefined);
+  assert.deepEqual(profile.profileCity, {
+    countryCode: "US",
+    cityKey: "new_york",
+  });
 });
 
 test("public profile projection does not derive country from event city fields", () => {
@@ -306,7 +315,8 @@ test("student dashboard partner count reads public profiles", () => {
 
   assert.match(dashboardSource, /collection\('userPublicProfiles'\)/);
   assert.match(dashboardSource, /'language_instruction_NS\.code'/);
-  assert.match(dashboardSource, /'Country_NS\.code'/);
+  assert.match(dashboardSource, /'profileCity\.countryCode'/);
+  assert.match(dashboardSource, /'profileCity\.cityKey'/);
   assert.doesNotMatch(
     dashboardSource,
     /UsersRecord\.collection\s*\.where\('role'/,

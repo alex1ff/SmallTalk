@@ -12,6 +12,9 @@ const {
 const {
   normalizeSearchLifecycleRequestId,
 } = require("./search_cancellation_intents");
+const {
+  normalizeSupportedLocation,
+} = require("./supported_locations");
 
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -49,6 +52,18 @@ function normalizeStartSearchInput(data) {
   }
 
   const filters = readNestedObject(payload.filters);
+  const rawCountryCode = normalizeString(
+      payload.preferredCountry || payload.countryCode || filters.countryCode,
+  );
+  const rawCityKey = normalizeString(payload.cityKey || filters.cityKey);
+  const location = normalizeSupportedLocation(rawCountryCode, rawCityKey);
+  if ((rawCountryCode || rawCityKey) && !location) {
+    throw new functions.https.HttpsError(
+        "invalid-argument",
+        "Location is not supported",
+        {reason: "unsupported_location"},
+    );
+  }
   const rawRequestId = payload.requestId;
   const requestId = rawRequestId == null ?
     "" :
@@ -68,12 +83,8 @@ function normalizeStartSearchInput(data) {
         filters.preferredLevel ||
         filters.level,
     ),
-    preferredCountry: normalizeString(
-        payload.preferredCountry ||
-        payload.countryCode ||
-        filters.countryCode,
-    ),
-    cityKey: normalizeString(payload.cityKey || filters.cityKey),
+    preferredCountry: location?.countryCode || "",
+    cityKey: location?.cityKey || "",
     appState: normalizeAppState(payload.appState),
     platform: normalizeString(payload.platform),
     matchProtocolVersion: supportsMatchProtocolV2(

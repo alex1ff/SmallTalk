@@ -2,6 +2,7 @@ import '/backend/schema/enums/enums.dart';
 import '/backend/schema/structs/index.dart';
 import '/backend/schema/users_record.dart';
 import '/authorization/shared/onboarding_selection_utils.dart';
+import '/services/supported_location_catalog.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 const Object _studentOnboardingNoChange = Object();
@@ -192,6 +193,7 @@ Map<String, dynamic> buildStudentOnboardingUpdateData({
 }) {
   final learningLanguage = cloneLanguageSelection(payload.learningLanguage);
   final country = cloneCountrySelection(payload.country);
+  final location = resolveSupportedCountryStruct(country);
   final updateData = createUsersRecordData(
     displayName: payload.displayName,
     gender: payload.gender,
@@ -210,6 +212,7 @@ Map<String, dynamic> buildStudentOnboardingUpdateData({
             clearUnsetFields: false,
           )
         : null,
+    profileCity: location?.toProfileCityStruct(serverTimestamp: true),
   );
   updateData['availabilityToday'] = FieldValue.delete();
   return updateData;
@@ -267,7 +270,7 @@ String? validateStudentOnboardingPage({
     case StudentOnboardingPage.country:
       return hasCountrySelection(draft.country)
           ? null
-          : 'Выберите страну из списка';
+          : 'Выберите локацию из списка';
     case StudentOnboardingPage.gender:
     case StudentOnboardingPage.level:
       return null;

@@ -26,7 +26,7 @@ void main() {
       final user = userFixture(
         data: {
           'uid': 'uid-profile-city',
-          'Country_NS': {'code': 'RU'},
+          'Country_NS': {'code': 'US', 'cityKey': 'new_york'},
           'profileCity': profileCityFixture(
             countryCode: 'US',
             cityKey: 'new_york',
@@ -41,7 +41,7 @@ void main() {
       );
 
       expect(state.profileStatus, EventCityResolutionStatus.resolved);
-      expect(state.countryCodeHint, 'RU');
+      expect(state.countryCodeHint, 'US');
       expect(state.canLoadEvents, isTrue);
       expect(state.needsCitySelection, isFalse);
       expect(state.hasOutdatedProfileCity, isFalse);
@@ -56,7 +56,35 @@ void main() {
       });
     });
 
-    test('uses country hint default city when profile city is missing', () {
+    test('does not unlock disagreeing supported profile identities', () {
+      final user = userFixture(
+        data: {
+          'uid': 'uid-inconsistent-location',
+          'Country_NS': {'code': 'ID', 'cityKey': 'bali'},
+          'profileCity': profileCityFixture(
+            countryCode: 'US',
+            cityKey: 'new_york',
+            catalogVersion: catalog.catalogVersion,
+          ).toMap(),
+        },
+      );
+
+      final state = resolveEventSelectedCityState(
+        user: user,
+        catalog: catalog,
+      );
+
+      expect(
+        state.profileStatus,
+        EventCityResolutionStatus.inconsistentUserLocation,
+      );
+      expect(state.countryCodeHint, 'ID');
+      expect(state.selected, isNull);
+      expect(state.canLoadEvents, isFalse);
+      expect(state.hasOutdatedProfileCity, isTrue);
+    });
+
+    test('does not infer a location from a legacy country hint', () {
       final user = userFixture(
         data: {
           'uid': 'uid-missing-profile-city',
@@ -76,15 +104,14 @@ void main() {
 
       expect(state.profileStatus, EventCityResolutionStatus.missingProfileCity);
       expect(state.countryCodeHint, 'IT');
-      expect(state.selected?.city.identity, 'IT:rome');
-      expect(state.selected?.source, EventCitySelectionSource.profile);
-      expect(state.canLoadEvents, isTrue);
-      expect(state.needsCitySelection, isFalse);
+      expect(state.selected, isNull);
+      expect(state.canLoadEvents, isFalse);
+      expect(state.needsCitySelection, isTrue);
       expect(state.hasOutdatedProfileCity, isFalse);
-      expect(state.selectedFromProfile, isTrue);
+      expect(state.selectedFromProfile, isFalse);
     });
 
-    test('Country_NS alone unlocks Events with the default country city', () {
+    test('Country_NS alone does not unlock Events', () {
       final user = userFixture(
         data: {
           'uid': 'uid-country-only',
@@ -99,11 +126,10 @@ void main() {
 
       expect(state.profileStatus, EventCityResolutionStatus.missingProfileCity);
       expect(state.countryCodeHint, 'RU');
-      expect(state.selected?.city.identity, 'RU:moscow');
-      expect(state.selected?.source, EventCitySelectionSource.profile);
-      expect(state.canLoadEvents, isTrue);
-      expect(state.needsCitySelection, isFalse);
-      expect(state.selectedFromProfile, isTrue);
+      expect(state.selected, isNull);
+      expect(state.canLoadEvents, isFalse);
+      expect(state.needsCitySelection, isTrue);
+      expect(state.selectedFromProfile, isFalse);
       expect(state.selectedTemporarily, isFalse);
       expect(state.hasOutdatedProfileCity, isFalse);
     });
@@ -155,11 +181,10 @@ void main() {
       expect(user.hasProfileCity(), isFalse);
       expect(state.profileStatus, EventCityResolutionStatus.missingProfileCity);
       expect(state.countryCodeHint, 'RU');
-      expect(state.selected?.city.identity, 'RU:moscow');
-      expect(state.selected?.source, EventCitySelectionSource.profile);
-      expect(state.canLoadEvents, isTrue);
-      expect(state.needsCitySelection, isFalse);
-      expect(state.selectedFromProfile, isTrue);
+      expect(state.selected, isNull);
+      expect(state.canLoadEvents, isFalse);
+      expect(state.needsCitySelection, isTrue);
+      expect(state.selectedFromProfile, isFalse);
       expect(state.selectedTemporarily, isFalse);
       expect(state.hasOutdatedProfileCity, isFalse);
     });
@@ -227,19 +252,19 @@ void main() {
       for (final input in <({EventSelectedCityInput input, String identity})>[
         (
           input: EventSelectedCityInput(
-            countryCode: 'IT',
-            cityKey: 'rome',
+            countryCode: 'ID',
+            cityKey: 'bali',
             source: EventCitySelectionSource.recent,
           ),
-          identity: 'IT:rome',
+          identity: 'ID:bali',
         ),
         (
           input: EventSelectedCityInput(
-            countryCode: 'RU',
-            cityKey: 'moscow',
+            countryCode: 'AE',
+            cityKey: 'dubai',
             source: EventCitySelectionSource.static,
           ),
-          identity: 'RU:moscow',
+          identity: 'AE:dubai',
         ),
         (
           input: EventSelectedCityInput(
@@ -289,8 +314,8 @@ void main() {
         user: user,
         catalog: catalog,
         temporarySelection: EventSelectedCityInput(
-          countryCode: 'IT',
-          cityKey: 'rome',
+          countryCode: 'TH',
+          cityKey: 'phuket',
           source: EventCitySelectionSource.manual,
         ),
       );
@@ -298,7 +323,7 @@ void main() {
       expect(
           state.profileStatus, EventCityResolutionStatus.staleCatalogVersion);
       expect(state.countryCodeHint, 'RU');
-      expect(state.selected?.city.identity, 'IT:rome');
+      expect(state.selected?.city.identity, 'TH:phuket');
       expect(state.selected?.source, EventCitySelectionSource.manual);
       expect(state.canLoadEvents, isTrue);
     });
@@ -315,8 +340,8 @@ void main() {
         user: user,
         catalog: catalog,
         temporarySelection: EventSelectedCityInput(
-          countryCode: 'IT',
-          cityKey: 'rome',
+          countryCode: 'ID',
+          cityKey: 'bali',
           source: EventCitySelectionSource.manual,
         ),
       );
@@ -326,15 +351,14 @@ void main() {
       );
 
       expect(temporaryState.canLoadEvents, isTrue);
-      expect(temporaryState.selected?.city.identity, 'IT:rome');
+      expect(temporaryState.selected?.city.identity, 'ID:bali');
       expect(temporaryState.selectedTemporarily, isTrue);
       expect(user.hasProfileCity(), isFalse);
       expect(nextState.profileStatus,
           EventCityResolutionStatus.missingProfileCity);
       expect(nextState.countryCodeHint, 'US');
-      expect(nextState.selected?.city.identity, 'US:new_york');
-      expect(nextState.selected?.source, EventCitySelectionSource.profile);
-      expect(nextState.canLoadEvents, isTrue);
+      expect(nextState.selected, isNull);
+      expect(nextState.canLoadEvents, isFalse);
     });
 
     test('manual temporary selection overrides a valid profile city', () {
@@ -342,8 +366,8 @@ void main() {
         data: {
           'uid': 'uid-profile-override',
           'profileCity': profileCityFixture(
-            countryCode: 'RU',
-            cityKey: 'moscow',
+            countryCode: 'US',
+            cityKey: 'new_york',
             catalogVersion: catalog.catalogVersion,
           ).toMap(),
         },
@@ -353,14 +377,14 @@ void main() {
         user: user,
         catalog: catalog,
         temporarySelection: EventSelectedCityInput(
-          countryCode: 'US',
-          cityKey: 'new_york',
+          countryCode: 'AE',
+          cityKey: 'dubai',
           source: EventCitySelectionSource.manual,
         ),
       );
 
       expect(state.profileStatus, EventCityResolutionStatus.resolved);
-      expect(state.selected?.city.identity, 'US:new_york');
+      expect(state.selected?.city.identity, 'AE:dubai');
       expect(state.selected?.source, EventCitySelectionSource.manual);
       expect(state.selectedTemporarily, isTrue);
     });
@@ -368,8 +392,8 @@ void main() {
     test('rejects profile-sourced temporary selection inputs', () {
       expect(
         () => EventSelectedCityInput(
-          countryCode: 'RU',
-          cityKey: 'moscow',
+          countryCode: 'US',
+          cityKey: 'new_york',
           source: EventCitySelectionSource.profile,
         ),
         throwsArgumentError,
@@ -407,8 +431,8 @@ void main() {
         data: {
           'uid': 'uid-profile-with-invalid-temporary',
           'profileCity': profileCityFixture(
-            countryCode: 'RU',
-            cityKey: 'moscow',
+            countryCode: 'US',
+            cityKey: 'new_york',
             catalogVersion: catalog.catalogVersion,
           ).toMap(),
         },
@@ -428,7 +452,7 @@ void main() {
         );
 
         expect(state.profileStatus, EventCityResolutionStatus.resolved);
-        expect(state.selected?.city.identity, 'RU:moscow');
+        expect(state.selected?.city.identity, 'US:new_york');
         expect(state.selected?.source, EventCitySelectionSource.profile);
         expect(state.selectedFromProfile, isTrue);
       }
@@ -446,11 +470,11 @@ void main() {
 }
 
 ProfileCityStruct profileCityFixture({
-  String? countryCode = 'RU',
-  String? cityKey = 'moscow',
-  String? cityNameRu = 'Москва',
-  String? cityNameEn = 'Moscow',
-  String? cityDisplayContext = 'Россия',
+  String? countryCode = 'US',
+  String? cityKey = 'new_york',
+  String? cityNameRu = 'New York',
+  String? cityNameEn = 'New York',
+  String? cityDisplayContext = 'US',
   String? catalogVersion = 'events-city-catalog-mvp-2026-06-16',
 }) =>
     ProfileCityStruct(
@@ -462,8 +486,21 @@ ProfileCityStruct profileCityFixture({
       catalogVersion: catalogVersion,
     );
 
-UsersRecord userFixture({required Map<String, dynamic> data}) =>
-    UsersRecord.getDocumentFromData(
-      data,
-      UsersRecord.collection.doc(data['uid'] as String? ?? 'uid'),
-    );
+UsersRecord userFixture({required Map<String, dynamic> data}) {
+  final normalizedData = Map<String, dynamic>.from(data);
+  final profileCity = normalizedData['profileCity'];
+  if (!normalizedData.containsKey('Country_NS') && profileCity is Map) {
+    final countryCode = profileCity['countryCode'];
+    final cityKey = profileCity['cityKey'];
+    if (countryCode is String && cityKey is String) {
+      normalizedData['Country_NS'] = {
+        'code': countryCode,
+        'cityKey': cityKey,
+      };
+    }
+  }
+  return UsersRecord.getDocumentFromData(
+    normalizedData,
+    UsersRecord.collection.doc(normalizedData['uid'] as String? ?? 'uid'),
+  );
+}

@@ -5,6 +5,7 @@ const nearbyPartnerCountPrefsPrefix = 'ff_student_nearby_partner_count_v1';
 String nearbyPartnerCountCacheKey({
   required String languageCode,
   required String countryCode,
+  String cityKey = '',
   required String partnerLevel,
 }) {
   String normalize(String value) => value.trim().toLowerCase();
@@ -13,6 +14,7 @@ String nearbyPartnerCountCacheKey({
     nearbyPartnerCountPrefsPrefix,
     Uri.encodeComponent(normalize(languageCode)),
     Uri.encodeComponent(normalize(countryCode)),
+    Uri.encodeComponent(normalize(cityKey)),
     Uri.encodeComponent(normalize(partnerLevel)),
   ].join('|');
 }

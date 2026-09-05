@@ -303,7 +303,11 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "Country_NS.code",
+          "fieldPath": "profileCity.countryCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "profileCity.cityKey",
           "order": "ASCENDING"
         }
       ]
@@ -347,7 +351,11 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "Country_NS.code",
+          "fieldPath": "profileCity.countryCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "profileCity.cityKey",
           "order": "ASCENDING"
         },
         {

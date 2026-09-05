@@ -20,7 +20,7 @@ void main() {
   });
 
   group('ProfileCitySaveService', () {
-    test('writes canonical profile city data from the catalog', () async {
+    test('writes both canonical user location fields atomically', () async {
       final capture = await saveAndCaptureProfileCity(
         catalog: catalog,
         countryCode: ' us ',
@@ -33,7 +33,8 @@ void main() {
       expect(capture.userRef?.path, 'users/uid-save-city');
       expect(capture.result.city.countryCode, 'US');
       expect(capture.result.city.cityKey, 'new_york');
-      expect(updateData.keys, orderedEquals(<String>['profileCity']));
+      expect(updateData.keys,
+          orderedEquals(<String>['Country_NS', 'profileCity']));
       expect(
         profileCity.keys,
         unorderedEquals(<String>[
@@ -51,7 +52,10 @@ void main() {
       );
       expect(updateData, isNot(contains('countryCode')));
       expect(updateData, isNot(contains('cityKey')));
-      expect(updateData, isNot(contains('Country_NS')));
+      final country = updateData['Country_NS'] as Map<String, dynamic>;
+      expect(country, containsPair('code', profileCity['countryCode']));
+      expect(country, containsPair('cityKey', profileCity['cityKey']));
+      expect(country, containsPair('nameEn', 'New York, US'));
       expect(updateData, isNot(contains('preferences')));
       expect(profileCity, containsPair('countryCode', 'US'));
       expect(profileCity, containsPair('cityKey', 'new_york'));
@@ -70,22 +74,18 @@ void main() {
       expect(() => profileCity['cityNameRu'] = 'Fake', throwsUnsupportedError);
     });
 
-    test('keeps null region fields when overwriting the nested profile city',
+    test('rejects a catalog city outside the supported location list',
         () async {
-      final capture = await saveAndCaptureProfileCity(
-        catalog: catalog,
-        countryCode: 'RU',
-        cityKey: 'moscow',
+      await expectLater(
+        ProfileCitySaveService.saveProfileCity(
+          userRef: UsersRecord.collection.doc('uid-old-city'),
+          catalog: catalog,
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          writer: (_, __) async {},
+        ),
+        throwsA(isA<ProfileCitySaveException>()),
       );
-      final updateData = capture.updateData;
-      final profileCity = updateData['profileCity'] as Map<String, dynamic>;
-
-      expect(profileCity.containsKey('regionCode'), isTrue);
-      expect(profileCity.containsKey('regionNameRu'), isTrue);
-      expect(profileCity.containsKey('regionNameEn'), isTrue);
-      expect(profileCity['regionCode'], isNull);
-      expect(profileCity['regionNameRu'], isNull);
-      expect(profileCity['regionNameEn'], isNull);
     });
 
     test('rejects malformed identities before writing', () async {
@@ -155,8 +155,8 @@ void main() {
         ProfileCitySaveService.saveProfileCity(
           userRef: UsersRecord.collection.doc('uid-write-error'),
           catalog: catalog,
-          countryCode: 'RU',
-          cityKey: 'moscow',
+          countryCode: 'US',
+          cityKey: 'new_york',
           writer: (_, __) => Future<void>.error(error),
         ),
         throwsA(same(error)),

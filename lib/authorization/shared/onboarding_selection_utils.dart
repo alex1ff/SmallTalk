@@ -1,4 +1,5 @@
 import '/backend/schema/structs/index.dart';
+import '/services/supported_location_catalog.dart';
 
 bool hasOnboardingLanguageSelection(LanguageStruct? language) {
   if (language == null) {
@@ -14,15 +15,7 @@ bool hasOnboardingLanguageSelection(LanguageStruct? language) {
 }
 
 bool hasOnboardingCountrySelection(CountryStruct? country) {
-  if (country == null) {
-    return false;
-  }
-
-  return country.code.trim().isNotEmpty ||
-      country.nameEn.trim().isNotEmpty ||
-      country.nameRu.trim().isNotEmpty ||
-      country.flag.trim().isNotEmpty ||
-      country.languages.trim().isNotEmpty;
+  return isSupportedCountryStruct(country);
 }
 
 LanguageStruct? cloneOnboardingLanguageSelection(LanguageStruct? language) {
@@ -49,6 +42,7 @@ CountryStruct? cloneOnboardingCountrySelection(CountryStruct? country) {
 
   return CountryStruct(
     code: country!.hasCode() ? country.code : null,
+    cityKey: country.hasCityKey() ? country.cityKey : null,
     nameEn: country.hasNameEn() ? country.nameEn : null,
     nameRu: country.hasNameRu() ? country.nameRu : null,
     flag: country.hasFlag() ? country.flag : null,

@@ -56,14 +56,16 @@ void main() {
     expect(provider, contains('logOutUser().catchError'));
   });
 
-  test('shared country source returns US before reference countries', () {
+  test('shared location source exposes exactly the four product locations', () {
     final sourceText = source('lib/flutter_flow/custom_functions.dart');
     final referenceStart = sourceText.indexOf('const referenceCountryCodes');
     final returnStart = sourceText.indexOf('return [', referenceStart);
     final referenceBlock = sourceText.substring(referenceStart, returnStart);
 
-    expect(referenceBlock, contains("'US'"));
-    expect(referenceBlock.indexOf("'US'"),
-        lessThan(referenceBlock.indexOf("'DE'")));
+    expect(
+      referenceBlock,
+      contains("'US',\n    'ID',\n    'AE',\n    'TH',"),
+    );
+    expect(referenceBlock, isNot(contains("'DE'")));
   });
 }

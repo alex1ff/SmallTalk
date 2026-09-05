@@ -15,6 +15,46 @@ void main() {
     await Firebase.initializeApp();
   });
 
+  test('keeps analytics for actions on historical event locations', () async {
+    final loggedEvents = <String, Map<String, Object>>{};
+    final service = EventsAnalyticsService(
+      logEvent: ({
+        required String name,
+        required Map<String, Object> parameters,
+      }) async {
+        loggedEvents[name] = parameters;
+      },
+    );
+    final catalog = await EventCityCatalog.loadFromAsset();
+    expect(catalog.resolveSupported('RU', 'moscow'), isNull);
+    final event = EventsRecord.getDocumentFromData(
+      {'countryCode': 'RU', 'cityKey': 'moscow'},
+      EventsRecord.collection.doc('historical-event'),
+    );
+
+    await service.trackEventDetailOpened(event);
+    await service.trackEventJoined(event);
+    await service.trackEventLeft(event);
+    await service.trackEventCanceled(event);
+    await service.trackEventChatOpened(
+      countryCode: event.countryCode,
+      cityKey: event.cityKey,
+    );
+
+    expect(
+        loggedEvents.keys,
+        unorderedEquals([
+          EventsAnalyticsService.eventDetailOpenedEventName,
+          EventsAnalyticsService.eventJoinedEventName,
+          EventsAnalyticsService.eventLeftEventName,
+          EventsAnalyticsService.eventCanceledEventName,
+          EventsAnalyticsService.eventChatOpenedEventName,
+        ]));
+    for (final payload in loggedEvents.values) {
+      expect(payload, {'countryCode': 'RU', 'cityKey': 'moscow'});
+    }
+  });
+
   test('tracks selected-city analytics events with canonical payload only',
       () async {
     final loggedEvents = <String, Map<String, Object>>{};
@@ -28,27 +68,27 @@ void main() {
     );
     final selectedCity = EventSelectedCity(
       city: const EventCity(
-        countryCode: 'RU',
-        cityKey: 'moscow',
-        cityNameRu: 'Москва',
-        cityNameEn: 'Moscow',
+        countryCode: 'US',
+        cityKey: 'new_york',
+        cityNameRu: 'New York',
+        cityNameEn: 'New York',
         regionCode: null,
         regionNameRu: null,
         regionNameEn: null,
-        timeZoneId: 'Europe/Moscow',
-        cityDisplayContext: 'Россия',
-        aliases: ['мск'],
-        transliterations: ['moskva'],
+        timeZoneId: 'America/New_York',
+        cityDisplayContext: 'US',
+        aliases: ['NYC'],
+        transliterations: ['new york'],
         priority: 100,
       ),
       source: EventCitySelectionSource.profile,
     );
     final event = EventsRecord.getDocumentFromData(
       {
-        'countryCode': ' ru ',
-        'cityKey': 'moscow',
-        'cityNameRu': 'Москва',
-        'cityDisplayContext': 'Россия',
+        'countryCode': ' us ',
+        'cityKey': 'new_york',
+        'cityNameRu': 'New York',
+        'cityDisplayContext': 'US',
       },
       EventsRecord.collection.doc('event-1'),
     );
@@ -101,8 +141,8 @@ void main() {
       EventsAnalyticsService.citySelectedEventName,
     ]) {
       expect(loggedEvents[eventName], <String, Object>{
-        'countryCode': 'RU',
-        'cityKey': 'moscow',
+        'countryCode': 'US',
+        'cityKey': 'new_york',
         'citySource': 'profile',
       });
       expect(loggedEvents[eventName], isNot(contains('cityNameRu')));
@@ -113,8 +153,8 @@ void main() {
     expect(
       loggedEvents[EventsAnalyticsService.eventDetailOpenedEventName],
       <String, Object>{
-        'countryCode': 'RU',
-        'cityKey': 'moscow',
+        'countryCode': 'US',
+        'cityKey': 'new_york',
       },
     );
     expect(
@@ -139,8 +179,8 @@ void main() {
     );
     final event = EventsRecord.getDocumentFromData(
       {
-        'countryCode': ' ru ',
-        'cityKey': ' moscow ',
+        'countryCode': ' us ',
+        'cityKey': ' new_york ',
       },
       EventsRecord.collection.doc('event-1'),
     );
@@ -150,8 +190,8 @@ void main() {
     expect(
       loggedEvents[EventsAnalyticsService.eventDetailOpenedEventName],
       <String, Object>{
-        'countryCode': 'RU',
-        'cityKey': 'moscow',
+        'countryCode': 'US',
+        'cityKey': 'new_york',
         'citySource': 'profile',
       },
     );
@@ -161,8 +201,8 @@ void main() {
     expect(
       loggedEvents[EventsAnalyticsService.eventDetailOpenedEventName],
       <String, Object>{
-        'countryCode': 'RU',
-        'cityKey': 'moscow',
+        'countryCode': 'US',
+        'cityKey': 'new_york',
       },
     );
   });
@@ -179,31 +219,31 @@ void main() {
     );
 
     await service.trackEventCreated(
-      countryCode: ' it ',
-      cityKey: ' rome ',
+      countryCode: ' id ',
+      cityKey: ' bali ',
       citySource: ' manual ',
     );
 
     expect(
       loggedEvents[EventsAnalyticsService.eventCreatedEventName],
       <String, Object>{
-        'countryCode': 'IT',
-        'cityKey': 'rome',
+        'countryCode': 'ID',
+        'cityKey': 'bali',
         'citySource': 'manual',
       },
     );
 
     await service.trackEventCreated(
-      countryCode: 'IT',
-      cityKey: 'rome',
+      countryCode: 'ID',
+      cityKey: 'bali',
       citySource: '   ',
     );
 
     expect(
       loggedEvents[EventsAnalyticsService.eventCreatedEventName],
       <String, Object>{
-        'countryCode': 'IT',
-        'cityKey': 'rome',
+        'countryCode': 'ID',
+        'cityKey': 'bali',
       },
     );
   });
@@ -220,31 +260,31 @@ void main() {
     );
 
     await service.trackEventEdited(
-      countryCode: ' ru ',
-      cityKey: ' moscow ',
+      countryCode: ' ae ',
+      cityKey: ' dubai ',
       citySource: ' static ',
     );
 
     expect(
       loggedEvents[EventsAnalyticsService.eventEditedEventName],
       <String, Object>{
-        'countryCode': 'RU',
-        'cityKey': 'moscow',
+        'countryCode': 'AE',
+        'cityKey': 'dubai',
         'citySource': 'static',
       },
     );
 
     await service.trackEventEdited(
-      countryCode: 'RU',
-      cityKey: 'moscow',
+      countryCode: 'AE',
+      cityKey: 'dubai',
       citySource: '   ',
     );
 
     expect(
       loggedEvents[EventsAnalyticsService.eventEditedEventName],
       <String, Object>{
-        'countryCode': 'RU',
-        'cityKey': 'moscow',
+        'countryCode': 'AE',
+        'cityKey': 'dubai',
       },
     );
   });
@@ -261,9 +301,9 @@ void main() {
     );
     final event = EventsRecord.getDocumentFromData(
       {
-        'countryCode': ' ru ',
-        'cityKey': ' moscow ',
-        'cityNameRu': 'Москва',
+        'countryCode': ' us ',
+        'cityKey': ' new_york ',
+        'cityNameRu': 'New York',
         'locationName': 'Cafe',
         'status': 'active',
       },
@@ -275,8 +315,8 @@ void main() {
     expect(
       loggedEvents[EventsAnalyticsService.eventCanceledEventName],
       <String, Object>{
-        'countryCode': 'RU',
-        'cityKey': 'moscow',
+        'countryCode': 'US',
+        'cityKey': 'new_york',
         'citySource': 'profile',
       },
     );
@@ -286,8 +326,8 @@ void main() {
     expect(
       loggedEvents[EventsAnalyticsService.eventCanceledEventName],
       <String, Object>{
-        'countryCode': 'RU',
-        'cityKey': 'moscow',
+        'countryCode': 'US',
+        'cityKey': 'new_york',
       },
     );
     expect(
@@ -316,10 +356,10 @@ void main() {
     );
     final event = EventsRecord.getDocumentFromData(
       {
-        'countryCode': ' it ',
-        'cityKey': ' rome ',
-        'cityNameEn': 'Rome',
-        'locationName': 'La Cucina',
+        'countryCode': ' id ',
+        'cityKey': ' bali ',
+        'cityNameEn': 'Bali',
+        'locationName': 'Bali Cafe',
         'participantsCount': 5,
       },
       EventsRecord.collection.doc('event-1'),
@@ -330,8 +370,8 @@ void main() {
     expect(
       loggedEvents[EventsAnalyticsService.eventJoinedEventName],
       <String, Object>{
-        'countryCode': 'IT',
-        'cityKey': 'rome',
+        'countryCode': 'ID',
+        'cityKey': 'bali',
         'citySource': 'profile',
       },
     );
@@ -341,8 +381,8 @@ void main() {
     expect(
       loggedEvents[EventsAnalyticsService.eventJoinedEventName],
       <String, Object>{
-        'countryCode': 'IT',
-        'cityKey': 'rome',
+        'countryCode': 'ID',
+        'cityKey': 'bali',
       },
     );
     expect(
@@ -394,10 +434,10 @@ void main() {
     );
     final event = EventsRecord.getDocumentFromData(
       {
-        'countryCode': ' tr ',
-        'cityKey': ' istanbul ',
-        'cityNameEn': 'Istanbul',
-        'locationName': 'Kadikoy Cafe',
+        'countryCode': ' th ',
+        'cityKey': ' phuket ',
+        'cityNameEn': 'Phuket',
+        'locationName': 'Phuket Cafe',
         'participantsCount': 4,
       },
       EventsRecord.collection.doc('event-1'),
@@ -408,8 +448,8 @@ void main() {
     expect(
       loggedEvents[EventsAnalyticsService.eventLeftEventName],
       <String, Object>{
-        'countryCode': 'TR',
-        'cityKey': 'istanbul',
+        'countryCode': 'TH',
+        'cityKey': 'phuket',
         'citySource': 'manual',
       },
     );
@@ -419,8 +459,8 @@ void main() {
     expect(
       loggedEvents[EventsAnalyticsService.eventLeftEventName],
       <String, Object>{
-        'countryCode': 'TR',
-        'cityKey': 'istanbul',
+        'countryCode': 'TH',
+        'cityKey': 'phuket',
       },
     );
     expect(
@@ -472,31 +512,31 @@ void main() {
     );
 
     await service.trackEventChatOpened(
-      countryCode: ' es ',
-      cityKey: ' madrid ',
+      countryCode: ' ae ',
+      cityKey: ' dubai ',
       citySource: ' profile ',
     );
 
     expect(
       loggedEvents[EventsAnalyticsService.eventChatOpenedEventName],
       <String, Object>{
-        'countryCode': 'ES',
-        'cityKey': 'madrid',
+        'countryCode': 'AE',
+        'cityKey': 'dubai',
         'citySource': 'profile',
       },
     );
 
     await service.trackEventChatOpened(
-      countryCode: 'ES',
-      cityKey: 'madrid',
+      countryCode: 'AE',
+      cityKey: 'dubai',
       citySource: '   ',
     );
 
     expect(
       loggedEvents[EventsAnalyticsService.eventChatOpenedEventName],
       <String, Object>{
-        'countryCode': 'ES',
-        'cityKey': 'madrid',
+        'countryCode': 'AE',
+        'cityKey': 'dubai',
       },
     );
   });
@@ -533,12 +573,12 @@ void main() {
       },
     );
     final selectedCity = _selectedCityFixture(
-      countryCode: 'RU',
-      cityKey: 'moscow',
+      countryCode: 'US',
+      cityKey: 'new_york',
     );
     final event = _analyticsEventFixture(
-      countryCode: ' ru ',
-      cityKey: 'moscow',
+      countryCode: ' us ',
+      cityKey: 'new_york',
     );
     final cases = <_CityAnalyticsCase>[
       _CityAnalyticsCase(
@@ -558,8 +598,8 @@ void main() {
       _CityAnalyticsCase(
         eventName: EventsAnalyticsService.eventCreatedEventName,
         track: () => service.trackEventCreated(
-          countryCode: ' ru ',
-          cityKey: 'moscow',
+          countryCode: ' us ',
+          cityKey: 'new_york',
           citySource: 'manual',
         ),
         expectedSource: 'manual',
@@ -567,8 +607,8 @@ void main() {
       _CityAnalyticsCase(
         eventName: EventsAnalyticsService.eventEditedEventName,
         track: () => service.trackEventEdited(
-          countryCode: ' ru ',
-          cityKey: 'moscow',
+          countryCode: ' us ',
+          cityKey: 'new_york',
           citySource: 'static',
         ),
         expectedSource: 'static',
@@ -588,8 +628,8 @@ void main() {
       _CityAnalyticsCase(
         eventName: EventsAnalyticsService.eventChatOpenedEventName,
         track: () => service.trackEventChatOpened(
-          countryCode: ' ru ',
-          cityKey: 'moscow',
+          countryCode: ' us ',
+          cityKey: 'new_york',
           citySource: 'recent',
         ),
         expectedSource: 'recent',
@@ -599,8 +639,8 @@ void main() {
     for (final cityCase in cases) {
       await cityCase.track();
       final expected = <String, Object>{
-        'countryCode': 'RU',
-        'cityKey': 'moscow',
+        'countryCode': 'US',
+        'cityKey': 'new_york',
         if (cityCase.expectedSource != null)
           'citySource': cityCase.expectedSource!,
       };
@@ -730,15 +770,15 @@ EventSelectedCity _selectedCityFixture({
       city: EventCity(
         countryCode: countryCode,
         cityKey: cityKey,
-        cityNameRu: 'Москва',
-        cityNameEn: 'Moscow',
+        cityNameRu: 'New York',
+        cityNameEn: 'New York',
         regionCode: null,
         regionNameRu: null,
         regionNameEn: null,
-        timeZoneId: 'Europe/Moscow',
-        cityDisplayContext: 'Россия',
-        aliases: const ['мск'],
-        transliterations: const ['moskva'],
+        timeZoneId: 'America/New_York',
+        cityDisplayContext: 'US',
+        aliases: const ['NYC'],
+        transliterations: const ['new york'],
         priority: 100,
       ),
       source: EventCitySelectionSource.profile,
@@ -752,11 +792,11 @@ EventsRecord _analyticsEventFixture({
       {
         'countryCode': countryCode,
         'cityKey': cityKey,
-        'cityNameRu': 'Москва',
-        'cityNameEn': 'Moscow',
-        'cityDisplayContext': 'Россия',
-        'aliases': ['мск'],
-        'transliterations': ['moskva'],
+        'cityNameRu': 'New York',
+        'cityNameEn': 'New York',
+        'cityDisplayContext': 'US',
+        'aliases': ['NYC'],
+        'transliterations': ['new york'],
         'locationName': 'Cafe',
         'participantsCount': 5,
         'status': 'active',

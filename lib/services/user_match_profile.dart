@@ -1,5 +1,6 @@
 import '/backend/schema/enums/enums.dart';
 import '/backend/schema/users_record.dart';
+import 'supported_location_catalog.dart';
 
 const partnerLevelRanks = <Level, int>{
   Level.Beginner: 0,
@@ -101,12 +102,7 @@ String? resolveUserActiveConversationLanguage(UsersRecord? user) {
 }
 
 String? resolveUserMatchCountryCode(UsersRecord? user) {
-  final legacyCountry = _trimmedValue(user?.countryNS.code);
-  if (legacyCountry != null) {
-    return legacyCountry;
-  }
-
-  return _trimmedValue(_storedMatchProfile(user)['country']);
+  return resolveSupportedProfileCity(user?.profileCity)?.countryCode;
 }
 
 Level? resolveUserMatchLevel(UsersRecord? user) {

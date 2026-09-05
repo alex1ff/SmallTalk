@@ -15,7 +15,11 @@ void main() {
   });
 
   test('loads static city catalog schema from app asset', () {
-    expect(catalog.catalogVersion, 'events-city-catalog-mvp-2026-06-16');
+    expect(catalog.catalogVersion, 'supported-locations-2026-09-04');
+    expect(
+      catalog.supportedCities.map((city) => city.identity),
+      ['US:new_york', 'ID:bali', 'AE:dubai', 'TH:phuket'],
+    );
     expect(catalog.cities.length, greaterThanOrEqualTo(10));
 
     final rawCities = rawCatalogData['cities'];

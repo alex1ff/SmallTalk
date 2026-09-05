@@ -9,6 +9,7 @@ import '/components/bottom_sheet_header.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/components/edit_country_widget.dart';
 import '/components/edit_lang_widget.dart';
+import '/services/supported_location_catalog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
@@ -36,11 +37,7 @@ class _FiltersWidgetState extends State<FiltersWidget> {
   }
 
   bool _hasCountryData(CountryStruct? country) {
-    if (country == null) return false;
-    return _hasValue(country.code) ||
-        _hasValue(country.nameRu) ||
-        _hasValue(country.nameEn) ||
-        _hasValue(country.flag);
+    return isSupportedCountryStruct(country);
   }
 
   LanguageStruct _languageOrPlaceholder(
@@ -345,9 +342,8 @@ class _FiltersWidgetState extends State<FiltersWidget> {
                                 lang: _countryOrPlaceholder(
                                   currentUserDocument
                                       ?.preferences.preferredLocation,
-                                  ruText: 'Страна собеседника не выбрана.',
-                                  enText:
-                                      'Interlocutor country is not selected.',
+                                  ruText: 'Локация собеседника не выбрана.',
+                                  enText: 'Partner location is not selected.',
                                 ),
                                 callbackAction: (selectedLangData) async {
                                   await showModalBottomSheet(
@@ -359,11 +355,29 @@ class _FiltersWidgetState extends State<FiltersWidget> {
                                         padding:
                                             MediaQuery.viewInsetsOf(context),
                                         child: EditCountryWidget(
-                                          title: 'Локация cобеседника',
+                                          title: FFLocalizations.of(context)
+                                              .getVariableText(
+                                            ruText: 'Локация собеседника',
+                                            enText: 'Partner location',
+                                          ),
                                           selecte: currentUserDocument!
                                               .preferences.preferredLocation,
                                           persistSelectedCountryToUserCountry:
                                               false,
+                                          allowClear: true,
+                                          clearAction: () async {
+                                            await currentUserReference!
+                                                .update(createUsersRecordData(
+                                              preferences:
+                                                  createPreferencesStruct(
+                                                fieldValues: {
+                                                  'preferredLocation':
+                                                      FieldValue.delete(),
+                                                },
+                                                clearUnsetFields: false,
+                                              ),
+                                            ));
+                                          },
                                           action: (lang) async {
                                             await currentUserReference!
                                                 .update(createUsersRecordData(

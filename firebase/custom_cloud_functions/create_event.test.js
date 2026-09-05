@@ -108,6 +108,14 @@ function cloneValidRequest(overrides = {}) {
   };
 }
 
+function cloneSupportedRequest(overrides = {}) {
+  return cloneValidRequest({
+    countryCode: "US",
+    cityKey: "new_york",
+    ...overrides,
+  });
+}
+
 function indexedRequestId(index) {
   return `660e8400-e29b-41d4-a716-${String(index).padStart(12, "0")}`;
 }
@@ -1850,7 +1858,7 @@ test("executeCreateEventTransaction creates all event documents", async () => {
   });
   const dayInfo = buildUtcDayInfo(fixedNow);
   const {normalized, payloadHash} =
-    buildNormalizedAndHash(cloneValidRequest());
+    buildNormalizedAndHash(cloneSupportedRequest());
 
   const response = await executeCreateEventTransaction({
     db,
@@ -1902,12 +1910,12 @@ test("executeCreateEventTransaction creates all event documents", async () => {
   assert.equal(store.get("events/event-new").languageNameEn, "English");
   assert.equal(store.get("events/event-new").languageNameRu, "Английский");
   assertNoLanguageStructFields(store.get("events/event-new"));
-  assert.equal(store.get("events/event-new").countryCode, "RU");
-  assert.equal(store.get("events/event-new").cityKey, "moscow");
-  assert.equal(store.get("events/event-new").cityNameRu, "Москва");
-  assert.equal(store.get("events/event-new").cityNameEn, "Moscow");
-  assert.equal(store.get("events/event-new").cityDisplayContext, "Россия");
-  assert.equal(store.get("events/event-new").timeZoneId, "Europe/Moscow");
+  assert.equal(store.get("events/event-new").countryCode, "US");
+  assert.equal(store.get("events/event-new").cityKey, "new_york");
+  assert.equal(store.get("events/event-new").cityNameRu, "Нью-Йорк");
+  assert.equal(store.get("events/event-new").cityNameEn, "New York");
+  assert.equal(store.get("events/event-new").cityDisplayContext, "United States");
+  assert.equal(store.get("events/event-new").timeZoneId, "America/New_York");
   assertNoCityStructFields(store.get("events/event-new"));
   assert.deepEqual(store.get("eventChats/event-new"), {
     eventId: "event-new",
@@ -1970,7 +1978,7 @@ test("executeCreateEventTransaction replaces an existing public projection",
       });
       const dayInfo = buildUtcDayInfo(fixedNow);
       const {normalized, payloadHash} =
-        buildNormalizedAndHash(cloneValidRequest());
+        buildNormalizedAndHash(cloneSupportedRequest());
 
       await executeCreateEventTransaction({
         db,
@@ -2003,7 +2011,7 @@ test("executeCreateEventTransaction derives organizer snapshot from profile",
       });
       const dayInfo = buildUtcDayInfo(fixedNow);
       const {normalized, payloadHash} =
-        buildNormalizedAndHash(cloneValidRequest());
+        buildNormalizedAndHash(cloneSupportedRequest());
 
       await executeCreateEventTransaction({
         db,
@@ -2037,7 +2045,7 @@ test("executeCreateEventTransaction stores null organizer photo from blank profi
       });
       const dayInfo = buildUtcDayInfo(fixedNow);
       const {normalized, payloadHash} =
-        buildNormalizedAndHash(cloneValidRequest());
+        buildNormalizedAndHash(cloneSupportedRequest());
 
       await executeCreateEventTransaction({
         db,
@@ -2075,7 +2083,7 @@ test("executeCreateEventTransaction rejects missing organizer profile snapshot",
           createFakeFirestore(currentCase.seed);
         const dayInfo = buildUtcDayInfo(fixedNow);
         const {normalized, payloadHash} =
-          buildNormalizedAndHash(cloneValidRequest());
+          buildNormalizedAndHash(cloneSupportedRequest());
 
         await assertRejectsHttpsError(
             () => executeCreateEventTransaction({
@@ -2102,7 +2110,7 @@ test("executeCreateEventTransaction creates exact lowercase request marker schem
     async () => {
       const uppercaseRequestId = "550E8400-E29B-41D4-A716-446655440000";
       const lowercaseRequestId = uppercaseRequestId.toLowerCase();
-      const request = cloneValidRequest({createRequestId: uppercaseRequestId});
+      const request = cloneSupportedRequest({createRequestId: uppercaseRequestId});
       const {normalized, payloadHash} = buildNormalizedAndHash(request);
       const dayInfo = buildUtcDayInfo(fixedNow);
       const {db, makeRef, store} = createFakeFirestore({
@@ -2535,6 +2543,79 @@ test("createEvent callable rejects client city display payloads before writes",
       }
     });
 
+test("createEvent callable rejects new legacy-location requests after marker lookup", async () => {
+  for (const location of [
+    {countryCode: "RU", cityKey: "moscow"},
+    {countryCode: "IT", cityKey: "rome"},
+  ]) {
+    const {db, reads, store, writes} = createFakeFirestore({
+      "users/uid": {display_name: "Анастасия Иванова"},
+    });
+
+    await withAdminFirestore(db, async () => {
+      await assertRejectsHttpsError(
+          () => createEvent.run(
+              cloneValidRequest(location),
+              {auth: {uid: "uid"}},
+          ),
+          "invalid-argument",
+          "invalid_create_request",
+          "cityKey",
+          "unsupported_city",
+      );
+    });
+
+    assert.deepEqual(reads, [
+      `eventCreateRequests/uid/requests/${validRequest.createRequestId}`,
+    ]);
+    assert.deepEqual(writes, []);
+    assertNoCreateDocuments(store);
+  }
+});
+
+test("createEvent callable preserves a successful legacy-location retry", async () => {
+  const legacyRequest = cloneValidRequest();
+  const {payloadHash} = buildNormalizedAndHash(
+      legacyRequest,
+      {requireKnownCity: false},
+  );
+  const dayInfo = buildUtcDayInfo(fixedNow);
+  const dailyCreation = buildDailyCreation(1, dayInfo);
+  const marker = buildCreateRequestMarker({
+    uid: "uid",
+    createRequestId: legacyRequest.createRequestId,
+    eventId: "event-original",
+    payloadHash,
+    counterPath: "eventCreationCounters/uid/days/20260616",
+    dayInfo,
+    dailyCreation,
+    creationTimestamp: fixedTimestamp,
+  });
+  const {db, reads, writes} = createFakeFirestore({
+    [`eventCreateRequests/uid/requests/${legacyRequest.createRequestId}`]:
+      marker,
+  });
+
+  await withAdminFirestore(db, async () => {
+    await withSequencedDate([fixedNow.toISOString()], async () => {
+      const response = await createEvent.run(
+          legacyRequest,
+          {auth: {uid: "uid"}},
+      );
+      assertCreateSuccessResponse(response, {
+        eventId: "event-original",
+        createdAt: fixedNow.toISOString(),
+        dailyCreation,
+      });
+    });
+  });
+
+  assert.deepEqual(reads, [
+    `eventCreateRequests/uid/requests/${legacyRequest.createRequestId}`,
+  ]);
+  assert.deepEqual(writes, []);
+});
+
 test("createEvent callable validates startsAt against trusted backend time",
     async () => {
       for (const startsAt of [
@@ -2550,7 +2631,11 @@ test("createEvent callable validates startsAt against trusted backend time",
               async () => {
                 await assertRejectsHttpsError(
                     () => createEvent.run(
-                        cloneValidRequest({startsAt}),
+                        cloneValidRequest({
+                          countryCode: "US",
+                          cityKey: "new_york",
+                          startsAt,
+                        }),
                         {auth: {uid: "uid"}},
                     ),
                     "invalid-argument",
@@ -2606,7 +2691,7 @@ test("executeCreateEventTransaction rolls back buffered writes on failure", asyn
   );
   const dayInfo = buildUtcDayInfo(fixedNow);
   const {normalized, payloadHash} =
-    buildNormalizedAndHash(cloneValidRequest());
+    buildNormalizedAndHash(cloneSupportedRequest());
 
   await assert.rejects(
       () => executeCreateEventTransaction({
@@ -2644,7 +2729,7 @@ test("executeCreateEventTransaction leaves no partial docs when interrupted", as
     );
     const dayInfo = buildUtcDayInfo(fixedNow);
     const {normalized, payloadHash} =
-      buildNormalizedAndHash(cloneValidRequest());
+      buildNormalizedAndHash(cloneSupportedRequest());
 
     await assert.rejects(
         () => executeCreateEventTransaction({
@@ -2676,7 +2761,7 @@ test("executeCreateEventTransaction preserves existing counter on interruption",
       {failAfterBufferedWrites: 4},
   );
   const {normalized, payloadHash} =
-    buildNormalizedAndHash(cloneValidRequest());
+    buildNormalizedAndHash(cloneSupportedRequest());
 
   await assert.rejects(
       () => executeCreateEventTransaction({
@@ -3008,7 +3093,7 @@ test("executeCreateEventTransaction rejects unknown city before writes", async (
 test("executeCreateEventTransaction rejects full daily counter without writes", async () => {
   const dayInfo = buildUtcDayInfo(fixedNow);
   const {normalized, payloadHash} =
-    buildNormalizedAndHash(cloneValidRequest());
+    buildNormalizedAndHash(cloneSupportedRequest());
   const {db, makeRef, store, writes} = createFakeFirestore({
     "users/uid": {display_name: "Анастасия Иванова"},
     "eventCreationCounters/uid/days/20260616": buildValidCounterData({
@@ -3049,7 +3134,7 @@ test("executeCreateEventTransaction allows fifth daily create", async () => {
   };
   const dayInfo = buildUtcDayInfo(creationDate);
   const {normalized, payloadHash} =
-    buildNormalizedAndHash(cloneValidRequest());
+    buildNormalizedAndHash(cloneSupportedRequest());
   const counterBefore = buildValidCounterData({
     dayInfo,
     count: DAILY_CREATE_LIMIT - 1,
@@ -3138,7 +3223,7 @@ test("executeCreateEventTransaction concurrent creates never exceed daily limit"
       const create = (index) => {
         const createRequestId = indexedRequestId(index);
         const {normalized, payloadHash} = buildNormalizedAndHash(
-            cloneValidRequest({
+            cloneSupportedRequest({
               createRequestId,
               title: `Concurrent create ${index}`,
             }),
@@ -3184,7 +3269,7 @@ test("executeCreateEventTransaction concurrent creates never exceed daily limit"
       const createdRequestId = indexedRequestId(createdIndex);
       const rejectedRequestId = indexedRequestId(rejectedIndex);
       const {payloadHash: createdPayloadHash} = buildNormalizedAndHash(
-          cloneValidRequest({
+          cloneSupportedRequest({
             createRequestId: createdRequestId,
             title: `Concurrent create ${createdIndex}`,
           }),
@@ -3284,7 +3369,7 @@ test("executeCreateEventTransaction retry increments counter once per request",
       const create = (index) => {
         const createRequestId = indexedRequestId(index);
         const {normalized, payloadHash} = buildNormalizedAndHash(
-            cloneValidRequest({
+            cloneSupportedRequest({
               createRequestId,
               title: `Retried create ${index}`,
             }),

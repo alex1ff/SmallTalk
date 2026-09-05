@@ -584,11 +584,6 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
   List<CountryStruct> _countryOptions() {
     final countries = functions.countriesList().toList(growable: true)
       ..sort((left, right) => left.index.compareTo(right.index));
-    final selectedCountry = _countryNotifier.value;
-    if (selectedCountry != null &&
-        !countries.any((country) => country == selectedCountry)) {
-      countries.insert(0, selectedCountry);
-    }
     return countries;
   }
 
@@ -612,8 +607,8 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
   String _countryTitle(BuildContext context, CountryStruct? country) {
     if (country == null) {
       return FFLocalizations.of(context).getVariableText(
-        ruText: 'Выберите страну',
-        enText: 'Select country',
+        ruText: 'Выберите локацию',
+        enText: 'Select location',
       );
     }
 
@@ -1333,8 +1328,8 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
                     'native_speaker_onboarding_step_country',
                   ),
                   title: FFLocalizations.of(context).getVariableText(
-                    ruText: 'Страна',
-                    enText: 'Country',
+                    ruText: 'Локация',
+                    enText: 'Location',
                   ),
                   child: OnboardingDropdownField(
                     key: const ValueKey<String>(

@@ -8,6 +8,7 @@ import '/shared_pages/design/expatlio_design.dart';
 import '/flutter_flow/flutter_flow_widgets.dart';
 import '/services/partner_filter_preferences.dart';
 import '/services/user_match_profile.dart';
+import '/services/supported_location_catalog.dart';
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -294,7 +295,9 @@ class _WaitingForTeacherPageWidgetState
     final language = _nonEmpty(resolveUserActiveConversationLanguage(user));
     if (language == null) return null;
 
-    final preferredCountry = _nonEmpty(user.preferences.preferredLocation.code);
+    final preferredLocation =
+        resolveSupportedCountryStruct(user.preferences.preferredLocation);
+    final preferredCountry = preferredLocation?.countryCode;
     final preferredPartnerLevel = _nonEmpty(
       resolveEffectivePreferredPartnerLevelName(
         preferredPartnerLevel: user.preferences.preferredPartnerLevel,
@@ -307,6 +310,8 @@ class _WaitingForTeacherPageWidgetState
       if (_isDirectTutorCall) 'directTutorId': _nonEmpty(widget.targetTutorId),
       if (!_isDirectTutorCall && preferredCountry != null)
         'preferredCountry': preferredCountry,
+      if (!_isDirectTutorCall && preferredLocation != null)
+        'cityKey': preferredLocation.cityKey,
       if (!_isDirectTutorCall && preferredPartnerLevel != null)
         'preferredPartnerLevel': preferredPartnerLevel,
     };

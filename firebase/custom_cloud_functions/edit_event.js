@@ -11,6 +11,7 @@ const {
   eventPreviewRef,
   writeEventPreview,
 } = require("./event_public_projection");
+const {isSupportedLocation} = require("./supported_locations");
 
 const REQUEST_TIMEOUT_SECONDS = 30;
 const EDIT_EVENT_KEYS = Object.freeze([
@@ -290,6 +291,12 @@ exports.editEvent = functions
       const editDate = new Date();
       const editTimestamp = admin.firestore.Timestamp.fromDate(editDate);
       const payload = normalizeEditEventPayload(data, {now: editDate});
+      if (!isSupportedLocation(
+          payload.normalized.city.countryCode,
+          payload.normalized.city.cityKey,
+      )) {
+        throwInvalidEditRequest("cityKey", "unsupported_city");
+      }
       const db = admin.firestore();
 
       try {

@@ -35,6 +35,7 @@ import '/services/event_level_helper.dart';
 import '/services/event_language_catalog.dart';
 import '/services/event_list_cache_invalidation.dart';
 import '/services/events_analytics_service.dart';
+import '/services/supported_location_catalog.dart';
 import '/services/ux_session_cache_lifecycle.dart';
 import '/services/user_public_profile_preload_repository.dart';
 import '/utils/subscription_utils.dart';
@@ -4352,8 +4353,8 @@ class _EventListEmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final description = FFLocalizations.of(context).getVariableText(
-      ruText: 'Выберите другой день, уровень или город.',
-      enText: 'Choose another day, level, or city.',
+      ruText: 'Выберите другой день, уровень или локацию.',
+      enText: 'Choose another day, level, or location.',
     );
     final emptyStateHeight = _eventListEmptyStateHeight(context);
 
@@ -6379,6 +6380,8 @@ Future<T?> _showEventListDropdownMenu<T>(
 }
 
 String _cityChipLabel(BuildContext context, EventCity city) {
+  final supportedLabel = supportedLocationLabel(city.countryCode, city.cityKey);
+  if (supportedLabel != null) return supportedLabel;
   final isRu = FFLocalizations.of(context).languageCode == 'ru';
   final cityName = isRu ? city.cityNameRu : city.cityNameEn;
   return '$cityName · ${city.cityDisplayContext}';
@@ -6406,8 +6409,8 @@ class _EventCitySelector extends StatelessWidget {
       button: true,
       enabled: enabled,
       label: FFLocalizations.of(context).getVariableText(
-        ruText: 'Выбор города',
-        enText: 'City selector',
+        ruText: 'Выбор локации',
+        enText: 'Location selector',
       ),
       child: Material(
         color: Colors.transparent,
@@ -6493,15 +6496,18 @@ class _EventCitySelector extends StatelessWidget {
     if (city == null) {
       if (hasOutdatedProfileCity) {
         return FFLocalizations.of(context).getVariableText(
-          ruText: 'Выберите город заново',
-          enText: 'Choose city again',
+          ruText: 'Выберите локацию заново',
+          enText: 'Choose location again',
         );
       }
       return FFLocalizations.of(context).getVariableText(
-        ruText: 'Выберите город',
-        enText: 'Choose city',
+        ruText: 'Выберите локацию',
+        enText: 'Choose location',
       );
     }
+    final supportedLabel =
+        supportedLocationLabel(city.countryCode, city.cityKey);
+    if (supportedLabel != null) return supportedLabel;
     final isRu = FFLocalizations.of(context).languageCode == 'ru';
     final cityName = isRu ? city.cityNameRu : city.cityNameEn;
     return '$cityName · ${city.cityDisplayContext}';
@@ -6511,14 +6517,14 @@ class _EventCitySelector extends StatelessWidget {
     if (hasOutdatedProfileCity) {
       return FFLocalizations.of(context).getVariableText(
         ruText:
-            'Сохранённый город больше недоступен. Выберите актуальный город, чтобы увидеть события.',
+            'Сохранённая локация больше недоступна. Выберите актуальную локацию, чтобы увидеть события.',
         enText:
-            'Your saved city is no longer available. Choose a current city to see events.',
+            'Your saved location is no longer available. Choose a current location to see events.',
       );
     }
     return FFLocalizations.of(context).getVariableText(
-      ruText: 'Выберите город, чтобы увидеть события.',
-      enText: 'Choose a city to see events.',
+      ruText: 'Выберите локацию, чтобы увидеть события.',
+      enText: 'Choose a location to see events.',
     );
   }
 }

@@ -85,11 +85,11 @@ void main() {
                   languageCode: 'en',
                   levelMin: 'A2',
                   levelMax: 'B2',
-                  countryCode: 'RU',
-                  cityKey: 'moscow',
+                  countryCode: 'AE',
+                  cityKey: 'dubai',
                   locationName: 'Starbucks, ул. Арбат, 5',
                   startsAt: DateTime.parse('2026-06-18T15:30:00Z'),
-                  timeZoneId: 'Europe/Moscow',
+                  timeZoneId: 'Asia/Dubai',
                   capacity: 8,
                   participantsCount: 5,
                 ),
@@ -109,13 +109,13 @@ void main() {
     expect(find.text('Casual practice in a cafe.'), findsOneWidget);
     expect(_languageSelectorText('Английский'), findsOneWidget);
     expect(_levelSelectorText('A2-B2'), findsOneWidget);
-    expect(_citySelectorText('Москва · Россия'), findsOneWidget);
+    expect(_citySelectorText('Dubai, UAE'), findsOneWidget);
     expect(find.text('Starbucks, ул. Арбат, 5'), findsOneWidget);
     expect(
       _dateSelectorText(_dateLabel(DateTime(2026, 6, 18))),
       findsOneWidget,
     );
-    expect(_timeSelectorText('18:30'), findsOneWidget);
+    expect(_timeSelectorText('19:30'), findsOneWidget);
     expect(find.text('8'), findsOneWidget);
     expect(
       tester
@@ -195,12 +195,12 @@ void main() {
                   languageCode: 'en',
                   levelMin: 'A2',
                   levelMax: 'B2',
-                  countryCode: 'RU',
-                  cityKey: 'moscow',
+                  countryCode: 'AE',
+                  cityKey: 'dubai',
                   locationName: 'Starbucks, ул. Арбат, 5',
                   locationGeoPoint: const LatLng(55.7522, 37.6156),
                   startsAt: DateTime.parse('2099-06-20T15:00:00Z'),
-                  timeZoneId: 'Europe/Moscow',
+                  timeZoneId: 'Asia/Dubai',
                   capacity: 8,
                   participantsCount: 5,
                 ),
@@ -314,8 +314,8 @@ void main() {
     await tester.tap(find.byKey(eventCreateSubmitButtonKey));
     await tester.pumpAndSettle();
 
-    expect(payload, containsPair('countryCode', 'IT'));
-    expect(payload, containsPair('cityKey', 'rome'));
+    expect(payload, containsPair('countryCode', 'ID'));
+    expect(payload, containsPair('cityKey', 'bali'));
     expect(payload, containsPair('locationGeoPoint', null));
   });
 
@@ -498,7 +498,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(_citySelectorText('Нью-Йорк · United States'), findsOneWidget);
+    expect(_citySelectorText('New York, US'), findsOneWidget);
     expect(_timeSelectorText('18:05'), findsOneWidget);
   });
 
@@ -527,7 +527,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(EventCreateWidget), findsOneWidget);
-    expect(_citySelectorText('Выберите город'), findsOneWidget);
+    expect(_citySelectorText('Выберите локацию'), findsOneWidget);
     expect(_timeSelectorText('18:00'), findsOneWidget);
   });
 
@@ -537,8 +537,8 @@ void main() {
       uid: 'profile-city-user',
       data: {
         'profileCity': _profileCityFixture(
-          countryCode: 'RU',
-          cityKey: 'moscow',
+          countryCode: 'US',
+          cityKey: 'new_york',
           catalogVersion: _cityCatalog.catalogVersion,
         ).toMap(),
       },
@@ -566,8 +566,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(_citySelectorText('Выберите город'), findsOneWidget);
-    expect(_citySelectorText('Москва · Россия'), findsNothing);
+    expect(_citySelectorText('Выберите локацию'), findsOneWidget);
+    expect(_citySelectorText('New York, US'), findsNothing);
   });
 
   testWidgets('hides edit form from non-organizers', (tester) async {
@@ -708,10 +708,22 @@ UsersRecord _userFixture({
   required String uid,
   required Map<String, dynamic> data,
 }) {
+  final normalizedData = _mutableFirestoreMap(data);
+  final profileCity = normalizedData['profileCity'];
+  if (!normalizedData.containsKey('Country_NS') && profileCity is Map) {
+    final countryCode = profileCity['countryCode'];
+    final cityKey = profileCity['cityKey'];
+    if (countryCode is String && cityKey is String) {
+      normalizedData['Country_NS'] = {
+        'code': countryCode,
+        'cityKey': cityKey,
+      };
+    }
+  }
   return UsersRecord.getDocumentFromData(
     {
       'uid': uid,
-      ..._mutableFirestoreMap(data),
+      ...normalizedData,
     },
     UsersRecord.collection.doc(uid),
   );
@@ -825,12 +837,12 @@ Map<String, dynamic> _eventData({
   String languageCode = 'en',
   String levelMin = 'B1',
   String levelMax = 'C1',
-  String countryCode = 'RU',
-  String cityKey = 'moscow',
+  String countryCode = 'AE',
+  String cityKey = 'dubai',
   String locationName = 'Cafe on Arbat',
   LatLng? locationGeoPoint,
   DateTime? startsAt,
-  String timeZoneId = 'Europe/Moscow',
+  String timeZoneId = 'Asia/Dubai',
   int capacity = 10,
   int participantsCount = 0,
   String organizerId = 'organizer-1',
@@ -932,15 +944,15 @@ Finder _timeSelectorText(String text) => find.descendant(
     );
 
 const _moscowCity = EventCity(
-  countryCode: 'RU',
-  cityKey: 'moscow',
-  cityNameRu: 'Москва',
-  cityNameEn: 'Moscow',
-  regionCode: null,
-  regionNameRu: null,
-  regionNameEn: null,
-  timeZoneId: 'Europe/Moscow',
-  cityDisplayContext: 'Россия',
+  countryCode: 'AE',
+  cityKey: 'dubai',
+  cityNameRu: 'Dubai',
+  cityNameEn: 'Dubai',
+  regionCode: 'DU',
+  regionNameRu: 'Dubai',
+  regionNameEn: 'Dubai',
+  timeZoneId: 'Asia/Dubai',
+  cityDisplayContext: 'UAE',
   aliases: [],
   transliterations: [],
   priority: 100,
@@ -962,15 +974,30 @@ const _newYorkCity = EventCity(
 );
 
 const _romeCity = EventCity(
-  countryCode: 'IT',
-  cityKey: 'rome',
-  cityNameRu: 'Рим',
-  cityNameEn: 'Rome',
-  regionCode: 'LAZ',
-  regionNameRu: 'Лацио',
-  regionNameEn: 'Lazio',
-  timeZoneId: 'Europe/Rome',
-  cityDisplayContext: 'Italia',
+  countryCode: 'ID',
+  cityKey: 'bali',
+  cityNameRu: 'Bali',
+  cityNameEn: 'Bali',
+  regionCode: 'BA',
+  regionNameRu: 'Bali',
+  regionNameEn: 'Bali',
+  timeZoneId: 'Asia/Makassar',
+  cityDisplayContext: 'Indonesia',
+  aliases: [],
+  transliterations: [],
+  priority: 90,
+);
+
+const _phuketCity = EventCity(
+  countryCode: 'TH',
+  cityKey: 'phuket',
+  cityNameRu: 'Phuket',
+  cityNameEn: 'Phuket',
+  regionCode: '83',
+  regionNameRu: 'Phuket',
+  regionNameEn: 'Phuket',
+  timeZoneId: 'Asia/Bangkok',
+  cityDisplayContext: 'Thailand',
   aliases: [],
   transliterations: [],
   priority: 90,
@@ -978,7 +1005,7 @@ const _romeCity = EventCity(
 
 const _cityCatalog = EventCityCatalog(
   catalogVersion: '2026-06-01',
-  cities: [_moscowCity, _newYorkCity, _romeCity],
+  cities: [_moscowCity, _newYorkCity, _romeCity, _phuketCity],
 );
 
 final _languageCatalog = EventLanguageCatalog(

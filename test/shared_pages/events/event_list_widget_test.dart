@@ -513,14 +513,14 @@ void main() {
     expect(find.byKey(eventListCitySelectorKey), findsOneWidget);
     expect(find.byIcon(Icons.location_on_outlined), findsOneWidget);
     expect(find.byIcon(FFIcons.kchevronDown), findsOneWidget);
-    expect(find.text('Выберите город'), findsOneWidget);
+    expect(find.text('Выберите локацию'), findsOneWidget);
   });
 
-  testWidgets('does not flash city selector while profile city is resolving',
+  testWidgets('does not flash location selector while profile is resolving',
       (tester) async {
     final catalogJson = await rootBundle.loadString(eventCityCatalogAssetPath);
     final catalog = EventCityCatalog.fromJsonString(catalogJson);
-    final city = catalog.cities.first;
+    final city = catalog.resolve('US', 'new_york')!;
     final catalogCompleter = Completer<String>();
     currentUserDocument = _userFixture(
       uid: 'delayed-catalog-user',
@@ -543,13 +543,13 @@ void main() {
     );
 
     expect(find.byKey(eventListCitySelectorKey), findsNothing);
-    expect(find.text('Выберите город'), findsNothing);
+    expect(find.text('Выберите локацию'), findsNothing);
 
     catalogCompleter.complete(catalogJson);
     await tester.pumpAndSettle();
 
     expect(find.byKey(eventListCitySelectorKey), findsNothing);
-    expect(find.text('Выберите город'), findsNothing);
+    expect(find.text('Выберите локацию'), findsNothing);
   });
 
   testWidgets('does not show event card layout before city is selected',
@@ -3026,7 +3026,7 @@ void main() {
     expect(find.byKey(eventListEmptyStateKey), findsOneWidget);
     selectedCity = EventSelectedCity(
       city: _catalog.cities.firstWhere(
-        (city) => city.cityKey == 'new_york',
+        (city) => city.cityKey == 'bali',
       ),
       source: EventCitySelectionSource.manual,
     );
@@ -4371,15 +4371,15 @@ void main() {
     expect(find.byKey(eventListLoadingStateKey), findsNothing);
     expect(find.byKey(eventListCardShellKey), findsNothing);
     expect(find.text('Здесь пока пусто'), findsOneWidget);
-    expect(
-        find.text('Выберите другой день, уровень или город.'), findsOneWidget);
+    expect(find.text('Выберите другой день, уровень или локацию.'),
+        findsOneWidget);
 
     final emptySemantics = tester.widget<Semantics>(
       find.byKey(eventListEmptyStateKey),
     );
     expect(
       emptySemantics.properties.label,
-      'Выберите другой день, уровень или город.',
+      'Выберите другой день, уровень или локацию.',
     );
     expect(emptySemantics.properties.liveRegion, isTrue);
     expect(emptySemantics.container, isTrue);
@@ -12148,10 +12148,10 @@ void main() {
     currentUserDocument = _userFixture(
       uid: 'profile-city-user',
       data: {
-        'Country_NS': {'code': 'US'},
+        'Country_NS': {'code': 'US', 'cityKey': 'new_york'},
         'profileCity': _profileCityFixture(
-          countryCode: 'RU',
-          cityKey: 'moscow',
+          countryCode: 'US',
+          cityKey: 'new_york',
           catalogVersion: _catalog.catalogVersion,
         ).toMap(),
       },
@@ -12168,8 +12168,8 @@ void main() {
     expect(find.text('Москва · Россия'), findsNothing);
     expect(find.textContaining('Stored city'), findsNothing);
     expect(find.textContaining('Stored context'), findsNothing);
-    expect(find.text('Выберите город'), findsNothing);
-    expect(find.text('Выберите город, чтобы увидеть события.'), findsNothing);
+    expect(find.text('Выберите локацию'), findsNothing);
+    expect(find.text('Выберите локацию, чтобы увидеть события.'), findsNothing);
     expect(find.byKey(const ValueKey<String>('event_city_chip_RU_moscow')),
         findsNothing);
   });
@@ -12200,15 +12200,15 @@ void main() {
 
     expect(analyticsTracker.payloadsFor('event_list_opened'), [
       <String, String>{
-        'countryCode': 'RU',
-        'cityKey': 'moscow',
+        'countryCode': 'US',
+        'cityKey': 'new_york',
         'citySource': 'profile',
       },
     ]);
     expect(analyticsTracker.payloadsFor('city_selected'), [
       <String, String>{
-        'countryCode': 'RU',
-        'cityKey': 'moscow',
+        'countryCode': 'US',
+        'cityKey': 'new_york',
         'citySource': 'profile',
       },
     ]);
@@ -12220,7 +12220,7 @@ void main() {
     expect(analyticsTracker.payloadsFor('city_selected'), hasLength(1));
   });
 
-  testWidgets('uses country-only profile data as default events city',
+  testWidgets('requires a location for legacy country-only profile data',
       (tester) async {
     final analyticsTracker = _RecordingEventsAnalyticsTracker();
     currentUserDocument = _userFixture(
@@ -12240,27 +12240,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(eventListCitySelectorKey), findsNothing);
-    expect(find.text('Выберите город'), findsNothing);
-    expect(find.text('Выберите город, чтобы увидеть события.'), findsNothing);
-    expect(find.text('Выберите город заново'), findsNothing);
-    expect(find.textContaining('Сохранённый город больше недоступен'),
-        findsNothing);
+    expect(find.byKey(eventListCitySelectorKey), findsOneWidget);
+    expect(find.text('Выберите локацию'), findsOneWidget);
+    expect(
+        find.text('Выберите локацию, чтобы увидеть события.'), findsOneWidget);
+    expect(find.text('Выберите локацию заново'), findsNothing);
     expect(_citySelectorText('Москва · Россия'), findsNothing);
-    expect(analyticsTracker.payloadsFor('event_list_opened'), [
-      <String, String>{
-        'countryCode': 'RU',
-        'cityKey': 'moscow',
-        'citySource': 'profile',
-      },
-    ]);
-    expect(analyticsTracker.payloadsFor('city_selected'), [
-      <String, String>{
-        'countryCode': 'RU',
-        'cityKey': 'moscow',
-        'citySource': 'profile',
-      },
-    ]);
+    expect(analyticsTracker.payloadsFor('event_list_opened'), isEmpty);
+    expect(analyticsTracker.payloadsFor('city_selected'), isEmpty);
   });
 
   testWidgets('does not select a city from preferredLocation profile data',
@@ -12285,8 +12272,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Выберите город'), findsOneWidget);
-    expect(find.text('Выберите город, чтобы увидеть события.'), findsOneWidget);
+    expect(find.text('Выберите локацию'), findsOneWidget);
+    expect(
+        find.text('Выберите локацию, чтобы увидеть события.'), findsOneWidget);
     expect(_citySelectorText('Нью-Йорк · United States'), findsNothing);
     expect(find.byKey(eventListLoadingStateKey), findsNothing);
     expect(find.byKey(eventListEmptyStateKey), findsNothing);
@@ -12333,20 +12321,19 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(eventListCitySelectorKey), findsOneWidget);
-    expect(find.text('Выберите город'), findsOneWidget);
-    expect(find.text('Выберите город, чтобы увидеть события.'), findsOneWidget);
-    expect(find.text('Выберите город заново'), findsNothing);
-    expect(find.textContaining('Сохранённый город больше недоступен'),
-        findsNothing);
+    expect(find.text('Выберите локацию'), findsOneWidget);
+    expect(
+        find.text('Выберите локацию, чтобы увидеть события.'), findsOneWidget);
+    expect(find.text('Выберите локацию заново'), findsNothing);
     expect(_citySelectorText('Москва · Россия'), findsNothing);
   });
 
   testWidgets(
-      'opens city dropdown with recent before country-hinted static cities',
+      'opens city dropdown in product order despite recent cities and hint',
       (tester) async {
     SharedPreferences.setMockInitialValues({
       eventRecentCitySelectionsPrefsKey: const <String>[
-        '{"countryCode":"IT","cityKey":"rome"}',
+        '{"countryCode":"ID","cityKey":"bali"}',
       ],
     });
     currentUserDocument = _userFixture(
@@ -12371,22 +12358,26 @@ void main() {
     await tester.tap(find.byKey(eventListCitySelectorKey));
     await tester.pumpAndSettle();
 
-    final rome =
-        find.byKey(const ValueKey<String>('event_manual_city_option_IT_rome'));
+    final bali =
+        find.byKey(const ValueKey<String>('event_manual_city_option_ID_bali'));
     final newYork = find
         .byKey(const ValueKey<String>('event_manual_city_option_US_new_york'));
-    final moscow = find
-        .byKey(const ValueKey<String>('event_manual_city_option_RU_moscow'));
+    final dubai =
+        find.byKey(const ValueKey<String>('event_manual_city_option_AE_dubai'));
+    final phuket = find
+        .byKey(const ValueKey<String>('event_manual_city_option_TH_phuket'));
 
-    expect(find.text('Выберите город заново'), findsOneWidget);
-    expect(rome, findsOneWidget);
+    expect(find.text('Выберите локацию заново'), findsOneWidget);
+    expect(bali, findsOneWidget);
     expect(newYork, findsOneWidget);
-    expect(moscow, findsOneWidget);
-    expect(_widgetIndex(tester, rome), lessThan(_widgetIndex(tester, newYork)));
+    expect(dubai, findsOneWidget);
+    expect(phuket, findsOneWidget);
+    expect(_widgetIndex(tester, newYork), lessThan(_widgetIndex(tester, bali)));
     expect(
-      _widgetIndex(tester, newYork),
-      lessThan(_widgetIndex(tester, moscow)),
+      _widgetIndex(tester, bali),
+      lessThan(_widgetIndex(tester, dubai)),
     );
+    expect(_widgetIndex(tester, dubai), lessThan(_widgetIndex(tester, phuket)));
     expect(find.text('recent'), findsNothing);
     expect(find.text('static'), findsNothing);
   });
@@ -12396,7 +12387,7 @@ void main() {
       (tester) async {
     SharedPreferences.setMockInitialValues({
       eventRecentCitySelectionsPrefsKey: const <String>[
-        '{"countryCode":"IT","cityKey":"rome"}',
+        '{"countryCode":"ID","cityKey":"bali"}',
       ],
     });
     currentUserDocument = _userFixture(
@@ -12414,13 +12405,13 @@ void main() {
     await tester.tap(find.byKey(eventListCitySelectorKey));
     await tester.pumpAndSettle();
     await tester.tap(
-        find.byKey(const ValueKey<String>('event_manual_city_option_IT_rome')));
+        find.byKey(const ValueKey<String>('event_manual_city_option_ID_bali')));
     await tester.pumpAndSettle();
 
-    expect(_citySelectorText('Рим · Italy'), findsNothing);
+    expect(_citySelectorText('Bali, Indonesia'), findsNothing);
     expect(find.byKey(eventListCitySelectorKey), findsNothing);
-    expect(find.text('Выберите город, чтобы увидеть события.'), findsNothing);
-    expect(find.byKey(const ValueKey<String>('event_city_chip_IT_rome')),
+    expect(find.text('Выберите локацию, чтобы увидеть события.'), findsNothing);
+    expect(find.byKey(const ValueKey<String>('event_city_chip_ID_bali')),
         findsNothing);
     expect(find.byKey(eventListCardShellKey), findsOneWidget);
     expect(currentUserDocument!.hasProfileCity(), isFalse);
@@ -12431,7 +12422,7 @@ void main() {
     final analyticsTracker = _RecordingEventsAnalyticsTracker();
     SharedPreferences.setMockInitialValues({
       eventRecentCitySelectionsPrefsKey: const <String>[
-        '{"countryCode":"IT","cityKey":"rome"}',
+        '{"countryCode":"ID","cityKey":"bali"}',
       ],
     });
     currentUserDocument = _userFixture(
@@ -12454,20 +12445,20 @@ void main() {
     await tester.tap(find.byKey(eventListCitySelectorKey));
     await tester.pumpAndSettle();
     await tester.tap(
-        find.byKey(const ValueKey<String>('event_manual_city_option_IT_rome')));
+        find.byKey(const ValueKey<String>('event_manual_city_option_ID_bali')));
     await tester.pumpAndSettle();
 
     expect(analyticsTracker.payloadsFor('city_selected'), [
       <String, String>{
-        'countryCode': 'IT',
-        'cityKey': 'rome',
+        'countryCode': 'ID',
+        'cityKey': 'bali',
         'citySource': 'recent',
       },
     ]);
     expect(analyticsTracker.payloadsFor('event_list_opened'), [
       <String, String>{
-        'countryCode': 'IT',
-        'cityKey': 'rome',
+        'countryCode': 'ID',
+        'cityKey': 'bali',
         'citySource': 'recent',
       },
     ]);
@@ -12495,13 +12486,13 @@ void main() {
     await tester.tap(find.byKey(eventListCitySelectorKey));
     await tester.pumpAndSettle();
     await tester.tap(find
-        .byKey(const ValueKey<String>('event_manual_city_option_RU_moscow')));
+        .byKey(const ValueKey<String>('event_manual_city_option_AE_dubai')));
     await tester.pumpAndSettle();
 
     expect(analyticsTracker.payloadsFor('city_selected'), [
       <String, String>{
-        'countryCode': 'RU',
-        'cityKey': 'moscow',
+        'countryCode': 'AE',
+        'cityKey': 'dubai',
         'citySource': 'static',
       },
     ]);
@@ -12524,7 +12515,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey<String>('event_city_chip_GE_tbilisi')),
+    expect(find.byKey(const ValueKey<String>('event_city_chip_TH_phuket')),
         findsNothing);
 
     await tester.tap(find.byKey(eventListCitySelectorKey));
@@ -12535,16 +12526,16 @@ void main() {
     expect(searchField, findsNothing);
 
     await tester.ensureVisible(
-      find.byKey(const ValueKey<String>('event_manual_city_option_GE_tbilisi')),
+      find.byKey(const ValueKey<String>('event_manual_city_option_TH_phuket')),
     );
     await tester.pumpAndSettle();
 
     expect(
-      find.byKey(const ValueKey<String>('event_manual_city_option_GE_tbilisi')),
+      find.byKey(const ValueKey<String>('event_manual_city_option_TH_phuket')),
       findsOneWidget,
     );
-    expect(find.text('Тбилиси · საქართველო'), findsOneWidget);
-    expect(_citySelectorText('Тбилиси · საქართველო'), findsNothing);
+    expect(find.text('Phuket, Thailand'), findsOneWidget);
+    expect(_citySelectorText('Phuket, Thailand'), findsNothing);
   });
 
   testWidgets(
@@ -12573,7 +12564,7 @@ void main() {
     expect(_citySelectorText('Нью-Йорк · United States'), findsNothing);
     expect(find.byKey(eventListCitySelectorKey), findsNothing);
     expect(find.byKey(eventManualCitySearchFieldKey), findsNothing);
-    expect(find.text('Выберите город, чтобы увидеть события.'), findsNothing);
+    expect(find.text('Выберите локацию, чтобы увидеть события.'), findsNothing);
     expect(find.byKey(eventListCardShellKey), findsOneWidget);
     expect(currentUserDocument!.hasProfileCity(), isFalse);
   });
@@ -12950,14 +12941,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Выберите город заново'), findsOneWidget);
+      expect(find.text('Выберите локацию заново'), findsOneWidget);
       expect(
         find.text(
-          'Сохранённый город больше недоступен. Выберите актуальный город, чтобы увидеть события.',
+          'Сохранённая локация больше недоступна. Выберите актуальную локацию, чтобы увидеть события.',
         ),
         findsOneWidget,
       );
-      expect(find.text('Выберите город'), findsNothing);
+      expect(find.text('Выберите локацию'), findsNothing);
       expect(_citySelectorText('Москва · Россия'), findsNothing);
       expect(find.byKey(const ValueKey<String>('event_city_chip_RU_moscow')),
           findsNothing);
@@ -12999,7 +12990,7 @@ void main() {
     expect(find.text('Нью-Йорк · United States'), findsNothing);
     expect(find.byKey(eventListCitySelectorKey), findsNothing);
     expect(find.text('Москва · Россия'), findsNothing);
-    expect(find.text('Выберите город, чтобы увидеть события.'), findsNothing);
+    expect(find.text('Выберите локацию, чтобы увидеть события.'), findsNothing);
     expect(find.byKey(const ValueKey<String>('event_city_chip_RU_moscow')),
         findsNothing);
   });
@@ -13114,6 +13105,48 @@ const _catalog = EventCityCatalog(
       aliases: [],
       transliterations: [],
       priority: 95,
+    ),
+    EventCity(
+      countryCode: 'ID',
+      cityKey: 'bali',
+      cityNameRu: 'Bali',
+      cityNameEn: 'Bali',
+      regionCode: 'BA',
+      regionNameRu: 'Bali',
+      regionNameEn: 'Bali',
+      timeZoneId: 'Asia/Makassar',
+      cityDisplayContext: 'Indonesia',
+      aliases: [],
+      transliterations: [],
+      priority: 94,
+    ),
+    EventCity(
+      countryCode: 'AE',
+      cityKey: 'dubai',
+      cityNameRu: 'Dubai',
+      cityNameEn: 'Dubai',
+      regionCode: 'DU',
+      regionNameRu: 'Dubai',
+      regionNameEn: 'Dubai',
+      timeZoneId: 'Asia/Dubai',
+      cityDisplayContext: 'UAE',
+      aliases: [],
+      transliterations: [],
+      priority: 93,
+    ),
+    EventCity(
+      countryCode: 'TH',
+      cityKey: 'phuket',
+      cityNameRu: 'Phuket',
+      cityNameEn: 'Phuket',
+      regionCode: '83',
+      regionNameRu: 'Phuket',
+      regionNameEn: 'Phuket',
+      timeZoneId: 'Asia/Bangkok',
+      cityDisplayContext: 'Thailand',
+      aliases: [],
+      transliterations: [],
+      priority: 92,
     ),
   ],
 );
@@ -13372,11 +13405,11 @@ void _expectEventCardActionLabelsFit(WidgetTester tester) {
 EventSelectedCity _selectedCityFixture() {
   return EventSelectedCity(
     city: _cityFixture(
-      countryCode: 'RU',
-      cityKey: 'moscow',
-      cityNameRu: 'Москва',
-      cityNameEn: 'Moscow',
-      cityDisplayContext: 'Россия',
+      countryCode: 'US',
+      cityKey: 'new_york',
+      cityNameRu: 'New York',
+      cityNameEn: 'New York',
+      cityDisplayContext: 'US',
     ),
     source: EventCitySelectionSource.manual,
   );
@@ -13503,8 +13536,8 @@ void _setEventProfileFallbackViewer(String userId) {
     data: {
       'display_name': 'Fallback Viewer',
       'profileCity': _profileCityFixture(
-        countryCode: 'RU',
-        cityKey: 'moscow',
+        countryCode: 'US',
+        cityKey: 'new_york',
         catalogVersion: _catalog.catalogVersion,
       ).toMap(),
     },
@@ -13657,9 +13690,15 @@ ProfileCityStruct _profileCityFixture({
   required String cityKey,
   required String catalogVersion,
 }) {
+  // Most pre-existing widget fixtures used Moscow as their valid profile
+  // location. Keep those tests focused on their own behavior while ensuring
+  // every current-catalog profile now exercises a supported location.
+  final useCanonicalDefault = catalogVersion == _catalog.catalogVersion &&
+      countryCode == 'RU' &&
+      cityKey == 'moscow';
   return ProfileCityStruct(
-    countryCode: countryCode,
-    cityKey: cityKey,
+    countryCode: useCanonicalDefault ? 'US' : countryCode,
+    cityKey: useCanonicalDefault ? 'new_york' : cityKey,
     cityNameRu: 'Stored city',
     cityNameEn: 'Stored city',
     cityDisplayContext: 'Stored context',
@@ -13671,10 +13710,22 @@ UsersRecord _userFixture({
   required String uid,
   required Map<String, dynamic> data,
 }) {
+  final normalizedData = Map<String, dynamic>.from(data);
+  final profileCity = normalizedData['profileCity'];
+  if (!normalizedData.containsKey('Country_NS') && profileCity is Map) {
+    final countryCode = profileCity['countryCode'];
+    final cityKey = profileCity['cityKey'];
+    if (countryCode is String && cityKey is String) {
+      normalizedData['Country_NS'] = {
+        'code': countryCode,
+        'cityKey': cityKey,
+      };
+    }
+  }
   return UsersRecord.getDocumentFromData(
     {
       'uid': uid,
-      ...data,
+      ...normalizedData,
     },
     UsersRecord.collection.doc(uid),
   );

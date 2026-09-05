@@ -2,6 +2,7 @@ const CITY_KEY_RE = /^[a-z0-9]+(?:_[a-z0-9]+)*$/;
 const GENERATED_CITY_CATALOG = require(
     "./generated/event_city_catalog.generated.json",
 );
+const {isSupportedLocation} = require("./supported_locations");
 const CITY_CATALOG_VERSION = GENERATED_CITY_CATALOG.catalogVersion;
 const CITY_CATALOG_SOURCE_PATH = GENERATED_CITY_CATALOG.generatedFrom;
 const EVENT_CITY_CATALOG = Object.freeze(
@@ -141,6 +142,14 @@ function resolveEventCityIdentity(
   };
 }
 
+function resolveSupportedEventCityIdentity(countryCodeValue, cityKeyValue) {
+  const city = resolveEventCityIdentity(countryCodeValue, cityKeyValue);
+  if (!isSupportedLocation(city.countryCode, city.cityKey)) {
+    throw new EventCityCatalogError("cityKey", "unsupported_city");
+  }
+  return city;
+}
+
 module.exports = {
   CITY_CATALOG_VERSION,
   CITY_CATALOG_SOURCE_PATH,
@@ -152,5 +161,6 @@ module.exports = {
   buildCityLookup,
   normalizeEventCityIdentityInput,
   resolveEventCityIdentity,
+  resolveSupportedEventCityIdentity,
   validateEventCityCatalog,
 };

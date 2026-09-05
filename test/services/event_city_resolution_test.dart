@@ -23,8 +23,8 @@ void main() {
     test('resolves profile city to the canonical catalog city', () {
       final result = resolveSelectedEventCityFromProfileCity(
         profileCity: profileCityFixture(
-          countryCode: ' ru ',
-          cityKey: ' moscow ',
+          countryCode: ' us ',
+          cityKey: ' new_york ',
           cityNameRu: 'Wrong stored name',
           catalogVersion: catalog.catalogVersion,
         ),
@@ -33,10 +33,10 @@ void main() {
 
       expect(result.status, EventCityResolutionStatus.resolved);
       expect(result.hasResolvedCity, isTrue);
-      expect(result.city?.countryCode, 'RU');
-      expect(result.city?.cityKey, 'moscow');
-      expect(result.city?.cityNameRu, 'Москва');
-      expect(result.city?.timeZoneId, 'Europe/Moscow');
+      expect(result.city?.countryCode, 'US');
+      expect(result.city?.cityKey, 'new_york');
+      expect(result.city?.cityNameRu, 'Нью-Йорк');
+      expect(result.city?.timeZoneId, 'America/New_York');
     });
 
     test('does not resolve missing or empty profile city', () {
@@ -217,11 +217,11 @@ void main() {
       expect(resolveEventCityCountryCodeHintFromUserProfile(user: user), 'RU');
     });
 
-    test('uses profile city even when legacy fields conflict', () {
+    test('resolves a consistent supported user location', () {
       final user = userFixture(
         data: {
           'uid': 'uid-2',
-          'Country_NS': {'code': 'RU'},
+          'Country_NS': {'code': 'US', 'cityKey': 'new_york'},
           'preferences': {
             'preferredLocation': {'code': 'IT'},
           },
@@ -243,7 +243,34 @@ void main() {
       expect(result.status, EventCityResolutionStatus.resolved);
       expect(result.city?.countryCode, 'US');
       expect(result.city?.cityKey, 'new_york');
-      expect(resolveEventCityCountryCodeHintFromUserProfile(user: user), 'RU');
+      expect(resolveEventCityCountryCodeHintFromUserProfile(user: user), 'US');
+    });
+
+    test('rejects disagreeing supported user location identities', () {
+      final user = userFixture(
+        data: {
+          'uid': 'uid-inconsistent-location',
+          'Country_NS': {'code': 'ID', 'cityKey': 'bali'},
+          'profileCity': profileCityFixture(
+            countryCode: 'US',
+            cityKey: 'new_york',
+            catalogVersion: catalog.catalogVersion,
+          ).toMap(),
+        },
+      );
+
+      final result = resolveSelectedEventCityFromUserProfile(
+        user: user,
+        catalog: catalog,
+      );
+
+      expect(
+        result.status,
+        EventCityResolutionStatus.inconsistentUserLocation,
+      );
+      expect(result.city, isNull);
+      expect(result.hasResolvedCity, isFalse);
+      expect(resolveEventCityCountryCodeHintFromUserProfile(user: user), 'ID');
     });
   });
 
@@ -422,11 +449,11 @@ void main() {
       );
     });
 
-    test('does not let Country_NS override a valid profile city', () {
+    test('does not let an inconsistent Country_NS unlock a profile city', () {
       final user = userFixture(
         data: {
           'uid': 'uid-profile-city-with-country-hint',
-          'Country_NS': {'code': 'RU'},
+          'Country_NS': {'code': 'ID', 'cityKey': 'bali'},
           'profileCity': profileCityFixture(
             countryCode: 'US',
             cityKey: 'new_york',
@@ -440,21 +467,23 @@ void main() {
         catalog: catalog,
       );
 
-      expect(resolveEventCityCountryCodeHintFromUserProfile(user: user), 'RU');
-      expect(selectedCity.status, EventCityResolutionStatus.resolved);
-      expect(selectedCity.city?.countryCode, 'US');
-      expect(selectedCity.city?.cityKey, 'new_york');
+      expect(resolveEventCityCountryCodeHintFromUserProfile(user: user), 'ID');
+      expect(
+        selectedCity.status,
+        EventCityResolutionStatus.inconsistentUserLocation,
+      );
+      expect(selectedCity.city, isNull);
     });
   });
 }
 
 ProfileCityStruct profileCityFixture({
-  String? countryCode = 'RU',
-  String? cityKey = 'moscow',
-  String? cityNameRu = 'Москва',
-  String? cityNameEn = 'Moscow',
-  String? cityDisplayContext = 'Россия',
-  String? catalogVersion = 'events-city-catalog-mvp-2026-06-16',
+  String? countryCode = 'US',
+  String? cityKey = 'new_york',
+  String? cityNameRu = 'Нью-Йорк',
+  String? cityNameEn = 'New York',
+  String? cityDisplayContext = 'United States',
+  String? catalogVersion = 'supported-locations-2026-09-04',
 }) =>
     ProfileCityStruct(
       countryCode: countryCode,

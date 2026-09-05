@@ -4,6 +4,7 @@ import '/backend/backend.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/components/bottom_sheet_header.dart';
 import '/shared_pages/design/expatlio_design.dart';
+import '/services/supported_location_catalog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'edit_country_model.dart';
@@ -16,12 +17,16 @@ class EditCountryWidget extends StatefulWidget {
     required this.title,
     required this.selecte,
     this.persistSelectedCountryToUserCountry = true,
+    this.allowClear = false,
+    this.clearAction,
   });
 
   final Future Function(CountryStruct lang)? action;
   final String? title;
   final CountryStruct? selecte;
   final bool persistSelectedCountryToUserCountry;
+  final bool allowClear;
+  final Future Function()? clearAction;
 
   @override
   State<EditCountryWidget> createState() => _EditCountryWidgetState();
@@ -63,12 +68,16 @@ class _EditCountryWidgetState extends State<EditCountryWidget> {
             _model.selected,
             clearUnsetFields: false,
           ),
+          profileCity: resolveSupportedCountryStruct(_model.selected)
+              ?.toProfileCityStruct(serverTimestamp: true),
         ));
       }
       if (_model.selected != null) {
         await widget.action?.call(
           _model.selected!,
         );
+      } else if (widget.allowClear) {
+        await widget.clearAction?.call();
       }
     }
     if (mounted) {
@@ -98,7 +107,10 @@ class _EditCountryWidgetState extends State<EditCountryWidget> {
                 BottomSheetHeader(
                   title: valueOrDefault<String>(
                     widget.title,
-                    'Страна',
+                    FFLocalizations.of(context).getVariableText(
+                      ruText: 'Локация',
+                      enText: 'Location',
+                    ),
                   ),
                 ),
                 Flexible(
@@ -126,6 +138,35 @@ class _EditCountryWidgetState extends State<EditCountryWidget> {
                               },
                             ),
                           ),
+                          if (widget.allowClear) ...[
+                            SizedBox(height: ExpatlioDesign.space12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton(
+                                onPressed: () {
+                                  _model.selected = null;
+                                  safeSetState(() {});
+                                },
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: ExpatlioDesign.text,
+                                  side: const BorderSide(
+                                    color: ExpatlioDesign.border,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(
+                                      ExpatlioDesign.controlRadius,
+                                    ),
+                                  ),
+                                ),
+                                child: Text(
+                                  FFLocalizations.of(context).getVariableText(
+                                    ruText: 'Любая локация',
+                                    enText: 'Any location',
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ].addToEnd(SizedBox(height: ExpatlioDesign.space32)),
                       ),
                     ),

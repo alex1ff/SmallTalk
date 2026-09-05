@@ -16,6 +16,7 @@ import '/services/active_search_recovery.dart';
 import '/services/nearby_partner_count_cache.dart';
 import '/services/nearby_partner_preview_cache.dart';
 import '/services/match_coordinator.dart';
+import '/services/supported_location_catalog.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/components/no_balance_widget.dart';
 import '/components/promo_redeem_widget.dart';
@@ -641,6 +642,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     final countryCode = preferredLocation?.code.trim();
     if (countryCode != null && countryCode.isNotEmpty) {
       payload['countryCode'] = countryCode;
+      payload['cityKey'] = preferredLocation!.cityKey.trim();
     }
     return payload;
   }
@@ -1458,11 +1460,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
   }
 
   bool _hasCountryData(CountryStruct? country) {
-    if (country == null) {
-      return false;
-    }
-
-    return country.code.trim().isNotEmpty;
+    return isSupportedCountryStruct(country);
   }
 
   CountryStruct? _preferredLocation(UsersRecord? user) {
@@ -1666,14 +1664,15 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     );
     final currentLocation = _preferredLocation(currentUserDocument);
     safeSetState(() => _isLocationMenuOpen = true);
-    final selectedCode = await _showDashboardOptionsMenu<String>(
+    final selectedIdentity = await _showDashboardOptionsMenu<String>(
       anchorContext,
       options: [
         for (final country in countries)
           _DashboardMenuOption<String>(
-            value: country.code,
+            value: '${country.code}:${country.cityKey}',
             label: _preferredLocationLabel(context, country),
-            selected: country.code == currentLocation?.code,
+            selected: country.code == currentLocation?.code &&
+                country.cityKey == currentLocation?.cityKey,
           ),
         _DashboardMenuOption<String>(
           value: '',
@@ -1686,12 +1685,12 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       safeSetState(() => _isLocationMenuOpen = false);
     }
 
-    if (!mounted || selectedCode == null) {
+    if (!mounted || selectedIdentity == null) {
       return;
     }
 
     final livePreferredLocation = _preferredLocation(currentUserDocument);
-    if (selectedCode.isEmpty) {
+    if (selectedIdentity.isEmpty) {
       if (livePreferredLocation != null) {
         await _clearPreferredLocation();
       }
@@ -1699,13 +1698,16 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       return;
     }
 
-    if (selectedCode == livePreferredLocation?.code) {
+    final liveIdentity = livePreferredLocation == null
+        ? null
+        : '${livePreferredLocation.code}:${livePreferredLocation.cityKey}';
+    if (selectedIdentity == liveIdentity) {
       safeSetState(() {});
       return;
     }
 
     final selectedCountry = countries.firstWhere(
-      (country) => country.code == selectedCode,
+      (country) => '${country.code}:${country.cityKey}' == selectedIdentity,
     );
 
     await currentUserReference!.update(
@@ -1811,8 +1813,12 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     }
     if (preferredCountryCode != null && preferredCountryCode.isNotEmpty) {
       query = query.where(
-        'Country_NS.code',
+        'profileCity.countryCode',
         isEqualTo: preferredCountryCode,
+      );
+      query = query.where(
+        'profileCity.cityKey',
+        isEqualTo: preferredLocation!.cityKey,
       );
     }
     if (preferredPartnerLevel != null) {
@@ -1894,6 +1900,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     return nearbyPartnerCountCacheKey(
       languageCode: activeLanguage,
       countryCode: preferredLocation?.code ?? '',
+      cityKey: preferredLocation?.cityKey ?? '',
       partnerLevel: preferredPartnerLevel?.name ?? '',
     );
   }
@@ -1978,6 +1985,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     return nearbyPartnerPreviewCacheKey(
       languageCode: activeLanguage,
       countryCode: preferredLocation?.code ?? '',
+      cityKey: preferredLocation?.cityKey ?? '',
       partnerLevel: preferredPartnerLevel?.name ?? '',
     );
   }

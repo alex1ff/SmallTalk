@@ -72,7 +72,8 @@ class EventSelectedCityState {
   bool get hasOutdatedProfileCity =>
       profileStatus == EventCityResolutionStatus.staleCatalogVersion ||
       profileStatus == EventCityResolutionStatus.invalidIdentity ||
-      profileStatus == EventCityResolutionStatus.unknownCatalogCity;
+      profileStatus == EventCityResolutionStatus.unknownCatalogCity ||
+      profileStatus == EventCityResolutionStatus.inconsistentUserLocation;
 }
 
 EventSelectedCityState resolveEventSelectedCityState({
@@ -113,21 +114,6 @@ EventSelectedCityState resolveEventSelectedCityState({
     );
   }
 
-  if (profileResult.status == EventCityResolutionStatus.missingProfileCity) {
-    final defaultCountryCity =
-        catalog.defaultCityForCountryCode(countryCodeHint);
-    if (defaultCountryCity != null) {
-      return EventSelectedCityState(
-        profileStatus: profileResult.status,
-        countryCodeHint: countryCodeHint,
-        selected: EventSelectedCity(
-          city: defaultCountryCity,
-          source: EventCitySelectionSource.profile,
-        ),
-      );
-    }
-  }
-
   return EventSelectedCityState(
     profileStatus: profileResult.status,
     countryCodeHint: countryCodeHint,
@@ -141,7 +127,7 @@ EventSelectedCity? _resolveTemporarySelectedCity(
   if (input == null || input.source == EventCitySelectionSource.profile) {
     return null;
   }
-  final city = catalog.resolve(input.countryCode, input.cityKey);
+  final city = catalog.resolveSupported(input.countryCode, input.cityKey);
   if (city == null) {
     return null;
   }

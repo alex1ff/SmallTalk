@@ -172,7 +172,11 @@ void main() {
                 onChanged: (_) async {},
               ),
               StudentOnboardingCountryStep(
-                selectedCountry: CountryStruct(code: 'US', nameRu: 'США'),
+                selectedCountry: CountryStruct(
+                  code: 'US',
+                  cityKey: 'new_york',
+                  nameRu: 'New York, US',
+                ),
                 onChanged: (_) async {},
               ),
               StudentOnboardingLevelStep(
@@ -273,7 +277,7 @@ void main() {
       findsNothing,
     );
     expect(find.text('Язык изучения'), findsOneWidget);
-    expect(find.text('Ваша страна'), findsOneWidget);
+    expect(find.text('Ваша локация'), findsOneWidget);
     expect(find.text('Английский'), findsOneWidget);
     expect(
       tester
@@ -301,10 +305,10 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.byType(BottomSheet), findsNothing);
-    expect(find.text('Германия'), findsOneWidget);
-    await tester.tap(find.text('Германия'));
+    expect(find.text('Bali, Indonesia'), findsOneWidget);
+    await tester.tap(find.text('Bali, Indonesia'));
     await tester.pumpAndSettle();
-    expect(find.text('Германия'), findsOneWidget);
+    expect(find.text('Bali, Indonesia'), findsOneWidget);
 
     await tester.enterText(
       find.byKey(const ValueKey<String>('student_onboarding_name_field')),
@@ -517,7 +521,7 @@ void main() {
     expect(find.text('Русский'), findsNothing);
   });
 
-  testWidgets('country widget includes US in the reference country set',
+  testWidgets('location widget shows only the four supported locations',
       (tester) async {
     final appState = await _buildTestAppState(
       languages: _languagesCatalog(),
@@ -527,13 +531,10 @@ void main() {
       functions.countriesList().map((country) => country.nameRu).toList(),
       equals(
         const [
-          'США',
-          'Германия',
-          'Испания',
-          'Франция',
-          'Италия',
-          'Португалия',
-          'Нидерланды',
+          'New York, US',
+          'Bali, Indonesia',
+          'Dubai, UAE',
+          'Phuket, Thailand',
         ],
       ),
     );
@@ -551,16 +552,11 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('Германия'), findsOneWidget);
-    expect(find.text('Португалия'), findsOneWidget);
-    expect(find.text('США'), findsOneWidget);
-
-    await tester.enterText(find.byType(TextFormField), 'Порт');
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 1));
-
-    expect(find.text('Португалия'), findsOneWidget);
-    expect(find.text('Германия'), findsNothing);
+    expect(find.text('New York, US'), findsOneWidget);
+    expect(find.text('Bali, Indonesia'), findsOneWidget);
+    expect(find.text('Dubai, UAE'), findsOneWidget);
+    expect(find.text('Phuket, Thailand'), findsOneWidget);
+    expect(find.byType(TextFormField), findsNothing);
   });
 
   testWidgets('bottom bar adapts width and hides progress on the last page',
@@ -762,8 +758,16 @@ void main() {
               callbackAction: (_) async {},
             ),
             CountryCardWidget(
-              lang: CountryStruct(code: 'US', nameRu: 'США'),
-              currentSelected: CountryStruct(code: 'US', nameRu: 'США'),
+              lang: CountryStruct(
+                code: 'US',
+                cityKey: 'new_york',
+                nameRu: 'New York, US',
+              ),
+              currentSelected: CountryStruct(
+                code: 'US',
+                cityKey: 'new_york',
+                nameRu: 'New York, US',
+              ),
               callbackAction: (_) async {},
             ),
           ],

@@ -9,6 +9,7 @@ import '/flutter_flow/flutter_flow_util.dart';
 import '/flutter_flow/upload_data.dart';
 import '/components/basic_page_header.dart';
 import '/shared_pages/design/expatlio_design.dart';
+import '/services/supported_location_catalog.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import '/custom_code/actions/index.dart' as actions;
@@ -130,7 +131,9 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
     _model.nameTextController1?.text = currentUserDisplayName;
     _model.nameTextController2?.text = currentUserDisplayName;
     _selectedGender = currentUserDocument?.gender;
-    _selectedCountry = currentUserDocument?.countryNS;
+    _selectedCountry = canonicalSupportedCountryStruct(
+      currentUserDocument?.countryNS,
+    );
     _selectedLevel = currentUserDocument?.level;
     _selectedPurpose = currentUserDocument?.purpose.toList() ?? [];
     _model.genderTextController1?.text = _localizedGender(_selectedGender);
@@ -493,11 +496,6 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
   List<CountryStruct> _countryOptions() {
     final countries = functions.countriesList().toList(growable: true)
       ..sort((left, right) => left.index.compareTo(right.index));
-    final selectedCountry = _selectedCountry ?? currentUserDocument?.countryNS;
-    if (selectedCountry != null &&
-        !countries.any((country) => _sameCountry(country, selectedCountry))) {
-      countries.insert(0, selectedCountry);
-    }
     return countries;
   }
 
@@ -558,7 +556,12 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
     }
     final leftCode = left.code.trim().toLowerCase();
     final rightCode = right.code.trim().toLowerCase();
-    return leftCode.isNotEmpty && leftCode == rightCode;
+    final leftCityKey = left.cityKey.trim().toLowerCase();
+    final rightCityKey = right.cityKey.trim().toLowerCase();
+    return leftCode.isNotEmpty &&
+        leftCode == rightCode &&
+        leftCityKey.isNotEmpty &&
+        leftCityKey == rightCityKey;
   }
 
   bool _sameLanguage(LanguageStruct? left, LanguageStruct? right) {
@@ -645,7 +648,8 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
   }
 
   Future<void> _editCountry(BuildContext anchorContext) async {
-    final currentCountry = _selectedCountry ?? currentUserDocument?.countryNS;
+    final currentCountry = _selectedCountry ??
+        canonicalSupportedCountryStruct(currentUserDocument?.countryNS);
     safeSetState(() => _isCountryMenuOpen = true);
     final selected = await _showProfileEditOptionsMenu<CountryStruct>(
       anchorContext,
@@ -677,7 +681,11 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
             _localizedCountry(currentCountry);
       },
       persist: () async {
-        if (_sameCountry(selected, currentUserDocument?.countryNS)) {
+        final selectedLocation = resolveSupportedCountryStruct(selected);
+        final savedProfileLocation =
+            resolveSupportedProfileCity(currentUserDocument?.profileCity);
+        if (_sameCountry(selected, currentUserDocument?.countryNS) &&
+            selectedLocation?.identity == savedProfileLocation?.identity) {
           return;
         }
         await currentUserReference!.update(_profileUserUpdate(
@@ -686,10 +694,12 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
               selected,
               clearUnsetFields: false,
             ),
+            profileCity:
+                selectedLocation?.toProfileCityStruct(serverTimestamp: true),
           ),
         ));
       },
-      errorMessage: 'Не удалось обновить страну',
+      errorMessage: 'Не удалось обновить локацию',
     );
   }
 
@@ -1050,7 +1060,10 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
         onTap: (fieldContext) => _editGender(fieldContext, true),
       ),
       ProfileReadOnlyField(
-        label: FFLocalizations.of(context).getText('kem0gdl9' /* Страна */),
+        label: FFLocalizations.of(context).getVariableText(
+          ruText: 'Локация',
+          enText: 'Location',
+        ),
         value: _model.countryNSTextController?.text ?? '',
         menuOpen: _isCountryMenuOpen,
         onTap: _editCountry,
@@ -1120,7 +1133,10 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
         onTap: _editNativeLanguage,
       ),
       ProfileReadOnlyField(
-        label: FFLocalizations.of(context).getText('kem0gdl9' /* Страна */),
+        label: FFLocalizations.of(context).getVariableText(
+          ruText: 'Локация',
+          enText: 'Location',
+        ),
         value: _model.countryNSTextController?.text ?? '',
         menuOpen: _isCountryMenuOpen,
         onTap: _editCountry,

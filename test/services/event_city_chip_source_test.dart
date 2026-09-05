@@ -16,13 +16,13 @@ void main() {
   });
 
   group('EventCityChipSource', () {
-    test('returns recent city chips first and fills with static popular cities',
+    test('returns product order while preserving recent analytics sources',
         () async {
       final source = EventCityChipSource(
         recentStore: _MemoryRecentCityStore(
           [
-            identity('IT', 'rome'),
             identity('US', 'new_york'),
+            identity('ID', 'bali'),
           ],
         ),
       );
@@ -33,10 +33,10 @@ void main() {
       );
 
       expect(chips.map((chip) => chip.city.cityKey), [
-        'rome',
         'new_york',
-        'moscow',
-        'london',
+        'bali',
+        'dubai',
+        'phuket',
       ]);
       expect(chips.map((chip) => chip.source), [
         EventCitySelectionSource.recent,
@@ -46,22 +46,21 @@ void main() {
       ]);
     });
 
-    test('uses static popular fallback and country hint when recent is empty',
-        () async {
+    test('keeps product order despite a supported country hint', () async {
       final source = EventCityChipSource(
         recentStore: _MemoryRecentCityStore(),
       );
 
       final chips = await source.loadChips(
         catalog: catalog,
-        countryCodeHint: ' it ',
+        countryCodeHint: 'AE',
         maxChips: 3,
       );
 
       expect(chips.map((chip) => chip.city.identity), [
-        'IT:rome',
-        'RU:moscow',
         'US:new_york',
+        'ID:bali',
+        'AE:dubai',
       ]);
       expect(
         chips.map((chip) => chip.source).toSet(),
@@ -69,33 +68,33 @@ void main() {
       );
     });
 
-    test('country hint ranks only static chips and keeps recent order',
+    test('history and country hint never reorder the supported locations',
         () async {
       final source = EventCityChipSource(
         recentStore: _MemoryRecentCityStore(
           [
+            identity('AE', 'dubai'),
             identity('US', 'new_york'),
-            identity('IT', 'rome'),
           ],
         ),
       );
 
       final chips = await source.loadChips(
         catalog: catalog,
-        countryCodeHint: 'RU',
+        countryCodeHint: 'TH',
         maxChips: 4,
       );
 
       expect(chips.map((chip) => chip.city.identity), [
         'US:new_york',
-        'IT:rome',
-        'RU:moscow',
-        'RU:saint_petersburg',
+        'ID:bali',
+        'AE:dubai',
+        'TH:phuket',
       ]);
       expect(chips.map((chip) => chip.source), [
         EventCitySelectionSource.recent,
-        EventCitySelectionSource.recent,
         EventCitySelectionSource.static,
+        EventCitySelectionSource.recent,
         EventCitySelectionSource.static,
       ]);
     });
@@ -104,8 +103,8 @@ void main() {
       final source = EventCityChipSource(
         recentStore: _MemoryRecentCityStore(
           [
-            identity('RU', 'moscow'),
-            identity('RU', 'moscow'),
+            identity('ID', 'bali'),
+            identity('ID', 'bali'),
             identity('US', 'new_york'),
           ],
         ),
@@ -117,39 +116,39 @@ void main() {
       );
 
       expect(chips.map((chip) => chip.city.identity), [
-        'RU:moscow',
         'US:new_york',
-        'GB:london',
-        'RU:saint_petersburg',
+        'ID:bali',
+        'AE:dubai',
+        'TH:phuket',
       ]);
       expect(chips.first.source, EventCitySelectionSource.recent);
       expect(
-        chips.where((chip) => chip.city.identity == 'RU:moscow'),
+        chips.where((chip) => chip.city.identity == 'ID:bali'),
         hasLength(1),
       );
     });
 
-    test('dedupes by country code and city key pair, not city key only',
+    test('dedupes recent entries while keeping only supported locations',
         () async {
       final duplicateCityKeyCatalog = EventCityCatalog.fromMap({
         'catalogVersion': 'test',
         'cities': [
           cityFixture(
-            countryCode: 'CA',
-            cityKey: 'springfield',
-            displayContext: 'Canada',
+            countryCode: 'US',
+            cityKey: 'new_york',
+            displayContext: 'US',
             priority: 30,
           ),
           cityFixture(
-            countryCode: 'US',
-            cityKey: 'springfield',
-            displayContext: 'United States',
+            countryCode: 'ID',
+            cityKey: 'bali',
+            displayContext: 'Indonesia',
             priority: 20,
           ),
           cityFixture(
-            countryCode: 'MX',
-            cityKey: 'guadalajara',
-            displayContext: 'Mexico',
+            countryCode: 'AE',
+            cityKey: 'dubai',
+            displayContext: 'UAE',
             priority: 10,
           ),
         ],
@@ -157,8 +156,8 @@ void main() {
       final source = EventCityChipSource(
         recentStore: _MemoryRecentCityStore(
           [
-            identity('US', 'springfield'),
-            identity('US', 'springfield'),
+            identity('US', 'new_york'),
+            identity('US', 'new_york'),
           ],
         ),
       );
@@ -169,9 +168,9 @@ void main() {
       );
 
       expect(chips.map((chip) => chip.city.identity), [
-        'US:springfield',
-        'CA:springfield',
-        'MX:guadalajara',
+        'US:new_york',
+        'ID:bali',
+        'AE:dubai',
       ]);
       expect(chips.map((chip) => chip.source), [
         EventCitySelectionSource.recent,
@@ -182,12 +181,12 @@ void main() {
 
     test('excludes selected profile city from recent and static chips',
         () async {
-      final selectedCity = catalog.resolve('RU', 'moscow')!;
+      final selectedCity = catalog.resolve('US', 'new_york')!;
       final source = EventCityChipSource(
         recentStore: _MemoryRecentCityStore(
           [
-            identity('RU', 'moscow'),
-            identity('IT', 'rome'),
+            identity('US', 'new_york'),
+            identity('ID', 'bali'),
           ],
         ),
       );
@@ -200,9 +199,9 @@ void main() {
 
       expect(
         chips.map((chip) => chip.city.identity),
-        isNot(contains('RU:moscow')),
+        isNot(contains('US:new_york')),
       );
-      expect(chips.first.city.identity, 'IT:rome');
+      expect(chips.first.city.identity, 'ID:bali');
       expect(chips.first.source, EventCitySelectionSource.recent);
     });
 
@@ -213,7 +212,7 @@ void main() {
             identity('RU', 'unknown_city'),
             identity('RUS', 'moscow'),
             identity('RU', 'Moscow'),
-            identity('IT', 'rome'),
+            identity('AE', 'dubai'),
           ],
         ),
       );
@@ -224,11 +223,11 @@ void main() {
       );
 
       expect(chips.map((chip) => chip.city.identity), [
-        'IT:rome',
-        'RU:moscow',
         'US:new_york',
+        'ID:bali',
+        'AE:dubai',
       ]);
-      expect(chips.first.source, EventCitySelectionSource.recent);
+      expect(chips.last.source, EventCitySelectionSource.recent);
     });
 
     test(
@@ -251,7 +250,7 @@ void main() {
 
       expect(
         chips.map((chip) => chip.city.identity).toList(),
-        ['RU:moscow', 'US:new_york'],
+        ['US:new_york', 'ID:bali'],
       );
       expect(
         chips.map((chip) => chip.source).toSet(),

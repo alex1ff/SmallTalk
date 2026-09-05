@@ -1,3 +1,7 @@
+const {
+  normalizeSupportedLocation,
+} = require("./supported_locations");
+
 function normalizeString(value) {
   if (typeof value !== "string") {
     return "";
@@ -244,6 +248,22 @@ function readCountryCode(value) {
   }
 
   return "";
+}
+
+function readMatchCity(userData = {}) {
+  const profileCity = userData.profileCity;
+  if (!profileCity || typeof profileCity !== "object" ||
+      Array.isArray(profileCity)) {
+    return null;
+  }
+  const location = normalizeSupportedLocation(
+      profileCity.countryCode,
+      profileCity.cityKey,
+  );
+  return location ? {
+    countryCode: location.countryCode,
+    cityKey: location.cityKey,
+  } : null;
 }
 
 function readLevelValue(value) {
@@ -577,6 +597,7 @@ function buildMatchProfile(userId, userData = {}, requestedLanguage) {
     activeLanguageSource: activeLanguage.source || null,
     supportedLanguages: activeLanguage.supportedLanguages,
     country: readMatchCountry(userData) || null,
+    city: readMatchCity(userData),
     level: readMatchLevelValue(userData) || null,
     ratingAverage: readMatchRatingAverage(userData),
     ratingCount: readMatchRatingCount(userData),
@@ -639,6 +660,11 @@ function buildStoredMatchProfile(
         readCountryCode(storedMatchProfile.country) :
         "") ||
       null,
+    city:
+      readMatchCity(userData) ||
+      (preserveStoredValues ? readMatchCity({
+        profileCity: storedMatchProfile.city,
+      }) : null),
     level:
       readLevelValue(userData.level) ||
       (preserveStoredValues ? readLevelValue(storedMatchProfile.level) : "") ||

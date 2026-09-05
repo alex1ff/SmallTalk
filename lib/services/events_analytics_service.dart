@@ -268,6 +268,8 @@ class EventsAnalyticsService implements EventsAnalyticsTracker {
       return override(identity);
     }
     final catalog = await (_cityCatalogFuture ??= _cityCatalogLoader());
+    // Existing events remain measurable even when their city is no longer
+    // offered for new selections.
     return catalog.resolve(identity.countryCode, identity.cityKey) != null;
   }
 

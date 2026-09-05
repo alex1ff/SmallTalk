@@ -32,11 +32,21 @@ List<CountryStruct> countriesList() {
     // Popular English-speaking countries (index 1-6)
     CountryStruct(
       code: 'US',
-      nameEn: 'United States',
-      nameRu: 'США',
+      cityKey: 'new_york',
+      nameEn: 'New York, US',
+      nameRu: 'New York, US',
       flag: '🇺🇸',
       isPopular: true,
       index: 1,
+    ),
+    CountryStruct(
+      code: 'AE',
+      cityKey: 'dubai',
+      nameEn: 'Dubai, UAE',
+      nameRu: 'Dubai, UAE',
+      flag: '🇦🇪',
+      isPopular: true,
+      index: 3,
     ),
     CountryStruct(
       code: 'GB',
@@ -331,11 +341,12 @@ List<CountryStruct> countriesList() {
     ),
     CountryStruct(
       code: 'ID',
-      nameEn: 'Indonesia',
-      nameRu: 'Индонезия',
+      cityKey: 'bali',
+      nameEn: 'Bali, Indonesia',
+      nameRu: 'Bali, Indonesia',
       flag: '🇮🇩',
-      isPopular: false,
-      index: 37,
+      isPopular: true,
+      index: 2,
     ),
     CountryStruct(
       code: 'NO',
@@ -467,22 +478,20 @@ List<CountryStruct> countriesList() {
     ),
     CountryStruct(
       code: 'TH',
-      nameEn: 'Thailand',
-      nameRu: 'Таиланд',
+      cityKey: 'phuket',
+      nameEn: 'Phuket, Thailand',
+      nameRu: 'Phuket, Thailand',
       flag: '🇹🇭',
-      isPopular: false,
-      index: 54,
+      isPopular: true,
+      index: 4,
     ),
   ];
 
   const referenceCountryCodes = [
     'US',
-    'DE',
-    'ES',
-    'FR',
-    'IT',
-    'PT',
-    'NL',
+    'ID',
+    'AE',
+    'TH',
   ];
 
   return [

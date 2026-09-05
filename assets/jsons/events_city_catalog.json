@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "events-city-catalog-mvp-2026-06-16",
+  "catalogVersion": "supported-locations-2026-09-04",
   "cities": [
     {
       "countryCode": "RU",
@@ -182,6 +182,34 @@
       "aliases": ["Tbilisi", "Тбилиси"],
       "transliterations": ["Tbilisi"],
       "priority": 65
+    },
+    {
+      "countryCode": "ID",
+      "cityKey": "bali",
+      "nameRu": "Bali",
+      "nameEn": "Bali",
+      "regionCode": "BA",
+      "regionNameRu": "Bali",
+      "regionNameEn": "Bali",
+      "timeZoneId": "Asia/Makassar",
+      "displayContext": "Indonesia",
+      "aliases": ["Bali", "Бали"],
+      "transliterations": ["Bali"],
+      "priority": 94
+    },
+    {
+      "countryCode": "TH",
+      "cityKey": "phuket",
+      "nameRu": "Phuket",
+      "nameEn": "Phuket",
+      "regionCode": "83",
+      "regionNameRu": "Phuket",
+      "regionNameEn": "Phuket",
+      "timeZoneId": "Asia/Bangkok",
+      "displayContext": "Thailand",
+      "aliases": ["Phuket", "Пхукет"],
+      "transliterations": ["Phuket"],
+      "priority": 92
     }
   ]
 }

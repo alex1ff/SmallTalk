@@ -13,10 +13,11 @@ void main() {
     expect(
       nearbyPartnerCountCacheKey(
         languageCode: ' EN ',
-        countryCode: ' RU ',
+        countryCode: ' US ',
+        cityKey: ' NEW_YORK ',
         partnerLevel: ' Basic ',
       ),
-      '$nearbyPartnerCountPrefsPrefix|en|ru|basic',
+      '$nearbyPartnerCountPrefsPrefix|en|us|new_york|basic',
     );
   });
 

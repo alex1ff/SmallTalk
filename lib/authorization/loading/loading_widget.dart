@@ -10,6 +10,7 @@ import '/custom_code/actions/index.dart' as actions;
 import '/index.dart';
 import '/services/user_match_profile.dart';
 import '/services/voip_service.dart';
+import '/services/supported_location_catalog.dart';
 import 'loading_route_logic.dart';
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -99,14 +100,21 @@ class _LoadingWidgetState extends State<LoadingWidget> {
 
   LoadingRouteDestination? _resolveDestinationForUser(
       UsersRecord? userDocument) {
+    final hasSupportedLocation = hasConsistentSupportedUserLocation(
+      country: userDocument?.countryNS,
+      profileCity: userDocument?.profileCity,
+    );
     return resolveLoadingRouteDestination(
       role: userDocument?.role,
       acquaintance: userDocument?.hasAcquaintance() == true
           ? userDocument?.acquaintance
           : null,
-      isProfileComplete: userDocument?.hasIsProfileComplete() == true
-          ? userDocument?.isProfileComplete
-          : null,
+      isProfileComplete:
+          userDocument?.role == UserRole.student && !hasSupportedLocation
+              ? false
+              : userDocument?.hasIsProfileComplete() == true
+                  ? userDocument?.isProfileComplete
+                  : null,
       hasInferredStudentProfileCompletion:
           _hasInferredStudentProfileCompletion(userDocument),
       canUseNativeSpeakerShell: canUseNativeSpeakerShell(userDocument),

@@ -25,13 +25,14 @@ const {
 const {
   getReadOnlyUserVoipTokenState,
 } = require("./voip_tokens");
-const {
-  usageDocRef,
-} = require("./subscription_usage_shared");
+const {trialAccessRef} = require("./trial_access");
 const {
   getUtcDayKey,
   loadSameDayRepeatCandidateIds,
 } = require("./match_repeat_prevention");
+const {
+  normalizeSupportedLocation,
+} = require("./supported_locations");
 
 const USER_COLLECTION = "users";
 const DEFAULT_STUDENT_QUERY_LIMIT = 50;
@@ -156,25 +157,44 @@ function readCandidateLocation(userData = {}) {
   const matchProfile = readNestedObject(userData.matchProfile);
   const profileCity = readNestedObject(userData.profileCity);
   const matchProfileCity = readNestedObject(matchProfile.city);
-  const countryCode = readLocationCountryCode(userData.Country_NS) ||
-    readLocationCountryCode(matchProfile.country);
   const profileCityKey = normalizeSearchRequestCityKey(
     readCityKeyValue(profileCity),
   );
   const matchProfileCityKey = normalizeSearchRequestCityKey(
     readCityKeyValue(matchProfileCity),
   );
-  const cityKey = profileCityKey || matchProfileCityKey;
-  const cityCountryCode = profileCityKey ?
-    (readLocationCountryCode(profileCity) || countryCode) :
-    (matchProfileCityKey ?
-      (readLocationCountryCode(matchProfileCity) || countryCode) :
-      "");
-
-  return {
-    countryCode,
-    cityKey,
-    cityCountryCode,
+  const profileLocation = normalizeSupportedLocation(
+      readLocationCountryCode(profileCity),
+      profileCityKey,
+  );
+  const countryLocation = normalizeSupportedLocation(
+      readLocationCountryCode(userData.Country_NS),
+      readCityKeyValue(userData.Country_NS),
+  );
+  const matchingProfileLocation = profileLocation && countryLocation &&
+    profileLocation.identity === countryLocation.identity ?
+    profileLocation : null;
+  const storedMatchLocation = normalizeSupportedLocation(
+      readLocationCountryCode(matchProfileCity),
+      matchProfileCityKey,
+  );
+  const matchingStoredLocation = storedMatchLocation &&
+    readLocationCountryCode(matchProfile.country) ===
+      storedMatchLocation.countryCode ? storedMatchLocation : null;
+  // A stored match snapshot must not override an incomplete or conflicting
+  // current profile. It is only a fallback when both profile fields are absent.
+  const hasCurrentLocation = userData.Country_NS != null ||
+    userData.profileCity != null;
+  const location = hasCurrentLocation ?
+    matchingProfileLocation : matchingStoredLocation;
+  return location ? {
+    countryCode: location.countryCode,
+    cityKey: location.cityKey,
+    cityCountryCode: location.countryCode,
+  } : {
+    countryCode: "",
+    cityKey: "",
+    cityCountryCode: "",
   };
 }
 
@@ -219,10 +239,16 @@ function readPreferredLocation(filters = {}) {
     ),
   );
 
-  return {
-    countryCode,
-    cityKey: countryCode ? rawCityKey : "",
-    invalidCityFilter: Boolean(rawCityKey && !countryCode),
+  const location = normalizeSupportedLocation(countryCode, rawCityKey);
+  const hasAnyLocationValue = Boolean(countryCode || rawCityKey);
+  return location ? {
+    countryCode: location.countryCode,
+    cityKey: location.cityKey,
+    invalidCityFilter: false,
+  } : {
+    countryCode: "",
+    cityKey: "",
+    invalidCityFilter: hasAnyLocationValue,
   };
 }
 
@@ -742,7 +768,7 @@ function buildStudentQueueCandidateFromDocs({
   requesterId = "",
   requesterBlockedIds = [],
   requesterExcludedCandidateIds = [],
-  usageData = null,
+  trialData = null,
 }) {
   const requestData = readDocData(requestDoc);
   const userData = readDocData(userDoc);
@@ -772,7 +798,7 @@ function buildStudentQueueCandidateFromDocs({
   const accessDecision = buildStudentCallAccessDecision({
     userRole,
     userData,
-    usageData,
+    trialData,
     nowMillis,
   });
   if (!accessDecision.allowed) {
@@ -1162,18 +1188,18 @@ async function readUserDocsById(db, userIds = []) {
   return new Map(userDocs.map((doc) => [readDocId(doc), doc]));
 }
 
-async function readUsageDataByUserId(db, userIds = []) {
+async function readTrialDataByUserId(db, userIds = []) {
   const uniqueUserIds = Array.from(new Set(userIds.filter(Boolean)));
-  const usageDocs = await Promise.all(
+  const trialDocs = await Promise.all(
     uniqueUserIds.map(async (userId) => {
-      const usageDoc = await usageDocRef(db, userId).get();
+      const trialDoc = await trialAccessRef(db, userId).get();
       return [
         userId,
-        usageDoc && usageDoc.exists ? usageDoc.data() || null : null,
+        trialDoc && trialDoc.exists ? trialDoc.data() || null : null,
       ];
     }),
   );
-  return new Map(usageDocs);
+  return new Map(trialDocs);
 }
 
 async function collectStudentQueueCandidates({
@@ -1230,9 +1256,9 @@ async function collectStudentQueueCandidates({
     const studentUserIds = requestDocs
       .map((doc) => readRequestUserId(doc, readDocData(doc) || {}))
       .filter(Boolean);
-    const [studentUserDocsById, usageDataByUserId] = await Promise.all([
+    const [studentUserDocsById, trialDataByUserId] = await Promise.all([
       readUserDocsById(db, studentUserIds),
-      readUsageDataByUserId(db, studentUserIds),
+      readTrialDataByUserId(db, studentUserIds),
     ]);
     const pageCandidates = [];
     requestDocs.forEach((requestDoc) => {
@@ -1253,7 +1279,7 @@ async function collectStudentQueueCandidates({
         requesterId,
         requesterBlockedIds,
         requesterExcludedCandidateIds,
-        usageData: usageDataByUserId.get(userId) || null,
+        trialData: trialDataByUserId.get(userId) || null,
       });
       if (candidate) {
         pageCandidates.push(candidate);

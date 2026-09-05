@@ -2,6 +2,7 @@ import 'dart:collection';
 
 import '/backend/backend.dart';
 import 'event_city_catalog.dart';
+import 'supported_location_catalog.dart';
 
 typedef ProfileCitySaveWriter = Future<void> Function(
   DocumentReference userRef,
@@ -83,7 +84,7 @@ _ProfileCitySavePayload _buildProfileCitySavePayload({
     );
   }
 
-  final city = catalog.resolve(identity.countryCode, identity.cityKey);
+  final city = catalog.resolveSupported(identity.countryCode, identity.cityKey);
   if (city == null) {
     throw ProfileCitySaveException(
       code: ProfileCitySaveErrorCode.unknownCatalogCity,
@@ -119,6 +120,11 @@ Map<String, dynamic> _profileCityUpdateData(
 
   return UnmodifiableMapView<String, dynamic>(
     <String, dynamic>{
+      'Country_NS': UnmodifiableMapView<String, dynamic>(
+        resolveSupportedLocation(city.countryCode, city.cityKey)!
+            .toCountryStruct()
+            .toMap(),
+      ),
       'profileCity': UnmodifiableMapView<String, dynamic>(profileCityData),
     },
   );

@@ -145,6 +145,28 @@ test("start search input preserves malformed request id error shape", () => {
   );
 });
 
+test("start search input accepts only complete supported locations", () => {
+  const supported = normalizeStartSearchInput({
+    countryCode: " id ",
+    cityKey: " BALI ",
+  });
+  assert.equal(supported.preferredCountry, "ID");
+  assert.equal(supported.cityKey, "bali");
+
+  for (const payload of [
+    {countryCode: "US"},
+    {cityKey: "new_york"},
+    {countryCode: "US", cityKey: "los_angeles"},
+    {countryCode: "RU", cityKey: "moscow"},
+  ]) {
+    assert.throws(
+        () => normalizeStartSearchInput(payload),
+        (error) => error.code === "invalid-argument" &&
+          error.details?.reason === "unsupported_location",
+    );
+  }
+});
+
 test("start search request preserves missing language error shape", () => {
   assert.throws(
       () => buildStartSearchRequestData({

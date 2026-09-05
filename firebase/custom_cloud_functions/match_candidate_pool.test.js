@@ -61,7 +61,7 @@ function fakeDb({
   searchRequestDocsById = {},
   teacherDocs = [],
   userDocsById = {},
-  usageDocsById = {},
+  trialDocsById = {},
   privateTokenDocsById = {},
   repeatCompletionPaths = new Set(),
 }) {
@@ -87,24 +87,24 @@ function fakeDb({
           doc: (id) => ({
             get: async () => userDocsById[id] || doc(id, null, false),
             collection: (subcollectionName) => {
-              if (subcollectionName !== "usage") {
-                throw new Error(
-                  `Unexpected user subcollection: ${subcollectionName}`,
-                );
+              if (subcollectionName === "trialAccess") {
+                return {
+                  doc: (docId) => {
+                    if (docId !== "current") {
+                      throw new Error(`Unexpected trial access doc: ${docId}`);
+                    }
+                    return {
+                      get: async () =>
+                        trialDocsById[id] ?
+                          doc("current", trialDocsById[id]) :
+                          doc("current", null, false),
+                    };
+                  },
+                };
               }
-              return {
-                doc: (docId) => {
-                  if (docId !== "current") {
-                    throw new Error(`Unexpected usage doc: ${docId}`);
-                  }
-                  return {
-                    get: async () =>
-                      usageDocsById[id] ?
-                        doc("current", usageDocsById[id]) :
-                        doc("current", null, false),
-                  };
-                },
-              };
+              throw new Error(
+                `Unexpected user subcollection: ${subcollectionName}`,
+              );
             },
           }),
         };
@@ -169,6 +169,9 @@ function studentData(overrides = {}) {
     display_name: "Student A",
     learningLanguage: {code: "en"},
     level: {value: "B1"},
+    Country_NS: {code: "US", cityKey: "new_york"},
+    profileCity: {countryCode: "US", cityKey: "new_york"},
+    subscription: activeSubscriptionData(),
     giftMinutes: {
       minutes: 10,
       expiresAt: timestampFromMillis(fixedNowMillis + 60 * 60 * 1000),
@@ -183,6 +186,8 @@ function teacherData(overrides = {}) {
     display_name: "Teacher A",
     language_instruction_NS: {code: "en"},
     level: {value: "C1"},
+    Country_NS: {code: "US", cityKey: "new_york"},
+    profileCity: {countryCode: "US", cityKey: "new_york"},
     verif_NS: true,
     isAvailable: true,
     created_time: timestampFromMillis(fixedNowMillis - 300 * 1000),
@@ -200,16 +205,26 @@ function privateTokenData(overrides = {}) {
 
 function activeSubscriptionData() {
   return {
+    productId: "expatlio_1_Month",
+    periodType: "NORMAL",
     expiresAt: timestampFromMillis(fixedNowMillis + 60 * 60 * 1000),
   };
 }
 
-function dailyLimitUsageData() {
+function activeTrialSubscriptionData() {
   return {
-    dayKey: "2026-01-01",
-    dayDurationSeconds: 60 * 60,
-    weekKey: "2026-W01",
-    weekDurationSeconds: 60 * 60,
+    productId: "expatlio_trial_1_Month",
+    periodType: "TRIAL",
+    expiresAt: timestampFromMillis(fixedNowMillis + 60 * 60 * 1000),
+  };
+}
+
+function eligibleTrialData() {
+  return {
+    trialCallStatus: "eligible",
+    trialCallWindowExpiresAt: timestampFromMillis(
+        fixedNowMillis + 30 * 60 * 1000,
+    ),
   };
 }
 
@@ -495,8 +510,13 @@ test("student queue candidate honors candidate preferred level filter", () => {
   );
 });
 
-test("candidate location filter accepts country from profile fields", () => {
-  const countryMatch = buildStudentQueueCandidateFromDocs({
+test("candidate location filter accepts only a supported city pair", () => {
+  const selectedLocation = {
+    countryCode: "US",
+    cityKey: "new_york",
+    invalidCityFilter: false,
+  };
+  const locationMatch = buildStudentQueueCandidateFromDocs({
     requestDoc: doc("student-us", activeRequest({
       requestId: "request-student-us",
       userId: "student-us",
@@ -504,18 +524,14 @@ test("candidate location filter accepts country from profile fields", () => {
       filters: {},
     })),
     userDoc: doc("student-us", studentData({
-      Country_NS: {code: "us"},
-      profileCity: {key: "new_york"},
+      Country_NS: {code: "us", cityKey: "new_york"},
+      profileCity: {countryCode: "US", cityKey: "new_york"},
     })),
     language: "en",
     nowMillis: fixedNowMillis,
-    preferredLocation: {
-      countryCode: "US",
-      cityKey: "",
-      invalidCityFilter: false,
-    },
+    preferredLocation: selectedLocation,
   });
-  const countryFromMatchProfile = buildStudentQueueCandidateFromDocs({
+  const legacyCountryOnly = buildStudentQueueCandidateFromDocs({
     requestDoc: doc("student-profile-country", activeRequest({
       requestId: "request-student-profile-country",
       userId: "student-profile-country",
@@ -523,16 +539,13 @@ test("candidate location filter accepts country from profile fields", () => {
       filters: {},
     })),
     userDoc: doc("student-profile-country", studentData({
-      Country_NS: null,
-      matchProfile: {country: {value: "US"}},
+      Country_NS: {code: "US"},
+      profileCity: null,
+      matchProfile: null,
     })),
     language: "en",
     nowMillis: fixedNowMillis,
-    preferredLocation: {
-      countryCode: "US",
-      cityKey: "",
-      invalidCityFilter: false,
-    },
+    preferredLocation: selectedLocation,
   });
   const countryMismatch = buildStudentQueueCandidateFromDocs({
     requestDoc: doc("student-ca", activeRequest({
@@ -541,24 +554,23 @@ test("candidate location filter accepts country from profile fields", () => {
       userRef: {id: "student-ca"},
       filters: {},
     })),
-    userDoc: doc("student-ca", studentData({Country_NS: {code: "CA"}})),
+    userDoc: doc("student-ca", studentData({
+      Country_NS: {code: "CA"},
+      profileCity: {countryCode: "CA", cityKey: "new_york"},
+    })),
     language: "en",
     nowMillis: fixedNowMillis,
-    preferredLocation: {
-      countryCode: "US",
-      cityKey: "",
-      invalidCityFilter: false,
-    },
+    preferredLocation: selectedLocation,
   });
 
-  assert.equal(countryMatch.userId, "student-us");
-  assert.equal(countryMatch.matchQuality.locationTier, "country_exact");
-  assert.equal(countryMatch.matchQuality.locationDistance, 1);
-  assert.equal(countryFromMatchProfile.userId, "student-profile-country");
+  assert.equal(locationMatch.userId, "student-us");
+  assert.equal(locationMatch.matchQuality.locationTier, "city_exact");
+  assert.equal(locationMatch.matchQuality.locationDistance, 0);
+  assert.equal(legacyCountryOnly, null);
   assert.equal(countryMismatch, null);
 });
 
-test("candidate location falls back after empty legacy country field", () => {
+test("candidate location can read a supported stored match profile", () => {
   const candidate = buildStudentQueueCandidateFromDocs({
     requestDoc: doc("student-profile-country", activeRequest({
       requestId: "request-student-profile-country",
@@ -567,14 +579,18 @@ test("candidate location falls back after empty legacy country field", () => {
       filters: {},
     })),
     userDoc: doc("student-profile-country", studentData({
-      Country_NS: {},
-      matchProfile: {country: {code: "US"}},
+      Country_NS: null,
+      profileCity: null,
+      matchProfile: {
+        country: {code: "US"},
+        city: {countryCode: "US", cityKey: "new_york"},
+      },
     })),
     language: "en",
     nowMillis: fixedNowMillis,
     preferredLocation: {
       countryCode: "US",
-      cityKey: "",
+      cityKey: "new_york",
       invalidCityFilter: false,
     },
   });
@@ -597,8 +613,8 @@ test("candidate location filter requires selected city and country pair", () => 
       filters: {},
     })),
     userDoc: doc("student-ny", studentData({
-      Country_NS: {code: "US"},
-      profileCity: {key: " New_York "},
+      Country_NS: {code: "US", cityKey: "new_york"},
+      profileCity: {countryCode: "US", cityKey: " New_York "},
     })),
     language: "en",
     nowMillis: fixedNowMillis,
@@ -626,7 +642,11 @@ test("candidate location filter requires selected city and country pair", () => 
       userRef: {id: "student-us"},
       filters: {},
     })),
-    userDoc: doc("student-us", studentData({Country_NS: {code: "US"}})),
+    userDoc: doc("student-us", studentData({
+      Country_NS: {code: "US"},
+      profileCity: null,
+      matchProfile: null,
+    })),
     language: "en",
     nowMillis: fixedNowMillis,
     preferredLocation: selectedLocation,
@@ -639,13 +659,13 @@ test("candidate location filter requires selected city and country pair", () => 
   assert.equal(missingCity, null);
 });
 
-test("candidate location keeps profileCity source atomic", () => {
+test("candidate location rejects incomplete and disagreeing sources", () => {
   const selectedLocation = {
     countryCode: "US",
     cityKey: "new_york",
     invalidCityFilter: false,
   };
-  const profileCityWins = buildStudentQueueCandidateFromDocs({
+  const candidate = buildStudentQueueCandidateFromDocs({
     requestDoc: doc("student-profile-city", activeRequest({
       requestId: "request-student-profile-city",
       userId: "student-profile-city",
@@ -656,6 +676,7 @@ test("candidate location keeps profileCity source atomic", () => {
       Country_NS: {code: "US"},
       profileCity: {cityKey: "new_york"},
       matchProfile: {
+        country: {code: "CA"},
         city: {countryCode: "CA", cityKey: "new_york"},
       },
     })),
@@ -664,8 +685,42 @@ test("candidate location keeps profileCity source atomic", () => {
     preferredLocation: selectedLocation,
   });
 
-  assert.equal(profileCityWins.userId, "student-profile-city");
-  assert.equal(profileCityWins.matchQuality.candidateCityCountryCode, "US");
+  assert.equal(candidate, null);
+});
+
+test("stored match snapshot cannot override invalid current locations", () => {
+  for (const currentLocation of [
+    {Country_NS: {code: "US"}, profileCity: {cityKey: "new_york"}},
+    {
+      Country_NS: {code: "ID", cityKey: "bali"},
+      profileCity: {countryCode: "US", cityKey: "new_york"},
+    },
+    {Country_NS: {}, profileCity: null},
+  ]) {
+    const candidate = buildStudentQueueCandidateFromDocs({
+      requestDoc: doc("student-conflict", activeRequest({
+        requestId: "request-student-conflict",
+        userId: "student-conflict",
+        userRef: {id: "student-conflict"},
+        filters: {},
+      })),
+      userDoc: doc("student-conflict", studentData({
+        ...currentLocation,
+        matchProfile: {
+          country: {code: "US"},
+          city: {countryCode: "US", cityKey: "new_york"},
+        },
+      })),
+      language: "en",
+      nowMillis: fixedNowMillis,
+      preferredLocation: {
+        countryCode: "US",
+        cityKey: "new_york",
+        invalidCityFilter: false,
+      },
+    });
+    assert.equal(candidate, null);
+  }
 });
 
 test("student queue candidate honors candidate preferred location filter", () => {
@@ -700,7 +755,7 @@ test("student queue candidate honors candidate preferred location filter", () =>
       filters: {countryCode: "US", cityKey: "new_york"},
     })),
     userDoc: doc("student-city-flexible", studentData({
-      Country_NS: {code: "US"},
+      Country_NS: {code: "US", cityKey: "new_york"},
       profileCity: {countryCode: "US", cityKey: "new_york"},
     })),
     language: "en",
@@ -850,11 +905,14 @@ test("student queue candidate rejects users without call access", () => {
       })),
       userDoc: doc("student-limit", studentData({
         giftMinutes: null,
-        subscription: activeSubscriptionData(),
+        subscription: activeTrialSubscriptionData(),
       })),
       language: "en",
       nowMillis: fixedNowMillis,
-      usageData: dailyLimitUsageData(),
+      trialData: {
+        ...eligibleTrialData(),
+        trialCallStatus: "consumed",
+      },
     }),
     null,
   );
@@ -1910,19 +1968,21 @@ test("collectMatchCandidatePool scans beyond limit for exact student level", asy
 test("collectMatchCandidatePool ignores student level for teacher fallback", async () => {
   const db = fakeDb({
     teacherDocs: [
-      doc("teacher-fr", teacherData({
+      doc("teacher-bali", teacherData({
         level: null,
-        Country_NS: {code: "FR"},
+        Country_NS: {code: "ID", cityKey: "bali"},
+        profileCity: {countryCode: "ID", cityKey: "bali"},
         availableSince: timestampFromMillis(fixedNowMillis - 120 * 1000),
       })),
       doc("teacher-us", teacherData({
         level: {value: "C1"},
-        Country_NS: {code: "US"},
+        Country_NS: {code: "US", cityKey: "new_york"},
+        profileCity: {countryCode: "US", cityKey: "new_york"},
         availableSince: timestampFromMillis(fixedNowMillis - 60 * 1000),
       })),
     ],
     privateTokenDocsById: {
-      "teacher-fr": doc("teacher-fr", privateTokenData()),
+      "teacher-bali": doc("teacher-bali", privateTokenData()),
       "teacher-us": doc("teacher-us", privateTokenData()),
     },
   });
@@ -1932,7 +1992,8 @@ test("collectMatchCandidatePool ignores student level for teacher fallback", asy
     language: "en",
     requesterFilters: {
       preferredLevel: "C1",
-      countryCode: "FR",
+      countryCode: "ID",
+      cityKey: "bali",
     },
     now: new Date(fixedNowMillis),
     nowMillis: fixedNowMillis,
@@ -1943,12 +2004,12 @@ test("collectMatchCandidatePool ignores student level for teacher fallback", asy
 
   assert.deepEqual(
     result.candidates.map((candidate) => candidate.userId),
-    ["teacher-fr"],
+    ["teacher-bali"],
   );
   assert.equal(result.stats.teacherUsersScanned, 2);
   assert.equal(result.stats.teacherCandidates, 1);
   assert.equal(result.candidates[0].matchQuality.levelApplied, false);
-  assert.equal(result.candidates[0].matchQuality.locationTier, "country_exact");
+  assert.equal(result.candidates[0].matchQuality.locationTier, "city_exact");
 });
 
 test("collectMatchCandidatePool reads requester level for mutual student filter", async () => {
@@ -1995,7 +2056,7 @@ test("collectMatchCandidatePool reads requester level for mutual student filter"
   );
 });
 
-test("collectMatchCandidatePool filters candidates by selected country", async () => {
+test("collectMatchCandidatePool filters candidates by selected location", async () => {
   const db = fakeDb({
     studentRequestDocs: [
       doc("student-ca", activeRequest({
@@ -2012,15 +2073,23 @@ test("collectMatchCandidatePool filters candidates by selected country", async (
       })),
     ],
     teacherDocs: [
-      doc("teacher-us", teacherData({Country_NS: {code: "us"}})),
-      doc("teacher-ca", teacherData({Country_NS: {code: "CA"}})),
+      doc("teacher-us", teacherData({
+        Country_NS: {code: "us", cityKey: "new_york"},
+        profileCity: {countryCode: "US", cityKey: "new_york"},
+      })),
+      doc("teacher-ca", teacherData({
+        Country_NS: {code: "ID", cityKey: "bali"},
+        profileCity: {countryCode: "ID", cityKey: "bali"},
+      })),
     ],
     userDocsById: {
       "student-ca": doc("student-ca", studentData({
-        Country_NS: {code: "CA"},
+        Country_NS: {code: "ID", cityKey: "bali"},
+        profileCity: {countryCode: "ID", cityKey: "bali"},
       })),
       "student-us": doc("student-us", studentData({
-        Country_NS: {code: "US"},
+        Country_NS: {code: "US", cityKey: "new_york"},
+        profileCity: {countryCode: "US", cityKey: "new_york"},
       })),
     },
     privateTokenDocsById: {
@@ -2032,7 +2101,7 @@ test("collectMatchCandidatePool filters candidates by selected country", async (
   const result = await collectMatchCandidatePool({
     db,
     language: "en",
-    requesterFilters: {countryCode: "us"},
+    requesterFilters: {countryCode: "us", cityKey: "new_york"},
     now: new Date(fixedNowMillis),
     nowMillis: fixedNowMillis,
   });
@@ -2065,7 +2134,7 @@ test("collectMatchCandidatePool filters candidates by selected city", async () =
         profileCity: {countryCode: "US", cityKey: "los_angeles"},
       })),
       doc("teacher-ny-us", teacherData({
-        Country_NS: {code: "US"},
+        Country_NS: {code: "US", cityKey: "new_york"},
         profileCity: {countryCode: "US", cityKey: "new_york"},
       })),
     ],
@@ -2075,7 +2144,7 @@ test("collectMatchCandidatePool filters candidates by selected city", async () =
         profileCity: {countryCode: "CA", cityKey: "new_york"},
       })),
       "student-ny-us": doc("student-ny-us", studentData({
-        Country_NS: {code: "US"},
+        Country_NS: {code: "US", cityKey: "new_york"},
         profileCity: {countryCode: "US", cityKey: "new_york"},
       })),
     },
@@ -2123,10 +2192,12 @@ test("collectMatchCandidatePool scans beyond limit for location match", async ()
     ],
     userDocsById: {
       "student-ca": doc("student-ca", studentData({
-        Country_NS: {code: "CA"},
+        Country_NS: {code: "ID", cityKey: "bali"},
+        profileCity: {countryCode: "ID", cityKey: "bali"},
       })),
       "student-us": doc("student-us", studentData({
-        Country_NS: {code: "US"},
+        Country_NS: {code: "US", cityKey: "new_york"},
+        profileCity: {countryCode: "US", cityKey: "new_york"},
       })),
     },
   });
@@ -2134,7 +2205,7 @@ test("collectMatchCandidatePool scans beyond limit for location match", async ()
   const result = await collectMatchCandidatePool({
     db,
     language: "en",
-    requesterFilters: {countryCode: "US"},
+    requesterFilters: {countryCode: "US", cityKey: "new_york"},
     now: new Date(fixedNowMillis),
     nowMillis: fixedNowMillis,
     studentLimit: 1,
@@ -2157,7 +2228,7 @@ test("collectMatchCandidatePool reads requester location for mutual filter", asy
         requestId: "request-student-ca-only",
         userId: "student-ca-only",
         userRef: {id: "student-ca-only"},
-        filters: {countryCode: "CA"},
+        filters: {countryCode: "ID", cityKey: "bali"},
       })),
       doc("student-us-city", activeRequest({
         requestId: "request-student-us-city",
@@ -2168,14 +2239,16 @@ test("collectMatchCandidatePool reads requester location for mutual filter", asy
     ],
     userDocsById: {
       "requester-a": doc("requester-a", studentData({
-        Country_NS: {code: "US"},
+        Country_NS: {code: "US", cityKey: "new_york"},
         profileCity: {countryCode: "US", cityKey: "new_york"},
       })),
       "student-ca-only": doc("student-ca-only", studentData({
-        Country_NS: {code: "US"},
+        Country_NS: {code: "US", cityKey: "new_york"},
+        profileCity: {countryCode: "US", cityKey: "new_york"},
       })),
       "student-us-city": doc("student-us-city", studentData({
-        Country_NS: {code: "US"},
+        Country_NS: {code: "US", cityKey: "new_york"},
+        profileCity: {countryCode: "US", cityKey: "new_york"},
       })),
     },
   });
@@ -2184,7 +2257,7 @@ test("collectMatchCandidatePool reads requester location for mutual filter", asy
     db,
     requesterId: "requester-a",
     language: "en",
-    requesterFilters: {countryCode: "US"},
+    requesterFilters: {countryCode: "US", cityKey: "new_york"},
     now: new Date(fixedNowMillis),
     nowMillis: fixedNowMillis,
   });
@@ -2774,12 +2847,15 @@ test("collectMatchCandidatePool scans past students without call access", async 
       })),
       "student-limit": doc("student-limit", studentData({
         giftMinutes: null,
-        subscription: activeSubscriptionData(),
+        subscription: activeTrialSubscriptionData(),
       })),
       "student-a": doc("student-a", studentData()),
     },
-    usageDocsById: {
-      "student-limit": dailyLimitUsageData(),
+    trialDocsById: {
+      "student-limit": {
+        ...eligibleTrialData(),
+        trialCallStatus: "consumed",
+      },
     },
   });
 

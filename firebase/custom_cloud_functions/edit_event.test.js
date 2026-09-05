@@ -977,6 +977,33 @@ test("editEvent callable validates city before transaction writes", async () => 
   }
 });
 
+test("editEvent callable rejects known legacy locations before reads", async () => {
+  for (const location of [
+    {countryCode: "RU", cityKey: "moscow"},
+    {countryCode: "IT", cityKey: "rome"},
+  ]) {
+    const {db, reads, writes} = createFakeFirestore({
+      "events/event-1": eventData(),
+    });
+
+    await withAdminFirestore(db, async () => {
+      await assertRejectsHttpsError(
+          () => editEvent.run(
+              cloneValidEditRequest(location),
+              {auth: {uid: "uid"}},
+          ),
+          "invalid-argument",
+          "invalid_edit_request",
+          "cityKey",
+          "unsupported_city",
+      );
+    });
+
+    assert.deepEqual(reads, []);
+    assert.deepEqual(writes, []);
+  }
+});
+
 test("editEvent callable validates startsAt against trusted backend time",
     async () => {
       for (const startsAt of [
@@ -1020,7 +1047,11 @@ test("editEvent callable lets organizer edit active future event", async () => {
   await withAdminFirestore(db, async () => {
     await withSequencedDate(["2026-06-16T10:00:00.000Z"], async () => {
       const response = await editEvent.run(
-          cloneValidEditRequest({title: " Organizer update "}),
+          cloneValidEditRequest({
+            title: " Organizer update ",
+            countryCode: "US",
+            cityKey: "new_york",
+          }),
           {auth: {uid: "uid"}},
       );
 
@@ -1067,7 +1098,11 @@ test("editEvent callable rejects non-organizer without writes", async () => {
   await withAdminFirestore(db, async () => {
     await assertRejectsHttpsError(
         () => editEvent.run(
-            cloneValidEditRequest({title: " Non organizer update "}),
+            cloneValidEditRequest({
+              title: " Non organizer update ",
+              countryCode: "US",
+              cityKey: "new_york",
+            }),
             {auth: {uid: "uid"}},
         ),
         "permission-denied",

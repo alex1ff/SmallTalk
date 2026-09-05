@@ -251,7 +251,7 @@ void main() {
     expect(_levelSelectorText('B1-C1'), findsOneWidget);
     expect(find.byKey(eventCreateCityLabelKey), findsOneWidget);
     expect(find.byKey(eventCreateCitySelectorKey), findsOneWidget);
-    expect(find.text('Город'), findsOneWidget);
+    expect(find.text('Локация'), findsOneWidget);
     expect(find.byKey(eventCreateLocationLabelKey), findsOneWidget);
     expect(find.byKey(eventCreateLocationFieldKey), findsOneWidget);
     expect(find.text('Место'), findsOneWidget);
@@ -340,7 +340,7 @@ void main() {
     );
     expect(find.text('Level'), findsOneWidget);
     expect(_levelSelectorText('B1-C1'), findsOneWidget);
-    expect(find.text('City'), findsOneWidget);
+    expect(find.text('Location'), findsOneWidget);
     expect(find.text('Place'), findsOneWidget);
     expect(find.text('Cafe, address, or landmark'), findsOneWidget);
     expect(find.text('Date'), findsOneWidget);
@@ -802,10 +802,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(eventCreateCityLabelKey), findsOneWidget);
-    expect(find.text('Город'), findsOneWidget);
-    expect(_citySelectorText('Выберите город'), findsOneWidget);
+    expect(find.text('Локация'), findsOneWidget);
+    expect(_citySelectorText('Выберите локацию'), findsOneWidget);
     expect(
-      find.text('Выберите город события из списка.'),
+      find.text('Выберите локацию события из списка.'),
       findsOneWidget,
     );
     expect(find.byKey(eventCreateCityOptionKey(_moscowCity)), findsNothing);
@@ -823,12 +823,12 @@ void main() {
     expect(find.byKey(eventCreateCityOptionKey(_newYorkCity)), findsOneWidget);
   });
 
-  testWidgets('uses country hint to order city dropdown options',
+  testWidgets('keeps product order despite profile country hint',
       (tester) async {
     currentUserDocument = _userFixture(
       uid: 'country-hint-user',
       data: const {
-        'Country_NS': {'code': 'US'},
+        'Country_NS': {'code': 'AE'},
       },
     );
 
@@ -849,15 +849,21 @@ void main() {
     await tester.tap(find.byKey(eventCreateCitySelectorKey));
     await tester.pumpAndSettle();
 
-    expect(
-      _widgetIndex(tester, find.byKey(eventCreateCityOptionKey(_newYorkCity))),
-      lessThan(
-        _widgetIndex(tester, find.byKey(eventCreateCityOptionKey(_moscowCity))),
-      ),
-    );
+    final optionPositions = [
+      _newYorkCity,
+      _romeCity,
+      _moscowCity,
+      _phuketCity,
+    ]
+        .map((city) => _widgetIndex(
+              tester,
+              find.byKey(eventCreateCityOptionKey(city)),
+            ))
+        .toList();
+    expect(optionPositions, orderedEquals([...optionPositions]..sort()));
   });
 
-  testWidgets('uses country-only profile data as default city draft',
+  testWidgets('requires a location when profile contains only a legacy country',
       (tester) async {
     final drafts = <EventCreateCityDraft>[];
     currentUserDocument = _userFixture(
@@ -878,11 +884,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(_citySelectorText('Нью-Йорк · United States'), findsOneWidget);
-    expect(find.text('Выберите город события из списка.'), findsNothing);
-    expect(drafts.map(_cityDraftValue), [
-      'US:new_york:America/New_York:profile',
-    ]);
+    expect(_citySelectorText('Выберите локацию'), findsOneWidget);
+    expect(find.text('Выберите локацию события из списка.'), findsOneWidget);
+    expect(drafts, isEmpty);
   });
 
   testWidgets('uses resolved profile city as default submit draft',
@@ -891,10 +895,10 @@ void main() {
     currentUserDocument = _userFixture(
       uid: 'profile-city-user',
       data: {
-        'Country_NS': {'code': 'US'},
+        'Country_NS': {'code': 'AE', 'cityKey': 'dubai'},
         'profileCity': _profileCityFixture(
-          countryCode: 'RU',
-          cityKey: 'moscow',
+          countryCode: 'AE',
+          cityKey: 'dubai',
           catalogVersion: _cityCatalog.catalogVersion,
         ).toMap(),
       },
@@ -911,10 +915,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(_citySelectorText('Москва · Россия'), findsOneWidget);
+    expect(_citySelectorText('Dubai, UAE'), findsOneWidget);
     expect(find.textContaining('Stored city'), findsNothing);
     expect(find.byKey(eventCreateCityChipKey(_moscowCity)), findsNothing);
-    expect(drafts.map(_cityDraftValue), ['RU:moscow:Europe/Moscow:profile']);
+    expect(drafts.map(_cityDraftValue), ['AE:dubai:Asia/Dubai:profile']);
   });
 
   testWidgets('shows stale profile city prompt without draft', (tester) async {
@@ -923,8 +927,8 @@ void main() {
       uid: 'stale-profile-city-user',
       data: {
         'profileCity': _profileCityFixture(
-          countryCode: 'RU',
-          cityKey: 'moscow',
+          countryCode: 'AE',
+          cityKey: 'dubai',
           catalogVersion: 'old-version',
         ).toMap(),
       },
@@ -941,10 +945,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(_citySelectorText('Выберите город заново'), findsOneWidget);
+    expect(_citySelectorText('Выберите локацию заново'), findsOneWidget);
     expect(
       find.text(
-        'Сохранённый город больше недоступен. Выберите актуальный город для события.',
+        'Сохранённая локация больше недоступна. Выберите актуальную локацию для события.',
       ),
       findsOneWidget,
     );
@@ -966,7 +970,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(_citySelectorText('Загрузка городов...'), findsOneWidget);
+    expect(_citySelectorText('Загрузка локаций...'), findsOneWidget);
     expect(find.byKey(eventCreateCityOptionKey(_moscowCity)), findsNothing);
     expect(find.byKey(eventCreateCityOptionKey(_newYorkCity)), findsNothing);
   });
@@ -993,7 +997,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(_citySelectorText('Загрузка городов...'), findsOneWidget);
+    expect(_citySelectorText('Загрузка локаций...'), findsOneWidget);
     expect(drafts, isEmpty);
 
     setHostState(() {
@@ -1001,8 +1005,8 @@ void main() {
         uid: 'late-profile-city-user',
         data: {
           'profileCity': _profileCityFixture(
-            countryCode: 'RU',
-            cityKey: 'moscow',
+            countryCode: 'AE',
+            cityKey: 'dubai',
             catalogVersion: _cityCatalog.catalogVersion,
           ).toMap(),
         },
@@ -1010,8 +1014,8 @@ void main() {
     });
     await tester.pumpAndSettle();
 
-    expect(_citySelectorText('Москва · Россия'), findsOneWidget);
-    expect(drafts.map(_cityDraftValue), ['RU:moscow:Europe/Moscow:profile']);
+    expect(_citySelectorText('Dubai, UAE'), findsOneWidget);
+    expect(drafts.map(_cityDraftValue), ['AE:dubai:Asia/Dubai:profile']);
   });
 
   testWidgets('updates stale profile prompt when user document arrives later',
@@ -1036,15 +1040,15 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(_citySelectorText('Загрузка городов...'), findsOneWidget);
+    expect(_citySelectorText('Загрузка локаций...'), findsOneWidget);
 
     setHostState(() {
       currentUserDocument = _userFixture(
         uid: 'late-stale-profile-city-user',
         data: {
           'profileCity': _profileCityFixture(
-            countryCode: 'RU',
-            cityKey: 'moscow',
+            countryCode: 'AE',
+            cityKey: 'dubai',
             catalogVersion: 'old-version',
           ).toMap(),
         },
@@ -1052,10 +1056,10 @@ void main() {
     });
     await tester.pumpAndSettle();
 
-    expect(_citySelectorText('Выберите город заново'), findsOneWidget);
+    expect(_citySelectorText('Выберите локацию заново'), findsOneWidget);
     expect(
       find.text(
-        'Сохранённый город больше недоступен. Выберите актуальный город для события.',
+        'Сохранённая локация больше недоступна. Выберите актуальную локацию для события.',
       ),
       findsOneWidget,
     );
@@ -1089,8 +1093,8 @@ void main() {
     await tester.tap(find.byKey(eventCreateCityOptionKey(_moscowCity)));
     await tester.pumpAndSettle();
 
-    expect(_citySelectorText('Москва · Россия'), findsOneWidget);
-    expect(drafts.map(_cityDraftValue), ['RU:moscow:Europe/Moscow:static']);
+    expect(_citySelectorText('Dubai, UAE'), findsOneWidget);
+    expect(drafts.map(_cityDraftValue), ['AE:dubai:Asia/Dubai:static']);
   });
 
   testWidgets('opens city dropdown and selects city option', (tester) async {
@@ -1122,8 +1126,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(eventCreateCitySheetKey), findsNothing);
-    expect(_citySelectorText('Рим · Italia'), findsOneWidget);
-    expect(drafts.map(_cityDraftValue), ['IT:rome:Europe/Rome:static']);
+    expect(_citySelectorText('Bali, Indonesia'), findsOneWidget);
+    expect(drafts.map(_cityDraftValue), ['ID:bali:Asia/Makassar:static']);
   });
 
   testWidgets('edit mode city selection does not update recent city store',
@@ -1160,7 +1164,7 @@ void main() {
     await tester.tap(find.byKey(eventCreateCityOptionKey(_romeCity)));
     await tester.pumpAndSettle();
 
-    expect(_citySelectorText('Рим · Italia'), findsOneWidget);
+    expect(_citySelectorText('Bali, Indonesia'), findsOneWidget);
     expect(
       (await recentStore.load()).map(
         (city) => '${city.countryCode}:${city.cityKey}',
@@ -1202,7 +1206,7 @@ void main() {
     });
     await tester.pumpAndSettle();
 
-    expect(drafts.map(_cityDraftValue), ['IT:rome:Europe/Rome:manual']);
+    expect(drafts.map(_cityDraftValue), ['ID:bali:Asia/Makassar:manual']);
   });
 
   testWidgets('emits default empty location draft for submit handoff',
@@ -1404,7 +1408,7 @@ void main() {
 
     expect(find.text('Введите название'), findsNothing);
     expect(find.text('Введите описание'), findsNothing);
-    expect(find.text('Выберите город события'), findsNothing);
+    expect(find.text('Выберите локацию события'), findsNothing);
     expect(find.text('Введите место'), findsNothing);
 
     await tester.tap(find.byKey(eventCreateSubmitButtonKey));
@@ -1412,7 +1416,7 @@ void main() {
 
     expect(find.text('Введите название'), findsOneWidget);
     expect(find.text('Введите описание'), findsOneWidget);
-    expect(find.text('Выберите город события'), findsOneWidget);
+    expect(find.text('Выберите локацию события'), findsOneWidget);
     expect(find.text('Введите место'), findsOneWidget);
     expect(find.text('Введите лимит участников'), findsNothing);
   });
@@ -1434,7 +1438,7 @@ void main() {
 
     expect(find.text('Enter title'), findsOneWidget);
     expect(find.text('Enter description'), findsOneWidget);
-    expect(find.text('Choose event city'), findsOneWidget);
+    expect(find.text('Choose event location'), findsOneWidget);
     expect(find.text('Enter place'), findsOneWidget);
   });
 
@@ -1478,7 +1482,7 @@ void main() {
     expect(find.text('Введите название'), findsOneWidget);
     expect(find.text('Введите описание'), findsOneWidget);
     expect(find.text('Введите место'), findsOneWidget);
-    expect(find.text('Выберите город события'), findsNothing);
+    expect(find.text('Выберите локацию события'), findsNothing);
     expect(find.text('Введите лимит участников'), findsNothing);
     expect(generatedRequestIds, isEmpty);
     expect(submitCount, 0);
@@ -1516,7 +1520,7 @@ void main() {
     expect(find.text('Введите лимит участников'), findsOneWidget);
     expect(find.text('Введите название'), findsNothing);
     expect(find.text('Введите описание'), findsNothing);
-    expect(find.text('Выберите город события'), findsNothing);
+    expect(find.text('Выберите локацию события'), findsNothing);
     expect(find.text('Введите место'), findsNothing);
   });
 
@@ -1548,7 +1552,7 @@ void main() {
     expect(find.text('Введите лимит участников'), findsNothing);
     expect(find.text('Введите название'), findsNothing);
     expect(find.text('Введите описание'), findsNothing);
-    expect(find.text('Выберите город события'), findsNothing);
+    expect(find.text('Выберите локацию события'), findsNothing);
     expect(find.text('Введите место'), findsNothing);
   });
 
@@ -1611,7 +1615,7 @@ void main() {
     expect(find.text('Укажите минимум 2 участника'), findsNothing);
     expect(find.text('Введите название'), findsNothing);
     expect(find.text('Введите описание'), findsNothing);
-    expect(find.text('Выберите город события'), findsNothing);
+    expect(find.text('Выберите локацию события'), findsNothing);
     expect(find.text('Введите место'), findsNothing);
   });
 
@@ -1806,7 +1810,7 @@ void main() {
 
     expect(find.text('Введите название'), findsOneWidget);
     expect(find.text('Введите описание'), findsOneWidget);
-    expect(find.text('Выберите город события'), findsOneWidget);
+    expect(find.text('Выберите локацию события'), findsOneWidget);
     expect(find.text('Введите место'), findsOneWidget);
     expect(submitCount, 0);
 
@@ -1831,7 +1835,7 @@ void main() {
 
     expect(find.text('Введите название'), findsNothing);
     expect(find.text('Введите описание'), findsNothing);
-    expect(find.text('Выберите город события'), findsNothing);
+    expect(find.text('Выберите локацию события'), findsNothing);
     expect(find.text('Введите место'), findsNothing);
     expect(find.text('Введите лимит участников'), findsNothing);
     expect(find.byType(EventCreateWidget), findsOneWidget);
@@ -1947,8 +1951,8 @@ void main() {
           .payloadsFor(EventsAnalyticsService.eventCreatedEventName),
       [
         <String, String>{
-          'countryCode': 'IT',
-          'cityKey': 'rome',
+          'countryCode': 'ID',
+          'cityKey': 'bali',
           'citySource': 'manual',
         },
       ],
@@ -2066,8 +2070,8 @@ void main() {
           .payloadsFor(EventsAnalyticsService.eventCreatedEventName),
       [
         <String, String>{
-          'countryCode': 'IT',
-          'cityKey': 'rome',
+          'countryCode': 'ID',
+          'cityKey': 'bali',
           'citySource': 'manual',
         },
       ],
@@ -2566,7 +2570,7 @@ void main() {
 
   testWidgets('future initial time clears previous start time error',
       (tester) async {
-    var initialTime = const TimeOfDay(hour: 18, minute: 0);
+    var initialTime = const TimeOfDay(hour: 19, minute: 0);
     late StateSetter setHostState;
 
     await tester.pumpWidget(
@@ -2599,7 +2603,7 @@ void main() {
     expect(find.text('Выберите будущие дату и время.'), findsOneWidget);
 
     setHostState(() {
-      initialTime = const TimeOfDay(hour: 18, minute: 1);
+      initialTime = const TimeOfDay(hour: 19, minute: 1);
     });
     await tester.pumpAndSettle();
 
@@ -3045,7 +3049,7 @@ void main() {
           tester.getSemantics(find.byKey(eventCreateCitySelectorSemanticsKey));
       expect(citySemantics.flagsCollection.isButton, isTrue);
       expect(citySemantics.flagsCollection.isEnabled, isTrue);
-      expect(citySemantics.label, contains('Город события'));
+      expect(citySemantics.label, contains('Локация события'));
       expect(citySemantics.value, isNotEmpty);
       final locationSemantics =
           tester.getSemantics(find.byKey(eventCreateLocationFieldSemanticsKey));
@@ -3124,7 +3128,7 @@ void main() {
           tester.getSemantics(find.byKey(eventCreateCitySelectorSemanticsKey));
       expect(citySemantics.flagsCollection.isButton, isTrue);
       expect(citySemantics.flagsCollection.isEnabled, isTrue);
-      expect(citySemantics.label, contains('Event city'));
+      expect(citySemantics.label, contains('Event location'));
       expect(citySemantics.value, isNotEmpty);
       final locationSemantics =
           tester.getSemantics(find.byKey(eventCreateLocationFieldSemanticsKey));
@@ -3650,7 +3654,7 @@ void main() {
     expect(submitCount, 0);
     expect(find.text('Введите название'), findsOneWidget);
     expect(find.text('Введите описание'), findsOneWidget);
-    expect(find.text('Выберите город события'), findsOneWidget);
+    expect(find.text('Выберите локацию события'), findsOneWidget);
     expect(find.text('Введите место'), findsOneWidget);
   });
 
@@ -3731,7 +3735,7 @@ void main() {
     );
     expect(find.text('Введите название'), findsNothing);
     expect(find.text('Введите описание'), findsNothing);
-    expect(find.text('Выберите город события'), findsNothing);
+    expect(find.text('Выберите локацию события'), findsNothing);
     expect(find.text('Введите место'), findsNothing);
     expect(find.byKey(eventCreateStartTimeErrorKey), findsNothing);
     expect(find.byKey(eventCreateSubmitErrorKey), findsOneWidget);
@@ -3792,8 +3796,8 @@ void main() {
       analyticsTracker.payloadsFor(EventsAnalyticsService.eventEditedEventName),
       [
         <String, String>{
-          'countryCode': 'RU',
-          'cityKey': 'moscow',
+          'countryCode': 'AE',
+          'cityKey': 'dubai',
         },
       ],
     );
@@ -3811,11 +3815,11 @@ void main() {
       'languageCode': 'en',
       'levelMin': 'A2',
       'levelMax': 'B2',
-      'countryCode': 'RU',
-      'cityKey': 'moscow',
+      'countryCode': 'AE',
+      'cityKey': 'dubai',
       'locationName': 'Starbucks, ул. Арбат, 5',
       'locationGeoPoint': null,
-      'startsAt': '2026-06-20T15:00:00.000Z',
+      'startsAt': '2026-06-20T14:00:00.000Z',
       'capacity': 8,
     });
     expect(payload, isNot(containsPair('createRequestId', anything)));
@@ -4438,15 +4442,15 @@ String _timeValue(TimeOfDay time) {
 }
 
 const _moscowCity = EventCity(
-  countryCode: 'RU',
-  cityKey: 'moscow',
-  cityNameRu: 'Москва',
-  cityNameEn: 'Moscow',
-  regionCode: null,
-  regionNameRu: null,
-  regionNameEn: null,
-  timeZoneId: 'Europe/Moscow',
-  cityDisplayContext: 'Россия',
+  countryCode: 'AE',
+  cityKey: 'dubai',
+  cityNameRu: 'Dubai',
+  cityNameEn: 'Dubai',
+  regionCode: 'DU',
+  regionNameRu: 'Dubai',
+  regionNameEn: 'Dubai',
+  timeZoneId: 'Asia/Dubai',
+  cityDisplayContext: 'UAE',
   aliases: [],
   transliterations: [],
   priority: 100,
@@ -4468,15 +4472,30 @@ const _newYorkCity = EventCity(
 );
 
 const _romeCity = EventCity(
-  countryCode: 'IT',
-  cityKey: 'rome',
-  cityNameRu: 'Рим',
-  cityNameEn: 'Rome',
-  regionCode: 'LAZ',
-  regionNameRu: 'Лацио',
-  regionNameEn: 'Lazio',
-  timeZoneId: 'Europe/Rome',
-  cityDisplayContext: 'Italia',
+  countryCode: 'ID',
+  cityKey: 'bali',
+  cityNameRu: 'Bali',
+  cityNameEn: 'Bali',
+  regionCode: 'BA',
+  regionNameRu: 'Bali',
+  regionNameEn: 'Bali',
+  timeZoneId: 'Asia/Makassar',
+  cityDisplayContext: 'Indonesia',
+  aliases: [],
+  transliterations: [],
+  priority: 90,
+);
+
+const _phuketCity = EventCity(
+  countryCode: 'TH',
+  cityKey: 'phuket',
+  cityNameRu: 'Phuket',
+  cityNameEn: 'Phuket',
+  regionCode: '83',
+  regionNameRu: 'Phuket',
+  regionNameEn: 'Phuket',
+  timeZoneId: 'Asia/Bangkok',
+  cityDisplayContext: 'Thailand',
   aliases: [],
   transliterations: [],
   priority: 90,
@@ -4484,7 +4503,7 @@ const _romeCity = EventCity(
 
 const _cityCatalog = EventCityCatalog(
   catalogVersion: '2026-06-01',
-  cities: [_moscowCity, _newYorkCity, _romeCity],
+  cities: [_moscowCity, _newYorkCity, _romeCity, _phuketCity],
 );
 
 ProfileCityStruct _profileCityFixture({
@@ -4506,10 +4525,22 @@ UsersRecord _userFixture({
   required String uid,
   required Map<String, dynamic> data,
 }) {
+  final normalizedData = _mutableFirestoreMap(data);
+  final profileCity = normalizedData['profileCity'];
+  if (!normalizedData.containsKey('Country_NS') && profileCity is Map) {
+    final countryCode = profileCity['countryCode'];
+    final cityKey = profileCity['cityKey'];
+    if (countryCode is String && cityKey is String) {
+      normalizedData['Country_NS'] = {
+        'code': countryCode,
+        'cityKey': cityKey,
+      };
+    }
+  }
   return UsersRecord.getDocumentFromData(
     {
       'uid': uid,
-      ..._mutableFirestoreMap(data),
+      ...normalizedData,
     },
     UsersRecord.collection.doc(uid),
   );

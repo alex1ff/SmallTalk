@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/services.dart';
+import 'supported_location_catalog.dart';
 
 const eventCityCatalogAssetPath = 'assets/jsons/events_city_catalog.json';
 
@@ -71,6 +72,20 @@ class EventCityCatalog {
     }
     return null;
   }
+
+  EventCity? resolveSupported(String? countryCode, String? cityKey) {
+    if (resolveSupportedLocation(countryCode, cityKey) == null) {
+      return null;
+    }
+    return resolve(countryCode, cityKey);
+  }
+
+  List<EventCity> get supportedCities => supportedLocations
+      .map(
+        (location) => resolve(location.countryCode, location.cityKey),
+      )
+      .whereType<EventCity>()
+      .toList(growable: false);
 
   EventCity? defaultCityForCountryCode(String? countryCode) {
     final normalizedCountryCode = normalizeEventCountryCode(countryCode);

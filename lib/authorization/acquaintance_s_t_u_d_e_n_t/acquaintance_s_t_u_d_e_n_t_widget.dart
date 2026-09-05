@@ -405,11 +405,6 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
   List<CountryStruct> _countryOptions() {
     final countries = functions.countriesList().toList(growable: true)
       ..sort((left, right) => left.index.compareTo(right.index));
-    final selectedCountry = _countryNotifier.value;
-    if (selectedCountry != null &&
-        !countries.any((country) => country == selectedCountry)) {
-      countries.insert(0, selectedCountry);
-    }
     return countries;
   }
 
@@ -450,8 +445,8 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
   String _countryTitle(BuildContext context, CountryStruct? country) {
     if (country == null) {
       return FFLocalizations.of(context).getVariableText(
-        ruText: 'Выберите вашу страну',
-        enText: 'Select your country',
+        ruText: 'Выберите вашу локацию',
+        enText: 'Select your location',
       );
     }
 
@@ -663,8 +658,8 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
                             'student_onboarding_step_country',
                           ),
                           title: FFLocalizations.of(context).getVariableText(
-                            ruText: 'Ваша страна',
-                            enText: 'Your country',
+                            ruText: 'Ваша локация',
+                            enText: 'Your location',
                           ),
                           child: OnboardingDropdownField(
                             key: const ValueKey<String>(

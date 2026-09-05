@@ -215,7 +215,7 @@ class _EventEditInitialData {
     required EventsRecord event,
     required EventCityCatalog cityCatalog,
   }) {
-    final city = cityCatalog.resolve(event.countryCode, event.cityKey);
+    final city = cityCatalog.resolveSupported(event.countryCode, event.cityKey);
     final localStart = _eventEditLocalStartForEvent(
       event: event,
       city: city,

@@ -7,6 +7,7 @@ const nearbyPartnerPreviewPrefsPrefix = 'ff_student_nearby_partner_preview_v1';
 String nearbyPartnerPreviewCacheKey({
   required String languageCode,
   required String countryCode,
+  String cityKey = '',
   required String partnerLevel,
 }) {
   String normalize(String value) => value.trim().toLowerCase();
@@ -15,6 +16,7 @@ String nearbyPartnerPreviewCacheKey({
     nearbyPartnerPreviewPrefsPrefix,
     Uri.encodeComponent(normalize(languageCode)),
     Uri.encodeComponent(normalize(countryCode)),
+    Uri.encodeComponent(normalize(cityKey)),
     Uri.encodeComponent(normalize(partnerLevel)),
   ].join('|');
 }

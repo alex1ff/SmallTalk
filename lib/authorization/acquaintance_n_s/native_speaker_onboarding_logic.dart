@@ -2,6 +2,7 @@ import '/backend/schema/enums/enums.dart';
 import '/backend/schema/structs/index.dart';
 import '/backend/schema/users_record.dart';
 import '/authorization/shared/onboarding_selection_utils.dart';
+import '/services/supported_location_catalog.dart';
 import '/flutter_flow/custom_functions.dart' as functions;
 import '/flutter_flow/uploaded_file.dart';
 
@@ -439,6 +440,7 @@ Map<String, dynamic> buildNativeSpeakerOnboardingUpdateData({
   bool switchToNativeSpeakerRole = false,
   TeacherAccreditationStatus? teacherAccreditationStatus,
 }) {
+  final location = resolveSupportedCountryStruct(payload.country);
   final shouldMirrorPendingTeacherStatus =
       teacherAccreditationStatus == TeacherAccreditationStatus.pending;
 
@@ -478,6 +480,7 @@ Map<String, dynamic> buildNativeSpeakerOnboardingUpdateData({
             clearUnsetFields: false,
           )
         : null,
+    profileCity: location?.toProfileCityStruct(serverTimestamp: true),
     nativeLanguageNS: payload.nativeLanguage != null
         ? updateLanguageStruct(
             payload.nativeLanguage,
@@ -511,7 +514,7 @@ String? validateNativeSpeakerOnboardingPage({
     case NativeSpeakerOnboardingPage.country:
       return hasNativeSpeakerCountrySelection(draft.country)
           ? null
-          : 'Выберите страну из списка';
+          : 'Выберите локацию из списка';
     case NativeSpeakerOnboardingPage.aboutMe:
       return draft.aboutMe.trim().isNotEmpty
           ? null

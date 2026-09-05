@@ -8,6 +8,7 @@ const {
   normalizeEventCityIdentityInput,
   resolveEventCityIdentity,
 } = require("./event_city_catalog");
+const {isSupportedLocation} = require("./supported_locations");
 const {
   buildBoundedEventChatInboxEventIds,
 } = require("./event_chat_inbox");
@@ -1066,6 +1067,12 @@ async function executeCreateEventTransaction({
         createRequestId: normalized.createRequestId,
         payloadHash,
       });
+    }
+    if (!isSupportedLocation(
+        normalized.city.countryCode,
+        normalized.city.cityKey,
+    )) {
+      throwInvalidCreateRequest("cityKey", "unsupported_city");
     }
     assertFutureStartsAt(normalized, creationDate);
     const eventNormalized = resolveNormalizedCity(normalized);

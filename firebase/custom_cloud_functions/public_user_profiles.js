@@ -10,6 +10,9 @@ const {
   readMatchRatingCount,
   readTeacherAccreditationStatus,
 } = require("./video_sessions_shared");
+const {
+  normalizeSupportedLocation,
+} = require("./supported_locations");
 
 const PUBLIC_USER_PROFILE_COLLECTION = "userPublicProfiles";
 const PUBLIC_PROFILE_PRIVATE_FIELDS = Object.freeze([
@@ -70,6 +73,7 @@ function languageProjection(value) {
 function countryProjection(value) {
   const data = compactPublicData({
     code: readCountryCode(value),
+    cityKey: readNestedPublicString(value, "cityKey"),
     nameEn: readNestedPublicString(value, "nameEn"),
     nameRu: readNestedPublicString(value, "nameRu"),
     flag: readNestedPublicString(value, "flag"),
@@ -98,6 +102,18 @@ function assertNoPrivatePublicProfileFields(profileData) {
 
 function buildPublicUserProfile(userId, userData = {}, options = {}) {
   const storedMatchProfile = matchProfileData(userData);
+  const countryLocation = normalizeSupportedLocation(
+      userData.Country_NS?.code,
+      userData.Country_NS?.cityKey,
+  );
+  const profileLocation = normalizeSupportedLocation(
+      userData.profileCity?.countryCode,
+      userData.profileCity?.cityKey,
+  );
+  const supportedLocation = countryLocation && profileLocation &&
+    countryLocation.identity === profileLocation.identity ?
+    profileLocation :
+    null;
   const teacherAccreditationStatus = readTeacherAccreditationStatus(userData);
   const profileData = compactPublicData({
     version: "v1",
@@ -109,7 +125,11 @@ function buildPublicUserProfile(userId, userData = {}, options = {}) {
     aboutMe: normalizeString(userData.aboutMe),
     language_instruction_NS: languageProjection(userData.language_instruction_NS),
     native_language_NS: languageProjection(userData.native_language_NS),
-    Country_NS: countryProjection(userData.Country_NS),
+    Country_NS: supportedLocation ? countryProjection(userData.Country_NS) : null,
+    profileCity: supportedLocation ? {
+      countryCode: supportedLocation.countryCode,
+      cityKey: supportedLocation.cityKey,
+    } : null,
     level: readLevelValue(userData.level),
     ratingAverage: readMatchRatingAverage(userData),
     ratingCount: readMatchRatingCount(userData),

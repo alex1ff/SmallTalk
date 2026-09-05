@@ -2,6 +2,7 @@ import '/backend/schema/structs/index.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
+import '/services/supported_location_catalog.dart';
 import 'package:flutter/material.dart';
 export 'country_card_model.dart';
 
@@ -23,7 +24,11 @@ class CountryCardWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = FlutterFlowTheme.of(context);
     final lang = this.lang;
-    final isSelected = lang == currentSelected;
+    final location = resolveSupportedCountryStruct(lang);
+    final currentLocation = resolveSupportedCountryStruct(currentSelected);
+    final isSelected = location != null &&
+        currentLocation != null &&
+        location.identity == currentLocation.identity;
     final hasFlag = (lang?.flag ?? '').trim().isNotEmpty;
     final localization = FFLocalizations.of(context);
 
