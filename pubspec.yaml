@@ -198,14 +198,11 @@ flutter:
     - assets/images/Group_1171275327_2.png
     - assets/images/Group_21.png
     - assets/images/e1xjd_.png
-    - assets/images/frame_1321318905.webp
-    - assets/images/frame_1321318906.webp
     - assets/images/favicon.png
     - assets/images/g08g4_.png
     - assets/images/group_11712750962.webp
     - assets/images/group_11712753102.webp
     - assets/images/group_1171275311.webp
-    - assets/images/group_1171275328.webp
     - assets/images/iom0u_.png
     - assets/images/logo.png
     - assets/images/message-circle-01.svg
@@ -213,6 +210,9 @@ flutter:
     - assets/images/orbiting_avatar_2.jpg
     - assets/images/orbiting_avatar_3.jpg
     - assets/images/orbiting_avatar_4.jpg
+    - assets/images/onboarding_free_small_talk.jpeg
+    - assets/images/onboarding_start_search.jpeg
+    - assets/images/onboarding_translated_subtitles.jpeg
     - assets/images/orbiting_avatar_5.jpg
     - assets/images/orbiting_avatar_6.jpg
     - assets/images/sticker_32.png

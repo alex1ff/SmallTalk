@@ -178,13 +178,16 @@ class _OnboardingWidgetState extends State<OnboardingWidget> {
                     itemBuilder: (context, index) {
                       return [
                         () => OnboardingCard(
-                              assetPath: 'assets/images/group_1171275328.webp',
+                              assetPath:
+                                  'assets/images/onboarding_start_search.jpeg',
                             ),
                         () => OnboardingCard(
-                              assetPath: 'assets/images/frame_1321318905.webp',
+                              assetPath:
+                                  'assets/images/onboarding_free_small_talk.jpeg',
                             ),
                         () => OnboardingCard(
-                              assetPath: 'assets/images/frame_1321318906.webp',
+                              assetPath:
+                                  'assets/images/onboarding_translated_subtitles.jpeg',
                             ),
                       ][index]();
                     },
