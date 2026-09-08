@@ -134,6 +134,8 @@ const REQUIRED_FUNCTIONS = [
   },
   {id: "requestSessionExtension", trigger: "callable"},
   {id: "persistCallChat", trigger: "callable"},
+  {id: "processConversationUnlockEvents", trigger: "firestore"},
+  {id: "repairMissingConversationUnlockEvents", trigger: "scheduled"},
   {
     id: "dailyWebhook",
     trigger: "https",
@@ -154,6 +156,8 @@ const REQUIRED_FUNCTIONS = [
   {id: "migrateLegacyVoipTokens", trigger: "callable"},
   {id: "scheduledLegacyVoipTokenMigration", trigger: "scheduled"},
   {id: "claimRegistrationGift", trigger: "callable"},
+  {id: "cleanupExpiredGifts", trigger: "scheduled"},
+  {id: "createPaymentSession", trigger: "callable"},
   {id: "createEvent", trigger: "callable"},
   {id: "editEvent", trigger: "callable"},
   {id: "cancelEvent", trigger: "callable"},
@@ -170,6 +174,7 @@ const REQUIRED_FUNCTIONS = [
   {id: "getCallHistory", trigger: "callable"},
   {id: "requestWithdrawal", trigger: "callable"},
   {id: "syncUserPublicProfile", trigger: "firestore"},
+  {id: "syncTeacherVerificationRequest", trigger: "firestore"},
   {
     id: "revenueCatWebhook",
     trigger: "https",

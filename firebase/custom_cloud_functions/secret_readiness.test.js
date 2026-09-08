@@ -208,7 +208,11 @@ test("package deploy script is scoped to readiness-gate functions", () => {
   ));
   const deployScript = packageJson.scripts["deploy:readiness-functions"];
 
-  assert.equal(packageJson.scripts.deploy, "npm run deploy:readiness-functions");
+  assert.equal(
+    packageJson.scripts.deploy,
+    "npm run deploy:readiness-functions && " +
+      "npm run backfill:event-public-projections",
+  );
   assert.match(deployScript, /--project smalltalk-2109b/);
   assert.match(deployScript, /--config \.\.\/firebase\.json/);
   assert.doesNotMatch(deployScript, /--only functions( |$)/);
