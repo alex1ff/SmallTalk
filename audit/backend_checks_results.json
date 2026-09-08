@@ -1,299 +1,14 @@
 {
-  "startedAt": "2026-07-20T20:43:19.287Z",
+  "startedAt": "2026-09-08T20:16:27.600Z",
   "projectId": "demo-smalltalk",
   "emulators": {
     "firestore": "127.0.0.1:8080",
-    "storage": "127.0.0.1:9199"
+    "functions": "127.0.0.1:5001"
   },
   "checks": {
-    "rules": {
-      "pass": false,
-      "checks": [
-        {
-          "label": "Firestore unauth read users denied",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore cross-user profile update denied",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore cross-user transaction read denied",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore pending teacher withdrawal create denied",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore approved teacher withdrawal create allowed",
-          "status": "fail",
-          "error": "FirebaseError: [code=permission-denied]: 7 PERMISSION_DENIED: \nfalse for 'create' @ L1439, false for 'update' @ L1441"
-        },
-        {
-          "label": "Firestore self profile update allowed",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore self user create without protected teacher status allowed",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore self user create with teacher status denied",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore self teacher status update denied",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore self teacher pending status update allowed",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore self legacy teacher verification update denied",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore self matchProfile teacher approval update denied",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore admin teacher status update allowed",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore self teacher verification request create pending allowed",
-          "status": "fail",
-          "error": "FirebaseError: [code=permission-denied]: 7 PERMISSION_DENIED: \nevaluation error at L1313:24 for 'create' @ L1313, evaluation error at L1314:24 for 'update' @ L1314, false for 'create' @ L1313"
-        },
-        {
-          "label": "Firestore self teacher verification request update pending allowed",
-          "status": "fail",
-          "error": "FirebaseError: [code=permission-denied]: 7 PERMISSION_DENIED: \nevaluation error at L1314:24 for 'update' @ L1314, Null value error. for 'update' @ L1314"
-        },
-        {
-          "label": "Firestore self teacher verification request review fields denied",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore self teacher verification request approve denied",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore self teacher verification request create approved denied",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore cross-user teacher verification request read denied",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore admin teacher verification request approve allowed",
-          "status": "fail",
-          "error": "FirebaseError: [code=not-found]: 5 NOT_FOUND: no entity to update: app: \"dev~demo-smalltalk\"\npath <\n  Element {\n    type: \"teacherVerificationRequests\"\n    name: \"teacherRequestUser\"\n  }\n>\n"
-        },
-        {
-          "label": "Firestore session read allowed via participantIds",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore session update allowed via participantIds",
-          "status": "fail",
-          "error": "FirebaseError: [code=permission-denied]: 7 PERMISSION_DENIED: \nUnable to evaluate the expression as the maximum of 1000 expressions to evaluate has been reached. for 'update' @ L1326, false for 'update' @ L1326"
-        },
-        {
-          "label": "Firestore session participantIds escalation denied to participant",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore session read denied for non-participant",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore session create denied when participantIds omit requester",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore session create allowed with requester-only participantIds",
-          "status": "fail",
-          "error": "FirebaseError: [code=permission-denied]: 7 PERMISSION_DENIED: \nfalse for 'create' @ L1324, Unable to evaluate the expression as the maximum of 1000 expressions to evaluate has been reached. for 'update' @ L1326, false for 'create' @ L1324"
-        },
-        {
-          "label": "Firestore session create denied when participantIds include extra uid",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore session create denied when currentTutorId is preseeded",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore currentTutorId fallback still allows read",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore legacy tutorId escalation denied to participant",
-          "status": "pass"
-        },
-        {
-          "label": "Storage cross-user write denied",
-          "status": "pass"
-        },
-        {
-          "label": "Storage unauth write denied",
-          "status": "pass"
-        },
-        {
-          "label": "Storage self write allowed",
-          "status": "pass"
-        },
-        {
-          "label": "Session client create denied even with participantIds",
-          "status": "pass"
-        },
-        {
-          "label": "Session create without participantIds denied",
-          "status": "pass"
-        },
-        {
-          "label": "Session create with extra participantIds denied",
-          "status": "pass"
-        },
-        {
-          "label": "Session participantIds read allowed",
-          "status": "pass"
-        },
-        {
-          "label": "Session legacy participant read still allowed",
-          "status": "pass"
-        },
-        {
-          "label": "Session non-participant read denied",
-          "status": "pass"
-        },
-        {
-          "label": "Session requester navigation update allowed",
-          "status": "pass"
-        },
-        {
-          "label": "Session responder navigation update allowed via participantIds",
-          "status": "fail",
-          "error": "FirebaseError: [code=permission-denied]: 7 PERMISSION_DENIED: \nUnable to evaluate the expression as the maximum of 1000 expressions to evaluate has been reached. for 'update' @ L1326, false for 'update' @ L1326"
-        },
-        {
-          "label": "Session participantIds tamper denied",
-          "status": "pass"
-        },
-        {
-          "label": "Session non-navigation update denied for participant",
-          "status": "pass"
-        },
-        {
-          "label": "Caption read allowed via participantIds session membership",
-          "status": "pass"
-        },
-        {
-          "label": "Caption write denied for non-participant",
-          "status": "pass"
-        },
-        {
-          "label": "Caption peer legacy write allowed for participant writer",
-          "status": "fail",
-          "error": "FirebaseError: [code=permission-denied]: 7 PERMISSION_DENIED: \nUnable to evaluate the expression as the maximum of 1000 expressions to evaluate has been reached. for 'create' @ L1331, Unable to evaluate the expression as the maximum of 1000 expressions to evaluate has been reached. for 'update' @ L1337, false for 'create' @ L1331"
-        },
-        {
-          "label": "Chat unauth conversation read denied",
-          "status": "pass"
-        },
-        {
-          "label": "Chat participant conversation read allowed",
-          "status": "pass"
-        },
-        {
-          "label": "Chat missing conversation get returns not found for signed-in user",
-          "status": "fail",
-          "error": "FirebaseError: [code=permission-denied]: \nevaluation error at L1356:21 for 'get' @ L1356, false for 'get' @ L1516, Null value error. for 'get' @ L1356, false for 'get' @ L1516"
-        },
-        {
-          "label": "Chat conversations collection query denied",
-          "status": "pass"
-        },
-        {
-          "label": "Chat conversations collection scan denied",
-          "status": "pass"
-        },
-        {
-          "label": "Chat conversations query for another participant denied",
-          "status": "pass"
-        },
-        {
-          "label": "Chat non-participant conversation read denied",
-          "status": "pass"
-        },
-        {
-          "label": "Chat client conversation create denied",
-          "status": "pass"
-        },
-        {
-          "label": "Chat unlock event access denied to clients",
-          "status": "pass"
-        },
-        {
-          "label": "Chat unlocked messages read allowed for participant",
-          "status": "pass"
-        },
-        {
-          "label": "Chat unlocked messages read denied for non-participant",
-          "status": "pass"
-        },
-        {
-          "label": "Chat locked messages read denied before unlock",
-          "status": "pass"
-        },
-        {
-          "label": "Chat locked messages create denied before unlock",
-          "status": "pass"
-        },
-        {
-          "label": "Chat participant message create allowed after unlock",
-          "status": "pass"
-        },
-        {
-          "label": "Chat message create denied for wrong senderRef",
-          "status": "pass"
-        },
-        {
-          "label": "Chat message create denied for extra fields",
-          "status": "pass"
-        },
-        {
-          "label": "Chat participant read marker update allowed on own key only",
-          "status": "pass"
-        },
-        {
-          "label": "Chat read marker update denied for another participant key",
-          "status": "pass"
-        },
-        {
-          "label": "Chat read marker update denied for non-read fields",
-          "status": "pass"
-        }
-      ],
-      "failures": [
-        "Firestore approved teacher withdrawal create allowed: FirebaseError: [code=permission-denied]: 7 PERMISSION_DENIED: \nfalse for 'create' @ L1439, false for 'update' @ L1441",
-        "Firestore self teacher verification request create pending allowed: FirebaseError: [code=permission-denied]: 7 PERMISSION_DENIED: \nevaluation error at L1313:24 for 'create' @ L1313, evaluation error at L1314:24 for 'update' @ L1314, false for 'create' @ L1313",
-        "Firestore self teacher verification request update pending allowed: FirebaseError: [code=permission-denied]: 7 PERMISSION_DENIED: \nevaluation error at L1314:24 for 'update' @ L1314, Null value error. for 'update' @ L1314",
-        "Firestore admin teacher verification request approve allowed: FirebaseError: [code=not-found]: 5 NOT_FOUND: no entity to update: app: \"dev~demo-smalltalk\"\npath <\n  Element {\n    type: \"teacherVerificationRequests\"\n    name: \"teacherRequestUser\"\n  }\n>\n",
-        "Firestore session update allowed via participantIds: FirebaseError: [code=permission-denied]: 7 PERMISSION_DENIED: \nUnable to evaluate the expression as the maximum of 1000 expressions to evaluate has been reached. for 'update' @ L1326, false for 'update' @ L1326",
-        "Firestore session create allowed with requester-only participantIds: FirebaseError: [code=permission-denied]: 7 PERMISSION_DENIED: \nfalse for 'create' @ L1324, Unable to evaluate the expression as the maximum of 1000 expressions to evaluate has been reached. for 'update' @ L1326, false for 'create' @ L1324",
-        "Session responder navigation update allowed via participantIds: FirebaseError: [code=permission-denied]: 7 PERMISSION_DENIED: \nUnable to evaluate the expression as the maximum of 1000 expressions to evaluate has been reached. for 'update' @ L1326, false for 'update' @ L1326",
-        "Caption peer legacy write allowed for participant writer: FirebaseError: [code=permission-denied]: 7 PERMISSION_DENIED: \nUnable to evaluate the expression as the maximum of 1000 expressions to evaluate has been reached. for 'create' @ L1331, Unable to evaluate the expression as the maximum of 1000 expressions to evaluate has been reached. for 'update' @ L1337, false for 'create' @ L1331",
-        "Chat missing conversation get returns not found for signed-in user: FirebaseError: [code=permission-denied]: \nevaluation error at L1356:21 for 'get' @ L1356, false for 'get' @ L1516, Null value error. for 'get' @ L1356, false for 'get' @ L1516"
-      ]
-    },
     "endSessionConcurrency": {
-      "pass": false,
-      "sessionId": "audit_session_1784580201826",
+      "pass": true,
+      "sessionId": "audit_session_1788898587635",
       "invocation": [
         {
           "caller": "student",
@@ -316,8 +31,8 @@
       "studentBalanceMinutesBefore": 50,
       "studentBalanceMinutesAfter": 50,
       "sessionStatusAfter": "ended",
-      "unlockEventCreated": false,
-      "failure": "Expected exactly one call_charge + one earning, ended status, unlock event creation, and reduced student balance."
+      "unlockEventCreated": true,
+      "failure": null
     },
     "unlockProcessorIntegration": {
       "pass": true,
@@ -326,18 +41,18 @@
         "eligibleProcessed": {
           "pass": true,
           "manualFallbackUsed": false,
-          "sessionId": "unlock_session_1784580206716",
-          "pairId": "unlock_student_1784580206716_unlock_tutor_1784580206716",
+          "sessionId": "unlock_session_1788898592970",
+          "pairId": "unlock_student_1788898592970_unlock_tutor_1788898592970",
           "eventStatus": "processed",
           "eventReason": "processed_unlocked",
-          "conversationPath": "conversations/unlock_student_1784580206716_unlock_tutor_1784580206716",
+          "conversationPath": "conversations/unlock_student_1788898592970_unlock_tutor_1788898592970",
           "failure": null
         },
         "existingConversationReuse": {
           "pass": true,
           "manualFallbackUsed": false,
-          "sessionId": "reuse_session_1784580206716",
-          "pairId": "reuse_student_1784580206716_reuse_tutor_1784580206716",
+          "sessionId": "reuse_session_1788898592970",
+          "pairId": "reuse_student_1788898592970_reuse_tutor_1788898592970",
           "eventStatus": "processed",
           "eventReason": "processed_existing_conversation",
           "unlockRefPreserved": true,
@@ -346,8 +61,8 @@
         "ignoredIneligible": {
           "pass": true,
           "manualFallbackUsed": false,
-          "sessionId": "ignored_session_1784580206716",
-          "pairId": "ignored_student_1784580206716_ignored_tutor_1784580206716",
+          "sessionId": "ignored_session_1788898592970",
+          "pairId": "ignored_student_1788898592970_ignored_tutor_1788898592970",
           "eventStatus": "ignored",
           "eventReason": "ignored_not_connected",
           "conversationCreated": false,
@@ -356,8 +71,8 @@
         "missingSessionFailed": {
           "pass": true,
           "manualFallbackUsed": false,
-          "sessionId": "missing_session_1784580206716",
-          "pairId": "missing_student_1784580206716_missing_tutor_1784580206716",
+          "sessionId": "missing_session_1788898592970",
+          "pairId": "missing_student_1788898592970_missing_tutor_1788898592970",
           "eventStatus": "failed",
           "eventReason": "failed_exception",
           "conversationCreated": false,
@@ -367,64 +82,77 @@
       "failure": null
     },
     "createVideoSessionMatrix": {
-      "pass": false,
-      "failure": "Error: Cannot read properties of undefined (reading 'email')",
-      "scenario": "student and native_speaker requesters can build all-to-all candidate pools",
-      "scenarios": {}
-    },
-    "sameDayRepeatPrevention": {
-      "pass": false,
-      "failure": "Error: Оформите подписку или дождитесь восстановления подарочных минут.",
+      "pass": true,
+      "failure": null,
+      "scenario": "student search requests build the active all-to-all candidate pool",
       "scenarios": {
-        "completedConnectedExcluded": {
-          "pass": false,
-          "sessionId": "repeat_completed_session_1784580208641",
-          "historyCreated": true,
-          "directStatus": null,
-          "poolExcludedCompletedCandidate": false,
-          "poolIncludesFreshCandidate": false,
-          "failure": null
+        "studentRequester": {
+          "pass": true,
+          "failure": null,
+          "scenario": "student requester can build all-to-all candidate pool",
+          "responseStatus": "searching",
+          "sessionId": "84nlYAiwrtDXpgUM9JQo",
+          "participantIds": [
+            "audit_matrix_student_requester_requester_1788898596434",
+            "audit_matrix_student_requester_speaker_1788898596434"
+          ],
+          "candidateIds": [
+            "audit_matrix_student_requester_speaker_1788898596434",
+            "audit_matrix_student_requester_student_1788898596434"
+          ],
+          "candidateRoleCounts": {
+            "native_speaker": 1,
+            "student": 1
+          }
         },
-        "neverConnectedDoesNotCount": {
-          "pass": false,
-          "sessionId": null,
-          "historyCreated": false,
-          "directStatus": null,
-          "failure": null
+        "studentStudentPair": {
+          "pass": true,
+          "failure": null,
+          "scenario": "student requester can match an explicit student-student pair",
+          "responseStatus": "searching",
+          "sessionId": "MQ18iRdmwrEqIUewhA3l",
+          "participantIds": [
+            "audit_matrix_student_student_pair_requester_1788898596434",
+            "audit_matrix_student_student_pair_student_1788898596434"
+          ],
+          "candidateIds": [
+            "audit_matrix_student_student_pair_student_1788898596434"
+          ],
+          "candidateRoleCounts": {
+            "student": 1
+          }
         },
-        "cancelledDoesNotCount": {
-          "pass": false,
-          "sessionId": null,
-          "historyCreated": false,
-          "directStatus": null,
-          "failure": null
-        },
-        "testerBypass": {
-          "pass": false,
-          "directStatus": null,
-          "failure": null
+        "studentNativeSpeakerPair": {
+          "pass": true,
+          "failure": null,
+          "scenario": "student requester can match an explicit student-native_speaker pair",
+          "responseStatus": "searching",
+          "sessionId": "Il1nZxVFJjnj9hfsLEjQ",
+          "participantIds": [
+            "audit_matrix_student_native_pair_requester_1788898596434",
+            "audit_matrix_student_native_pair_speaker_1788898596434"
+          ],
+          "candidateIds": [
+            "audit_matrix_student_native_pair_speaker_1788898596434"
+          ],
+          "candidateRoleCounts": {
+            "native_speaker": 1
+          }
         }
       }
     },
     "partnerLevelFilter": {
-      "pass": false,
-      "failure": "Error: Оформите подписку или дождитесь восстановления подарочных минут.",
-      "scenario": "preferred partner level filters pool and direct calls",
-      "poolSessionId": null,
-      "poolCandidateIds": [],
-      "directMismatchStatus": null,
-      "directMatchStatus": null,
-      "directMatchSessionId": null,
-      "matchContextFilters": null,
-      "directMatchContextFilters": null
-    },
-    "teacherBoostRanking": {
-      "pass": false,
-      "failure": "Error: Оформите подписку или дождитесь восстановления подарочных минут.",
-      "scenario": "approved teacher boost ranks Fluent approved teachers first",
-      "sessionId": null,
-      "candidateIds": [],
-      "ranking": null
+      "pass": true,
+      "failure": null,
+      "scenario": "preferred partner level filters the discovery pool",
+      "poolSessionId": "2msJt6yNNyi3Gz8d3rzf",
+      "poolCandidateIds": [
+        "level_fluent_1788898596749"
+      ],
+      "matchContextFilters": {
+        "preferredCountry": null,
+        "preferredPartnerLevel": "Fluent"
+      }
     },
     "teacherVerificationRequestFlow": {
       "pass": true,
@@ -434,21 +162,22 @@
         "approvedRequest": {
           "pass": true,
           "manualFallbackUsed": false,
-          "userId": "audit_teacher_request_approved_1784580208852",
+          "userId": "audit_teacher_request_approved_1788898596830",
           "userStatus": "approved",
           "verifNS": true,
           "matchProfile": {
             "country": "US",
             "role": "native_speaker",
+            "city": null,
+            "level": null,
+            "ratingCount": 0,
+            "version": "v1",
             "supportedLanguages": [
               "en"
             ],
             "legacyPriorityScore": 0,
-            "level": null,
             "activeLanguage": "en",
             "activeLanguageSource": "profile",
-            "ratingCount": 0,
-            "version": "v1",
             "ratingAverage": 0,
             "approvedTeacher": true,
             "teacherAccreditationStatus": "approved"
@@ -458,21 +187,22 @@
         "rejectedRequestClearsLegacy": {
           "pass": true,
           "manualFallbackUsed": false,
-          "userId": "audit_teacher_request_rejected_1784580208852",
+          "userId": "audit_teacher_request_rejected_1788898596830",
           "userStatus": "rejected",
           "verifNS": false,
           "matchProfile": {
             "country": null,
             "role": "native_speaker",
+            "city": null,
+            "level": null,
+            "ratingCount": 0,
+            "version": "v1",
             "supportedLanguages": [
               "en"
             ],
             "legacyPriorityScore": 0,
-            "level": null,
             "activeLanguage": "en",
             "activeLanguageSource": "profile",
-            "ratingCount": 0,
-            "version": "v1",
             "ratingAverage": 0,
             "approvedTeacher": false,
             "teacherAccreditationStatus": "rejected"
@@ -489,16 +219,17 @@
         "studentProfile": {
           "pass": true,
           "manualFallbackUsed": false,
-          "userId": "audit_match_student_1784580210949",
+          "userId": "audit_match_student_1788898600219",
           "matchProfile": {
             "country": "BR",
             "role": "student",
-            "legacyPriorityScore": 0,
+            "city": null,
             "level": "Intermediate",
+            "version": "v1",
+            "legacyPriorityScore": 0,
             "approvedTeacher": false,
             "activeLanguageSource": "profile",
             "teacherAccreditationStatus": null,
-            "version": "v1",
             "supportedLanguages": [
               "es"
             ],
@@ -511,21 +242,22 @@
         "nativeSpeakerProfile": {
           "pass": true,
           "manualFallbackUsed": false,
-          "userId": "audit_match_native_1784580210949",
+          "userId": "audit_match_native_1788898600219",
           "matchProfile": {
             "country": "US",
             "role": "native_speaker",
+            "city": null,
+            "level": null,
+            "ratingCount": 11,
+            "version": "v1",
             "supportedLanguages": [
               "en"
             ],
             "legacyPriorityScore": 0,
-            "level": null,
             "activeLanguage": "en",
             "approvedTeacher": true,
             "activeLanguageSource": "profile",
             "teacherAccreditationStatus": "approved",
-            "ratingCount": 11,
-            "version": "v1",
             "ratingAverage": 4.7
           },
           "failure": null
@@ -533,21 +265,22 @@
         "rejectedTeacherProfile": {
           "pass": true,
           "manualFallbackUsed": false,
-          "userId": "audit_match_rejected_teacher_1784580210949",
+          "userId": "audit_match_rejected_teacher_1788898600219",
           "matchProfile": {
             "country": null,
             "role": "native_speaker",
+            "city": null,
+            "level": null,
+            "ratingCount": 0,
+            "version": "v1",
             "supportedLanguages": [
               "en"
             ],
             "legacyPriorityScore": 0,
-            "level": null,
             "activeLanguage": "en",
             "approvedTeacher": false,
             "activeLanguageSource": "profile",
             "teacherAccreditationStatus": "rejected",
-            "ratingCount": 0,
-            "version": "v1",
             "ratingAverage": 0
           },
           "failure": null
@@ -555,7 +288,7 @@
         "storedOnlyProfile": {
           "pass": true,
           "manualFallbackUsed": false,
-          "userId": "audit_match_stored_only_1784580210949",
+          "userId": "audit_match_stored_only_1788898600219",
           "matchProfile": {
             "version": "v1",
             "role": "native_speaker",
@@ -567,32 +300,39 @@
             "country": "CA",
             "level": "Fluent",
             "ratingAverage": 4.6,
-            "ratingCount": 14,
             "teacherAccreditationStatus": "approved",
             "approvedTeacher": true,
-            "legacyPriorityScore": 7
+            "legacyPriorityScore": 7,
+            "city": null,
+            "ratingCount": 0
           },
           "failure": null
         }
       }
     },
     "createVideoSessionLoad": {
-      "pass": false,
+      "pass": true,
       "requests": 20,
       "concurrency": 5,
-      "successCount": 0,
-      "errorCount": 20,
-      "p50_ms": 0,
-      "p95_ms": 1,
-      "max_ms": 1,
-      "avg_ms": 0.45,
-      "logLines": 20,
-      "errorLines": 20,
+      "successCount": 20,
+      "errorCount": 0,
+      "p50_ms": 235,
+      "p95_ms": 7544,
+      "max_ms": 9250,
+      "avg_ms": 2633.3,
+      "logLines": 0,
+      "errorLines": 0,
       "responseStatuses": {
-        "error": 20
+        "searching": 20
       },
-      "failure": "Some load-test invocations returned errors."
+      "failure": null
+    },
+    "callLifecycleEmulator": {
+      "pass": true,
+      "exitCode": 0,
+      "signal": null,
+      "output": "TAP version 13\n# (node:57624) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.\n# (Use `node --trace-deprecation ...` to show where the warning was created)\n# Subtest: concurrent trial reservations allow exactly one caller\nok 1 - concurrent trial reservations allow exactly one caller\n  ---\n  duration_ms: 2991.862667\n  type: 'test'\n  ...\n# Subtest: pair lock keeps both trial reservations unchanged when responder fails\nok 2 - pair lock keeps both trial reservations unchanged when responder fails\n  ---\n  duration_ms: 80.918125\n  type: 'test'\n  ...\n# Subtest: technical failure before connection retries, qualified call consumes once\nok 3 - technical failure before connection retries, qualified call consumes once\n  ---\n  duration_ms: 71.275834\n  type: 'test'\n  ...\n# Subtest: two trial participants reconcile independently and idempotently\nok 4 - two trial participants reconcile independently and idempotently\n  ---\n  duration_ms: 111.894333\n  type: 'test'\n  ...\n# {\"source\":\"end_session\",\"event\":\"end_started\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"userHash\":\"f27311abfda3a385\",\"sessionHash\":\"bfdc41ed6409d9e6ce3377489e2b97e5df96c6ac2bd84e83d1b68baf33513234\",\"reasonCode\":\"user_ended\",\"source\":\"end_session\",\"event\":\"end_attempt\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"bfdc41ed6409d9e6ce3377489e2b97e5df96c6ac2bd84e83d1b68baf33513234\",\"status\":\"active\",\"source\":\"end_session\",\"event\":\"session_loaded\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"bfdc41ed6409d9e6ce3377489e2b97e5df96c6ac2bd84e83d1b68baf33513234\",\"status\":\"completed\",\"durationSeconds\":0,\"result\":\"no_payout\",\"source\":\"end_session\",\"event\":\"session_billing_completed\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"bfdc41ed6409d9e6ce3377489e2b97e5df96c6ac2bd84e83d1b68baf33513234\",\"source\":\"end_session\",\"event\":\"end_transaction_completed\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"bfdc41ed6409d9e6ce3377489e2b97e5df96c6ac2bd84e83d1b68baf33513234\",\"reasonCode\":\"unknown\",\"source\":\"end_session\",\"event\":\"chat_unlock_not_eligible\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"bfdc41ed6409d9e6ce3377489e2b97e5df96c6ac2bd84e83d1b68baf33513234\",\"source\":\"end_session\",\"event\":\"background_billing_started\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"bfdc41ed6409d9e6ce3377489e2b97e5df96c6ac2bd84e83d1b68baf33513234\",\"source\":\"end_session\",\"event\":\"session_notifications_cancel_started\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"bfdc41ed6409d9e6ce3377489e2b97e5df96c6ac2bd84e83d1b68baf33513234\",\"source\":\"end_session\",\"event\":\"end_completed\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# Subtest: Daily-wins then mark loser preserves first marker and consumes trials\nok 5 - Daily-wins then mark loser preserves first marker and consumes trials\n  ---\n  duration_ms: 205.630541\n  type: 'test'\n  ...\n# {\"source\":\"end_session\",\"event\":\"end_started\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"userHash\":\"a90e96f2e688fdc0\",\"sessionHash\":\"0e1384d88b42081f8d180830ae9345096e5acad21d949a9bd9bcfe040732f285\",\"reasonCode\":\"user_ended\",\"source\":\"end_session\",\"event\":\"end_attempt\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"0e1384d88b42081f8d180830ae9345096e5acad21d949a9bd9bcfe040732f285\",\"status\":\"active\",\"source\":\"end_session\",\"event\":\"session_loaded\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"0e1384d88b42081f8d180830ae9345096e5acad21d949a9bd9bcfe040732f285\",\"status\":\"completed\",\"durationSeconds\":0,\"result\":\"no_payout\",\"source\":\"end_session\",\"event\":\"session_billing_completed\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"0e1384d88b42081f8d180830ae9345096e5acad21d949a9bd9bcfe040732f285\",\"source\":\"end_session\",\"event\":\"end_transaction_completed\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"0e1384d88b42081f8d180830ae9345096e5acad21d949a9bd9bcfe040732f285\",\"reasonCode\":\"unknown\",\"source\":\"end_session\",\"event\":\"chat_unlock_not_eligible\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"0e1384d88b42081f8d180830ae9345096e5acad21d949a9bd9bcfe040732f285\",\"source\":\"end_session\",\"event\":\"background_billing_started\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"0e1384d88b42081f8d180830ae9345096e5acad21d949a9bd9bcfe040732f285\",\"source\":\"end_session\",\"event\":\"session_notifications_cancel_started\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"0e1384d88b42081f8d180830ae9345096e5acad21d949a9bd9bcfe040732f285\",\"source\":\"end_session\",\"event\":\"end_completed\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# Subtest: mark-wins then Daily loser preserves first marker and consumes trials\nok 6 - mark-wins then Daily loser preserves first marker and consumes trials\n  ---\n  duration_ms: 172.941375\n  type: 'test'\n  ...\n# {\"source\":\"cancel_call\",\"event\":\"cancel_started\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"studentHash\":\"afe76b77f92c089e\",\"sessionHash\":\"5c9facb8b2ed78f21459ceabecea20ef36f1f90d41bc9a49e070653a0b5026f8\",\"source\":\"cancel_call\",\"event\":\"cancel_attempt\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"5c9facb8b2ed78f21459ceabecea20ef36f1f90d41bc9a49e070653a0b5026f8\",\"source\":\"cancel_call\",\"event\":\"cancel_transaction_started\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"5c9facb8b2ed78f21459ceabecea20ef36f1f90d41bc9a49e070653a0b5026f8\",\"status\":\"connecting\",\"studentHash\":\"afe76b77f92c089e\",\"source\":\"cancel_call\",\"event\":\"session_loaded\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"5c9facb8b2ed78f21459ceabecea20ef36f1f90d41bc9a49e070653a0b5026f8\",\"source\":\"cancel_call\",\"event\":\"session_notifications_cancel_started\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"5c9facb8b2ed78f21459ceabecea20ef36f1f90d41bc9a49e070653a0b5026f8\",\"source\":\"cancel_call\",\"event\":\"session_notifications_empty\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"5c9facb8b2ed78f21459ceabecea20ef36f1f90d41bc9a49e070653a0b5026f8\",\"source\":\"cancel_call\",\"event\":\"cancel_completed\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# Subtest: cancel owner returns both pre-connect trial participants to retry\nok 7 - cancel owner returns both pre-connect trial participants to retry\n  ---\n  duration_ms: 65.893042\n  type: 'test'\n  ...\n# {\"sessionHash\":\"2c4eef2007e7cfd99d2e089c912598fd2512413b57af255b9cf918de0c56022c\",\"source\":\"cleanup_expired_sessions\",\"event\":\"cleanup_pending_session_expiring\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"counts\":{\"found\":1,\"cleaned\":1},\"operation\":\"cleanup_sessions_completed\",\"source\":\"call_lifecycle\",\"event\":\"call_lifecycle_event\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# Subtest: expiry owner reconciles a no-responder trial session\nok 8 - expiry owner reconciles a no-responder trial session\n  ---\n  duration_ms: 70.49225\n  type: 'test'\n  ...\n# Subtest: Daily owner ignores stale trial ids and preserves existing evidence\nok 9 - Daily owner ignores stale trial ids and preserves existing evidence\n  ---\n  duration_ms: 60.673\n  type: 'test'\n  ...\n1..9\n# tests 9\n# suites 0\n# pass 9\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 4476.193833"
     }
   },
-  "finishedAt": "2026-07-20T20:43:32.050Z"
+  "finishedAt": "2026-09-08T20:16:57.356Z"
 }

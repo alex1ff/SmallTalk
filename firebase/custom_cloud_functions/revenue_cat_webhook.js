@@ -19,6 +19,8 @@ const crypto = require("node:crypto");
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const {defineSecret} = require("firebase-functions/params");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "revenue_cat_webhook"});
 
 const revenueCatWebhookSecret = defineSecret("REVENUECAT_WEBHOOK_SECRET");
 const {
@@ -793,7 +795,7 @@ exports.revenueCatWebhook = functions
       memory: "256MB",
     })
     .https.onRequest(async (req, res) => {
-      console.log("📬 revenueCatWebhook received", {
+      safeLog.log("webhook_received", {
         method: req.method,
         path: req.path,
         hasAuth: Boolean(req.headers.authorization),
@@ -808,20 +810,20 @@ exports.revenueCatWebhook = functions
       // raw Authorization header — we compare byte-for-byte.
       const expectedSecret = revenueCatWebhookSecret.value();
       if (!expectedSecret) {
-        console.error("❌ REVENUECAT_WEBHOOK_SECRET not configured");
+        safeLog.error("webhook_secret_missing");
         res.status(500).send("Server not configured");
         return;
       }
       const authHeader = req.headers.authorization || "";
       if (authHeader !== expectedSecret) {
-        console.warn("⚠️ revenueCatWebhook auth failed");
+        safeLog.warn("webhook_auth_failed");
         res.status(401).send("Unauthorized");
         return;
       }
 
       const parsed = parseEvent(req.body);
       if (!parsed) {
-        console.warn("⚠️ revenueCatWebhook malformed payload", {
+        safeLog.warn("webhook_payload_malformed", {
           bodyType: typeof req.body,
           hasEvent: Boolean(req.body && req.body.event),
         });
@@ -830,7 +832,7 @@ exports.revenueCatWebhook = functions
         return;
       }
 
-      console.log("📬 revenueCatWebhook event", {
+      safeLog.log("webhook_event", {
         type: parsed.type,
         eventId: parsed.eventId,
         appUserId: parsed.appUserId,
@@ -839,7 +841,7 @@ exports.revenueCatWebhook = functions
       });
 
       if (!HANDLED_EVENT_TYPES.has(parsed.type)) {
-        console.log("ℹ️ revenueCatWebhook ignoring unhandled event type", {
+        safeLog.log("webhook_event_ignored", {
           type: parsed.type,
         });
         res.status(200).send("Ignored");
@@ -848,7 +850,7 @@ exports.revenueCatWebhook = functions
 
       const malformedReason = malformedEventReason(parsed);
       if (malformedReason) {
-        console.warn("⚠️ revenueCatWebhook malformed lifecycle event", {
+        safeLog.warn("webhook_lifecycle_malformed", {
           type: parsed.type,
           eventId: parsed.eventId,
           reason: malformedReason,
@@ -859,7 +861,7 @@ exports.revenueCatWebhook = functions
 
       const allowlistFailure = eventAllowlistFailure(parsed);
       if (allowlistFailure) {
-        console.warn("⚠️ revenueCatWebhook ignored by allowlist", {
+        safeLog.warn("webhook_event_not_allowlisted", {
           type: parsed.type,
           eventId: parsed.eventId,
           productId: parsed.productId,
@@ -888,9 +890,9 @@ exports.revenueCatWebhook = functions
             );
           }
         } catch (err) {
-          console.error("❌ revenueCatWebhook transfer failed", {
+          safeLog.error("webhook_transfer_failed", {
             eventId: parsed.eventId,
-            err: err && err.message ? err.message : err,
+            error: err,
           });
           res.status(500).send("Internal error");
         }
@@ -903,7 +905,7 @@ exports.revenueCatWebhook = functions
       const initializesTrial = shouldInitializeTrial(parsed);
       if (initializesTrial &&
           (!parsed.originalTransactionId || !parsed.purchasedAtMs)) {
-        console.warn("⚠️ revenueCatWebhook malformed trial purchase", {
+        safeLog.warn("webhook_trial_malformed", {
           eventId: parsed.eventId,
         });
         res.status(400).send("Malformed trial purchase");
@@ -931,10 +933,10 @@ exports.revenueCatWebhook = functions
             return {duplicate: true};
           }
           if (userRef && !userSnap.exists) {
-            console.warn(
-                "⚠️ revenueCatWebhook user not found, recording transaction only",
-                {uid: parsed.appUserId, eventId: parsed.eventId},
-            );
+            safeLog.warn("webhook_user_not_found", {
+              appUserId: parsed.appUserId,
+              eventId: parsed.eventId,
+            });
           }
 
           if (trialGrantSnap?.exists) {
@@ -1035,7 +1037,7 @@ exports.revenueCatWebhook = functions
         });
 
         if (result.duplicate) {
-          console.log("ℹ️ revenueCatWebhook duplicate event, acking", {
+          safeLog.log("webhook_duplicate", {
             eventId: parsed.eventId,
             transactionId: transactionRef.id,
           });
@@ -1043,25 +1045,25 @@ exports.revenueCatWebhook = functions
           return;
         }
         if (result.accountMismatch) {
-          console.warn("⚠️ revenueCatWebhook trial ownership mismatch", {
+          safeLog.warn("webhook_trial_ownership_mismatch", {
             eventId: parsed.eventId,
-            uid: parsed.appUserId,
+            appUserId: parsed.appUserId,
           });
           res.status(200).send("Ignored account mismatch");
           return;
         }
 
-        console.log("✅ revenueCatWebhook applied", {
+        safeLog.log("webhook_applied", {
           type: parsed.type,
           eventId: parsed.eventId,
-          uid: parsed.appUserId,
+          appUserId: parsed.appUserId,
         });
         res.status(200).send("OK");
       } catch (err) {
-        console.error("❌ revenueCatWebhook apply failed", {
+        safeLog.error("webhook_apply_failed", {
           eventId: parsed.eventId,
-          uid: parsed.appUserId,
-          err: err && err.message ? err.message : err,
+          appUserId: parsed.appUserId,
+          error: err,
         });
         // 500 → RevenueCat retries with backoff (up to ~72h).
         res.status(500).send("Internal error");

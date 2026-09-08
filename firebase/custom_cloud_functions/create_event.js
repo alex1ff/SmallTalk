@@ -1,6 +1,8 @@
 const crypto = require("node:crypto");
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "create_event"});
 const {
   CITY_CATALOG_VERSION,
   EVENT_CITY_CATALOG,
@@ -1217,7 +1219,7 @@ exports.createEvent = functions
         if (err instanceof functions.https.HttpsError) {
           throw err;
         }
-        console.error("createEvent failed", {uid, err});
+        safeLog.error("create_event_failed", {uid, error: err});
         throw new functions.https.HttpsError(
             "internal",
             "Unable to create event",

@@ -3,6 +3,8 @@ const crypto = require("node:crypto");
 const axios = require("axios");
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "password_reset"});
 
 const {
   buildEmailActionHandlerLink,
@@ -472,10 +474,10 @@ async function processPasswordResetRequestHandler(snapshot, context, deps = {}) 
       return null;
     }
     const disposition = deliveryErrorDisposition(error);
-    console.error("Password reset delivery failed", {
+    safeLog.error("password_reset_delivery_failed", {
       requestId,
       attemptCount: lease.attemptCount,
-      code: disposition.code,
+      errorCode: disposition.code,
       disposition: disposition.action,
     });
     if (disposition.action === "fail") {

@@ -16,8 +16,9 @@ void main() {
         countryCode: ' US ',
         cityKey: ' NEW_YORK ',
         partnerLevel: ' Basic ',
+        userScope: ' Student-A ',
       ),
-      '$nearbyPartnerCountPrefsPrefix|en|us|new_york|basic',
+      '$nearbyPartnerCountPrefsPrefix|student-a|en|us|new_york|basic',
     );
   });
 

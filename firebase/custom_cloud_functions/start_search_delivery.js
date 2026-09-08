@@ -27,6 +27,8 @@ const {
   recordTeacherResponderPushResult,
   teacherResponderPushStillCurrent,
 } = require("./start_search_notification_store");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "start_search_delivery"});
 
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -187,15 +189,12 @@ async function maybeNotifyTeacherResponder({
       tokenReader,
     });
   } catch (error) {
-    console.error(
-      "Failed to validate teacher notification before push",
-      {
-        sessionId,
-        responderId,
-        notificationId: notification.notificationId,
-        error: readErrorMessage(error, "pre_push_validation_failed"),
-      },
-    );
+    safeLog.error("teacher_notification_validation_failed", {
+      sessionId,
+      responderId,
+      notificationId: notification.notificationId,
+      error,
+    });
     return {
       ...notification,
       shouldNotify: false,
@@ -217,15 +216,12 @@ async function maybeNotifyTeacherResponder({
           nowMillis: Date.now(),
         });
       } catch (error) {
-        console.error(
-          "Failed to cancel stale teacher notification",
-          {
-            sessionId,
-            responderId,
-            notificationId: notification.notificationId,
-            error: readErrorMessage(error, "cancel_failed"),
-          },
-        );
+        safeLog.error("teacher_notification_cancel_failed", {
+          sessionId,
+          responderId,
+          notificationId: notification.notificationId,
+          error,
+        });
       }
     }
     return {
@@ -285,16 +281,13 @@ async function maybeNotifyTeacherResponder({
       nowMillis: Date.now(),
     });
   } catch (error) {
-    console.error(
-      "Failed to record teacher responder push result",
-      {
-        sessionId,
-        responderId,
-        notificationId: notification.notificationId,
-        pushSent: pushResult?.sent === true,
-        error: readErrorMessage(error, "push_finalization_failed"),
-      },
-    );
+    safeLog.error("teacher_push_result_record_failed", {
+      sessionId,
+      responderId,
+      notificationId: notification.notificationId,
+      status: pushResult?.sent === true ? "sent" : "failed",
+      error,
+    });
     return {
       ...notification,
       shouldNotify: false,

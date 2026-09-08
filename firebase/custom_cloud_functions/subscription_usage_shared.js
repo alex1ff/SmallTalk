@@ -20,13 +20,16 @@
 // wants to A/B test caps.
 
 const admin = require("firebase-admin");
+const {createSafeConsole} = require("./safe_log");
+
+const safeConsole = createSafeConsole({source: "subscription_usage"});
 
 // Hard ceilings. A subscriber crossing either limit cannot start new calls
 // until the corresponding window resets.
 const DAY_LIMIT_SECONDS = 60 * 60; // 60 minutes per day
 const WEEK_LIMIT_SECONDS = 8 * 60 * 60; // 8 hours per week
 
-// We emit a console.warn when usage crosses this fraction of a limit so
+// We emit a structured warning when usage crosses this fraction of a limit so
 // Cloud Logging alerts can fire before users actually get blocked.
 const ALERT_THRESHOLD = 0.8;
 
@@ -147,18 +150,18 @@ async function incrementUsageInTransaction(
 
   const dayThreshold = DAY_LIMIT_SECONDS * ALERT_THRESHOLD;
   if (newDayDuration >= dayThreshold && dayDurationSeconds < dayThreshold) {
-    console.warn("⚠️ subscription_usage approaching daily limit", {
+    safeConsole.warn("subscription_usage_daily_threshold_reached", {
       userId,
       dayDurationSeconds: newDayDuration,
-      limit: DAY_LIMIT_SECONDS,
+      limitSeconds: DAY_LIMIT_SECONDS,
     });
   }
   const weekThreshold = WEEK_LIMIT_SECONDS * ALERT_THRESHOLD;
   if (newWeekDuration >= weekThreshold && weekDurationSeconds < weekThreshold) {
-    console.warn("⚠️ subscription_usage approaching weekly limit", {
+    safeConsole.warn("subscription_usage_weekly_threshold_reached", {
       userId,
       weekDurationSeconds: newWeekDuration,
-      limit: WEEK_LIMIT_SECONDS,
+      limitSeconds: WEEK_LIMIT_SECONDS,
     });
   }
 }

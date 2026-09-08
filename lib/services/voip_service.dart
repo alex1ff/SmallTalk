@@ -18,6 +18,7 @@ import '/backend/schema/enums/enums.dart';
 import '/flutter_flow/nav/nav.dart';
 import '/flutter_flow/permissions_util.dart';
 import '/services/match_coordinator.dart';
+import '/services/safe_debug_log.dart';
 import '/services/voip_accept_lifecycle.dart';
 import '/services/voip_accepted_session_resolver.dart';
 import '/services/voip_navigation_coordinator.dart';
@@ -776,7 +777,7 @@ class VoIPService {
       for (final acceptData in acceptedCalls) {
         final sessionId = _voipStringFromPayload(acceptData, 'sessionId') ??
             _voipNonEmptyString(acceptData['sessionId']);
-        debugPrint(
+        safeDebugLog(
           '📞 VoIPService: Replaying background accepted call: $sessionId',
         );
         if (_queueCallKitActionIfNotReady(
@@ -794,7 +795,7 @@ class VoIPService {
         await _handleCallAccept(acceptData);
       }
     } catch (e) {
-      debugPrint('⚠️ VoIPService: Failed to replay background accept: $e');
+      safeDebugLog('⚠️ VoIPService: Failed to replay background accept: $e');
     }
   }
 
@@ -1373,7 +1374,7 @@ class VoIPService {
           status == 'active' || status == 'connecting' || status == 'connected';
       return isParticipant && isEndableStatus;
     } catch (e) {
-      debugPrint('⚠️ VoIPService: endSession fallback lookup failed: $e');
+      safeDebugLog('⚠️ VoIPService: endSession fallback lookup failed: $e');
       return false;
     }
   }
@@ -1382,7 +1383,7 @@ class VoIPService {
   /// Вызывается один раз при запуске приложения
   Future<void> initialize() async {
     if (_initialized) {
-      debugPrint('🔔 VoIPService: Initialize skipped (already running)');
+      safeDebugLog('🔔 VoIPService: Initialize skipped (already running)');
       _ensureCallKitEventSubscription();
       _startIncomingNotificationListener();
       unawaited(_refreshPushRegistrationsBestEffort());
@@ -1391,7 +1392,7 @@ class VoIPService {
       return;
     }
     if (_initializing) {
-      debugPrint('🔔 VoIPService: Initialize already in progress');
+      safeDebugLog('🔔 VoIPService: Initialize already in progress');
       _ensureCallKitEventSubscription();
       await _initializeCompleter?.future;
       if (!_initialized) {
@@ -1406,7 +1407,7 @@ class VoIPService {
     _initializing = true;
     final initializeCompleter = Completer<void>();
     _initializeCompleter = initializeCompleter;
-    debugPrint('🔔 VoIPService: Initializing...');
+    safeDebugLog('🔔 VoIPService: Initializing...');
 
     try {
       // CallKit action handling is essential. It must become ready even when
@@ -1415,7 +1416,7 @@ class VoIPService {
 
       await _tokenRefreshSub?.cancel();
       _tokenRefreshSub = _fcm.onTokenRefresh.listen((newToken) {
-        debugPrint('🔔 VoIPService: Token refreshed');
+        safeDebugLog('🔔 VoIPService: Token refreshed');
         unawaited(_saveVoipToken(newToken));
       });
 
@@ -1436,7 +1437,7 @@ class VoIPService {
         if (message.data['type'] != 'incoming_call') return;
         if (kIsWeb) return;
 
-        debugPrint('📞 VoIPService: Foreground incoming call received');
+        safeDebugLog('📞 VoIPService: Foreground incoming call received');
         try {
           await showIncomingCall(
             sessionId: message.data['sessionId'] ?? '',
@@ -1447,7 +1448,8 @@ class VoIPService {
             lifecycleState: WidgetsBinding.instance.lifecycleState,
           );
         } catch (e) {
-          debugPrint('❌ VoIPService: Failed to show CallKit in foreground: $e');
+          safeDebugLog(
+              '❌ VoIPService: Failed to show CallKit in foreground: $e');
         }
       });
 
@@ -1458,9 +1460,9 @@ class VoIPService {
       await recoverBackgroundAcceptedCalls();
       await drainPendingCallKitActions();
       unawaited(_refreshPushRegistrationsBestEffort());
-      debugPrint('✅ VoIPService: Initialized successfully');
+      safeDebugLog('✅ VoIPService: Initialized successfully');
     } catch (e) {
-      debugPrint('❌ VoIPService: Initialization error: $e');
+      safeDebugLog('❌ VoIPService: Initialization error: $e');
     } finally {
       _initializing = false;
       if (!initializeCompleter.isCompleted) {
@@ -1483,11 +1485,11 @@ class VoIPService {
         sound: true,
         criticalAlert: true,
       );
-      debugPrint(
+      safeDebugLog(
         '🔔 VoIPService: Permission status: ${settings.authorizationStatus}',
       );
     } catch (error) {
-      debugPrint('⚠️ VoIPService: Push permission sync failed: $error');
+      safeDebugLog('⚠️ VoIPService: Push permission sync failed: $error');
     }
 
     try {
@@ -1495,7 +1497,7 @@ class VoIPService {
       if (platform == 'ios' || platform == 'macos') {
         final apnsToken = await _fcm.getAPNSToken();
         if (apnsToken == null || apnsToken.trim().isEmpty) {
-          debugPrint(
+          safeDebugLog(
             'ℹ️ VoIPService: APNs token is not ready; FCM sync deferred',
           );
         } else {
@@ -1505,7 +1507,7 @@ class VoIPService {
         await _syncFcmTokenForUser(expectedUserId);
       }
     } catch (error) {
-      debugPrint('⚠️ VoIPService: FCM token sync deferred: $error');
+      safeDebugLog('⚠️ VoIPService: FCM token sync deferred: $error');
     }
 
     await _syncPushKitToken();
@@ -1515,10 +1517,10 @@ class VoIPService {
     final fcmToken = await _fcm.getToken();
     if (_currentUserIdOrNull() != expectedUserId) return;
     if (fcmToken == null || fcmToken.trim().isEmpty) {
-      debugPrint('⚠️ VoIPService: Failed to get FCM token');
+      safeDebugLog('⚠️ VoIPService: Failed to get FCM token');
       return;
     }
-    debugPrint('🔔 VoIPService: Got FCM token');
+    safeDebugLog('🔔 VoIPService: Got FCM token');
     await _saveVoipToken(fcmToken);
   }
 
@@ -1548,7 +1550,7 @@ class VoIPService {
         }
       },
       onError: (error) {
-        debugPrint(
+        safeDebugLog(
             '⚠️ VoIPService: Incoming notification listener failed: $error');
       },
     );
@@ -1646,7 +1648,7 @@ class VoIPService {
 
       return sessionData;
     } catch (error) {
-      debugPrint(
+      safeDebugLog(
           '⚠️ VoIPService: Failed to validate incoming notification: $error');
       return null;
     }
@@ -1671,7 +1673,7 @@ class VoIPService {
         _incomingNotificationCancellationIsFresh(notificationData)) {
       final terminalEventKey = '${notificationDoc.id}:$notificationStatus';
       if (_handledNotificationIds.add(terminalEventKey)) {
-        debugPrint(
+        safeDebugLog(
           '📴 VoIPService: Incoming call cancelled for session $sessionId',
         );
         await cancelIncomingCall(
@@ -1707,7 +1709,7 @@ class VoIPService {
       sessionData: sessionData,
       userId: userId,
     )) {
-      debugPrint(
+      safeDebugLog(
         'ℹ️ VoIPService: Ignoring stale or non-CallKit v2 notification',
       );
       return;
@@ -1748,7 +1750,8 @@ class VoIPService {
     final payloadExpiresAt =
         _payloadExpiresAtForIncomingNotification(notificationData);
 
-    debugPrint('📞 VoIPService: Firestore incoming call notification received');
+    safeDebugLog(
+        '📞 VoIPService: Firestore incoming call notification received');
     await showIncomingCall(
       sessionId: sessionId,
       callerName: callerName,
@@ -1861,7 +1864,7 @@ class VoIPService {
     for (final sessionId in staleSessionIds) {
       _clearSessionState(sessionId);
     }
-    debugPrint(
+    safeDebugLog(
       '🧹 VoIPService: Pruned stale session state for ${staleSessionIds.length} session(s)',
     );
   }
@@ -1878,7 +1881,7 @@ class VoIPService {
       return;
     }
 
-    debugPrint('🔔 VoIPService: Deinitializing...');
+    safeDebugLog('🔔 VoIPService: Deinitializing...');
     _initializing = false;
     await _clearRegisteredVoipTokens();
 
@@ -1903,7 +1906,7 @@ class VoIPService {
     _resetInMemoryState();
     _initialized = false;
     _ensureCallKitEventSubscription();
-    debugPrint('✅ VoIPService: Deinitialized');
+    safeDebugLog('✅ VoIPService: Deinitialized');
   }
 
   Future<void> _invokeVoipTokenRegistration(
@@ -1921,7 +1924,7 @@ class VoIPService {
     try {
       await _tokenRegistry.saveFcmToken(token);
     } catch (e) {
-      debugPrint('❌ VoIPService: Error saving token: $e');
+      safeDebugLog('❌ VoIPService: Error saving token: $e');
     }
   }
 
@@ -1942,7 +1945,7 @@ class VoIPService {
   }) async {
     try {
       if (extraData != null && voipIncomingCallPayloadHasExpired(extraData)) {
-        debugPrint('ℹ️ VoIPService: Ignoring expired incoming call payload');
+        safeDebugLog('ℹ️ VoIPService: Ignoring expired incoming call payload');
         return;
       }
       final payloadCallKitId = extraData == null
@@ -1966,7 +1969,7 @@ class VoIPService {
             pairAttemptId: pairAttemptId,
             callKitId: callKitId,
           )) {
-        debugPrint(
+        safeDebugLog(
           'ℹ️ VoIPService: Ignoring incoming call already ended by server',
         );
         return;
@@ -1978,7 +1981,7 @@ class VoIPService {
           )) {
         // Rollout fallback for a legacy peer. V2 never reaches this branch:
         // its foreground acceptance is owned by MatchCoordinator/Firestore.
-        debugPrint('ℹ️ VoIPService: Legacy foreground call uses in-app flow');
+        safeDebugLog('ℹ️ VoIPService: Legacy foreground call uses in-app flow');
         await _handleCallAccept(<String, dynamic>{
           'id': callKitId,
           'extra': voipBuildCallKitExtraData(
@@ -1991,7 +1994,7 @@ class VoIPService {
         return;
       }
 
-      debugPrint('📞 VoIPService: Showing incoming call from $callerName');
+      safeDebugLog('📞 VoIPService: Showing incoming call from $callerName');
 
       if (sessionId.isNotEmpty) {
         _sessionCallKitIds[sessionId] = callKitId;
@@ -2055,9 +2058,9 @@ class VoIPService {
 
       _rememberCallKitEventData(callKitParams);
       await FlutterCallkitIncoming.showCallkitIncoming(callKitParams);
-      debugPrint('✅ VoIPService: CallKit UI shown for session: $sessionId');
+      safeDebugLog('✅ VoIPService: CallKit UI shown for session: $sessionId');
     } catch (e) {
-      debugPrint('❌ VoIPService: Error showing incoming call: $e');
+      safeDebugLog('❌ VoIPService: Error showing incoming call: $e');
     }
   }
 
@@ -2065,7 +2068,7 @@ class VoIPService {
   Future<void> _handleCallKitEvent(CallEvent? event) async {
     if (event == null) return;
 
-    debugPrint('📞 VoIPService: CallKit Event: ${event.eventName}');
+    safeDebugLog('📞 VoIPService: CallKit Event: ${event.eventName}');
 
     try {
       if (event is CallEventActionDidUpdateDevicePushTokenVoip) {
@@ -2092,7 +2095,7 @@ class VoIPService {
         if (data == null) {
           // Version 3.1.3 exposes only the UUID for timeout events. Never
           // guess a session: server-side expiry remains the source of truth.
-          debugPrint(
+          safeDebugLog(
             'ℹ️ VoIPService: Timeout has no exact cached call identity',
           );
           return;
@@ -2108,15 +2111,15 @@ class VoIPService {
       } else if (event is CallEventActionCallIncoming) {
         final data = _callKitEventData(event.callKitParams);
         _matchCoordinator.noteIncomingCallKit(data);
-        debugPrint('📞 VoIPService: Call incoming (display state)');
+        safeDebugLog('📞 VoIPService: Call incoming (display state)');
       } else if (event is CallEventActionCallStart) {
         _rememberCallKitEventData(event.callKitParams);
-        debugPrint('📞 VoIPService: Call started');
+        safeDebugLog('📞 VoIPService: Call started');
       } else {
-        debugPrint('⚠️ VoIPService: Unhandled event: ${event.eventName}');
+        safeDebugLog('⚠️ VoIPService: Unhandled event: ${event.eventName}');
       }
     } catch (e) {
-      debugPrint('❌ VoIPService: Error handling CallKit event: $e');
+      safeDebugLog('❌ VoIPService: Error handling CallKit event: $e');
     }
   }
 
@@ -2181,7 +2184,7 @@ class VoIPService {
     final normalizedData = _voipMapFrom(data);
     final sessionId = _voipStringFromPayload(normalizedData, 'sessionId');
     if (sessionId == null) {
-      debugPrint(
+      safeDebugLog(
           '⚠️ VoIPService: Dropping early CallKit action without sessionId');
       return true;
     }
@@ -2201,7 +2204,7 @@ class VoIPService {
         queuedForUserId: _currentUserIdOrNull(),
       ),
     );
-    debugPrint(
+    safeDebugLog(
       '📞 VoIPService: Queued early CallKit ${type.name} for $sessionId',
     );
     return true;
@@ -2258,7 +2261,7 @@ class VoIPService {
         jsonEncode(decoded),
       );
     } catch (error) {
-      debugPrint(
+      safeDebugLog(
         '⚠️ VoIPService: Failed to persist server-ended CallKit tombstone: '
         '$error',
       );
@@ -2320,7 +2323,7 @@ class VoIPService {
       _serverEndedCallKitTombstones[identityKey] = endedAt;
       return true;
     } catch (error) {
-      debugPrint(
+      safeDebugLog(
         '⚠️ VoIPService: Failed to read server-ended CallKit tombstone: '
         '$error',
       );
@@ -2363,7 +2366,7 @@ class VoIPService {
     }
     final sessionId =
         _voipStringFromPayload(normalizedData, 'sessionId') ?? 'unknown';
-    debugPrint(
+    safeDebugLog(
       '⚠️ VoIPService: Dropping CallKit ${type.name} for another user: $sessionId',
     );
     return true;
@@ -2379,20 +2382,21 @@ class VoIPService {
       case VoipAcceptDecision.started:
         return false;
       case VoipAcceptDecision.duplicateTimeWindow:
-        debugPrint('⚠️ VoIPService: Duplicate accept event (time window)');
+        safeDebugLog('⚠️ VoIPService: Duplicate accept event (time window)');
         break;
       case VoipAcceptDecision.duplicateCallKitId:
-        debugPrint(
+        safeDebugLog(
             '⚠️ VoIPService: Duplicate accept event (callKitId): $effectiveCallKitId');
         break;
       case VoipAcceptDecision.alreadyAccepted:
-        debugPrint('⚠️ VoIPService: Call already accepted: $sessionId');
+        safeDebugLog('⚠️ VoIPService: Call already accepted: $sessionId');
         break;
       case VoipAcceptDecision.acceptInProgress:
-        debugPrint('⚠️ VoIPService: Accept already in progress for $sessionId');
+        safeDebugLog(
+            '⚠️ VoIPService: Accept already in progress for $sessionId');
         break;
       case VoipAcceptDecision.duplicateProcessClaim:
-        debugPrint('⚠️ VoIPService: Duplicate accept event (process gate)');
+        safeDebugLog('⚠️ VoIPService: Duplicate accept event (process gate)');
         break;
     }
     return true;
@@ -2411,17 +2415,17 @@ class VoIPService {
           _voipStringFromPayload(data, 'callKitId'),
     );
     if (sessionId == null || sessionId.isEmpty) {
-      debugPrint('❌ VoIPService: No sessionId in accept event');
+      safeDebugLog('❌ VoIPService: No sessionId in accept event');
       return;
     }
     if (!_adoptExactV2CallKitIdentity(sessionId, data, callKitId)) {
-      debugPrint(
+      safeDebugLog(
         'ℹ️ VoIPService: Ignoring v2 accept without exact CallKit identity',
       );
       return;
     }
     if (_hasMismatchedTrackedPairAttempt(sessionId, data)) {
-      debugPrint('ℹ️ VoIPService: Ignoring accept for stale pair attempt');
+      safeDebugLog('ℹ️ VoIPService: Ignoring accept for stale pair attempt');
       return;
     }
 
@@ -2429,7 +2433,7 @@ class VoIPService {
     final effectiveCallKitId =
         trackedCallKitId ?? _callKitIdForSession(sessionId);
     if (callKitId != null && callKitId != effectiveCallKitId) {
-      debugPrint(
+      safeDebugLog(
           'ℹ️ VoIPService: Ignoring accept for stale callKitId: $callKitId');
       return;
     }
@@ -2450,14 +2454,14 @@ class VoIPService {
       return;
     }
     if (_hasProtectedLiveSessionState(sessionId)) {
-      debugPrint(
+      safeDebugLog(
           'ℹ️ VoIPService: Ignoring accept for protected session state: $sessionId');
       return;
     }
     if (voipIncomingCallPayloadHasExpired(data, now: acceptTime)) {
-      debugPrint('ℹ️ VoIPService: Ignoring expired accept payload');
+      safeDebugLog('ℹ️ VoIPService: Ignoring expired accept payload');
       if (callKitId == null) {
-        debugPrint(
+        safeDebugLog(
             'ℹ️ VoIPService: Expired accept has no callKitId; leaving system calls untouched');
         return;
       }
@@ -2494,7 +2498,7 @@ class VoIPService {
       final hasPermissions = await _ensureAcceptMediaPermissions();
       if (!_acceptLifecycle.isCurrent(acceptAttempt)) return;
       if (!hasPermissions) {
-        debugPrint(
+        safeDebugLog(
           '⚠️ VoIPService: camera or microphone permission denied before accepting $sessionId',
         );
         final permissionDeniedGeneration = _sessionStateGenerations[sessionId];
@@ -2503,7 +2507,7 @@ class VoIPService {
           try {
             await _matchCoordinator.handleCallKitDecline(data);
           } catch (error) {
-            debugPrint('⚠️ VoIPService: permission decline failed: $error');
+            safeDebugLog('⚠️ VoIPService: permission decline failed: $error');
           }
           await _endExpiredAcceptSystemCall(
             sessionId: sessionId,
@@ -2533,17 +2537,17 @@ class VoIPService {
           if (!_acceptLifecycle.markAccepted(acceptAttempt)) return;
           _lastAcceptedSessionId = sessionId;
           _lastAcceptedIsTutor = false;
-          debugPrint('✅ VoIPService: v2 CallKit accept submitted');
+          safeDebugLog('✅ VoIPService: v2 CallKit accept submitted');
         } catch (error) {
           if (!_acceptLifecycle.isCurrent(acceptAttempt)) return;
-          debugPrint('❌ VoIPService: v2 accept failed: $error');
+          safeDebugLog('❌ VoIPService: v2 accept failed: $error');
           if (voipIsDefinitiveV2AcceptFailure(error)) {
             await _endExpiredAcceptSystemCall(
               sessionId: sessionId,
               callKitId: effectiveCallKitId,
             );
           } else {
-            debugPrint(
+            safeDebugLog(
               'ℹ️ VoIPService: v2 accept outcome is unknown; '
               'keeping CallKit bound to server reconciliation',
             );
@@ -2562,7 +2566,7 @@ class VoIPService {
         _navigationCoordinator.clearLastNavigation();
       }
 
-      debugPrint('✅ VoIPService: Call accepted: $sessionId');
+      safeDebugLog('✅ VoIPService: Call accepted: $sessionId');
 
       final payloadCredentials = voipRoomCredentialsFromAcceptedPayload(data);
       final acceptAction = voipAcceptActionFromPayload(data);
@@ -2616,7 +2620,7 @@ class VoIPService {
       ));
     } catch (e) {
       if (!_acceptLifecycle.isCurrent(acceptAttempt)) return;
-      debugPrint('❌ VoIPService: Error in call accept flow: $e');
+      safeDebugLog('❌ VoIPService: Error in call accept flow: $e');
       _clearSessionState(sessionId);
     } finally {
       if (finishAcceptAttempt) {
@@ -2724,7 +2728,7 @@ class VoIPService {
         roomName: data['dailyRoomName'] as String?,
       );
     } catch (e) {
-      debugPrint('⚠️ VoIPService: Recovery check failed: $e');
+      safeDebugLog('⚠️ VoIPService: Recovery check failed: $e');
       return null;
     }
   }
@@ -2760,7 +2764,7 @@ class VoIPService {
     String? roomName,
   }) {
     if (appNavigatorKey.currentContext == null) {
-      debugPrint('⚠️ VoIPService: Navigation context not ready');
+      safeDebugLog('⚠️ VoIPService: Navigation context not ready');
       _touchSessionState(sessionId);
     }
 
@@ -2786,7 +2790,7 @@ class VoIPService {
     final router = GoRouter.of(navContext);
     final currentLocation = router.getCurrentLocation();
     if (_isVideoCallLocationForSession(currentLocation, request.sessionId)) {
-      debugPrint(
+      safeDebugLog(
         'ℹ️ VoIPService: Already on $_videoCallRoutePath for '
         '${request.sessionId}, skip navigation',
       );
@@ -2794,12 +2798,12 @@ class VoIPService {
     }
 
     router.go(target.location);
-    debugPrint('🎬 VoIPService: Navigated to VideoCallPage');
+    safeDebugLog('🎬 VoIPService: Navigated to VideoCallPage');
     return true;
   }
 
   void _logNavigationRetryExhausted() {
-    debugPrint(
+    safeDebugLog(
       '⚠️ VoIPService: Navigation context not ready after extended retries',
     );
   }
@@ -2844,13 +2848,13 @@ class VoIPService {
 
   void _handleAudioSessionToggle(dynamic body) {
     final isActive = body is Map && body['isActivate'] == true;
-    debugPrint(
+    safeDebugLog(
       '🔈 VoIPService: Audio session ${isActive ? 'activated' : 'deactivated'}',
     );
     // Only care about activation, and only if we haven't already navigated
     if (!isActive) return;
     if (_lastNavigatedSessionId != null) {
-      debugPrint(
+      safeDebugLog(
           'ℹ️ VoIPService: Already navigated, skipping audio session toggle');
       return;
     }
@@ -2874,7 +2878,7 @@ class VoIPService {
 
     final sessionId = _voipStringFromPayload(data, 'sessionId');
     if (sessionId == null || sessionId.isEmpty) {
-      debugPrint('❌ VoIPService: No sessionId in decline event');
+      safeDebugLog('❌ VoIPService: No sessionId in decline event');
       return;
     }
     final callKitId = _normalizeCallKitId(
@@ -2882,17 +2886,17 @@ class VoIPService {
           _voipStringFromPayload(data, 'callKitId'),
     );
     if (!_adoptExactV2CallKitIdentity(sessionId, data, callKitId)) {
-      debugPrint(
+      safeDebugLog(
         'ℹ️ VoIPService: Ignoring v2 decline without exact CallKit identity',
       );
       return;
     }
     if (_hasMismatchedTrackedPairAttempt(sessionId, data)) {
-      debugPrint('ℹ️ VoIPService: Ignoring decline for stale pair attempt');
+      safeDebugLog('ℹ️ VoIPService: Ignoring decline for stale pair attempt');
       return;
     }
     if (_hasMismatchedTrackedCallKitId(sessionId, callKitId)) {
-      debugPrint(
+      safeDebugLog(
           'ℹ️ VoIPService: Ignoring decline for stale callKitId: $callKitId');
       return;
     }
@@ -2903,7 +2907,7 @@ class VoIPService {
         callKitId: callKitId,
       )) {
         _clearSessionState(sessionId);
-        debugPrint(
+        safeDebugLog(
           'ℹ️ VoIPService: Ignoring server-driven CallKit decline',
         );
         return;
@@ -2911,42 +2915,43 @@ class VoIPService {
       try {
         await _matchCoordinator.handleCallKitDecline(data);
       } catch (error) {
-        debugPrint('❌ VoIPService: v2 decline failed: $error');
+        safeDebugLog('❌ VoIPService: v2 decline failed: $error');
       } finally {
         _clearSessionState(sessionId);
       }
       return;
     }
     if (_hasProtectedLiveSessionState(sessionId)) {
-      debugPrint(
+      safeDebugLog(
           'ℹ️ VoIPService: Ignoring decline for active session: $sessionId');
       return;
     }
     final declineTime = DateTime.now();
     _pruneRecentDeclineState(declineTime);
     if (_declineInProgress.contains(sessionId)) {
-      debugPrint('⚠️ VoIPService: Decline already in progress for $sessionId');
+      safeDebugLog(
+          '⚠️ VoIPService: Decline already in progress for $sessionId');
       return;
     }
     final recentDeclineAt = _recentDeclineBySession[sessionId];
     if (recentDeclineAt != null &&
         declineTime.difference(recentDeclineAt) < _declineDedupeWindow) {
-      debugPrint('⚠️ VoIPService: Duplicate decline event for $sessionId');
+      safeDebugLog('⚠️ VoIPService: Duplicate decline event for $sessionId');
       return;
     }
 
     _declineInProgress.add(sessionId);
     _touchSessionState(sessionId);
-    debugPrint('❌ VoIPService: Call declined: $sessionId');
+    safeDebugLog('❌ VoIPService: Call declined: $sessionId');
 
     try {
       await _callDeclineCallFunction(sessionId);
       _recentDeclineBySession[sessionId] = DateTime.now();
       _clearSessionState(sessionId);
 
-      debugPrint('✅ VoIPService: declineCall completed');
+      safeDebugLog('✅ VoIPService: declineCall completed');
     } catch (e) {
-      debugPrint('❌ VoIPService: Error declining call: $e');
+      safeDebugLog('❌ VoIPService: Error declining call: $e');
     } finally {
       _declineInProgress.remove(sessionId);
     }
@@ -2958,7 +2963,7 @@ class VoIPService {
 
     final sessionId = _voipStringFromPayload(data, 'sessionId');
     if (sessionId == null) {
-      debugPrint('❌ VoIPService: No sessionId in ended event');
+      safeDebugLog('❌ VoIPService: No sessionId in ended event');
       return;
     }
     final callKitId = _normalizeCallKitId(
@@ -2966,13 +2971,13 @@ class VoIPService {
           _voipStringFromPayload(data, 'callKitId'),
     );
     if (!_adoptExactV2CallKitIdentity(sessionId, data, callKitId)) {
-      debugPrint(
+      safeDebugLog(
         'ℹ️ VoIPService: Ignoring v2 end without exact CallKit identity',
       );
       return;
     }
     if (_hasMismatchedTrackedCallKitId(sessionId, callKitId)) {
-      debugPrint(
+      safeDebugLog(
           'ℹ️ VoIPService: Ignoring endSession for stale callKitId: $callKitId');
       return;
     }
@@ -2980,7 +2985,7 @@ class VoIPService {
     var v2ConnectedSession = false;
     if (_voipUsesMatchProtocolV2(data)) {
       if (!_v2EndedCallMatchesTrackedIdentity(sessionId, data, callKitId)) {
-        debugPrint(
+        safeDebugLog(
           'ℹ️ VoIPService: Ignoring v2 end without exact pair/callKit identity',
         );
         return;
@@ -2991,7 +2996,7 @@ class VoIPService {
         callKitId: callKitId,
       )) {
         _clearSessionState(sessionId);
-        debugPrint(
+        safeDebugLog(
           'ℹ️ VoIPService: Ignoring server-driven CallKit end',
         );
         return;
@@ -3002,13 +3007,13 @@ class VoIPService {
         v2ConnectedSession =
             disposition == MatchCallKitEndDisposition.endConnectedSession;
       } catch (error) {
-        debugPrint('⚠️ VoIPService: v2 CallKit end response failed: $error');
+        safeDebugLog('⚠️ VoIPService: v2 CallKit end response failed: $error');
         return;
       } finally {
         _clearSessionState(sessionId);
       }
       if (!v2ConnectedSession) {
-        debugPrint('✅ VoIPService: pending v2 match cancelled on hang-up');
+        safeDebugLog('✅ VoIPService: pending v2 match cancelled on hang-up');
         return;
       }
     }
@@ -3022,19 +3027,19 @@ class VoIPService {
     if (!canEndSessionFromMemory &&
         shouldEndViaFallback &&
         fallbackStartGeneration != _sessionStateGenerations[sessionId]) {
-      debugPrint(
+      safeDebugLog(
           'ℹ️ VoIPService: Ignoring endSession because session state changed during fallback: $sessionId');
       return;
     }
 
     if (!canEndSessionFromMemory && !shouldEndViaFallback) {
-      debugPrint(
+      safeDebugLog(
           'ℹ️ VoIPService: Ignoring endSession for unknown session: $sessionId');
       return;
     }
 
     _clearSessionState(sessionId);
-    debugPrint('🔚 VoIPService: Call ended: $sessionId');
+    safeDebugLog('🔚 VoIPService: Call ended: $sessionId');
 
     try {
       final override = debugEndSessionOverride;
@@ -3047,9 +3052,9 @@ class VoIPService {
         });
       }
 
-      debugPrint('✅ VoIPService: endSession completed');
+      safeDebugLog('✅ VoIPService: endSession completed');
     } catch (e) {
-      debugPrint('❌ VoIPService: Error ending session: $e');
+      safeDebugLog('❌ VoIPService: Error ending session: $e');
     }
   }
 
@@ -3059,7 +3064,7 @@ class VoIPService {
 
     final sessionId = _voipStringFromPayload(data, 'sessionId');
     if (sessionId == null || sessionId.isEmpty) {
-      debugPrint('❌ VoIPService: No sessionId in timeout event');
+      safeDebugLog('❌ VoIPService: No sessionId in timeout event');
       return;
     }
     final callKitId = _normalizeCallKitId(
@@ -3067,17 +3072,17 @@ class VoIPService {
           _voipStringFromPayload(data, 'callKitId'),
     );
     if (!_adoptExactV2CallKitIdentity(sessionId, data, callKitId)) {
-      debugPrint(
+      safeDebugLog(
         'ℹ️ VoIPService: Ignoring v2 timeout without exact CallKit identity',
       );
       return;
     }
     if (_hasMismatchedTrackedPairAttempt(sessionId, data)) {
-      debugPrint('ℹ️ VoIPService: Ignoring timeout for stale pair attempt');
+      safeDebugLog('ℹ️ VoIPService: Ignoring timeout for stale pair attempt');
       return;
     }
     if (_hasMismatchedTrackedCallKitId(sessionId, callKitId)) {
-      debugPrint(
+      safeDebugLog(
           'ℹ️ VoIPService: Ignoring timeout for stale callKitId: $callKitId');
       return;
     }
@@ -3088,7 +3093,7 @@ class VoIPService {
         callKitId: callKitId,
       )) {
         _clearSessionState(sessionId);
-        debugPrint(
+        safeDebugLog(
           'ℹ️ VoIPService: Ignoring server-driven CallKit timeout',
         );
         return;
@@ -3096,25 +3101,25 @@ class VoIPService {
       try {
         await _matchCoordinator.handleCallKitTimeout(data);
       } catch (error) {
-        debugPrint('⚠️ VoIPService: v2 timeout response failed: $error');
+        safeDebugLog('⚠️ VoIPService: v2 timeout response failed: $error');
       }
       _clearSessionState(sessionId);
       return;
     }
     if (_hasProtectedLiveSessionState(sessionId)) {
-      debugPrint(
+      safeDebugLog(
           'ℹ️ VoIPService: Ignoring timeout for active session: $sessionId');
       return;
     }
     if (!_hasTrackedSessionState(sessionId) &&
         !_hasTrustedCallKitIdentity(sessionId, callKitId)) {
-      debugPrint(
+      safeDebugLog(
           'ℹ️ VoIPService: Ignoring timeout for unknown session: $sessionId');
       return;
     }
 
     _clearSessionState(sessionId);
-    debugPrint('⏰ VoIPService: Call timeout: $sessionId');
+    safeDebugLog('⏰ VoIPService: Call timeout: $sessionId');
 
     // Ничего не делаем - Cloud Function processExpiredNotifications обработает
   }
@@ -3168,9 +3173,9 @@ class VoIPService {
         return;
       }
       _clearSessionState(sessionId);
-      debugPrint('✅ VoIPService: Expired accept system call cleared');
+      safeDebugLog('✅ VoIPService: Expired accept system call cleared');
     } catch (e) {
-      debugPrint('❌ VoIPService: Error ending expired accept call: $e');
+      safeDebugLog('❌ VoIPService: Error ending expired accept call: $e');
     }
   }
 
@@ -3204,7 +3209,7 @@ class VoIPService {
         _prefetchedRoomName = roomName;
       }
     } catch (e) {
-      debugPrint('⚠️ VoIPService: Prefetch token failed: $e');
+      safeDebugLog('⚠️ VoIPService: Prefetch token failed: $e');
     } finally {
       if (_prefetchedSessionId == sessionId &&
           _prefetchRequestGeneration == requestGeneration) {
@@ -3221,7 +3226,7 @@ class VoIPService {
       if (callKitId == null) return;
       await FlutterCallkitIncoming.setCallConnected(callKitId);
     } catch (e) {
-      debugPrint('❌ VoIPService: Error marking call connected: $e');
+      safeDebugLog('❌ VoIPService: Error marking call connected: $e');
     }
   }
 
@@ -3253,7 +3258,7 @@ class VoIPService {
     if (normalizedPairAttemptId != null &&
         trackedPairAttemptId != null &&
         normalizedPairAttemptId != trackedPairAttemptId) {
-      debugPrint('ℹ️ VoIPService: Ignoring stale attempt cancellation');
+      safeDebugLog('ℹ️ VoIPService: Ignoring stale attempt cancellation');
       return;
     }
     final explicitCallKitId = _normalizeCallKitId(callKitId);
@@ -3261,11 +3266,11 @@ class VoIPService {
     if (explicitCallKitId != null &&
         trackedCallKitId != null &&
         explicitCallKitId != trackedCallKitId) {
-      debugPrint('ℹ️ VoIPService: Ignoring stale CallKit cancellation');
+      safeDebugLog('ℹ️ VoIPService: Ignoring stale CallKit cancellation');
       return;
     }
     if (normalizedPairAttemptId != null && explicitCallKitId == null) {
-      debugPrint('ℹ️ VoIPService: V2 cancellation has no exact callKitId');
+      safeDebugLog('ℹ️ VoIPService: V2 cancellation has no exact callKitId');
       return;
     }
     final effectiveCallKitId = explicitCallKitId ??
@@ -3289,9 +3294,9 @@ class VoIPService {
         await FlutterCallkitIncoming.endCall(effectiveCallKitId);
       }
       _clearSessionState(normalizedSessionId);
-      debugPrint('✅ VoIPService: Incoming system call cleared');
+      safeDebugLog('✅ VoIPService: Incoming system call cleared');
     } catch (e) {
-      debugPrint('❌ VoIPService: Error clearing incoming call: $e');
+      safeDebugLog('❌ VoIPService: Error clearing incoming call: $e');
     }
   }
 
@@ -3332,9 +3337,9 @@ class VoIPService {
         _lastCallKitId = null;
       }
 
-      debugPrint('✅ VoIPService: System call UI cleared');
+      safeDebugLog('✅ VoIPService: System call UI cleared');
     } catch (e) {
-      debugPrint('❌ VoIPService: Error ending calls: $e');
+      safeDebugLog('❌ VoIPService: Error ending calls: $e');
     }
   }
 
@@ -3344,7 +3349,7 @@ class VoIPService {
       final calls = await FlutterCallkitIncoming.activeCalls();
       return _hasActiveCallEntries(calls);
     } catch (e) {
-      debugPrint('❌ VoIPService: Error checking active calls: $e');
+      safeDebugLog('❌ VoIPService: Error checking active calls: $e');
       return false;
     }
   }

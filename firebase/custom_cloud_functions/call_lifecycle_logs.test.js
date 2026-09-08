@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const {spawnSync} = require("node:child_process");
 const {
   CALL_LIFECYCLE_LOG_EVENT,
   buildCallLifecycleLogPayload,
@@ -33,9 +34,10 @@ test("call lifecycle payload keeps stable non-sensitive fields only", () => {
 
   assert.deepEqual(payload, {
     event: "accept_connected",
-    source: "acceptCall",
-    sessionId: "session-a",
-    responderId: "student-b",
+    sessionHash: require("./safe_log").correlationHash("session-a", {
+      canonicalSession: true,
+    }),
+    responderHash: require("./safe_log").correlationHash("student-b"),
     statusBefore: "pending_confirmation",
     statusAfter: "connecting",
     counts: {
@@ -65,9 +67,53 @@ test("call lifecycle logger uses a stable event name", () => {
     result: "overridden",
   }, logger);
 
-  assert.deepEqual(logCalls, [[CALL_LIFECYCLE_LOG_EVENT, infoPayload]]);
-  assert.deepEqual(errorCalls, [[CALL_LIFECYCLE_LOG_EVENT, errorPayload]]);
+  assert.deepEqual(logCalls, [[CALL_LIFECYCLE_LOG_EVENT, {
+    operation: infoPayload.event,
+    result: infoPayload.result,
+    sessionHash: infoPayload.sessionHash,
+  }]]);
+  assert.deepEqual(errorCalls, [[CALL_LIFECYCLE_LOG_EVENT, {
+    errorCode: errorPayload.errorCode,
+    operation: errorPayload.event,
+    result: errorPayload.result,
+    sessionHash: errorPayload.sessionHash,
+  }]]);
   assert.equal(errorPayload.result, "error");
+});
+
+test("production lifecycle adapter emits Firebase structured JSON", () => {
+  const child = spawnSync(process.execPath, ["-e", `
+    const {logCallLifecycleEvent} = require("./call_lifecycle_logs");
+    logCallLifecycleEvent({
+      event: "accept_connected",
+      source: "acceptCall",
+      sessionId: "private-session-a",
+      responderId: "private-responder-b",
+      result: "connected",
+    });
+  `], {
+    cwd: __dirname,
+    encoding: "utf8",
+  });
+
+  assert.equal(child.status, 0, child.stderr);
+  const entry = JSON.parse(child.stdout.trim());
+  assert.deepEqual(entry, {
+    event: CALL_LIFECYCLE_LOG_EVENT,
+    message: require("./safe_log").SAFE_EVENT_NAME,
+    operation: "accept_connected",
+    responderHash: require("./safe_log").correlationHash(
+      "private-responder-b",
+    ),
+    result: "connected",
+    sessionHash: require("./safe_log").correlationHash(
+      "private-session-a",
+      {canonicalSession: true},
+    ),
+    severity: "INFO",
+    source: "call_lifecycle",
+  });
+  assert.doesNotMatch(child.stdout, /private/);
 });
 
 test("backend call lifecycle scenarios emit structured logs", () => {

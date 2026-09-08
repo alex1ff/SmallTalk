@@ -22,6 +22,7 @@ npm --prefix firebase/custom_cloud_functions run test:eslint-config
 npm --prefix firebase/custom_cloud_functions run test:events
 npm --prefix firebase/custom_cloud_functions run test:password-reset
 npm --prefix firebase/custom_cloud_functions run test:backend-source
+npm --prefix firebase/custom_cloud_functions run test:safe-logging
 npm --prefix firebase/custom_cloud_functions run validate:backend-source
 node --test \
   firebase/custom_cloud_functions/revenue_cat_webhook.test.js

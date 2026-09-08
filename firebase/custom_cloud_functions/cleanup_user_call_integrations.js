@@ -1,5 +1,8 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const {createSafeConsole} = require("./safe_log");
+
+const safeConsole = createSafeConsole({source: "cleanup_user_call_integrations"});
 
 async function deleteUserIntegrationData({uid, firestore = admin.firestore()}) {
   const userRef = firestore.collection("users").doc(uid);
@@ -42,7 +45,10 @@ const cleanupUserCallIntegrationsOnDelete = functions
     const uid = String(user && user.uid || "").trim();
     if (!uid) return null;
     const result = await deleteUserIntegrationData({uid});
-    console.log("Deleted user-owned call integration data", result);
+    safeConsole.log("user_call_integrations_cleanup_completed", {
+      uid,
+      counts: result,
+    });
     return result;
   });
 

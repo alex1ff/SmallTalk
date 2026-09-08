@@ -105,3 +105,25 @@ Run the complete release check from a clean checkout:
 ```
 
 It installs locked Flutter and Node dependencies, audits runtime packages for high-severity advisories, runs static analysis, the complete Flutter suite, backend syntax validation, and the deterministic event/lifecycle contract tests. The command must pass before `main` is considered releasable.
+
+While GitHub Actions is unavailable, run this gate before committing, pushing,
+or deploying a checked change. It records `checks.log` and `result.json` under
+the Git metadata directory (`git rev-parse --git-path local-ci`), outside the
+versioned working tree. The report includes the commit, dirty file list,
+content fingerprint, timestamps and exit code. Logs stay local; inspect them
+before sharing. To follow progress, use `tail -f` on the printed checks log path.
+
+Success requires passing checks and unchanged source inputs during the run.
+If dependency resolution changes a lockfile, review it and rerun. Any later code
+change invalidates that evidence for release; record the final commit alongside
+the report when committing the checked content. The internal `--checks` argument
+only executes the check body and is not a recorded release gate.
+
+This is a local release procedure, not GitHub-enforced branch protection.
+Only a completed report with `status: passed` and `exitCode: 0` is evidence
+of success. A report left `running` after a forced process kill is incomplete;
+rerun the gate after ensuring the previous checks have stopped. Ignored local
+configuration and installed toolchains are outside the source fingerprint;
+changing either also requires a rerun.
+Keep the workflow for future recovery; device/sandbox QA follows development
+as the final step in [the current task list](tech_debt/NEXT_TASKS.md).

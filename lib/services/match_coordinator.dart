@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 import '/flutter_flow/nav/nav.dart';
+import '/services/safe_debug_log.dart';
 
 const int matchProtocolVersion = 2;
 
@@ -453,12 +454,12 @@ class MatchCoordinator extends ChangeNotifier with WidgetsBindingObserver {
       _userSubscription = _userDocumentStream(normalizedUserId).listen(
         _handleUserDocument,
         onError: (Object error) =>
-            debugPrint('MatchCoordinator: user listener failed: $error'),
+            safeDebugLog('MatchCoordinator: user listener failed: $error'),
       );
       _searchSubscription = _searchDocumentStream(normalizedUserId).listen(
         _handleSearchDocument,
         onError: (Object error) =>
-            debugPrint('MatchCoordinator: search listener failed: $error'),
+            safeDebugLog('MatchCoordinator: search listener failed: $error'),
       );
     });
   }
@@ -476,7 +477,7 @@ class MatchCoordinator extends ChangeNotifier with WidgetsBindingObserver {
     _userOperationTail = result.then<void>(
       (_) {},
       onError: (Object error, StackTrace stackTrace) {
-        debugPrint('MatchCoordinator: user operation failed: $error');
+        safeDebugLog('MatchCoordinator: user operation failed: $error');
       },
     );
     return result;
@@ -647,7 +648,7 @@ class MatchCoordinator extends ChangeNotifier with WidgetsBindingObserver {
         heartbeatStored = _matchMap(response.data)['heartbeat'] == true;
       }
     } catch (error) {
-      debugPrint('MatchCoordinator: search heartbeat failed: $error');
+      safeDebugLog('MatchCoordinator: search heartbeat failed: $error');
     } finally {
       if (_activeV2SearchRequestId == requestId) {
         _searchHeartbeatInFlight = false;
@@ -698,7 +699,7 @@ class MatchCoordinator extends ChangeNotifier with WidgetsBindingObserver {
         _handleSessionData(normalized, data);
       },
       onError: (Object error) =>
-          debugPrint('MatchCoordinator: session listener failed: $error'),
+          safeDebugLog('MatchCoordinator: session listener failed: $error'),
     );
   }
 
@@ -777,7 +778,7 @@ class MatchCoordinator extends ChangeNotifier with WidgetsBindingObserver {
             _claimedPairs.add(pairKey);
           }
         } catch (error) {
-          debugPrint('MatchCoordinator: claim_in_app failed: $error');
+          safeDebugLog('MatchCoordinator: claim_in_app failed: $error');
         } finally {
           _claimInFlight.remove(pairKey);
         }
@@ -899,7 +900,8 @@ class MatchCoordinator extends ChangeNotifier with WidgetsBindingObserver {
         jsonEncode(encoded),
       );
     } catch (error) {
-      debugPrint('MatchCoordinator: failed to persist action intents: $error');
+      safeDebugLog(
+          'MatchCoordinator: failed to persist action intents: $error');
     }
   }
 
@@ -930,7 +932,8 @@ class MatchCoordinator extends ChangeNotifier with WidgetsBindingObserver {
       }
       await _persistActionIntents();
     } catch (error) {
-      debugPrint('MatchCoordinator: failed to restore action intents: $error');
+      safeDebugLog(
+          'MatchCoordinator: failed to restore action intents: $error');
     }
   }
 
@@ -1031,7 +1034,7 @@ class MatchCoordinator extends ChangeNotifier with WidgetsBindingObserver {
         );
         rethrow;
       }
-      debugPrint(
+      safeDebugLog(
         'MatchCoordinator: ${intent.action} outcome unknown; retrying: $error',
       );
       _scheduleActionIntentRetry(intent);
@@ -1064,7 +1067,7 @@ class MatchCoordinator extends ChangeNotifier with WidgetsBindingObserver {
               );
               return;
             }
-            debugPrint(
+            safeDebugLog(
               'MatchCoordinator: retry for ${intent.action} failed: $error',
             );
           }
@@ -1217,7 +1220,7 @@ class MatchCoordinator extends ChangeNotifier with WidgetsBindingObserver {
       final response = await _submitActionIntent(intent);
       return response == null || response['ok'] != false;
     } catch (error) {
-      debugPrint('MatchCoordinator: cancel failed: $error');
+      safeDebugLog('MatchCoordinator: cancel failed: $error');
       return false;
     }
   }
@@ -1392,13 +1395,13 @@ class MatchCoordinator extends ChangeNotifier with WidgetsBindingObserver {
         return;
       }
       if (lastTokenError != null) {
-        debugPrint(
+        safeDebugLog(
           'MatchCoordinator: navigation preparation failed after retries: '
           '$lastTokenError',
         );
       }
     } catch (error) {
-      debugPrint('MatchCoordinator: navigation failed: $error');
+      safeDebugLog('MatchCoordinator: navigation failed: $error');
     } finally {
       _navigationInFlight.remove(pairKey);
     }

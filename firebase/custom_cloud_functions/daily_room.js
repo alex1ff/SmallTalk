@@ -1,4 +1,6 @@
 const axios = require("axios");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "daily_room"});
 
 const DAILY_ROOM_CONFIG_VERSION = 2;
 const DAILY_ROOM_MAX_PARTICIPANTS = 4;
@@ -159,22 +161,6 @@ async function isDailyUserPresentInRoom({ roomName, userId }) {
   return dailyPresenceHasUser(presence, userId);
 }
 
-function decodeTokenClaims(token) {
-  if (!token || typeof token !== "string") return null;
-  try {
-    const parts = token.split(".");
-    if (parts.length < 2) return null;
-    const payload = parts[1]
-      .replace(/-/g, "+")
-      .replace(/_/g, "/")
-      .padEnd(Math.ceil(parts[1].length / 4) * 4, "=");
-    const decoded = Buffer.from(payload, "base64").toString("utf8");
-    return JSON.parse(decoded);
-  } catch (e) {
-    return null;
-  }
-}
-
 function getDailyRoomConfig(room) {
   if (!room || typeof room !== "object") return {};
   const config = room.config || room.properties || {};
@@ -228,8 +214,6 @@ async function createDailyRoom({
   language,
   studentId,
   tutorId,
-  studentName,
-  tutorName,
   expSeconds = 3600,
 }) {
   const { apiKey } = getDailyEnv();
@@ -238,13 +222,12 @@ async function createDailyRoom({
   const randomStr = Math.random().toString(36).substr(2, 9);
   const roomName = `session_${timestamp}_${randomStr}`;
 
-  console.log("🏠 Creating Daily room:", {
-    name: roomName,
-    language,
-    participants: [studentName, tutorName],
+  safeLog.log("daily_room_create_started", {
+    roomName,
     studentId,
     tutorId,
-    expSeconds,
+    requestedLanguage: language,
+    ttlSeconds: expSeconds,
   });
 
   const roomConfig = buildRoomConfig({ name: roomName, language, expSeconds });
@@ -263,12 +246,7 @@ async function createDailyRoom({
   );
 
   const room = response.data;
-  console.log("✅ Daily room created:", {
-    name: room.name,
-    url: room.url,
-    privacy: room.privacy,
-    created_at: room.created_at,
-  });
+  safeLog.log("daily_room_created", {roomName: room.name});
 
   return {
     name: room.name,
@@ -321,21 +299,7 @@ async function createMeetingToken({
   );
 
   const token = response.data.token;
-  const claims = decodeTokenClaims(token);
-  if (claims) {
-    console.log("🔎 Meeting token claims", {
-      room: claims.r,
-      isOwner: claims.o,
-      exp: claims.exp,
-      userId: claims.ud,
-    });
-  } else {
-    console.log("🔎 Meeting token created (claims decode failed)", {
-      roomName,
-      isOwner: !!isOwner,
-      hasUser: !!userId,
-    });
-  }
+  safeLog.log("meeting_token_created", {roomName, userId});
   return token;
 }
 
@@ -359,18 +323,14 @@ async function deleteDailyRoom(roomName) {
         timeout: 5000,
       },
     );
-    console.log("🧹 Daily room deleted:", roomName);
+    safeLog.log("daily_room_deleted", {roomName});
     return true;
   } catch (error) {
     if (isDailyRoomAlreadyDeletedError(error)) {
-      console.log("🧹 Daily room already deleted or expired:", roomName);
+      safeLog.log("daily_room_already_deleted", {roomName});
       return true;
     }
-    console.error(
-      "⚠️ Failed to delete Daily room (non-critical):",
-      roomName,
-      error.response?.data || error.message,
-    );
+    safeLog.error("daily_room_delete_failed", {roomName, error});
     return false;
   }
 }

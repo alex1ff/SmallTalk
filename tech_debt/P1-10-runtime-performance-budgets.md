@@ -85,3 +85,18 @@ reliable baseline. Порог 90% кадров или фиксированные
 Локальный signal: `npm --prefix firebase/custom_cloud_functions run
 test:performance-budget` — green; `flutter analyze --no-pub` обязателен после
 изменений runtime-кода и здесь не требуется, потому что этот срез tooling-only.
+
+## Локальный baseline 07.09.2026
+
+- В `audit/performance_baselines/` сохранены десять cold profile-web samples,
+  raw diagnostics, build hashes и точная процедура повторения.
+- Валидатор различает `browser`, `emulator` и `physical`; браузерный замер не
+  маркируется как мобильный эмулятор.
+- Порог 10% берётся только из baseline и действует для стабильных web-profile
+  transfer/resource/bundle signals. Candidate не может ослабить порог или
+  пропустить budgeted metric; network/auth/cache входят в compatibility.
+- Межпакетный headless timing нестабилен и оставлен без ложного gate. Warm
+  reload, mobile frame/memory/call и авторизованные backend-сценарии не
+  подменены ненадёжными данными: они перенесены в финальную device-задачу 02.
+- Кодовая часть закрыта 08.09.2026: полный launcher и архивное восстановление
+  baseline зелёные; независимый review-loop принят, реализация и тесты 10/10.

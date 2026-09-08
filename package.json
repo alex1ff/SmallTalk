@@ -3,7 +3,7 @@
   "private": true,
   "packageManager": "npm@10.8.2",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "backend:ci": "bash audit/scripts/run_backend_ci_checks.sh",
@@ -11,6 +11,6 @@
     "firestore:rules:test": "bash audit/scripts/run_firestore_rules_tests.sh"
   },
   "devDependencies": {
-    "firebase-tools": "15.14.0"
+    "firebase-tools": "15.29.0"
   }
 }

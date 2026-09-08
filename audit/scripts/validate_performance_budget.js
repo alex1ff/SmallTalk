@@ -26,5 +26,6 @@ const result = comparePerformanceSnapshots(baseline, readJson(candidatePath));
 console.log(JSON.stringify(result, null, 2));
 process.exit(result.status === "invalid" || result.status === "incompatible" ||
   Object.values(result.metrics ?? {}).some((metric) =>
-    metric.status === "regression" || metric.status === "incompatible",
+    metric.status === "regression" || metric.status === "incompatible" ||
+      metric.status === "incomplete",
   ) ? 1 : 0);

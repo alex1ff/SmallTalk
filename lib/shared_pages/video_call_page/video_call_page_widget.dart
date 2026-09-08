@@ -17,6 +17,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '/services/voip_service.dart';
+import '/services/safe_debug_log.dart';
 import 'video_call_page_model.dart';
 export 'video_call_page_model.dart';
 
@@ -248,7 +249,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
       _deepgramAccessToken = _nonEmptyValue(data['accessToken']?.toString());
       _lastDeepgramTokenSessionId = sessionId;
       if (kDebugMode) {
-        debugPrint(
+        safeDebugLog(
           _deepgramAccessToken != null
               ? '🎙️ Deepgram credential ready: ${data['credentialType'] ?? 'unknown'}'
               : '⚠️ Deepgram credential response was empty',
@@ -258,7 +259,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
     } on FirebaseFunctionsException catch (e) {
       final error = _mapDeepgramCredentialError(e);
       if (kDebugMode) {
-        debugPrint('❌ Deepgram credential fetch failed: $e');
+        safeDebugLog('❌ Deepgram credential fetch failed: $e');
       }
       if (throwOnFailure) {
         throw error;
@@ -266,7 +267,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
       return _deepgramAccessToken;
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('❌ Deepgram credential fetch failed: $e');
+        safeDebugLog('❌ Deepgram credential fetch failed: $e');
       }
       if (throwOnFailure) {
         throw const DeepgramCredentialException(
@@ -597,7 +598,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
             _lastLoggedTokenSource = tokenSource;
             _lastLoggedRoomName = resolvedRoomName;
             _lastLoggedRoomUrl = resolvedRoomUrl;
-            debugPrint(
+            safeDebugLog(
               '🎟️ Token source: $tokenSource | roomName: ${resolvedRoomName ?? "null"} | roomUrl: ${resolvedRoomUrl.isNotEmpty ? "present" : "missing"}',
             );
           }

@@ -32,6 +32,8 @@ const {
 const {
   VIDEO_SESSION_STATUS,
 } = require("./video_sessions_shared");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "process_match_protocol_v2_state"});
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -361,10 +363,10 @@ async function processProtocolV2SessionState({
     ) {
       return {processed: false, reason: "finalization_superseded"};
     }
-    console.error("Protocol v2 finalization retry failed", {
+    safeLog.error("protocol_v2_finalization_retry_failed", {
       sessionId,
       pairAttemptId,
-      error: normalizeString(error?.message) || "finalization_failed",
+      error,
     });
     return {
       processed: false,

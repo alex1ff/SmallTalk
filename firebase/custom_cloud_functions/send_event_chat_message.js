@@ -1,5 +1,7 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "send_event_chat_message"});
 
 const REQUEST_TIMEOUT_SECONDS = 30;
 const EVENT_STATUS_ACTIVE = "active";
@@ -556,10 +558,10 @@ exports.sendEventChatMessage = functions
         if (err instanceof functions.https.HttpsError) {
           throw err;
         }
-        console.error("sendEventChatMessage failed", {
+        safeLog.error("send_event_chat_message_failed", {
           uid,
           eventId: payload.eventId,
-          err,
+          error: err,
         });
         throw new functions.https.HttpsError(
             "internal",

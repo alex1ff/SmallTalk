@@ -1,5 +1,7 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "cancel_event"});
 const {
   eventPreviewRef,
   writeEventPreview,
@@ -354,7 +356,7 @@ exports.cancelEvent = functions
         if (err instanceof functions.https.HttpsError) {
           throw err;
         }
-        console.error("cancelEvent failed", {uid, err});
+        safeLog.error("cancel_event_failed", {uid, error: err});
         throw new functions.https.HttpsError(
             "internal",
             "Unable to cancel event",

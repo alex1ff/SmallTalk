@@ -25,7 +25,7 @@ cd "${REPO_ROOT}"
 "${FIREBASE_BIN}" emulators:exec \
   --project demo-smalltalk-rules-ci \
   --config firebase/firebase.json \
-  --only firestore \
+  --only firestore,storage \
   "node --test --test-concurrency=1 \
     firebase/custom_cloud_functions/user_document_rules.test.js \
     firebase/custom_cloud_functions/conversation_rules.test.js \
@@ -33,4 +33,5 @@ cd "${REPO_ROOT}"
     firebase/custom_cloud_functions/event_rules.test.js \
     firebase/custom_cloud_functions/teacher_verification_request_rules.test.js \
     firebase/custom_cloud_functions/search_request_rules.test.js \
-    firebase/custom_cloud_functions/firestore_access_rules.test.js"
+    firebase/custom_cloud_functions/firestore_access_rules.test.js \
+    firebase/custom_cloud_functions/storage_rules.test.js"

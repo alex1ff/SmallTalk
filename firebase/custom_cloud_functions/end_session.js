@@ -43,6 +43,8 @@ const {
   reconcileTrialCallInTransaction,
   trialAccessRef,
 } = require("./trial_access");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "end_session"});
 
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
@@ -233,7 +235,7 @@ endSession
 exports.endSession = functions
   .runWith({secrets: [...apnsSecrets, ...dailySecrets]})
   .https.onCall(async (data, context) => {
-  console.log("🔚 Ending video session...");
+  safeLog.log("end_started");
 
   try {
     if (!context.auth) {
@@ -246,9 +248,11 @@ exports.endSession = functions
     const userId = context.auth.uid;
     const { sessionId, endReason } = data;
 
-    console.log("👤 User ID:", userId);
-    console.log("📺 Session ID:", sessionId);
-    console.log("📝 End reason:", endReason || "not_specified");
+    safeLog.log("end_attempt", {
+      userId,
+      sessionId,
+      reasonCode: isExpiredEndReason(endReason) ? "expired" : "user_ended",
+    });
 
     if (!sessionId) {
       throw new functions.https.HttpsError(
@@ -267,7 +271,7 @@ exports.endSession = functions
     const txResult = await db.runTransaction(async (transaction) => {
       const sessionDoc = await transaction.get(sessionRef);
       if (!sessionDoc.exists) {
-        console.log("❌ Video session not found:", sessionId);
+        safeLog.warn("session_not_found", {sessionId});
         throw new functions.https.HttpsError(
           "not-found",
           "Video session not found",
@@ -275,7 +279,7 @@ exports.endSession = functions
       }
 
       const sessionData = sessionDoc.data() || {};
-      console.log("📋 Current session status:", sessionData.status);
+      safeLog.log("session_loaded", {sessionId, status: sessionData.status});
       const storedTrialCallIds =
         sessionData.trialCallIdsByUserId &&
         typeof sessionData.trialCallIdsByUserId === "object" ?
@@ -306,7 +310,7 @@ exports.endSession = functions
       );
 
       if (!isSessionParticipant(sessionData, userId)) {
-        console.log("❌ Permission denied - user is not a participant");
+        safeLog.warn("end_participant_mismatch", {sessionId, userId});
         throw new functions.https.HttpsError(
           "permission-denied",
           "You are not a participant of this session",
@@ -335,10 +339,10 @@ exports.endSession = functions
         VIDEO_SESSION_STATUS.CONNECTING,
         VIDEO_SESSION_STATUS.ACTIVE,
       ].includes(sessionData.status)) {
-        console.log(
-          "❌ Session cannot be ended, current status:",
-          sessionData.status,
-        );
+        safeLog.warn("session_not_endable", {
+          sessionId,
+          status: sessionData.status,
+        });
         throw new functions.https.HttpsError(
           "invalid-argument",
           `Session cannot be ended. Current status: ${sessionData.status}`,
@@ -459,7 +463,6 @@ exports.endSession = functions
       }
 
       const requesterId = getRequesterId(sessionData);
-      const endedBy = userId;
       const endedByRole = requesterId === userId ? "requester" : "responder";
       const startTime = getConnectedCallStartMillis(sessionData);
       const duration = startTime > 0
@@ -552,31 +555,12 @@ exports.endSession = functions
       // refactor — the field is now always `false`.
       const freeMinuteApplied = false;
 
-      console.log(
-        "⏱️ Session duration:",
-        duration,
-        "seconds /",
-        tutorDurationMinutes,
-        "tutor-minutes /",
-        formattedDuration,
-      );
-      console.log("👤 Ended by:", endedByRole, endedBy);
-      console.log(
-        "💰 Teacher earning:",
-        teacherEligibleForPayout ? tutorEarning : 0,
-        "RUB",
-      );
-      console.log(
-        "📉 Student charges:",
-        chargeRecords.map((charge) => ({
-          userId: charge.userId,
-          billableMinutes: charge.billableMinutes,
-          subscriptionActive: charge.subscriptionActive,
-          giftCovered: charge.giftCovered,
-          giftMinutesUsed: charge.giftMinutesUsed,
-          newGiftMinutes: charge.newGiftMinutes,
-        })),
-      );
+      safeLog.log("session_billing_completed", {
+        sessionId,
+        status: "completed",
+        durationSeconds: duration,
+        result: teacherEligibleForPayout ? "payout_eligible" : "no_payout",
+      });
 
       const pairHistoryWrite = buildCompletedPairHistoryWrite({
         db,
@@ -662,9 +646,7 @@ exports.endSession = functions
         }
       });
 
-      console.log(
-        "✅ Transaction completed - session ended and participant balances updated",
-      );
+      safeLog.log("end_transaction_completed", {sessionId});
       return {
         status: "ended",
         message: "Session ended successfully",
@@ -722,10 +704,10 @@ exports.endSession = functions
       const terminalResults = await Promise.allSettled(terminalSideEffects);
       terminalResults.forEach((result) => {
         if (result.status === "rejected") {
-          console.error(
-            "⚠️ Failed to close pre-active native call surface:",
-            result.reason,
-          );
+          safeLog.error("pre_active_surface_close_failed", {
+            sessionId,
+            error: result.reason,
+          });
         }
       });
       if (txResult.dailyRoomName) {
@@ -772,11 +754,11 @@ exports.endSession = functions
         });
       }
     } catch (error) {
-      console.error("⚠️ Failed to create conversation call event:", error);
+      safeLog.error("conversation_event_write_failed", {sessionId, error});
     }
 
     // ─── BACKGROUND OPERATIONS (non-blocking for UX) ──────────────────────
-    console.log("📊 Running background billing, stats & notifications...");
+    safeLog.log("background_billing_started", {sessionId});
 
     const teacherEarningRef = txResult.teacherEarningUserId
       ? db.collection("users").doc(txResult.teacherEarningUserId)
@@ -800,7 +782,7 @@ exports.endSession = functions
       // Defensive: an unsubscribed user with no gift minutes shouldn't
       // have been able to start the call (gate in create_video_session).
       // If we ever land here, just log — don't charge.
-      console.warn("⚠️ end_session: call with no subscription and no gift", {
+      safeLog.warn("call_without_access", {
         userId: charge.userId,
         sessionId,
       });
@@ -812,7 +794,7 @@ exports.endSession = functions
       backgroundTasks.push(
         teacherEarningRef.update({
           balance_NS: admin.firestore.FieldValue.increment(txResult.tutorEarning),
-        }).catch((e) => console.error("❌ Tutor balance update failed:", e))
+        }).catch((e) => safeLog.error("tutor_balance_update_failed", {error: e}))
       );
 
       // c) Tutor transaction document
@@ -825,7 +807,10 @@ exports.endSession = functions
           amount: txResult.tutorEarning,
           callDuration: txResult.formattedDuration,
           sessionId: sessionId,
-        }).catch((e) => console.error("❌ Tutor transaction doc failed:", e))
+        }).catch((e) => safeLog.error("tutor_transaction_write_failed", {
+          sessionId,
+          error: e,
+        }))
       );
     }
 
@@ -837,7 +822,7 @@ exports.endSession = functions
           txResult.analyticsDurationMinutes,
         ),
         lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-      }, { merge: true }).catch((e) => console.error("❌ Analytics summary failed:", e))
+      }, { merge: true }).catch((e) => safeLog.error("analytics_summary_failed", {error: e}))
     );
 
     // e) Student stats (all-time + today)
@@ -856,7 +841,7 @@ exports.endSession = functions
             isAllTime: true,
             lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
           }, { merge: true });
-        }).catch((e) => console.error("❌ Student allTime stats failed:", e))
+        }).catch((e) => safeLog.error("student_all_time_stats_failed", {error: e}))
       );
 
       backgroundTasks.push(
@@ -873,7 +858,7 @@ exports.endSession = functions
             isAllTime: false,
             lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
           }, { merge: true });
-        }).catch((e) => console.error("❌ Student today stats failed:", e))
+        }).catch((e) => safeLog.error("student_today_stats_failed", {error: e}))
       );
     }
 
@@ -893,7 +878,7 @@ exports.endSession = functions
             isAllTime: true,
             lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
           }, { merge: true });
-        }).catch((e) => console.error("❌ Tutor allTime stats failed:", e))
+        }).catch((e) => safeLog.error("tutor_all_time_stats_failed", {error: e}))
       );
 
       backgroundTasks.push(
@@ -913,7 +898,7 @@ exports.endSession = functions
             isAllTime: false,
             lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
           }, { merge: true });
-        }).catch((e) => console.error("❌ Tutor today stats failed:", e))
+        }).catch((e) => safeLog.error("tutor_today_stats_failed", {error: e}))
       );
     }
 
@@ -933,7 +918,7 @@ exports.endSession = functions
             txResult.duration,
           );
         }).catch((e) =>
-          console.error("❌ Subscription usage increment failed:", e)
+          safeLog.error("subscription_usage_increment_failed", {error: e})
         )
       );
     }
@@ -953,17 +938,20 @@ exports.endSession = functions
     }
 
     await Promise.all(backgroundTasks);
-    console.log("🎉 Session ended successfully with billing complete");
+    safeLog.log("end_completed", {sessionId});
 
     return response;
   } catch (error) {
-    console.error("❌ Error ending session:", error);
+    safeLog.error("end_failed", {error});
 
     if (error.code) {
       throw error;
     }
 
-    throw new functions.https.HttpsError("internal", error.message);
+    throw new functions.https.HttpsError(
+      "internal",
+      "Unable to end the call right now. Please try again.",
+    );
   }
   });
 
@@ -984,18 +972,17 @@ async function attemptConversationUnlockEventWrite(db, sessionId) {
     const sessionRef = db.collection("videoSessions").doc(sessionId);
     const sessionSnap = await sessionRef.get();
     if (!sessionSnap.exists) {
-      console.log("⚠️ Skipping chat unlock event - session missing:", sessionId);
+      safeLog.warn("chat_unlock_session_missing", {sessionId});
       return;
     }
 
     const sessionData = sessionSnap.data() || {};
     const eligibility = getUnlockEligibility(sessionData);
     if (!eligibility.eligible) {
-      console.log(
-        "ℹ️ Skipping chat unlock event - session is not eligible:",
+      safeLog.log("chat_unlock_not_eligible", {
         sessionId,
-        eligibility.reason,
-      );
+        reasonCode: eligibility.reason,
+      });
       return;
     }
 
@@ -1019,11 +1006,11 @@ async function attemptConversationUnlockEventWrite(db, sessionId) {
       return null;
     });
 
-    console.log("✅ Conversation unlock event written:", sessionId);
+    safeLog.log("chat_unlock_written", {sessionId});
   } catch (error) {
-    console.error("❌ Failed to write conversation unlock event:", {
+    safeLog.error("chat_unlock_write_failed", {
       sessionId,
-      error: error.message,
+      error,
     });
   }
 }
@@ -1031,7 +1018,7 @@ async function attemptConversationUnlockEventWrite(db, sessionId) {
 // ОТМЕНА ВСЕХ УВЕДОМЛЕНИЙ ДЛЯ СЕССИИ
 async function cancelAllSessionNotifications(sessionId) {
   try {
-    console.log("🚫 Canceling all notifications for session:", sessionId);
+    safeLog.log("session_notifications_cancel_started", {sessionId});
 
     const activeNotificationsQuery = await admin
       .firestore()
@@ -1052,12 +1039,12 @@ async function cancelAllSessionNotifications(sessionId) {
       });
 
       await batch.commit();
-      console.log(
-        `✅ Canceled ${activeNotificationsQuery.size} notification(s)`,
-      );
+      safeLog.log("session_notifications_cancelled", {
+        counts: {cancelled: activeNotificationsQuery.size},
+      });
     }
   } catch (error) {
-    console.error("❌ Error canceling session notifications:", error);
+    safeLog.error("session_notifications_cancel_failed", {sessionId, error});
   }
 }
 

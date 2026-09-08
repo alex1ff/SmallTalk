@@ -10,6 +10,7 @@ import '/flutter_flow/flutter_flow_util.dart';
 import '/components/basic_page_header.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/services/subscription_service.dart';
+import '/services/safe_debug_log.dart';
 import '/utils/subscription_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
@@ -331,7 +332,7 @@ class _PayWidgetState extends State<PayWidget> {
           onTimeout: () => const {},
         );
       } catch (e, st) {
-        debugPrint('⚠️ PayWidget._loadPackages failed: $e\n$st');
+        safeDebugLog('⚠️ PayWidget._loadPackages failed: $e\n$st');
         if (mounted) {
           _showSnackBar(_localized(
             'Не удалось загрузить тарифы. Попробуйте ещё раз.',
@@ -370,7 +371,7 @@ class _PayWidgetState extends State<PayWidget> {
       packages = catalogResult.packages;
       storeProducts = catalogResult.storeProducts;
     } catch (e, st) {
-      debugPrint('⚠️ PayWidget._loadPackages failed: $e\n$st');
+      safeDebugLog('⚠️ PayWidget._loadPackages failed: $e\n$st');
       catalogResult = SubscriptionCatalogResult(
         status: SubscriptionCatalogStatus.failed,
         error: e,
@@ -533,7 +534,7 @@ class _PayWidgetState extends State<PayWidget> {
           }
         }
       } catch (error, stackTrace) {
-        debugPrint(
+        safeDebugLog(
           '⚠️ PayWidget._waitForServerSubscriptionMirror failed: '
           '$error\n$stackTrace',
         );

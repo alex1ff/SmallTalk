@@ -38,6 +38,8 @@ const {
   logCallLifecycleError,
   logCallLifecycleEvent,
 } = require("./call_lifecycle_logs");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "accept_call"});
 const {
   MATCH_PROTOCOL_VERSION,
   MATCH_STAGE,
@@ -283,9 +285,9 @@ function validateResponderLanguageOrThrow(
     !sessionLanguage ||
     !supportsConversationLanguage(tutorData, sessionLanguage)
   ) {
-    console.log("❌ Responder cannot accept this language:", {
+    safeLog.warn("responder_language_mismatch", {
       tutorId,
-      sessionLanguage: sessionData.language || null,
+      requestedLanguage: sessionData.language || "unknown",
     });
     throw new functions.https.HttpsError(
       "invalid-argument",
@@ -314,7 +316,7 @@ function shouldIssueAcceptResponseMeetingToken(internalOptions = {}) {
 }
 
 async function acceptCallCallable(data, context, internalOptions = {}) {
-    console.log("✅ Tutor accepting call (updated version)...");
+    safeLog.log("accept_handler_started");
 
     let tutorId = null;
     let sessionRef = null;
@@ -325,7 +327,7 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
     try {
       // === 1. АУТЕНТИФИКАЦИЯ И ВАЛИДАЦИЯ ===
       if (!context.auth) {
-        console.log("❌ User not authenticated");
+        safeLog.warn("accept_unauthenticated");
         throw new functions.https.HttpsError(
           "unauthenticated",
           "User must be authenticated",
@@ -336,8 +338,10 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
         context.auth.uid;
       ({ sessionId } = data || {});
 
-      console.log("👨‍🏫 Tutor ID:", tutorId);
-      console.log("📺 Session ID:", sessionId);
+      safeLog.log("accept_attempt", {
+        sessionId,
+        responderId: tutorId,
+      });
       logCallLifecycleEvent({
         event: "accept_attempt",
         source: "acceptCall",
@@ -346,7 +350,7 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
       });
 
       if (!sessionId) {
-        console.log("❌ Missing sessionId parameter");
+        safeLog.warn("accept_session_id_missing");
         throw new functions.https.HttpsError(
           "invalid-argument",
           "sessionId is required",
@@ -519,10 +523,11 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
       }
 
       const sessionData = initialSessionState.session || {};
-      console.log("📋 Session data:", {
+      safeLog.log("session_loaded", {
+        sessionId,
         status: sessionData.status,
-        currentResponderId: sessionData.currentResponderId,
-        currentTutorId: sessionData.currentTutorId,
+        responderId:
+          sessionData.currentResponderId || sessionData.currentTutorId,
         studentId: sessionData.studentId,
         language: sessionData.language,
       });
@@ -543,16 +548,14 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
           usersCollection.doc(requesterId).get(),
       ]);
       if (!tutorDoc.exists) {
-        console.log("❌ Tutor not found:", tutorId);
+        safeLog.warn("tutor_not_found", {tutorId});
         throw new functions.https.HttpsError("not-found", "Tutor not found");
       }
       const tutorData = tutorDoc.data();
       validateResponderLanguageOrThrow(tutorId, tutorData, sessionData);
 
       if (initialSessionState.alreadyAccepted) {
-        console.log(
-          "ℹ️ Session already active for this tutor, returning existing room",
-        );
+        safeLog.log("session_already_active", {sessionId, responderId: tutorId});
         let existingRoomName =
           sessionData.dailyRoomName || getRoomNameFromUrl(sessionData.dailyRoomUrl);
         let existingMeetingToken = null;
@@ -575,10 +578,11 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
                 "Partner",
             });
           } catch (tokenError) {
-            console.error(
-              "⚠️ Failed to create meeting token for existing room:",
-              tokenError.message,
-            );
+            safeLog.error("meeting_token_create_failed", {
+              sessionId,
+              responderId: tutorId,
+              error: tokenError,
+            });
           }
         }
         await readAcceptedSessionStillCurrentOrThrow({
@@ -611,7 +615,10 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
       }
 
       if (!isSupportedSessionRole(tutorData.role)) {
-        console.log("❌ User role cannot accept calls:", tutorData.role);
+        safeLog.warn("responder_role_invalid", {
+          responderId: tutorId,
+          role: tutorData.role,
+        });
         throw new functions.https.HttpsError(
           "permission-denied",
           "This user role cannot accept calls",
@@ -629,19 +636,16 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
         };
       const isAvailable = availabilityCheck.isAvailable;
 
-      console.log("👨‍🏫 Tutor data:", {
-        display_name: tutorData.display_name,
+      safeLog.log("tutor_availability_checked", {
+        tutorId,
         role: tutorData.role,
-        isAvailable: tutorData.isAvailable,
-        availabilityTodayEnabled: tutorData.availabilityToday?.enabled,
-        isInCall: tutorData.isInCall,
+        isAvailable,
         availabilityReason: availabilityCheck.reason,
-        tutorLocalTime: availabilityCheck.localTime || null,
-        timezoneOffsetMinutes: availabilityCheck.timezoneOffsetMinutes ?? null,
+        reasonCode: availabilityCheck.reason,
       });
 
       if (tutorRole === "native_speaker" && !isApprovedTeacher(tutorData)) {
-        console.log("❌ Teacher cannot accept calls before approval:", tutorId);
+        safeLog.warn("tutor_approval_pending", {tutorId});
         throw new functions.https.HttpsError(
           "permission-denied",
           "Teacher verification is pending",
@@ -649,7 +653,7 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
       }
 
       if (!isAvailable) {
-        console.log("❌ Tutor is not available");
+        safeLog.warn("responder_unavailable", {responderId: tutorId});
         throw new functions.https.HttpsError(
           "invalid-argument",
           "Tutor is not available",
@@ -657,7 +661,7 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
       }
 
       if (tutorData.isInCall) {
-        console.log("❌ Tutor is already in a call");
+        safeLog.warn("responder_already_in_call", {responderId: tutorId});
         throw new functions.https.HttpsError(
           "invalid-argument",
           "Tutor is already in a call",
@@ -665,18 +669,15 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
       }
 
       if (!studentDoc || !studentDoc.exists) {
-        console.log("❌ Requester not found:", requesterId);
+        safeLog.warn("requester_not_found", {requesterId});
         throw new functions.https.HttpsError("not-found", "Requester not found");
       }
 
       const studentData = studentDoc.data();
-      console.log("👤 Requester data:", {
-        display_name: studentData.display_name,
-        role: studentData.role,
-      });
+      safeLog.log("requester_loaded", {requesterId, role: studentData.role});
 
       // === 5. ПОЛУЧЕНИЕ ИЛИ СОЗДАНИЕ КОМНАТЫ DAILY.CO ===
-      console.log("🏠 Resolving Daily.co room...");
+      safeLog.log("daily_room_resolve_started", {sessionId});
       const activePolicyUpdate =
         buildAcceptCallPolicyUpdateFields(sessionData);
       const acceptedSessionRoomData = {
@@ -693,10 +694,7 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
         const derivedName = getRoomNameFromUrl(roomUrl);
         if (derivedName) {
           if (!roomName || roomName !== derivedName) {
-            console.log("⚠️ Room name mismatch, using name from URL", {
-              roomName,
-              derivedName,
-            });
+            safeLog.warn("room_name_mismatch", {sessionId});
             roomName = derivedName;
           }
         }
@@ -705,9 +703,8 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
       let roomCreatedAt = sessionData.sessionMetadata?.roomCreatedAt || null;
 
       if (roomUrl) {
-        console.log("♻️ Using precreated Daily room:", {
-          roomName,
-          roomUrl,
+        safeLog.log("using_precreated_room", {
+          sessionId,
           hasToken: !!meetingToken,
         });
         if (!roomName) {
@@ -722,21 +719,13 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
               roomAgeMs > PRECREATED_ROOM_VALIDATION_WINDOW_MS) {
             const existingRoom = await getDailyRoom(roomName);
             if (!existingRoom || !isDailyRoomConfigCompatible(existingRoom)) {
-              console.warn(
-                existingRoom
-                  ? "⚠️ Precreated Daily room uses legacy config, recreating room"
-                  : "⚠️ Precreated room not found in Daily, recreating room",
-              );
+              safeLog.warn("daily_room_recreate_required", {sessionId});
               roomUrl = null;
               roomName = null;
               roomCreatedAt = null;
             }
           } else {
-            console.log(
-              "⚡ Skipping room validation - room is fresh/current (" +
-                roomAgeMs +
-                "ms old)",
-            );
+            safeLog.log("daily_room_validation_skipped", {sessionId});
           }
         } else {
           roomUrl = null;
@@ -764,7 +753,7 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
           transientDailyRoomName = dailyRoom.name;
           roomCreatedAt = Date.now();
         } catch (roomError) {
-          console.error("❌ Failed to create Daily room:", roomError);
+          safeLog.error("daily_room_create_failed", {sessionId, error: roomError});
           throw new functions.https.HttpsError(
             "internal",
             "Failed to create video room",
@@ -773,7 +762,7 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
       }
 
       // === 6. ОБНОВЛЕНИЕ СЕССИИ В ТРАНЗАКЦИИ ===
-      console.log("🔄 Updating session and user statuses in transaction...");
+      safeLog.log("accept_transaction_started", {sessionId});
       const txnResult = await admin
         .firestore()
         .runTransaction(async (transaction) => {
@@ -965,7 +954,7 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
           transaction.update(requesterUserRef, participantUserUpdate);
           transaction.update(responderUserRef, participantUserUpdate);
 
-          console.log("✅ Transaction completed successfully");
+          safeLog.log("accept_transaction_completed", {sessionId});
           return { alreadyAccepted: false };
         });
 
@@ -987,9 +976,7 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
           await deleteDailyRoom(transientDailyRoomName);
           transientDailyRoomName = null;
         }
-        console.log(
-          "ℹ️ Session already active for this tutor (txn), returning existing room",
-        );
+        safeLog.log("session_already_active", {sessionId, responderId: tutorId});
         const existing = txnResult.session || {};
         const existingRoomUrl = existing.dailyRoomUrl;
         const existingRoomName =
@@ -1010,10 +997,11 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
               userName: tutorData.display_name || "Partner",
             });
           } catch (tokenError) {
-            console.error(
-              "⚠️ Failed to create meeting token for existing room:",
-              tokenError.message,
-            );
+            safeLog.error("meeting_token_create_failed", {
+              sessionId,
+              responderId: tutorId,
+              error: tokenError,
+            });
           }
         }
         await readAcceptedSessionStillCurrentOrThrow({
@@ -1078,15 +1066,16 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
             userName: tutorData.display_name || "Partner",
           });
         } catch (tokenError) {
-          console.error(
-            "⚠️ Failed to create meeting token for accepted room:",
-            tokenError.message,
-          );
+          safeLog.error("meeting_token_create_failed", {
+            sessionId,
+            responderId: tutorId,
+            error: tokenError,
+          });
         }
       }
 
       // 🔔 === ОТПРАВКА PUSH + ОБНОВЛЕНИЕ УВЕДОМЛЕНИЙ (ПАРАЛЛЕЛЬНО) ===
-      console.log("📲 Sending push + updating notifications in parallel...");
+      safeLog.log("accept_post_tasks_started", {sessionId});
       const postAcceptTasks = [
         updateNotificationStatus(sessionId, tutorId, "accepted"),
         cancelOtherNotifications(sessionId, tutorId),
@@ -1126,17 +1115,14 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
           roomName: roomName || "",
           tokenStrategy: "payload_room",
         }).catch((pushError) => {
-          console.error(
-            "⚠️ Failed to send VoIP push (non-critical):",
-            pushError.message,
-          );
+          safeLog.error("voip_push_failed", {sessionId, responderId: tutorId, error: pushError});
         }));
       }
       await Promise.all(postAcceptTasks);
-      console.log("✅ Push + notifications completed");
+      safeLog.log("accept_post_tasks_completed", {sessionId});
 
       // === 8. ПОДГОТОВКА ОТВЕТА ===
-      console.log("🎉 Call accepted successfully, preparing response...");
+      safeLog.log("accept_response_preparing", {sessionId});
       logCallLifecycleEvent({
         event: "accept_connected",
         source: "acceptCall",
@@ -1176,17 +1162,20 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
         }),
       };
 
-      console.log("📤 Returning response:", {
+      safeLog.log("accept_response", {
         status: response.status,
         sessionId: response.sessionId,
         hasRoomUrl: !!response.roomUrl,
         hasToken: !!response.meetingToken,
-        studentName: response.studentInfo.name,
       });
 
       return response;
     } catch (error) {
-      console.error("❌ Error in acceptCall function:", error);
+      safeLog.error("accept_failed", {
+        sessionId,
+        responderId: tutorId,
+        error,
+      });
       logCallLifecycleError({
         event: "accept_failed",
         source: "acceptCall",
@@ -1214,7 +1203,10 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
             }
           });
         } catch (lockError) {
-          console.error("⚠️ Failed to release accept lock:", lockError.message);
+          safeLog.error("accept_lock_release_failed", {
+            sessionId,
+            error: lockError,
+          });
         }
       }
 
@@ -1226,15 +1218,9 @@ async function acceptCallCallable(data, context, internalOptions = {}) {
         throw error;
       }
 
-      console.error("❌ Unexpected error details:", {
-        message: error.message,
-        stack: error.stack,
-        name: error.name,
-      });
-
       throw new functions.https.HttpsError(
         "internal",
-        `Internal server error: ${error.message}`,
+        "Unable to accept the call right now. Please try again.",
       );
     }
 }
@@ -1248,7 +1234,7 @@ exports.acceptCall = functions
 // 🔔 ОТПРАВКА VOIP PUSH NOTIFICATION (НОВАЯ ФУНКЦИЯ)
 async function sendVoipPushToStudent(studentId, callData) {
   try {
-    console.log("📲 Preparing VoIP push for student:", studentId);
+    safeLog.log("voip_push_prepare", {studentId});
 
     // Получаем данные студента из Firestore
     const studentDoc = await admin
@@ -1258,7 +1244,7 @@ async function sendVoipPushToStudent(studentId, callData) {
       .get();
 
     if (!studentDoc.exists) {
-      console.log("⚠️ Student document not found:", studentId);
+      safeLog.warn("voip_push_recipient_not_found", {studentId});
       return;
     }
 
@@ -1274,8 +1260,7 @@ async function sendVoipPushToStudent(studentId, callData) {
       await getUserVoipTokens(studentId, studentData);
 
     if (!voipPushToken && !fcmToken) {
-      console.log("⚠️ Student has no push tokens saved.");
-      console.log("⚠️ Student data keys:", Object.keys(studentData));
+      safeLog.warn("voip_push_tokens_missing", {studentId});
       return;
     }
 
@@ -1312,20 +1297,19 @@ async function sendVoipPushToStudent(studentId, callData) {
           topic: voipTopic,
           payload: apnsPayload,
         });
-        console.log("✅ APNs VoIP push sent successfully");
+        safeLog.log("voip_apns_push_sent", {studentId});
         return;
       } catch (error) {
-        console.error("❌ Error sending APNs VoIP push:", error.message);
+        safeLog.error("voip_apns_push_failed", {studentId, error});
       }
     }
 
     if (!fcmToken) {
-      console.log("⚠️ No FCM token available for fallback");
+      safeLog.warn("voip_fcm_token_missing", {studentId});
       return;
     }
 
-    console.log("📱 FCM token found");
-    console.log("📦 Using apns-topic for FCM fallback:", bundleId);
+    safeLog.log("voip_fcm_fallback", {studentId, platform: "ios"});
 
     const message = {
       token: fcmToken,
@@ -1375,26 +1359,15 @@ async function sendVoipPushToStudent(studentId, callData) {
       },
     };
 
-    console.log("📤 Sending VoIP push via FCM...");
+    safeLog.log("voip_fcm_push_started", {studentId});
 
     const response = await admin.messaging().send(message);
 
-    console.log("✅ FCM push sent successfully. Message ID:", response);
+    safeLog.log("voip_fcm_push_sent", {studentId});
 
     return response;
   } catch (error) {
-    console.error("❌ Error sending VoIP push:", error);
-
-    // Логируем детали ошибки
-    if (error.code) {
-      console.error("❌ Error code:", error.code);
-    }
-    if (error.message) {
-      console.error("❌ Error message:", error.message);
-    }
-    if (error.errorInfo) {
-      console.error("❌ Error info:", JSON.stringify(error.errorInfo));
-    }
+    safeLog.error("voip_push_failed", {studentId, error});
 
     // Бросаем ошибку дальше, чтобы она была залогирована
     throw error;
@@ -1406,7 +1379,11 @@ async function sendVoipPushToStudent(studentId, callData) {
 // ОБНОВЛЕНИЕ СТАТУСА УВЕДОМЛЕНИЯ
 async function updateNotificationStatus(sessionId, tutorId, status) {
   try {
-    console.log(`🔔 Updating notification status to ${status}...`);
+    safeLog.log("notification_status_update_started", {
+      status,
+      sessionId,
+      responderId: tutorId,
+    });
 
     const notificationsQuery = await admin
       .firestore()
@@ -1428,21 +1405,29 @@ async function updateNotificationStatus(sessionId, tutorId, status) {
       });
 
       await batch.commit();
-      console.log(
-        `✅ Updated ${notificationsQuery.size} notification(s) to ${status}`,
-      );
+      safeLog.log("notification_status_updated", {
+        status,
+        counts: {updated: notificationsQuery.size},
+      });
     } else {
-      console.log("📭 No notifications found to update");
+      safeLog.log("notification_status_update_empty", {status});
     }
   } catch (error) {
-    console.error("❌ Error updating notification status:", error);
+    safeLog.error("notification_status_update_failed", {
+      sessionId,
+      responderId: tutorId,
+      error,
+    });
   }
 }
 
 // ОТМЕНА ДРУГИХ УВЕДОМЛЕНИЙ
 async function cancelOtherNotifications(sessionId, acceptedTutorId) {
   try {
-    console.log("🚫 Canceling other active notifications...");
+    safeLog.log("other_notifications_cancel_started", {
+      sessionId,
+      responderId: acceptedTutorId,
+    });
 
     const otherNotificationsQuery = await admin
       .firestore()
@@ -1469,11 +1454,17 @@ async function cancelOtherNotifications(sessionId, acceptedTutorId) {
 
       if (canceledCount > 0) {
         await batch.commit();
-        console.log(`✅ Canceled ${canceledCount} other notification(s)`);
+        safeLog.log("other_notifications_cancelled", {
+          counts: {cancelled: canceledCount},
+        });
       }
     }
   } catch (error) {
-    console.error("❌ Error canceling other notifications:", error);
+    safeLog.error("other_notifications_cancel_failed", {
+      sessionId,
+      responderId: acceptedTutorId,
+      error,
+    });
   }
 }
 

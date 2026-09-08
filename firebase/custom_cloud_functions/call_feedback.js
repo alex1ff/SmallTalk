@@ -3,6 +3,8 @@ const crypto = require("node:crypto");
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const {GoogleGenAI} = require("@google/genai");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "call_feedback"});
 
 const {isSessionParticipant} = require("./video_sessions_shared");
 
@@ -596,7 +598,7 @@ function safeProviderFailureMetadata(error, providerAttempt) {
     responseCharacterCount:
       Number(error?.responseCharacterCount || 0) || 0,
     finishReason: String(error?.finishReason || ""),
-    ...(status === null ? {} : {status}),
+    ...(status === null ? {} : {providerStatus: status}),
   };
 }
 
@@ -607,7 +609,7 @@ async function generateValidatedFeedback({
   analyzedLanguage,
   modelId,
   logProviderFailure = (metadata) => {
-    console.error("generateCallFeedback provider failure", metadata);
+    safeLog.error("feedback_provider_failed", metadata);
   },
 }) {
   let lastError;

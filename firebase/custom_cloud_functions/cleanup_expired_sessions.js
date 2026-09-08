@@ -1,5 +1,7 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "cleanup_expired_sessions"});
 const {
   resolveDailyRoomName,
 } = require("./daily_room");
@@ -533,8 +535,6 @@ exports.cleanupExpiredSessions = functions
   .pubsub
   .schedule("every 1 minutes")
   .onRun(async () => {
-    console.log("🧹 Cleaning up expired sessions...");
-
     try {
       const now = admin.firestore.Timestamp.now();
       const db = admin.firestore();
@@ -580,7 +580,6 @@ exports.cleanupExpiredSessions = functions
       const expiredSessionDocs = Array.from(expiredSessionDocsById.values());
 
       if (expiredSessionDocs.length === 0) {
-        console.log("📭 No expired sessions found");
         logCallLifecycleEvent({
           event: "cleanup_sessions_completed",
           source: "cleanupExpiredSessions",
@@ -593,7 +592,6 @@ exports.cleanupExpiredSessions = functions
         return null;
       }
 
-      console.log(`⏰ Found ${expiredSessionDocs.length} expired sessions`);
       let cleanedCount = 0;
 
       for (const doc of expiredSessionDocs) {
@@ -637,7 +635,9 @@ exports.cleanupExpiredSessions = functions
               return { cleaned: false, dailyRoomName: null, sessionData: null };
             }
 
-            console.log(`🔚 Expiring orphaned pending session: ${doc.id}`);
+            safeLog.log("cleanup_pending_session_expiring", {
+              sessionId: doc.id,
+            });
             const protocolV2ReleaseOptions = isProtocolV2 ?
               buildProtocolV2TimeoutReleaseOptions({
                 sessionId: doc.id,
@@ -762,7 +762,7 @@ exports.cleanupExpiredSessions = functions
             return { cleaned: false, dailyRoomName: null, sessionData: null };
           }
 
-          console.log(`🔚 Auto-ending expired session: ${doc.id}`);
+          safeLog.log("cleanup_active_session_expiring", {sessionId: doc.id});
           const connectedStartMillis = getConnectedCallStartMillis(freshData);
           const connectedDurationSeconds = connectedStartMillis > 0 ?
             Math.max(0, Math.floor(
@@ -838,7 +838,10 @@ exports.cleanupExpiredSessions = functions
             partnerId: cleanupResult.partnerId,
           });
         } catch (error) {
-          console.error("⚠️ Failed to create expired call event:", error);
+          safeLog.error("cleanup_call_event_write_failed", {
+            sessionId: doc.id,
+            error,
+          });
         }
         if (cleanupResult.dailyRoomName) {
           await deleteDailyRoomForSession({
@@ -850,7 +853,6 @@ exports.cleanupExpiredSessions = functions
         }
       }
 
-      console.log(`✅ Expired sessions marked as ended: ${cleanedCount}`);
       logCallLifecycleEvent({
         event: "cleanup_sessions_completed",
         source: "cleanupExpiredSessions",
@@ -861,10 +863,8 @@ exports.cleanupExpiredSessions = functions
         },
       });
 
-      console.log("🧹 Expired sessions cleanup completed");
       return null;
     } catch (error) {
-      console.error("❌ Error cleaning up expired sessions:", error);
       logCallLifecycleError({
         event: "cleanup_sessions_failed",
         source: "cleanupExpiredSessions",

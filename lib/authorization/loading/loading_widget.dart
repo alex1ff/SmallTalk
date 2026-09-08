@@ -5,6 +5,7 @@ import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/services/safe_debug_log.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/custom_code/actions/index.dart' as actions;
 import '/index.dart';
@@ -68,7 +69,7 @@ class _LoadingWidgetState extends State<LoadingWidget> {
     try {
       return VoIPService().hasPendingNavigation();
     } catch (error) {
-      debugPrint(
+      safeDebugLog(
           '⚠️ LoadingWidget: VoIP pending navigation check skipped: $error');
       return false;
     }
@@ -78,7 +79,7 @@ class _LoadingWidgetState extends State<LoadingWidget> {
     if (!kDebugMode) {
       return;
     }
-    debugPrint('⏳ LoadingWidget: $message');
+    safeDebugLog('⏳ LoadingWidget: $message');
   }
 
   bool _hasInferredStudentProfileCompletion(UsersRecord? user) {
@@ -275,7 +276,7 @@ class _LoadingWidgetState extends State<LoadingWidget> {
     _isResolvingRoute = true;
     try {
       if (_hasPendingVoipNavigationSafe()) {
-        debugPrint('⚡ LoadingWidget: VoIP call pending, skipping delay');
+        safeDebugLog('⚡ LoadingWidget: VoIP call pending, skipping delay');
         return;
       }
 
@@ -386,7 +387,7 @@ class _LoadingWidgetState extends State<LoadingWidget> {
             .deinitialize()
             .timeout(const Duration(seconds: 2))
             .catchError((Object error, StackTrace stackTrace) {
-          debugPrint(
+          safeDebugLog(
             '⚠️ LoadingWidget: VoIP cleanup before sign-out failed: '
             '$error\n$stackTrace',
           );

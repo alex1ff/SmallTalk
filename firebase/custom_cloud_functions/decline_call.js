@@ -52,6 +52,8 @@ const {
 const {
   reconcileSessionTrialCallsInTransaction,
 } = require("./trial_access");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "decline_call"});
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -215,7 +217,7 @@ async function collectFreshDeclineFailureResponderIds({
 exports.declineCall = functions
   .runWith({ secrets: [...apnsSecrets, ...dailySecrets] })
   .https.onCall(async (data, context) => {
-    console.log("❌ Responder declining call...");
+    safeLog.log("decline_handler_started");
 
     let responderId = null;
     let sessionId = null;
@@ -230,8 +232,7 @@ exports.declineCall = functions
       responderId = context.auth.uid;
       ({ sessionId } = data || {});
 
-      console.log("👤 Responder ID:", responderId);
-      console.log("📺 Session ID:", sessionId);
+      safeLog.log("decline_attempt", {responderId, sessionId});
       logCallLifecycleEvent({
         event: "decline_attempt",
         source: "declineCall",
@@ -259,7 +260,7 @@ exports.declineCall = functions
         );
       }
 
-      console.log("🔄 Processing session decline...");
+      safeLog.log("decline_processing_started", {sessionId});
 
       const db = admin.firestore();
       const sessionRef = db.collection("videoSessions").doc(sessionId);
@@ -273,15 +274,12 @@ exports.declineCall = functions
             nowMillis: Date.now(),
           });
       } catch (error) {
-        console.error(
-          "⚠️ Failed to collect fresh responder pool after decline:",
-          error.message,
-        );
+        safeLog.error("decline_responder_pool_failed", {sessionId, error});
       }
       const declineResult = await db.runTransaction(async (transaction) => {
         const sessionDoc = await transaction.get(sessionRef);
         if (!sessionDoc.exists) {
-          console.log("❌ Video session not found:", sessionId);
+          safeLog.warn("session_not_found", {sessionId});
           throw new functions.https.HttpsError(
             "not-found",
             "Video session not found",
@@ -289,18 +287,18 @@ exports.declineCall = functions
         }
 
         const sessionData = sessionDoc.data() || {};
-        console.log("📋 Session data status:", sessionData.status);
-        console.log(
-          "👤 Current responder ID:",
-          getPendingAssignedResponderId(sessionData),
-        );
+        safeLog.log("session_loaded", {
+          sessionId,
+          status: sessionData.status,
+          responderId: getPendingAssignedResponderId(sessionData),
+        });
 
         // Проверяем, что сессия в статусе поиска
         if (!DECLINABLE_SESSION_STATUSES.has(sessionData.status)) {
-          console.log(
-            "❌ Session is not in a declinable status:",
-            sessionData.status,
-          );
+          safeLog.warn("session_not_declinable", {
+            sessionId,
+            status: sessionData.status,
+          });
           throw new functions.https.HttpsError(
             "invalid-argument",
             "Session is not available for declining",
@@ -309,12 +307,10 @@ exports.declineCall = functions
 
         // Проверяем, что звонок адресован этому responder.
         if (!isPendingSessionAssignedToResponder(sessionData, responderId)) {
-          console.log(
-            "❌ Session is not for this responder. Expected:",
-            getPendingAssignedResponderId(sessionData),
-            "Got:",
+          safeLog.warn("session_responder_mismatch", {
+            sessionId,
             responderId,
-          );
+          });
           throw new functions.https.HttpsError(
             "permission-denied",
             "This session is not assigned to you",
@@ -331,7 +327,10 @@ exports.declineCall = functions
           responderId,
         ]));
 
-        console.log("📝 Updating tried tutors list:", triedTutors);
+        safeLog.log("tried_tutors_updated", {
+          sessionId,
+          counts: {total: triedTutors.length},
+        });
 
         const failureRouting = buildDeclineResponderFailureRouting({
           sessionData,
@@ -398,10 +397,14 @@ exports.declineCall = functions
           ]));
         }
         if (skippedCandidateIds.length > 0) {
-          console.log("⏭️ Skipped non-callable candidates:", skippedCandidateIds);
+          safeLog.log("non_callable_candidates_skipped", {
+            counts: {skipped: skippedCandidateIds.length},
+          });
         }
         if (skippedLockCandidateIds.length > 0) {
-          console.log("⏭️ Skipped locked candidates:", skippedLockCandidateIds);
+          safeLog.log("locked_candidates_skipped", {
+            counts: {skipped: skippedLockCandidateIds.length},
+          });
         }
         const sessionUpdate = {
           triedTutors: nextTriedTutors,
@@ -496,7 +499,7 @@ exports.declineCall = functions
         };
       });
 
-      console.log("🔔 Marking notification as declined...");
+      safeLog.log("decline_notification_update_started", {sessionId});
 
       // Отмечаем уведомление как отклоненное
       const notificationsQuery = await admin
@@ -516,7 +519,7 @@ exports.declineCall = functions
           });
         });
         await batch.commit();
-        console.log("✅ Notification marked as declined");
+        safeLog.log("decline_notification_updated", {sessionId});
       }
 
       try {
@@ -535,7 +538,7 @@ exports.declineCall = functions
           partnerId: responderId,
         });
       } catch (error) {
-        console.error("⚠️ Failed to create declined call event:", error);
+        safeLog.error("declined_call_event_write_failed", {sessionId, error});
       }
 
       if (declineResult.dailyRoomName) {
@@ -547,7 +550,7 @@ exports.declineCall = functions
         });
       } else if (declineResult.nextTutor) {
         // Отправляем уведомление следующему преподавателю
-        console.log("📨 Sending notification to next tutor...");
+        safeLog.log("decline_handoff_started", {sessionId});
         await sendNotificationToNextTutor(
           sessionId,
           {
@@ -558,7 +561,7 @@ exports.declineCall = functions
         );
       }
 
-      console.log("✅ Call declined successfully");
+      safeLog.log("decline_completed", {sessionId});
       logCallLifecycleEvent({
         event: "decline_completed",
         source: "declineCall",
@@ -578,7 +581,7 @@ exports.declineCall = functions
         message: "Call declined successfully",
       };
     } catch (error) {
-      console.error("❌ Error declining call:", error);
+      safeLog.error("decline_failed", {sessionId, responderId, error});
       logCallLifecycleError({
         event: "decline_failed",
         source: "declineCall",
@@ -592,14 +595,17 @@ exports.declineCall = functions
         throw error;
       }
 
-      throw new functions.https.HttpsError("internal", error.message);
+    throw new functions.https.HttpsError(
+      "internal",
+      "Unable to decline the call right now. Please try again.",
+    );
     }
   });
 
 // 🔔 ОТПРАВКА VOIP PUSH ПРЕПОДАВАТЕЛЮ
 async function sendVoipPushToTutor(tutorId, callData) {
   try {
-    console.log("📲 Preparing VoIP push for tutor:", tutorId);
+    safeLog.log("voip_push_prepare", {tutorId});
 
     const tutorDoc = await admin
       .firestore()
@@ -608,7 +614,7 @@ async function sendVoipPushToTutor(tutorId, callData) {
       .get();
 
     if (!tutorDoc.exists) {
-      console.log("⚠️ Tutor document not found:", tutorId);
+      safeLog.warn("voip_push_recipient_not_found", {tutorId});
       return;
     }
 
@@ -624,7 +630,7 @@ async function sendVoipPushToTutor(tutorId, callData) {
       await getUserVoipTokens(tutorId, tutorData);
 
     if (!voipPushToken && !fcmToken) {
-      console.log("⚠️ Tutor has no push tokens saved");
+      safeLog.warn("voip_push_tokens_missing", {tutorId});
       return;
     }
 
@@ -637,20 +643,19 @@ async function sendVoipPushToTutor(tutorId, callData) {
           topic: voipTopic,
           payload: apnsPayload,
         });
-        console.log("✅ APNs VoIP push sent successfully");
+        safeLog.log("voip_apns_push_sent", {tutorId});
         return;
       } catch (error) {
-        console.error("❌ Error sending APNs VoIP push:", error.message);
+        safeLog.error("voip_apns_push_failed", {tutorId, error});
       }
     }
 
     if (!fcmToken) {
-      console.log("⚠️ No FCM token available for fallback");
+      safeLog.warn("voip_fcm_token_missing", {tutorId});
       return;
     }
 
-    console.log("📱 FCM token found");
-    console.log("📦 Using apns-topic for FCM fallback:", bundleId);
+    safeLog.log("voip_fcm_fallback", {tutorId, platform: "ios"});
 
     const message = buildTeacherIncomingCallFcmMessage({
       token: fcmToken,
@@ -659,11 +664,11 @@ async function sendVoipPushToTutor(tutorId, callData) {
     });
 
     const response = await admin.messaging().send(message);
-    console.log("✅ FCM push sent successfully. Message ID:", response);
+    safeLog.log("voip_fcm_push_sent", {tutorId});
 
     return response;
   } catch (error) {
-    console.error("❌ Error sending VoIP push to tutor:", error);
+    safeLog.error("voip_push_failed", {tutorId, error});
     return null;
   }
 }
@@ -674,12 +679,10 @@ async function sendNotificationToNextTutor(sessionId, sessionData) {
     const freshSessionData = sessionData || {};
     const nextTutor = getPendingAssignedResponderId(freshSessionData);
     if (!nextTutor) {
-      console.log(
-        "⏭️ Skipping next tutor notification for session",
+      safeLog.log("next_tutor_notification_skipped", {
         sessionId,
-        "reason:",
-        "no_assigned_tutor",
-      );
+        reasonCode: "no_assigned_tutor",
+      });
       return;
     }
 
@@ -696,9 +699,7 @@ async function sendNotificationToNextTutor(sessionId, sessionData) {
 
     const [sessionSnap, notificationSnap] = await Promise.all(validationReads);
     if (!sessionSnap.exists) {
-      console.log(
-        "⏭️ Skipping push because session disappeared after assignment",
-      );
+      safeLog.warn("handoff_session_missing", {sessionId});
       return;
     }
 
@@ -707,9 +708,7 @@ async function sendNotificationToNextTutor(sessionId, sessionData) {
       !DECLINABLE_SESSION_STATUSES.has(validationSessionData.status) ||
       getPendingAssignedResponderId(validationSessionData) !== nextTutor
     ) {
-      console.log(
-        "⏭️ Skipping push because tutor assignment changed after transaction",
-      );
+      safeLog.log("handoff_assignment_changed", {sessionId});
       return;
     }
     if (
@@ -718,9 +717,7 @@ async function sendNotificationToNextTutor(sessionId, sessionData) {
         responderId: nextTutor,
       })
     ) {
-      console.log(
-        "⏭️ Skipping push because tutor is already accepting the session",
-      );
+      safeLog.log("handoff_responder_busy", {sessionId, responderId: nextTutor});
       return;
     }
 
@@ -732,9 +729,7 @@ async function sendNotificationToNextTutor(sessionId, sessionData) {
         notificationData.sessionId !== sessionId ||
         notificationData.recipientId !== nextTutor
       ) {
-        console.log(
-          "⏭️ Skipping push because notification changed after assignment",
-        );
+        safeLog.log("handoff_notification_changed", {sessionId});
         return;
       }
     }
@@ -747,11 +742,13 @@ async function sendNotificationToNextTutor(sessionId, sessionData) {
       studentPhoto: studentInfo.photo,
       language: freshSessionData.language,
     };
-    console.log("📨 Sending notification to tutor:", nextTutor);
-    console.log("✅ Firestore notification created for tutor:", nextTutor);
+      safeLog.log("decline_handoff_notification_created", {
+        sessionId,
+        responderId: nextTutor,
+      });
 
     // 🔔 Отправляем VoIP push преподавателю
-    console.log("📲 Sending VoIP push to next tutor...");
+      safeLog.log("voip_push_send_started", {sessionId, responderId: nextTutor});
     try {
       await sendVoipPushToTutor(nextTutor, {
         ...pushPayload,
@@ -761,15 +758,12 @@ async function sendNotificationToNextTutor(sessionId, sessionData) {
         studentPhoto: pushPayload.studentPhoto,
         language: pushPayload.language,
       });
-      console.log("✅ VoIP push sent to next tutor");
+      safeLog.log("voip_push_sent", {sessionId, responderId: nextTutor});
     } catch (pushError) {
-      console.error(
-        "⚠️ Failed to send VoIP push (non-critical):",
-        pushError.message,
-      );
+      safeLog.error("voip_push_failed", {sessionId, responderId: nextTutor, error: pushError});
     }
   } catch (error) {
-    console.error("❌ Error sending notification to tutor:", error);
+    safeLog.error("handoff_notification_failed", {sessionId, error});
   }
 }
 

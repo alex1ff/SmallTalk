@@ -302,14 +302,20 @@ void main() {
       final earlyCallKitIndex = mainFunctionSource.indexOf(
         'VoIPService().startEarlyCallKitEventHandling()',
       );
-      final firebaseInitIndex =
-          mainFunctionSource.indexOf('await initFirebase()');
+      final firebaseStartupIndex = mainFunctionSource.indexOf(
+        'final firebaseReadyFuture = _initializeFirebaseForStartup();',
+      );
+      final firebaseHelperSource = _curlyBlockSource(
+        mainSource,
+        'Future<bool> _initializeFirebaseForStartup() async {',
+      );
       final runAppIndex = mainFunctionSource.indexOf('runApp(');
 
       expect(backgroundHandlerIndex, greaterThanOrEqualTo(0));
       expect(earlyCallKitIndex, greaterThan(backgroundHandlerIndex));
-      expect(firebaseInitIndex, greaterThan(earlyCallKitIndex));
-      expect(runAppIndex, greaterThan(firebaseInitIndex));
+      expect(firebaseStartupIndex, greaterThan(earlyCallKitIndex));
+      expect(firebaseHelperSource, contains('await initFirebase()'));
+      expect(runAppIndex, greaterThan(firebaseStartupIndex));
     });
 
     test('root app clears queued CallKit actions only on real logout', () {
@@ -878,13 +884,17 @@ void main() {
         expect(wrapper, isNot(contains('setState(')));
         expect(wrapper, isNot(contains('if (')));
       }
-      expect(remoteName, contains("String fallback = 'Собеседник'"));
+      expect(remoteName, contains('String? fallback'));
       expect(
           remoteName,
           contains(
               'return participant_identity.resolveRemoteParticipantName('));
       expect(remoteName, contains('username: participant?.info.username,'));
-      expect(remoteName, contains('fallback: fallback,'));
+      expect(
+        remoteName,
+        contains(
+            "fallback: fallback ?? _text(ru: 'Собеседник', en: 'Partner')"),
+      );
       expect(
           remoteLogId,
           contains(
@@ -1281,7 +1291,8 @@ void main() {
       expect(terminalScreen, contains('_buildErrorDisplay(allowRetry: false)'));
       expect(status, contains('if (_state.hasTerminalError) return null;'));
       expect(errorDisplay, contains('if (allowRetry) ...['));
-      expect(errorDisplay, contains("child: const Text('Повторить попытку')"));
+      expect(errorDisplay, contains("ru: 'Повторить попытку'"));
+      expect(errorDisplay, contains("en: 'Try again'"));
       expect(cleanup, contains('terminalErrorAfterDailyCleanup('));
       expect(cleanup, contains('hasTerminalError: _state.hasTerminalError'));
       expect(cleanup,
@@ -1981,7 +1992,7 @@ void main() {
       final handleAcceptIndex =
           source.indexOf('Future<void> _handleCallAccept');
       final outerCatchIndex = source.indexOf(
-        "debugPrint('❌ VoIPService: Error in call accept flow: \$e');",
+        "safeDebugLog('❌ VoIPService: Error in call accept flow: \$e');",
         handleAcceptIndex,
       );
       final outerClearIndex = source.indexOf(
@@ -2828,11 +2839,12 @@ void main() {
         controlsSource,
         contains("'Микрофон выключен. Включить микрофон'"),
       );
-      expect(controlsSource, contains('_chatControlTooltip()'));
-      expect(controlsSource, contains('_chatControlSemanticLabel()'));
+      expect(controlsSource, contains('_chatControlTooltip(context)'));
+      expect(controlsSource, contains('_chatControlSemanticLabel(context)'));
       expect(controlsSource, contains('toggled: semanticToggled'));
       expect(controlsSource, contains("'Завершить звонок'"));
-      expect(dailyWidgetSource, contains("message: 'Закрыть чат'"));
+      expect(dailyWidgetSource, contains("ru: 'Закрыть чат'"));
+      expect(dailyWidgetSource, contains("en: 'Close chat'"));
       expect(dailyWidgetSource, contains("'Отправить сообщение'"));
       expect(
         dailyWidgetSource,
@@ -3207,6 +3219,7 @@ void main() {
       final voipServiceSource = _source('lib/services/voip_service.dart');
       final videoCallPageSource = _source(
           'lib/shared_pages/video_call_page/video_call_page_widget.dart');
+      final mainSource = _source('lib/main.dart');
 
       expect(
         permissionsSource,
@@ -3214,21 +3227,28 @@ void main() {
       );
       expect(
         permissionsSource,
-        contains('await requestPermission(cameraPermission);'),
+        contains('requestCamera: () => requestPermission(cameraPermission)'),
       );
       expect(
         permissionsSource,
-        contains('await requestPermission(microphonePermission);'),
+        contains(
+          'requestMicrophone: () => requestPermission(microphonePermission)',
+        ),
       );
       expect(
         permissionsSource,
-        contains('return hasCameraPermission && hasMicrophonePermission;'),
+        contains('final granted = hasCameraPermission && '
+            'hasMicrophonePermission;'),
+      );
+      expect(
+        mainSource,
+        contains('invalidateCameraAndMicrophonePermissionCache();'),
       );
       expect(
         RegExp(r'await ensureCameraAndMicrophonePermissions\(\)')
             .allMatches(studentDashboardSource)
             .length,
-        greaterThanOrEqualTo(2),
+        1,
       );
       expect(
         studentDashboardSource,

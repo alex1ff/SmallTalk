@@ -16,6 +16,8 @@ const {
   isAcceptedSessionCredentialParticipant,
   isCredentialSessionJoinable,
 } = require("./video_sessions_shared");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "get_session_tokens"});
 
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 const PRECREATED_ROOM_VALIDATION_WINDOW_MS = 60 * 1000;
@@ -104,15 +106,12 @@ exports.getSessionTokens = functions
     sessionData.dailyRoomName || getRoomNameFromUrl(sessionData.dailyRoomUrl);
   const derivedName = getRoomNameFromUrl(roomUrl);
   if (derivedName && roomName !== derivedName) {
-    console.log("⚠️ Room name mismatch, using name from URL", {
-      roomName,
-      derivedName,
-    });
+    safeLog.warn("room_name_mismatch", {sessionId});
     roomName = derivedName;
     sessionDoc.ref.update({
       dailyRoomName: roomName,
     }).catch((e) => {
-      console.error("⚠️ Failed to update corrected room name:", e.message);
+      safeLog.error("room_name_update_failed", {sessionId, error: e});
     });
   }
   if (!roomName) {
@@ -132,14 +131,10 @@ exports.getSessionTokens = functions
     const existingRoom = await getDailyRoom(roomName);
     shouldCreateRoom = !existingRoom || !isDailyRoomConfigCompatible(existingRoom);
     if (shouldCreateRoom && existingRoom) {
-      console.warn("⚠️ Daily room uses legacy config, recreating room");
+      safeLog.warn("daily_room_recreate_required", {sessionId});
     }
   } else {
-    console.log(
-      "⚡ Skipping room validation - room is fresh/current (" +
-        roomAgeMs +
-        "ms old)",
-    );
+    safeLog.log("daily_room_validation_skipped", {sessionId});
   }
   if (shouldCreateRoom) {
     let replacementRoomName = null;
@@ -218,7 +213,7 @@ exports.getSessionTokens = functions
       }
       replacementRoomName = null;
     } catch (e) {
-      console.error("⚠️ Failed to update recovered room info:", e.message);
+      safeLog.error("recovered_room_update_failed", {sessionId, error: e});
       if (replacementRoomName) {
         await deleteDailyRoom(replacementRoomName);
       }

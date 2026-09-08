@@ -61,14 +61,17 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          ./scripts/local_ci.sh 2>&1 | tee local-ci.log
+          ./scripts/local_ci.sh 2>&1 | tee .git/local-ci-console.log
 
       - name: Upload gate log on failure
         if: ${{ failure() }}
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: local-ci-log-${{ github.run_id }}
-          path: local-ci.log
+          path: |
+            .git/local-ci-console.log
+            .git/local-ci/**
+          include-hidden-files: true
           if-no-files-found: warn
           retention-days: 7
 

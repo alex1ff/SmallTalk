@@ -45,6 +45,8 @@ const {
 const {
   reconcileSessionTrialCallsInTransaction,
 } = require("./trial_access");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "respond_to_match"});
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -663,10 +665,10 @@ async function respondToMatchCallable(data, context, options = {}) {
       options,
       cancelSurfaces: cancelNativeMatchSurfaces,
     }).catch((error) => {
-      console.warn("Protocol v2 terminal recovery deferred", {
+      safeLog.warn("protocol_v2_terminal_recovery_deferred", {
         sessionId: input.sessionId,
         pairAttemptId: input.pairAttemptId,
-        error: normalizeString(error?.message) || "recovery_deferred",
+        error,
       });
     });
     return result.response;

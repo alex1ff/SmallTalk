@@ -416,7 +416,7 @@ void main() {
     }
     expect(
       tester
-          .widget<SingleChildScrollView>(find.byKey(eventListScrollViewKey))
+          .widget<CustomScrollView>(find.byKey(eventListScrollViewKey))
           .clipBehavior,
       Clip.none,
     );
@@ -661,6 +661,31 @@ void main() {
     expect(find.byKey(eventListCitySelectorKey), findsNothing);
   });
 
+  testWidgets('override cards do not claim lazy semantic children',
+      (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          initialSelectedCity: _selectedCityFixture(),
+          eventCardsOverride: [
+            _eventCardFixture(title: 'Override event'),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Override event'), findsOneWidget);
+    expect(
+      tester
+          .widget<CustomScrollView>(find.byKey(eventListScrollViewKey))
+          .semanticChildCount,
+      0,
+    );
+  });
+
   testWidgets('shows explicit loading state after city is selected',
       (tester) async {
     await tester.pumpWidget(
@@ -764,6 +789,87 @@ void main() {
     expect(find.byKey(eventListCitySelectorKey), findsNothing);
   });
 
+  testWidgets('repository event cards are built lazily while scrolling',
+      (tester) async {
+    currentUser = _TestAuthUser('lazy-event-list-user');
+    currentUserDocument = _userFixture(
+      uid: 'lazy-event-list-user',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'RU',
+          cityKey: 'moscow',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(
+          cityCatalogOverride: _catalog,
+          languageCatalogOverride: _languageCatalog,
+          nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+          eventPageLoader: (
+            collection,
+            recordBuilder, {
+            queryBuilder,
+            nextPageMarker,
+            required pageSize,
+            required isStream,
+          }) async {
+            return FFFirestorePage<EventsRecord>(
+              List<EventsRecord>.generate(
+                20,
+                (index) => _eventsRecordFixture(
+                  'lazy-event-$index',
+                  title: 'Lazy event $index',
+                  startsAt:
+                      DateTime.utc(2035, 6, 14, 15).add(Duration(hours: index)),
+                ),
+              ),
+              null,
+              null,
+            );
+          },
+          currentUserParticipantLoader: (_, __) async => null,
+          activeParticipantsLoader: (_) async => const [],
+          publicProfilesLoader: (_) async => UserPublicProfilePreloadResult(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Lazy event 0'), findsOneWidget);
+    expect(find.text('Lazy event 19'), findsNothing);
+    expect(find.byKey(eventListCardShellKey).evaluate().length, lessThan(20));
+    expect(
+      tester
+          .widget<CustomScrollView>(find.byKey(eventListScrollViewKey))
+          .semanticChildCount,
+      20,
+    );
+    final firstCardSemantics = find.ancestor(
+      of: find.text('Lazy event 0'),
+      matching: find.byType(IndexedSemantics),
+    );
+    expect(firstCardSemantics, findsWidgets);
+    expect(tester.widget<IndexedSemantics>(firstCardSemantics.first).index, 0);
+
+    _eventListScrollPosition(tester).jumpTo(
+      _eventListScrollPosition(tester).maxScrollExtent,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Lazy event 0'), findsNothing);
+    expect(find.text('Lazy event 19'), findsOneWidget);
+    final lastCardSemantics = find.ancestor(
+      of: find.text('Lazy event 19'),
+      matching: find.byType(IndexedSemantics),
+    );
+    expect(lastCardSemantics, findsWidgets);
+    expect(tester.widget<IndexedSemantics>(lastCardSemantics.first).index, 19);
+  });
+
   testWidgets('empty second page shows no more items without emptying the list',
       (tester) async {
     final marker = _FakeQueryDocumentSnapshot('pagination-cursor');
@@ -842,9 +948,9 @@ void main() {
 
     expect(calls, 2);
     expect(receivedMarkers, <DocumentSnapshot?>[null, marker]);
-    expect(find.text('First page event 0'), findsOneWidget);
+    expect(find.text('First page event 0'), findsNothing);
     expect(find.text('First page event 7'), findsOneWidget);
-    expect(find.byKey(eventListCardShellKey), findsNWidgets(8));
+    expect(find.byKey(eventListCardShellKey), findsWidgets);
     expect(find.byKey(eventListPaginationLoadingKey), findsOneWidget);
     expect(find.byKey(eventListEmptyStateKey), findsNothing);
 
@@ -860,18 +966,22 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('First page event 0'), findsOneWidget);
+    expect(find.text('First page event 0'), findsNothing);
     expect(find.text('First page event 7'), findsOneWidget);
-    expect(find.byKey(eventListCardShellKey), findsNWidgets(8));
-    expect(find.byKey(eventListPaginationLoadingKey), findsNothing);
+    expect(find.byKey(eventListCardShellKey), findsWidgets);
     expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
     expect(find.text('Больше событий нет'), findsOneWidget);
-    expect(find.byKey(eventListEmptyStateKey), findsNothing);
     final noMoreSemantics = tester.widget<Semantics>(
       find.byKey(eventListNoMoreItemsKey),
     );
     expect(noMoreSemantics.properties.label, 'Больше событий нет');
     expect(noMoreSemantics.properties.liveRegion, isTrue);
+
+    _eventListScrollPosition(tester).jumpTo(0);
+    await tester.pump();
+    expect(find.text('First page event 0'), findsOneWidget);
+    expect(find.byKey(eventListPaginationLoadingKey), findsNothing);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
 
     await tester.drag(
       find.byKey(eventListScrollViewKey),
@@ -1484,7 +1594,7 @@ void main() {
       secondMarker.id,
     ]);
     expect(calls, 3);
-    expect(find.text('Overlap first event 0'), findsOneWidget);
+    expect(find.text('Overlap first event 0'), findsNothing);
     expect(find.text('Overlap appended event'), findsOneWidget);
     expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
     expect(find.byKey(eventListEmptyStateKey), findsNothing);
@@ -2284,7 +2394,8 @@ void main() {
     await tester.pump();
 
     expect(calls, 2);
-    expect(find.text('Retry page event 0'), findsOneWidget);
+    expect(find.text('Retry page event 0'), findsNothing);
+    expect(find.text('Retry page event 7'), findsOneWidget);
     expect(find.byKey(eventListPaginationErrorKey), findsOneWidget);
     expect(find.byKey(eventListErrorStateKey), findsNothing);
     expect(find.byKey(eventListEmptyStateKey), findsNothing);
@@ -2296,7 +2407,7 @@ void main() {
 
     expect(calls, 3);
     expect(receivedMarkers, <DocumentSnapshot?>[null, marker, marker]);
-    expect(find.text('Retry page event 0'), findsOneWidget);
+    expect(find.text('Retry page event 7'), findsOneWidget);
     expect(find.byKey(eventListPaginationErrorKey), findsNothing);
     expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
     expect(find.byKey(eventListEmptyStateKey), findsNothing);
@@ -2376,10 +2487,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(calls, 2);
-    expect(find.text('Append page event 0'), findsOneWidget);
+    expect(find.text('Append page event 0'), findsNothing);
     expect(find.text('Appended event'), findsOneWidget);
     expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
     expect(find.byKey(eventListEmptyStateKey), findsNothing);
+
+    _eventListScrollPosition(tester).jumpTo(0);
+    await tester.pump();
+    expect(find.text('Append page event 0'), findsOneWidget);
   });
 
   testWidgets('late next page is ignored after the active filter changes',
@@ -6172,6 +6287,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(profileRequests, hasLength(1));
+      _eventListScrollPosition(tester).jumpTo(
+        _eventListScrollPosition(tester).maxScrollExtent,
+      );
+      await tester.pumpAndSettle();
       expect(find.text('Early window event 2'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
@@ -13277,8 +13396,7 @@ void _expectWhereCondition(
 ScrollPosition _eventListScrollPosition(WidgetTester tester) {
   final verticalScrollView = find.byWidgetPredicate(
     (widget) =>
-        widget is SingleChildScrollView &&
-        widget.scrollDirection == Axis.vertical,
+        widget is CustomScrollView && widget.scrollDirection == Axis.vertical,
   );
   expect(verticalScrollView, findsOneWidget);
   final scrollable = find.descendant(

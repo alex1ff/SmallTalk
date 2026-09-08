@@ -1,5 +1,7 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "get_event_history"});
 
 const REQUEST_TIMEOUT_SECONDS = 30;
 const DEFAULT_HISTORY_LIMIT = 20;
@@ -147,10 +149,7 @@ async function loadParticipantHistoryDocs({db, uid, participantQueryLimit}) {
     if (!isMissingFirestoreIndexError(err)) {
       throw err;
     }
-    console.warn(
-        "getEventHistory participant history index missing; using fallback",
-        {uid},
-    );
+    safeLog.warn("event_history_index_missing", {uid});
   }
 
   const fallbackSnapshot = await baseQuery.get();
@@ -408,7 +407,7 @@ async function getEventHistoryHandler(data, context, options = {}) {
     if (err instanceof functions.https.HttpsError) {
       throw err;
     }
-    console.error("getEventHistory failed", {uid, err});
+    safeLog.error("event_history_failed", {uid, error: err});
     throw new functions.https.HttpsError(
         "internal",
         "Could not load event history",

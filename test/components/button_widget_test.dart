@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:small_talk/components/button/button_widget.dart';
 import 'package:small_talk/components/wrapper.dart';
@@ -118,6 +119,7 @@ void main() {
 
   testWidgets('spinner mode shows loading UI and blocks repeat taps',
       (tester) async {
+    final semantics = tester.ensureSemantics();
     final completer = Completer<void>();
     var tapCount = 0;
 
@@ -157,6 +159,15 @@ void main() {
     expect(find.byKey(const ValueKey<String>('button_widget_spinner')),
         findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    final busySemantics = tester.getSemantics(find.byType(ButtonWidget));
+    expect(busySemantics.label, 'Sending...');
+    expect(busySemantics.flagsCollection.isButton, isTrue);
+    expect(busySemantics.flagsCollection.isEnabled, isFalse);
+    expect(busySemantics.flagsCollection.isLiveRegion, isTrue);
+    expect(
+      busySemantics.getSemanticsData().hasAction(SemanticsAction.tap),
+      isFalse,
+    );
     expect(tester.getRect(find.byKey(_geometryButtonKey)), initialButtonRect);
     expect(
       tester.getSize(
@@ -191,6 +202,13 @@ void main() {
       tester.getCenter(find.text('Submit')).dy,
       closeTo(initialLabelCenter.dy, 0.01),
     );
+    final readySemantics = tester.getSemantics(find.byType(ButtonWidget));
+    expect(readySemantics.label, 'Submit');
+    expect(readySemantics.flagsCollection.isEnabled, isTrue);
+    expect(
+      readySemantics.getSemanticsData().hasAction(SemanticsAction.tap),
+      isTrue,
+    );
 
     await tester.pumpWidget(
       buildHarness(
@@ -213,6 +231,40 @@ void main() {
       tester.getCenter(find.text('Submit')).dy,
       closeTo(initialLabelCenter.dy, 0.01),
     );
+    semantics.dispose();
+  });
+
+  testWidgets('external busy state disables tap semantics and shows progress',
+      (tester) async {
+    final semantics = tester.ensureSemantics();
+    var tapCount = 0;
+
+    await tester.pumpWidget(
+      buildHarness(
+        ButtonWidget(
+          text: 'Continue',
+          loadingText: 'Working...',
+          busyStyle: ButtonBusyStyle.spinner,
+          busy: true,
+          action: () async => tapCount++,
+        ),
+      ),
+    );
+
+    final node = tester.getSemantics(find.byType(ButtonWidget));
+    expect(node.label, 'Working...');
+    expect(node.flagsCollection.isEnabled, isFalse);
+    expect(node.flagsCollection.isLiveRegion, isTrue);
+    expect(
+      node.getSemanticsData().hasAction(SemanticsAction.tap),
+      isFalse,
+    );
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    await tester.tap(find.byType(ButtonWidget), warnIfMissed: false);
+    await tester.pump();
+    expect(tapCount, 0);
+    semantics.dispose();
   });
 
   testWidgets('debounceOnly mode blocks repeat taps without showing spinner',

@@ -1,5 +1,7 @@
 const admin = require("firebase-admin");
 const { deleteDailyRoom } = require("./daily_room");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "daily_room_cleanup"});
 
 function buildDailyRoomDeletePatch({
   source,
@@ -45,10 +47,10 @@ async function deleteDailyRoomForSession({
       deleted,
     }));
   } catch (error) {
-    console.error("⚠️ Failed to record Daily room cleanup status:", {
+    safeLog.error("daily_room_cleanup_status_failed", {
       sessionId,
       source,
-      error: error.message,
+      error,
     });
   }
 

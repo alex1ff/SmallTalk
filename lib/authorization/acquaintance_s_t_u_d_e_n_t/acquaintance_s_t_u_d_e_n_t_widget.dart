@@ -11,6 +11,7 @@ import '/components/profile_dropdown_menu_item.dart';
 import '/custom_code/actions/index.dart' as actions;
 import '/flutter_flow/custom_functions.dart' as functions;
 import '/flutter_flow/flutter_flow_util.dart';
+import '/services/safe_debug_log.dart';
 import '/index.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
@@ -161,7 +162,7 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
       );
       return true;
     } catch (error) {
-      debugPrint('AcquaintanceSTUDENTWidget: failed to save profile: $error');
+      safeDebugLog('AcquaintanceSTUDENTWidget: failed to save profile: $error');
       if (mounted) {
         await actions.showTopNotification(
           context,

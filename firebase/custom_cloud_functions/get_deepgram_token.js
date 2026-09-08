@@ -1,6 +1,8 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const axios = require("axios");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "get_deepgram_token"});
 const {
   getCredentialTtlSeconds,
   isAcceptedSessionCredentialParticipant,
@@ -122,15 +124,11 @@ exports.getDeepgramToken = functions
       };
     } catch (error) {
       if (isDeepgramGrantConfigurationError(error)) {
-        console.warn(
-          "⚠️ Deepgram grant forbidden; refusing to expose API key",
-          {
-            sessionId,
-            userId,
-            status: error?.response?.status,
-            data: error?.response?.data,
-          },
-        );
+        safeLog.warn("deepgram_grant_forbidden", {
+          sessionId,
+          userId,
+          statusCode: error?.response?.status,
+        });
 
         throw new functions.https.HttpsError(
           "failed-precondition",
@@ -139,12 +137,11 @@ exports.getDeepgramToken = functions
         );
       }
 
-      console.error("❌ Failed to create Deepgram access token:", {
+      safeLog.error("deepgram_token_failed", {
         sessionId,
         userId,
-        status: error?.response?.status,
-        data: error?.response?.data,
-        message: error?.message,
+        statusCode: error?.response?.status,
+        error,
       });
       throw new functions.https.HttpsError(
         "internal",

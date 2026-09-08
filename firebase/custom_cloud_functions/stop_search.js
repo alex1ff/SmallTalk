@@ -1,5 +1,7 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "stop_search"});
 const {
   resolveDailyRoomName,
 } = require("./daily_room");
@@ -700,10 +702,10 @@ async function sendCallCancellationToResponder({
       return {sent: true, channel: "apns_voip"};
     } catch (error) {
       apnsError = normalizeNonEmptyString(error?.message) || "apns_failed";
-      console.error("⚠️ stopSearch CallKit cancellation APNs failed:", {
+      safeLog.error("stop_search_apns_cancellation_failed", {
         sessionId: normalizedSessionId,
-        responderUserId: normalizedResponderId,
-        error: apnsError,
+        responderId: normalizedResponderId,
+        error,
       });
     }
   }
@@ -944,9 +946,9 @@ exports.stopSearch = functions
           });
         txResult.notificationCleanupStatus = "completed";
       } catch (error) {
-        console.error("⚠️ stopSearch notification cleanup failed:", {
+        safeLog.error("stop_search_notification_cleanup_failed", {
           sessionId: txResult.cancelledSessionId,
-          error: error.message,
+          error,
         });
         txResult.cancelledNotifications = 0;
         txResult.notificationCleanupStatus = "failed";
@@ -976,10 +978,10 @@ exports.stopSearch = functions
             responderUserId: cancelledResponderUserId,
           });
       } catch (error) {
-        console.error("⚠️ stopSearch CallKit cancellation failed:", {
+        safeLog.error("stop_search_callkit_cancellation_failed", {
           sessionId: txResult.cancelledSessionId,
-          responderUserId: cancelledResponderUserId,
-          error: error.message,
+          responderId: cancelledResponderUserId,
+          error,
         });
         txResult.callCancellationDelivery = {
           sent: false,
@@ -1017,10 +1019,10 @@ exports.stopSearch = functions
         });
         txResult.dailyRoomCleanupStatus = "completed";
       } catch (error) {
-        console.error("⚠️ stopSearch Daily room cleanup failed:", {
+        safeLog.error("stop_search_daily_room_cleanup_failed", {
           sessionId: txResult.cancelledSessionId,
           roomName: txResult.dailyRoomName,
-          error: error.message,
+          error,
         });
         txResult.dailyRoomCleanupStatus = "failed";
       }

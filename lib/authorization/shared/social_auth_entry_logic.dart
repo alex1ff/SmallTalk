@@ -4,6 +4,7 @@ import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/services/new_account_inbox_bootstrap.dart';
+import '/services/safe_debug_log.dart';
 import 'package:flutter/foundation.dart';
 
 enum SocialAuthEntryDestination {
@@ -109,7 +110,7 @@ void _debugSocialAuthLog(String message) {
   if (!kDebugMode) {
     return;
   }
-  debugPrint('🔐 SocialAuthEntry: $message');
+  safeDebugLog('🔐 SocialAuthEntry: $message');
 }
 
 UserRole roleIntentFromNativeSpeakerIntent(bool nativeSpeakerIntent) =>

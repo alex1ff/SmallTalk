@@ -24,6 +24,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'error_reporting/error_reporter.dart';
+import 'safe_debug_log.dart';
 
 /// Public RevenueCat API keys. These are SAFE to commit — RC public keys
 /// are designed to live in client code; the SECRET key (used server-side
@@ -495,7 +496,7 @@ class SubscriptionService {
 
       final String apiKey = _resolveApiKey();
       if (_isPlaceholderKey(apiKey)) {
-        debugPrint(
+        safeDebugLog(
           '⚠️ SubscriptionService: RevenueCat public API key is not set for '
           'this platform. RevenueCat will stay disabled.',
         );
@@ -513,7 +514,7 @@ class SubscriptionService {
       }
       _configured = true;
     } catch (e, st) {
-      debugPrint('❌ SubscriptionService.configure failed: $e\n$st');
+      safeDebugLog('❌ SubscriptionService.configure failed: $e\n$st');
       rethrow;
     }
   }
@@ -568,7 +569,8 @@ class SubscriptionService {
         _listenerRefreshGeneration = null;
       }
     }).catchError((Object error, StackTrace stackTrace) {
-      debugPrint('⚠️ RevenueCat listener refresh failed: $error\n$stackTrace');
+      safeDebugLog(
+          '⚠️ RevenueCat listener refresh failed: $error\n$stackTrace');
     }));
   }
 
@@ -682,7 +684,7 @@ class SubscriptionService {
 
       return selectSubscriptionPackagesFromOfferings(offerings);
     } catch (e, st) {
-      debugPrint(
+      safeDebugLog(
           '❌ SubscriptionService.fetchSubscriptionPackages failed: $e\n$st');
       return const [];
     }
@@ -697,7 +699,7 @@ class SubscriptionService {
       _debugLogStoreProducts(products);
       return products;
     } catch (e, st) {
-      debugPrint(
+      safeDebugLog(
         '❌ SubscriptionService.fetchSubscriptionStoreProducts failed: $e\n$st',
       );
       return const [];
@@ -754,7 +756,7 @@ class SubscriptionService {
           offerings = await ensureOfferingsLoaded();
         } catch (error, st) {
           offeringsError = error;
-          debugPrint('⚠️ RevenueCat offerings unavailable: $error\n$st');
+          safeDebugLog('⚠️ RevenueCat offerings unavailable: $error\n$st');
         }
       })(),
       (() async {
@@ -762,7 +764,8 @@ class SubscriptionService {
           directProducts = await _ensureStoreProductsLoaded();
         } catch (error, st) {
           productsError = error;
-          debugPrint('⚠️ RevenueCat direct products unavailable: $error\n$st');
+          safeDebugLog(
+              '⚠️ RevenueCat direct products unavailable: $error\n$st');
         }
       })(),
     ];
@@ -784,7 +787,7 @@ class SubscriptionService {
           }
         } catch (error, st) {
           trialEligibility = SubscriptionIntroEligibility.error;
-          debugPrint(
+          safeDebugLog(
             '⚠️ RevenueCat trial eligibility unavailable: $error\n$st',
           );
         }
@@ -845,7 +848,7 @@ class SubscriptionService {
         )
         .join(', ');
 
-    debugPrint(
+    safeDebugLog(
       'ℹ️ SubscriptionService.offerings current=$currentId '
       'all=[${offerings.all.keys.join(', ')}] packages=[$packages]',
     );
@@ -855,7 +858,7 @@ class SubscriptionService {
     final productLog = products
         .map((product) => '${product.identifier}:${product.priceString}')
         .join(', ');
-    debugPrint(
+    safeDebugLog(
       'ℹ️ SubscriptionService.storeProducts requested='
       '[${SubscriptionProductIds.all.join(', ')}] products=[$productLog]',
     );
@@ -887,7 +890,7 @@ class SubscriptionService {
           stackTrace: st,
         );
       }
-      debugPrint(
+      safeDebugLog(
         '❌ SubscriptionService.purchase failed: code=$errorCode '
         'message=${e.message}',
       );
@@ -923,7 +926,7 @@ class SubscriptionService {
         );
       });
     } catch (e, st) {
-      debugPrint('⚠️ SubscriptionService.refresh failed: $e\n$st');
+      safeDebugLog('⚠️ SubscriptionService.refresh failed: $e\n$st');
     }
   }
 
@@ -940,7 +943,7 @@ class SubscriptionService {
       }
       return info;
     } catch (e, st) {
-      debugPrint('⚠️ SubscriptionService.restorePurchases failed: $e\n$st');
+      safeDebugLog('⚠️ SubscriptionService.restorePurchases failed: $e\n$st');
       rethrow;
     }
   }
@@ -1072,7 +1075,7 @@ class SubscriptionService {
         userId: userId,
       );
     } catch (error, st) {
-      debugPrint('⚠️ RevenueCat customer preload failed: $error\n$st');
+      safeDebugLog('⚠️ RevenueCat customer preload failed: $error\n$st');
     }
     _scheduleCatalogPreload(
       generation: generation,
@@ -1091,7 +1094,7 @@ class SubscriptionService {
           try {
             await ensureOfferingsLoaded();
           } catch (error, stackTrace) {
-            debugPrint('⚠️ RevenueCat offering preload failed: '
+            safeDebugLog('⚠️ RevenueCat offering preload failed: '
                 '$error\n$stackTrace');
           }
         })(),
@@ -1099,7 +1102,7 @@ class SubscriptionService {
           try {
             await _ensureStoreProductsLoaded();
           } catch (error, stackTrace) {
-            debugPrint('⚠️ RevenueCat product preload failed: '
+            safeDebugLog('⚠️ RevenueCat product preload failed: '
                 '$error\n$stackTrace');
           }
         })(),

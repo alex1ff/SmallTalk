@@ -1,4 +1,12 @@
+const {
+  buildSafeLogPayload,
+  createSafeConsole,
+  normalizeEventName,
+  sanitizeCounts,
+} = require("./safe_log");
+
 const CALL_LIFECYCLE_LOG_EVENT = "call_lifecycle_event";
+const safeConsole = createSafeConsole({source: "call_lifecycle"});
 
 const STRING_FIELDS = [
   "event",
@@ -19,56 +27,41 @@ const STRING_FIELDS = [
   "skipReason",
 ];
 
-function normalizeLogString(value) {
-  return typeof value === "string" ? value.trim() : "";
-}
-
 function sanitizeLogCounts(counts = {}) {
-  if (!counts || typeof counts !== "object") {
-    return null;
-  }
-  const sanitized = {};
-  for (const [key, value] of Object.entries(counts)) {
-    if (typeof key !== "string" || !key.trim()) {
-      continue;
-    }
-    const numberValue = Number(value);
-    if (Number.isFinite(numberValue)) {
-      sanitized[key.trim()] = numberValue;
-    }
-  }
-  return Object.keys(sanitized).length > 0 ? sanitized : null;
+  return sanitizeCounts(counts);
 }
 
 function buildCallLifecycleLogPayload(input = {}) {
-  const payload = {};
-  for (const field of STRING_FIELDS) {
-    const normalizedValue = normalizeLogString(input[field]);
-    if (normalizedValue) {
-      payload[field] = normalizedValue;
-    }
-  }
-
-  const counts = sanitizeLogCounts(input.counts);
-  if (counts) {
-    payload.counts = counts;
-  }
-
-  return payload;
+  const filteredInput = Object.fromEntries(
+    Object.entries(input).filter(([field]) =>
+      STRING_FIELDS.includes(field) || field === "counts"),
+  );
+  return {
+    ...buildSafeLogPayload(filteredInput),
+    event: normalizeEventName(input.event),
+  };
 }
 
-function logCallLifecycleEvent(input = {}, logger = console) {
+function logCallLifecycleEvent(input = {}, logger = safeConsole) {
   const payload = buildCallLifecycleLogPayload(input);
-  logger.log(CALL_LIFECYCLE_LOG_EVENT, payload);
+  const {event, source: _source, ...details} = payload;
+  logger.log(CALL_LIFECYCLE_LOG_EVENT, {
+    ...details,
+    operation: event,
+  });
   return payload;
 }
 
-function logCallLifecycleError(input = {}, logger = console) {
+function logCallLifecycleError(input = {}, logger = safeConsole) {
   const payload = buildCallLifecycleLogPayload({
     ...input,
     result: "error",
   });
-  logger.error(CALL_LIFECYCLE_LOG_EVENT, payload);
+  const {event, source: _source, ...details} = payload;
+  logger.error(CALL_LIFECYCLE_LOG_EVENT, {
+    ...details,
+    operation: event,
+  });
   return payload;
 }
 

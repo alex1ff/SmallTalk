@@ -13,6 +13,7 @@ import 'backend/firebase/firebase_config.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import 'flutter_flow/flutter_flow_util.dart';
 import 'flutter_flow/internationalization.dart';
+import 'flutter_flow/permissions_util.dart';
 import 'shared_pages/design/expatlio_design.dart';
 
 // 🔔 VoIP imports
@@ -21,6 +22,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'services/voip_service.dart';
 import 'services/match_coordinator.dart';
 import 'services/partner_availability_notifications.dart';
+import 'services/safe_debug_log.dart';
 import 'services/firebase_app_check_service.dart';
 import 'services/user_presence_service.dart';
 import 'services/error_reporting/app_error_boundary.dart';
@@ -46,8 +48,8 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   ErrorReporting.attachSink(
       createPlatformErrorReportSink(AppEnvironment.current));
 
-  debugPrint('🔔 Background message received: ${message.messageId}');
-  debugPrint(
+  safeDebugLog('🔔 Background message received: ${message.messageId}');
+  safeDebugLog(
     '🔔 Background message type: ${message.data['type']}, '
     'hasSessionId: ${message.data['sessionId'] != null}',
   );
@@ -60,13 +62,13 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         callKitId: message.data['callKitId']?.toString(),
         pairAttemptId: message.data['pairAttemptId']?.toString(),
       );
-      debugPrint('✅ Cancelled CallKit UI for session $sessionId');
+      safeDebugLog('✅ Cancelled CallKit UI for session $sessionId');
     }
     return;
   }
 
   if (message.data['type'] == 'incoming_call') {
-    debugPrint('📞 Incoming VoIP call detected in background');
+    safeDebugLog('📞 Incoming VoIP call detected in background');
 
     try {
       await VoIPService().showIncomingCall(
@@ -76,9 +78,9 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         callerPhoto: message.data['callerPhoto'],
         extraData: voipIncomingCallExtraDataFromPayload(message.data),
       );
-      debugPrint('✅ CallKit UI shown successfully');
+      safeDebugLog('✅ CallKit UI shown successfully');
     } catch (e) {
-      debugPrint('❌ Error showing CallKit: $e');
+      safeDebugLog('❌ Error showing CallKit: $e');
     }
   }
 }
@@ -93,7 +95,21 @@ void _reportFirebaseInitializationFailure(
     error: error,
     stackTrace: stackTrace,
   );
-  debugPrint('❌ Firebase initialization failed: $error');
+  safeDebugLog('❌ Firebase initialization failed: $error');
+}
+
+Future<bool> _initializeFirebaseForStartup() async {
+  try {
+    await initFirebase();
+  } catch (error, stackTrace) {
+    _reportFirebaseInitializationFailure(error, stackTrace);
+    return false;
+  }
+
+  ErrorReporting.attachSink(
+      createPlatformErrorReportSink(AppEnvironment.current));
+  await initializeFirebaseAppCheck();
+  return true;
 }
 
 void main() async {
@@ -108,25 +124,33 @@ void main() async {
   // still be able to start in that case.
   try {
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-    debugPrint('🔔 VoIP background handler registered');
+    safeDebugLog('🔔 VoIP background handler registered');
   } catch (error) {
-    debugPrint('⚠️ VoIP background handler registration skipped: $error');
+    safeDebugLog('⚠️ VoIP background handler registration skipped: $error');
   }
   unawaited(VoIPService().startEarlyCallKitEventHandling());
 
-  var firebaseReady = true;
-  try {
-    await initFirebase();
-  } catch (error, stackTrace) {
-    firebaseReady = false;
-    _reportFirebaseInitializationFailure(error, stackTrace);
-  }
-  if (firebaseReady) {
-    ErrorReporting.attachSink(
-        createPlatformErrorReportSink(AppEnvironment.current));
-    await initializeFirebaseAppCheck();
-  } else {
-    debugPrint('⚠️ Firebase unavailable; showing bootstrap fallback.');
+  // Start the guarded Firebase branch first, then overlap independent local
+  // plugin and asset I/O. Future.wait attaches to both branches immediately,
+  // so a local failure cannot surface as an unhandled asynchronous error.
+  final firebaseReadyFuture = _initializeFirebaseForStartup();
+
+  // Local preferences, language catalog and date symbols do not depend on
+  // Firebase. They still remain behind the same runApp readiness barrier.
+  final appState = FFAppState();
+  final localStateReady = Future.wait([
+    FFLocalizations.initialize(),
+    initializeDateFormatting(),
+    appState.initializePersistedState(),
+  ]);
+
+  final startupResults = await Future.wait<Object?>([
+    firebaseReadyFuture,
+    localStateReady,
+  ]);
+  final firebaseReady = startupResults.first! as bool;
+  if (!firebaseReady) {
+    safeDebugLog('⚠️ Firebase unavailable; showing bootstrap fallback.');
   }
 
   // 💳 Configure RevenueCat as soon as Firebase is up. Safe to ignore
@@ -136,16 +160,9 @@ void main() async {
     unawaited(SubscriptionService.instance
         .configure(initialAppUserId: FirebaseAuth.instance.currentUser?.uid)
         .catchError((Object e) {
-      debugPrint('⚠️ main: SubscriptionService.configure failed: $e');
+      safeDebugLog('⚠️ main: SubscriptionService.configure failed: $e');
     }));
   }
-
-  final appState = FFAppState();
-  await Future.wait([
-    FFLocalizations.initialize(),
-    initializeDateFormatting(),
-    appState.initializePersistedState(),
-  ]);
 
   runApp(ChangeNotifierProvider(
     create: (context) => appState,
@@ -239,7 +256,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       if (_isCurrentAuthServiceUser(userId, generation) && loggedIn) {
         await VoIPService().setCallActionHandlingReady(true);
       }
-      debugPrint('✅ VoIP Service initialized successfully');
+      safeDebugLog('✅ VoIP Service initialized successfully');
     } catch (e, st) {
       ErrorReporting.reporter.captureNonFatal(
         feature: ErrorFeature.voip,
@@ -248,16 +265,16 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         stackTrace: st,
         sessionId: _authServiceUserId,
       );
-      debugPrint('❌ VoIP Service initialization failed: $e');
+      safeDebugLog('❌ VoIP Service initialization failed: $e');
     }
   }
 
   Future<void> _deinitializeVoipService() async {
     try {
       await VoIPService().deinitialize();
-      debugPrint('✅ VoIP Service deinitialized successfully');
+      safeDebugLog('✅ VoIP Service deinitialized successfully');
     } catch (e) {
-      debugPrint('❌ VoIP Service deinitialization failed: $e');
+      safeDebugLog('❌ VoIP Service deinitialization failed: $e');
     }
   }
 
@@ -278,7 +295,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         error: e,
         stackTrace: st,
       );
-      debugPrint('⚠️ Failed to refresh Firebase Auth user on resume: $e');
+      safeDebugLog('⚠️ Failed to refresh Firebase Auth user on resume: $e');
     }
   }
 
@@ -301,7 +318,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     try {
       await actions.checkActiveSessionAndNavigate(navContext);
     } catch (error) {
-      debugPrint('⚠️ main: active session recovery on resume failed: $error');
+      safeDebugLog('⚠️ main: active session recovery on resume failed: $error');
     } finally {
       _activeSessionRecoveryInProgress = false;
     }
@@ -366,6 +383,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      invalidateCameraAndMicrophonePermissionCache();
+    }
     if (state == AppLifecycleState.resumed) {
       unawaited(_refreshAuthUserOnResume());
       unawaited(UserPresenceService.instance.markSeen(force: true));

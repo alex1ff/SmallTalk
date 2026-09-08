@@ -1,17 +1,19 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
-const nearbyPartnerCountPrefsPrefix = 'ff_student_nearby_partner_count_v1';
+const nearbyPartnerCountPrefsPrefix = 'ff_student_nearby_partner_count_v2';
 
 String nearbyPartnerCountCacheKey({
   required String languageCode,
   required String countryCode,
   String cityKey = '',
   required String partnerLevel,
+  String userScope = '',
 }) {
   String normalize(String value) => value.trim().toLowerCase();
 
   return <String>[
     nearbyPartnerCountPrefsPrefix,
+    Uri.encodeComponent(normalize(userScope)),
     Uri.encodeComponent(normalize(languageCode)),
     Uri.encodeComponent(normalize(countryCode)),
     Uri.encodeComponent(normalize(cityKey)),

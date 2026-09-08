@@ -3,6 +3,8 @@ const crypto = require("node:crypto");
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const {TranslationServiceClient} = require("@google-cloud/translate");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "translate_term"});
 
 const {
   isSessionParticipant,
@@ -506,8 +508,7 @@ function createTranslateTermHandler({
         nowMillis: Number(now()),
         errorCode: "provider_unavailable",
       }).catch(() => {});
-      console.error("translateTerm provider failure", {
-        cacheKey: cacheId.slice(-12),
+      safeLog.error("translation_provider_failed", {
         errorType: error && error.name ? String(error.name) : "Error",
       });
       throwDomainError("unavailable", "translation_provider_unavailable");

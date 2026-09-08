@@ -662,6 +662,7 @@ test("internal provider retry consumes one logical session attempt", async () =>
 
 test("retries transient provider failures but not provider 4xx", async () => {
   let transientCalls = 0;
+  const transientLogs = [];
   const transient = await __private__.generateValidatedFeedback({
     generateFeedback: async () => {
       transientCalls += 1;
@@ -676,10 +677,17 @@ test("retries transient provider failures but not provider 4xx", async () => {
     outputLocale: "ru",
     analyzedLanguage: "en",
     modelId: "test-model",
-    logProviderFailure: () => {},
+    logProviderFailure: (metadata) => transientLogs.push(metadata),
   });
   assert.deepEqual(transient, validFeedback());
   assert.equal(transientCalls, 2);
+  assert.deepEqual(transientLogs, [{
+    errorType: "Error",
+    providerAttempt: 1,
+    responseCharacterCount: 0,
+    finishReason: "",
+    providerStatus: 503,
+  }]);
 
   let clientErrorCalls = 0;
   await assert.rejects(__private__.generateValidatedFeedback({

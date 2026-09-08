@@ -1,6 +1,8 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const {isDeepStrictEqual} = require("node:util");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "sync_event_public_projection"});
 const {
   buildEventPreviewData,
   eventPreviewRef,
@@ -180,11 +182,11 @@ async function repairEventPublicProjections({
     }, {merge: true});
     return true;
   });
-  console.log("✅ Event public projections repaired", {
+  safeLog.log("event_public_projection_repaired", {
     repaired,
     removedOrphans,
-    eventCursor,
-    projectionCursor,
+    eventCursorId: eventCursor,
+    projectionCursorId: projectionCursor,
     eventPassComplete,
     projectionPassComplete,
     passId,

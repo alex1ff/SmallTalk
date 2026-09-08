@@ -1,11 +1,16 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const {createSafeConsole} = require("./safe_log");
 const {
   resolveDailyRoomName,
 } = require("./daily_room");
 const {
   deleteDailyRoomForSession,
 } = require("./daily_room_cleanup");
+
+const safeConsole = createSafeConsole({
+  source: "cleanup_failed_daily_room_deletes",
+});
 
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 const FAILED_DAILY_ROOM_DELETE_BATCH_LIMIT = 20;
@@ -82,7 +87,7 @@ async function cleanupFailedDailyRoomDeleteDocs({
   db = admin.firestore(),
   docs = [],
   deleteRoomForSession = deleteDailyRoomForSession,
-  logger = console,
+  logger = safeConsole,
 } = {}) {
   const result = {
     scanned: docs.length,
@@ -98,7 +103,7 @@ async function cleanupFailedDailyRoomDeleteDocs({
     const roomName = resolveFailedDailyRoomDeleteName(sessionData);
     if (!roomName) {
       result.skipped += 1;
-      logger.warn("Skipping Daily delete retry without room name", {
+      logger.warn("daily_room_delete_retry_skipped", {
         sessionId: doc.id,
       });
       if (doc.ref?.update) {
@@ -106,9 +111,9 @@ async function cleanupFailedDailyRoomDeleteDocs({
           await doc.ref.update(buildSkippedFailedDailyRoomDeletePatch());
           result.quarantined += 1;
         } catch (error) {
-          logger.error("Failed to mark Daily delete retry as skipped", {
+          logger.error("daily_room_delete_retry_quarantine_failed", {
             sessionId: doc.id,
-            error: error.message,
+            error,
           });
         }
       }
@@ -130,9 +135,9 @@ async function cleanupFailedDailyRoomDeleteDocs({
       }
     } catch (error) {
       result.failed += 1;
-      logger.error("Failed Daily delete retry", {
+      logger.error("daily_room_delete_retry_failed", {
         sessionId: doc.id,
-        error: error.message,
+        error,
       });
     }
   }
@@ -145,13 +150,13 @@ exports.cleanupFailedDailyRoomDeletes = functions
   .pubsub
   .schedule("every 15 minutes")
   .onRun(async () => {
-    console.log("Cleaning up failed Daily room deletions...");
+    safeConsole.log("cleanup_failed_daily_room_deletes_started");
 
     try {
       const query = buildFailedDailyRoomDeleteQuery();
       const failedDeleteQuery = await query.get();
       if (failedDeleteQuery.empty) {
-        console.log("No failed Daily room deletes need retry");
+        safeConsole.log("cleanup_failed_daily_room_deletes_empty");
         return null;
       }
 
@@ -159,10 +164,12 @@ exports.cleanupFailedDailyRoomDeletes = functions
         docs: failedDeleteQuery.docs,
       });
 
-      console.log("Failed Daily room delete cleanup completed", result);
+      safeConsole.log("cleanup_failed_daily_room_deletes_completed", {
+        counts: result,
+      });
       return null;
     } catch (error) {
-      console.error("Error cleaning up failed Daily room deletes:", error);
+      safeConsole.error("cleanup_failed_daily_room_deletes_failed", {error});
       return null;
     }
   });

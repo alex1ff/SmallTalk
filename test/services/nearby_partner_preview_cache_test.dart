@@ -15,13 +15,32 @@ void main() {
         languageCode: ' EN ',
         countryCode: ' DE ',
         partnerLevel: ' Beginner ',
+        userScope: ' Student-A ',
       ),
       nearbyPartnerPreviewCacheKey(
         languageCode: 'en',
         countryCode: 'de',
         partnerLevel: 'beginner',
+        userScope: 'student-a',
       ),
     );
+  });
+
+  test('cache key isolates users with identical filters', () {
+    final accountA = nearbyPartnerPreviewCacheKey(
+      languageCode: 'en',
+      countryCode: 'de',
+      partnerLevel: 'beginner',
+      userScope: 'account-a',
+    );
+    final accountB = nearbyPartnerPreviewCacheKey(
+      languageCode: 'en',
+      countryCode: 'de',
+      partnerLevel: 'beginner',
+      userScope: 'account-b',
+    );
+
+    expect(accountA, isNot(accountB));
   });
 
   test('cached partner previews are available synchronously after write',

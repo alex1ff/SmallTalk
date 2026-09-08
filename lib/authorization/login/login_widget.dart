@@ -12,8 +12,20 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'login_model.dart';
 export 'login_model.dart';
 
+const loginAppleButtonKey = ValueKey<String>('login_apple_button');
+const loginGoogleButtonKey = ValueKey<String>('login_google_button');
+
 class LoginWidget extends StatefulWidget {
-  const LoginWidget({super.key});
+  const LoginWidget({
+    super.key,
+    this.emailSignInOverride,
+  });
+
+  final Future<BaseAuthUser?> Function(
+    BuildContext context,
+    String email,
+    String password,
+  )? emailSignInOverride;
 
   static String routeName = 'Login';
   static String routePath = '/login';
@@ -26,6 +38,7 @@ class _LoginWidgetState extends State<LoginWidget> {
   late LoginModel _model;
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
+  bool _isSubmittingEmailLogin = false;
   bool _isSubmittingSocialAuth = false;
   OverlayEntry? _socialAuthProgressEntry;
 
@@ -59,11 +72,11 @@ class _LoginWidgetState extends State<LoginWidget> {
     required Future<BaseAuthUser?> Function() signInAction,
     required String providerId,
   }) async {
-    if (_isSubmittingSocialAuth) {
+    if (_isSubmittingSocialAuth || _isSubmittingEmailLogin) {
       return;
     }
 
-    _isSubmittingSocialAuth = true;
+    safeSetState(() => _isSubmittingSocialAuth = true);
     var navigationStarted = false;
     try {
       _showSocialAuthProgress();
@@ -86,7 +99,10 @@ class _LoginWidgetState extends State<LoginWidget> {
         clearPendingSocialAuthContext();
         await actions.showTopNotification(
           context,
-          'Не удалось определить аккаунт',
+          _localized(
+            ru: 'Не удалось определить аккаунт',
+            en: 'Could not identify the account',
+          ),
           '',
           true,
         );
@@ -105,7 +121,10 @@ class _LoginWidgetState extends State<LoginWidget> {
         clearPendingSocialAuthContext();
         await actions.showTopNotification(
           context,
-          'Не удалось загрузить профиль',
+          _localized(
+            ru: 'Не удалось загрузить профиль',
+            en: 'Could not load your profile',
+          ),
           '',
           true,
         );
@@ -150,7 +169,10 @@ class _LoginWidgetState extends State<LoginWidget> {
       if (mounted) {
         await actions.showTopNotification(
           context,
-          'Не удалось завершить вход',
+          _localized(
+            ru: 'Не удалось завершить вход',
+            en: 'Could not complete sign-in',
+          ),
           '',
           true,
         );
@@ -158,10 +180,15 @@ class _LoginWidgetState extends State<LoginWidget> {
     } finally {
       if (!navigationStarted) {
         _hideSocialAuthProgress();
-        _isSubmittingSocialAuth = false;
+        if (mounted) {
+          safeSetState(() => _isSubmittingSocialAuth = false);
+        }
       }
     }
   }
+
+  String _localized({required String ru, required String en}) =>
+      FFLocalizations.of(context).getVariableText(ruText: ru, enText: en);
 
   @override
   void initState() {
@@ -184,27 +211,46 @@ class _LoginWidgetState extends State<LoginWidget> {
   }
 
   Future<void> _submitEmailLogin() async {
-    if (!functions.isValidEmail(_model.emailTextController.text)) {
-      await actions.showTopNotification(
-        context,
-        'Неверный e-mail',
-        '',
-        true,
-      );
+    if (_isSubmittingEmailLogin || _isSubmittingSocialAuth) {
       return;
     }
+    safeSetState(() => _isSubmittingEmailLogin = true);
+    try {
+      if (!functions.isValidEmail(_model.emailTextController.text)) {
+        await actions.showTopNotification(
+          context,
+          _localized(ru: 'Неверный e-mail', en: 'Invalid email address'),
+          '',
+          true,
+        );
+        return;
+      }
 
-    GoRouter.of(context).prepareAuthEvent();
-    final user = await authManager.signInWithEmail(
-      context,
-      _model.emailTextController.text,
-      _model.passTextController.text,
-    );
-    if (user == null || !mounted) {
-      return;
+      final signIn = widget.emailSignInOverride;
+      if (signIn == null) {
+        GoRouter.of(context).prepareAuthEvent();
+      }
+      final user = signIn != null
+          ? await signIn(
+              context,
+              _model.emailTextController.text,
+              _model.passTextController.text,
+            )
+          : await authManager.signInWithEmail(
+              context,
+              _model.emailTextController.text,
+              _model.passTextController.text,
+            );
+      if (user == null || !mounted) {
+        return;
+      }
+
+      context.goNamedAuth(LoadingWidget.routeName, context.mounted);
+    } finally {
+      if (mounted) {
+        safeSetState(() => _isSubmittingEmailLogin = false);
+      }
     }
-
-    context.goNamedAuth(LoadingWidget.routeName, context.mounted);
   }
 
   Widget _buildAuthField({
@@ -250,47 +296,66 @@ class _LoginWidgetState extends State<LoginWidget> {
   }
 
   Widget _buildSocialButton({
+    required Key buttonKey,
     required Widget icon,
     required String label,
     required Future<void> Function() onTap,
+    required bool enabled,
   }) {
     return Expanded(
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
-          onTap: onTap,
-          child: Container(
-            height: ExpatlioDesign.buttonHeight,
-            decoration: ExpatlioDesign.cardDecoration(radius: 12.0),
-            padding: const EdgeInsetsDirectional.fromSTEB(
-                ExpatlioDesign.space12,
-                ExpatlioDesign.space0,
-                ExpatlioDesign.space16,
-                ExpatlioDesign.space0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                icon,
-                const SizedBox(width: ExpatlioDesign.space8),
-                Flexible(
-                  child: Text(
-                    label,
-                    overflow: TextOverflow.ellipsis,
-                    style: ExpatlioDesign.textStyle(
-                      context,
-                      size: 15.0,
-                      weight: FontWeight.w600,
-                    ),
+      child: Semantics(
+        key: buttonKey,
+        container: true,
+        button: true,
+        enabled: enabled,
+        label: label,
+        onTap: enabled ? onTap : null,
+        child: ExcludeSemantics(
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 160),
+            opacity: enabled ? 1 : 0.55,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius:
+                    BorderRadius.circular(ExpatlioDesign.radiusMedium),
+                onTap: enabled ? onTap : null,
+                child: Container(
+                  height: ExpatlioDesign.buttonHeight,
+                  decoration: ExpatlioDesign.cardDecoration(radius: 12.0),
+                  padding: const EdgeInsetsDirectional.fromSTEB(
+                      ExpatlioDesign.space12,
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.space16,
+                      ExpatlioDesign.space0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      icon,
+                      const SizedBox(width: ExpatlioDesign.space8),
+                      Flexible(
+                        child: Text(
+                          label,
+                          overflow: TextOverflow.ellipsis,
+                          style: ExpatlioDesign.textStyle(
+                            context,
+                            size: 15.0,
+                            weight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
+              ),
             ),
           ),
         ),
       ),
     );
   }
+
+  bool get _isAuthBusy => _isSubmittingEmailLogin || _isSubmittingSocialAuth;
 
   @override
   Widget build(BuildContext context) {
@@ -445,6 +510,7 @@ class _LoginWidgetState extends State<LoginWidget> {
                                 enText: 'Signing in...',
                               ),
                               busyStyle: ButtonBusyStyle.spinner,
+                              busy: _isSubmittingEmailLogin,
                               action: _submitEmailLogin,
                             ),
                           ],
@@ -454,6 +520,7 @@ class _LoginWidgetState extends State<LoginWidget> {
                       Row(
                         children: [
                           _buildSocialButton(
+                            buttonKey: loginAppleButtonKey,
                             icon: Icon(
                               Icons.apple,
                               color: ExpatlioDesign.text,
@@ -462,6 +529,7 @@ class _LoginWidgetState extends State<LoginWidget> {
                             label: FFLocalizations.of(context).getText(
                               'v2qj45ju' /* Apple */,
                             ),
+                            enabled: !_isAuthBusy,
                             onTap: () async {
                               if (isAndroid) {
                                 showSnackbar(
@@ -485,6 +553,7 @@ class _LoginWidgetState extends State<LoginWidget> {
                           ),
                           const SizedBox(width: ExpatlioDesign.space12),
                           _buildSocialButton(
+                            buttonKey: loginGoogleButtonKey,
                             icon: const FaIcon(
                               FontAwesomeIcons.google,
                               color: ExpatlioDesign.text,
@@ -493,6 +562,7 @@ class _LoginWidgetState extends State<LoginWidget> {
                             label: FFLocalizations.of(context).getText(
                               'gfc8qlqz' /* Google */,
                             ),
+                            enabled: !_isAuthBusy,
                             onTap: () async {
                               await _handleSocialAuth(
                                 signInAction: () =>

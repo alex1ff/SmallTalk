@@ -12,15 +12,17 @@
 
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const {createSafeConsole} = require("./safe_log");
 
 const BATCH_WRITE_LIMIT = 400;
+const safeConsole = createSafeConsole({source: "cleanup_expired_gifts"});
 
 exports.cleanupExpiredGifts = functions
     .pubsub
     .schedule("every day 03:00")
     .timeZone("UTC")
     .onRun(async () => {
-      console.log("🎁 Cleaning up expired gift-minute buckets...");
+      safeConsole.log("cleanup_expired_gifts_started");
 
       const db = admin.firestore();
       const now = admin.firestore.Timestamp.now();
@@ -39,7 +41,7 @@ exports.cleanupExpiredGifts = functions
 
         scanned = expiredQuery.size;
         if (expiredQuery.empty) {
-          console.log("🎁 No expired gift buckets to clean");
+          safeConsole.log("cleanup_expired_gifts_empty");
           return null;
         }
 
@@ -68,10 +70,12 @@ exports.cleanupExpiredGifts = functions
           await batch.commit();
         }
 
-        console.log("🎁 cleanupExpiredGifts done", {scanned, cleaned});
+        safeConsole.log("cleanup_expired_gifts_completed", {
+          counts: {scanned, cleaned},
+        });
         return null;
       } catch (err) {
-        console.error("❌ cleanupExpiredGifts failed", err);
+        safeConsole.error("cleanup_expired_gifts_failed", {error: err});
         // Don't throw — scheduler retry would just hammer the same docs.
         // Surface to logs and rely on next run.
         return null;

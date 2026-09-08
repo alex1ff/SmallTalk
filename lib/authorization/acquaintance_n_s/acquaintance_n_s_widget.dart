@@ -14,6 +14,7 @@ import '/components/teacher_photo_picker.dart';
 import '/custom_code/actions/index.dart' as actions;
 import '/flutter_flow/custom_functions.dart' as functions;
 import '/flutter_flow/flutter_flow_util.dart';
+import '/services/safe_debug_log.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/flutter_flow/permissions_util.dart';
 import '/flutter_flow/upload_data.dart';
@@ -267,7 +268,7 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
         }
       }
     } catch (error) {
-      debugPrint(
+      safeDebugLog(
         'AcquaintanceNSWidget: failed to hydrate accreditation answers: $error',
       );
     }
@@ -857,7 +858,7 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
         try {
           await deleteStorageObject(storagePath);
         } catch (error) {
-          debugPrint(
+          safeDebugLog(
             'AcquaintanceNSWidget: failed to delete evidence file '
             '$storagePath: $error',
           );
@@ -875,7 +876,7 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
     try {
       await deleteStorageObject(normalizedPath);
     } catch (error) {
-      debugPrint(
+      safeDebugLog(
         'AcquaintanceNSWidget: failed to delete uploaded profile photo '
         '$normalizedPath: $error',
       );
@@ -1007,7 +1008,7 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
           accreditation: payload.accreditation,
         );
       } catch (error) {
-        debugPrint(
+        safeDebugLog(
           'AcquaintanceNSWidget: teacher verification request write failed: '
           '$error',
         );
@@ -1015,7 +1016,7 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
           verificationRequestWriteFailed = true;
           shouldPreserveUploadedAssetsOnFailure =
               isTeacherVerificationRequestAmbiguousWriteError(error);
-          debugPrint(
+          safeDebugLog(
             'AcquaintanceNSWidget: teacher verification request failed at the '
             'request write phase.',
           );
@@ -1052,7 +1053,8 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
           ),
         );
       } catch (error) {
-        debugPrint('AcquaintanceNSWidget: user profile update failed: $error');
+        safeDebugLog(
+            'AcquaintanceNSWidget: user profile update failed: $error');
         rethrow;
       }
 
@@ -1084,7 +1086,7 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
           newlyUploadedQualificationEvidenceFiles,
         );
       }
-      debugPrint('AcquaintanceNSWidget: failed to save profile: $error');
+      safeDebugLog('AcquaintanceNSWidget: failed to save profile: $error');
       await _showValidationError(
         verificationRequestWriteFailed
             ? 'Не удалось отправить заявку на проверку. Попробуйте позже.'
@@ -1139,7 +1141,7 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
                   refreshedUser.isTeacherAccreditationApproved ||
                   shouldOpenNativeSpeakerDashboard;
         } catch (error) {
-          debugPrint(
+          safeDebugLog(
             'AcquaintanceNSWidget: failed to refresh post-save user state: '
             '$error',
           );

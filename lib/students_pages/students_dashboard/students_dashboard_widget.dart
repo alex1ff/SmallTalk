@@ -18,6 +18,7 @@ import '/components/passive_search_panel.dart';
 import '/services/nearby_partner_count_cache.dart';
 import '/services/nearby_partner_preview_cache.dart';
 import '/services/match_coordinator.dart';
+import '/services/safe_debug_log.dart';
 import '/services/supported_location_catalog.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/components/no_balance_widget.dart';
@@ -155,7 +156,9 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
   late final NearbyPartnerCountCache _partnerCountCache;
   late final NearbyPartnerPreviewCache _partnerPreviewCache;
   final Map<String, int> _partnerCountMemoryCache = <String, int>{};
+  final Set<String> _partnerCountCacheKeysLoaded = <String>{};
   final Set<String> _partnerCountRefreshesStarted = <String>{};
+  String? _partnerCacheUserId;
   String? _activePartnerCountCacheKey;
   String? _partnerPreviewCacheKey;
   Future<List<OrbitingAvatarData>>? _partnerPreviewFuture;
@@ -248,6 +251,28 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       return null;
     }
     return normalizedValue;
+  }
+
+  void _syncPartnerCacheOwner(String userId) {
+    if (_partnerCacheUserId == userId) {
+      return;
+    }
+
+    _partnerCacheUserId = userId;
+    _partnerCountMemoryCache.clear();
+    _partnerCountCacheKeysLoaded.clear();
+    _partnerCountRefreshesStarted.clear();
+    _activePartnerCountCacheKey = null;
+    _partnerPreviewCacheKey = null;
+    _partnerPreviewFuture = null;
+    _partnerPreviewInitialData = null;
+  }
+
+  String _partnerCacheScope() {
+    final profileUid = currentUserDocument?.reference.id.trim();
+    return profileUid == null || profileUid.isEmpty
+        ? currentUserUid
+        : profileUid;
   }
 
   String? _stopSessionIdFor(String? visibleSessionId) {
@@ -413,10 +438,12 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       final previousState = _passiveState;
       _passiveState = state;
       _passiveExpiryTimer?.cancel();
-      if (state == null && previousState != null &&
+      if (state == null &&
+          previousState != null &&
           _searchState == StudentDashboardSearchState.passiveWaiting &&
           !_passiveStopping) {
-        _handledQueueSourceSearchRequestId = previousState.sourceSearchRequestId;
+        _handledQueueSourceSearchRequestId =
+            previousState.sourceSearchRequestId;
         _passiveGeneration++;
         safeSetState(() {
           _passiveBusy = false;
@@ -458,7 +485,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
         }
       }
     }, onError: (Object error) {
-      debugPrint('StudentsDashboard: passive queue read failed: $error');
+      safeDebugLog('StudentsDashboard: passive queue read failed: $error');
       if (mounted && _showingQueue) {
         safeSetState(() => _passiveError = _queueErrorText(
               'Не удалось обновить очередь. Проверьте подключение.',
@@ -529,7 +556,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
         _expirePassiveQueueIfNeeded,
       );
     } catch (error) {
-      debugPrint('StudentsDashboard: passive queue join failed: $error');
+      safeDebugLog('StudentsDashboard: passive queue join failed: $error');
       if (current()) {
         safeSetState(() => _passiveError = _queueErrorText(
               'Не удалось встать в очередь. Проверьте подключение и повторите.',
@@ -625,7 +652,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
         _queueSourceSearchRequestId = null;
       });
     } catch (error) {
-      debugPrint('StudentsDashboard: passive queue stop failed: $error');
+      safeDebugLog('StudentsDashboard: passive queue stop failed: $error');
       if (operationId != null) _suppressedPassiveRequestIds.remove(operationId);
       if (current()) {
         safeSetState(() => _passiveError = _queueErrorText(
@@ -1006,19 +1033,19 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       return;
     } catch (error, stackTrace) {
       if (error is FirebaseException && error.code == 'permission-denied') {
-        debugPrint(
+        safeDebugLog(
           'StudentsDashboard: active search recovery denied by Firestore rules '
           'for $userId: $error',
         );
-        debugPrintStack(stackTrace: stackTrace);
+        safeDebugStack(stackTrace: stackTrace);
         return;
       }
 
       _scheduleActiveSearchRecoveryRetry(userId);
-      debugPrint(
+      safeDebugLog(
         'StudentsDashboard: failed to recover active search: $error',
       );
-      debugPrintStack(stackTrace: stackTrace);
+      safeDebugStack(stackTrace: stackTrace);
     } finally {
       _activeSearchRecoveryInFlight = false;
     }
@@ -1100,11 +1127,11 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
         _resumeRecoveredUnboundSearch(state);
         return true;
       } catch (error, stackTrace) {
-        debugPrint(
+        safeDebugLog(
           'StudentsDashboard: failed to recover search after start failure: '
           '$error',
         );
-        debugPrintStack(stackTrace: stackTrace);
+        safeDebugStack(stackTrace: stackTrace);
       }
     }
 
@@ -1123,7 +1150,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       return !_isTerminalSessionStatus(session.status) &&
           _sessionHasParticipant(session, userId);
     } catch (error) {
-      debugPrint(
+      safeDebugLog(
         'StudentsDashboard: failed to check recovered connection session '
         '$sessionId: $error',
       );
@@ -1243,7 +1270,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
         _normalizeCallableMap(response.data),
       );
     } catch (error) {
-      debugPrint('StudentsDashboard: failed to heartbeat search: $error');
+      safeDebugLog('StudentsDashboard: failed to heartbeat search: $error');
     } finally {
       if (_activeSearchRequestId == requestId) {
         _searchHeartbeatInFlight = false;
@@ -1676,7 +1703,8 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     try {
       await userRef.update(_studentUserUpdate(_buildTimezoneMetadataUpdate()));
     } catch (error) {
-      debugPrint('StudentsDashboard: failed to sync timezone metadata: $error');
+      safeDebugLog(
+          'StudentsDashboard: failed to sync timezone metadata: $error');
     }
   }
 
@@ -2092,7 +2120,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       final countSnapshot = await query.count().get();
       return countSnapshot.count;
     } catch (error) {
-      debugPrint('StudentsDashboard: failed to load partner count: $error');
+      safeDebugLog('StudentsDashboard: failed to load partner count: $error');
       return null;
     }
   }
@@ -2125,7 +2153,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
           )
           .toList(growable: false);
     } catch (error) {
-      debugPrint('StudentsDashboard: failed to load partner avatars: $error');
+      safeDebugLog('StudentsDashboard: failed to load partner avatars: $error');
       return null;
     }
   }
@@ -2134,9 +2162,12 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     required CountryStruct? preferredLocation,
     required Level? preferredPartnerLevel,
   }) {
+    final cacheScope = _partnerCacheScope();
+    _syncPartnerCacheOwner(cacheScope);
     final activeLanguage =
         resolveUserActiveConversationLanguage(currentUserDocument) ?? '';
     return nearbyPartnerCountCacheKey(
+      userScope: cacheScope,
       languageCode: activeLanguage,
       countryCode: preferredLocation?.code ?? '',
       cityKey: preferredLocation?.cityKey ?? '',
@@ -2153,9 +2184,11 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       preferredPartnerLevel: preferredPartnerLevel,
     );
     _activePartnerCountCacheKey = cacheKey;
-    final cachedCount = _partnerCountCache.read(cacheKey);
-    if (cachedCount != null) {
-      _partnerCountMemoryCache.putIfAbsent(cacheKey, () => cachedCount);
+    if (_partnerCountCacheKeysLoaded.add(cacheKey)) {
+      final cachedCount = _partnerCountCache.read(cacheKey);
+      if (cachedCount != null) {
+        _partnerCountMemoryCache[cacheKey] = cachedCount;
+      }
     }
     _startPartnerCountRefresh(
       cacheKey: cacheKey,
@@ -2200,7 +2233,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     try {
       await _partnerCountCache.write(cacheKey, freshCount);
     } catch (error) {
-      debugPrint('StudentsDashboard: failed to cache partner count: $error');
+      safeDebugLog('StudentsDashboard: failed to cache partner count: $error');
     }
   }
 
@@ -2219,9 +2252,12 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     required CountryStruct? preferredLocation,
     required Level? preferredPartnerLevel,
   }) {
+    final cacheScope = _partnerCacheScope();
+    _syncPartnerCacheOwner(cacheScope);
     final activeLanguage =
         resolveUserActiveConversationLanguage(currentUserDocument) ?? '';
     return nearbyPartnerPreviewCacheKey(
+      userScope: cacheScope,
       languageCode: activeLanguage,
       countryCode: preferredLocation?.code ?? '',
       cityKey: preferredLocation?.cityKey ?? '',
@@ -2294,7 +2330,8 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     try {
       await _partnerPreviewCache.write(cacheKey, freshEntries);
     } catch (error) {
-      debugPrint('StudentsDashboard: failed to cache partner avatars: $error');
+      safeDebugLog(
+          'StudentsDashboard: failed to cache partner avatars: $error');
     }
     return freshAvatars;
   }
@@ -2504,7 +2541,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       );
     } catch (error) {
       _autoOpenCredentialStartedSessionIds.remove(sessionId);
-      debugPrint(
+      safeDebugLog(
         'StudentsDashboard: failed to prepare foreground session tokens: $error',
       );
     }
@@ -2559,7 +2596,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       );
     } catch (error) {
       _foregroundAcceptStartedSessionIds.remove(sessionId);
-      debugPrint(
+      safeDebugLog(
         'StudentsDashboard: failed to accept foreground session: $error',
       );
     }
@@ -2609,7 +2646,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
               roomName: roomName,
             ),
           ).catchError((Object error) {
-            debugPrint(
+            safeDebugLog(
               'StudentsDashboard: failed to auto-open debug session: $error',
             );
           }),
@@ -2665,7 +2702,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       final session = await _readActiveSessionOnce(sessionId);
       return _isActiveCallSession(session);
     } catch (error) {
-      debugPrint(
+      safeDebugLog(
         'StudentsDashboard: failed to check active session before search: '
         '$error',
       );
@@ -2803,7 +2840,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
         hasExplicitSessionId: normalizedSessionId != null,
       );
     } catch (error) {
-      debugPrint(
+      safeDebugLog(
         'StudentsDashboard: failed to stop active search: $error',
       );
     } finally {
@@ -2814,15 +2851,15 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
 
   void _logStartSearchFailure(Object error, StackTrace stackTrace) {
     if (error is FirebaseFunctionsException) {
-      debugPrint(
+      safeDebugLog(
         'StudentsDashboard: failed to start search '
         '(${error.code}, details: ${error.details}): '
         '${error.message ?? error.toString()}',
       );
     } else {
-      debugPrint('StudentsDashboard: failed to start search: $error');
+      safeDebugLog('StudentsDashboard: failed to start search: $error');
     }
-    debugPrintStack(stackTrace: stackTrace);
+    safeDebugStack(stackTrace: stackTrace);
   }
 
   Future<void> _handleStartConversation(
@@ -3561,6 +3598,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
 
   @override
   Widget build(BuildContext context) {
+    _syncPartnerCacheOwner(_partnerCacheScope());
     return GestureDetector(
       onTap: () {
         FocusScope.of(context).unfocus();
@@ -4357,48 +4395,6 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
                                         hoverColor: Colors.transparent,
                                         highlightColor: Colors.transparent,
                                         onTap: () async {
-                                          // ─── SUBSCRIPTION REWORK ────
-                                          // Gate by subscription; the server
-                                          // decides whether the trial call is
-                                          // still eligible.
-                                          if (!canStartCall(
-                                              currentUserDocument)) {
-                                            // ──────────────────────────
-                                            await showModalBottomSheet(
-                                              useRootNavigator: true,
-                                              isScrollControlled: true,
-                                              backgroundColor:
-                                                  Colors.transparent,
-                                              context: context,
-                                              builder: (context) {
-                                                return GestureDetector(
-                                                  onTap: () {
-                                                    FocusScope.of(context)
-                                                        .unfocus();
-                                                    FocusManager
-                                                        .instance.primaryFocus
-                                                        ?.unfocus();
-                                                  },
-                                                  child: Padding(
-                                                    padding:
-                                                        MediaQuery.viewInsetsOf(
-                                                            context),
-                                                    child: NoBalanceWidget(),
-                                                  ),
-                                                );
-                                              },
-                                            ).then(
-                                                (value) => safeSetState(() {}));
-                                            return;
-                                          }
-
-                                          if (!(await ensureCameraAndMicrophonePermissions())) {
-                                            return;
-                                          }
-
-                                          if (!mounted) {
-                                            return;
-                                          }
                                           await _handleStartConversation(
                                             _searchState,
                                             _matchedSearchSessionId,

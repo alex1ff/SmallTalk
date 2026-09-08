@@ -361,8 +361,6 @@ async function cleanupBackgroundExpiredSearchRequestDocs(options) {
 exports.cleanupStaleSearchRequests = functions.pubsub
   .schedule("every 1 minutes")
   .onRun(async () => {
-    console.log("🧹 Cleaning up stale search requests...");
-
     try {
       const db = admin.firestore();
       const now = admin.firestore.Timestamp.now();
@@ -416,7 +414,6 @@ exports.cleanupStaleSearchRequests = functions.pubsub
         backgroundExpiredQuery.empty &&
         expiredCancellationIntentQuery.empty
       ) {
-        console.log("📭 No stale search requests found");
         logCallLifecycleEvent({
           event: "cleanup_search_requests_completed",
           source: "cleanupStaleSearchRequests",
@@ -479,7 +476,6 @@ exports.cleanupStaleSearchRequests = functions.pubsub
         await intentBatch.commit();
       }
 
-      console.log(`✅ Search requests marked expired: ${cleanedCount}`);
       logCallLifecycleEvent({
         event: "cleanup_search_requests_completed",
         source: "cleanupStaleSearchRequests",
@@ -499,7 +495,6 @@ exports.cleanupStaleSearchRequests = functions.pubsub
       });
       return null;
     } catch (error) {
-      console.error("❌ Error cleaning up stale search requests:", error);
       logCallLifecycleError({
         event: "cleanup_search_requests_failed",
         source: "cleanupStaleSearchRequests",

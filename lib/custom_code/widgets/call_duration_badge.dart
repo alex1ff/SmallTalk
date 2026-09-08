@@ -12,11 +12,13 @@ class CallDurationBadge extends StatelessWidget {
     required this.displaySeconds,
     required this.hasCountdown,
     required this.isWarning,
+    this.useEnglish = false,
   }) : assert(!isWarning || hasCountdown);
 
   final int displaySeconds;
   final bool hasCountdown;
   final bool isWarning;
+  final bool useEnglish;
 
   @override
   Widget build(BuildContext context) {
@@ -67,7 +69,11 @@ class CallDurationBadge extends StatelessWidget {
                 if (hasCountdown) ...[
                   const SizedBox(height: ExpatlioDesign.space4),
                   Text(
-                    isWarning ? 'Осталась 1 минута до лимита' : 'до лимита',
+                    isWarning
+                        ? (useEnglish
+                            ? '1 minute remaining'
+                            : 'Осталась 1 минута до лимита')
+                        : (useEnglish ? 'remaining' : 'до лимита'),
                     style: TextStyle(
                       color: (isWarning ? accentColor : Colors.white)
                           .withValues(alpha: isWarning ? 0.95 : 0.72),

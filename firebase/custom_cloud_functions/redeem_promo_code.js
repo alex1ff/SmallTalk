@@ -22,12 +22,14 @@
 
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const {createSafeConsole} = require("./safe_log");
 
 const {
   buildPromoGrantPayload,
 } = require("./gift_minutes_shared");
 
 const REQUEST_TIMEOUT_SECONDS = 30;
+const safeConsole = createSafeConsole({source: "redeem_promo_code"});
 
 function normalizeCode(value) {
   if (typeof value !== "string") return "";
@@ -83,7 +85,7 @@ exports.__private__ = {
 exports.redeemPromoCode = functions
     .runWith({timeoutSeconds: REQUEST_TIMEOUT_SECONDS, memory: "256MB"})
     .https.onCall(async (data, context) => {
-      console.log("🎟 redeemPromoCode called");
+      safeConsole.log("promo_code_redeem_started");
 
       if (!context.auth) {
         throw new functions.https.HttpsError(
@@ -229,10 +231,9 @@ exports.redeemPromoCode = functions
           };
         });
 
-        console.log("🎟 redeemPromoCode succeeded", {
+        safeConsole.log("promo_code_redeem_succeeded", {
           uid,
-          code: rawCode,
-          minutesGifted: result.minutesGifted,
+          counts: {minutesGifted: result.minutesGifted},
         });
 
         return {
@@ -246,7 +247,7 @@ exports.redeemPromoCode = functions
         if (err instanceof functions.https.HttpsError) {
           throw err;
         }
-        console.error("❌ redeemPromoCode unexpected error", err);
+        safeConsole.error("promo_code_redeem_failed", {error: err});
         throw new functions.https.HttpsError(
             "internal",
             "Не удалось активировать промокод",

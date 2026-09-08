@@ -10,12 +10,17 @@ const REQUIRED_METADATA = [
   "refreshRateHz",
   "scenarioVersion",
   "collectionMethod",
+  "network",
+  "authState",
+  "cacheState",
 ];
 const VALID_STATUSES = new Set(["measured", "blocked", "not_collected"]);
 const VALID_DIRECTIONS = new Set(["lower_is_better", "higher_is_better"]);
 const VALID_BUILD_MODES = new Set(["profile", "release"]);
-const VALID_DEVICE_KINDS = new Set(["physical", "emulator"]);
+const VALID_DEVICE_KINDS = new Set(["physical", "emulator", "browser"]);
 const VALID_DIRTY_STATES = new Set(["clean", "dirty"]);
+const VALID_MEASUREMENT_TYPES = new Set(["runtime", "static"]);
+const PROVENANCE_METADATA = new Set(["commit", "dirtyState"]);
 
 function isFiniteNumber(value) {
   return typeof value === "number" && Number.isFinite(value);
@@ -41,13 +46,16 @@ function validatePerformanceSnapshot(snapshot) {
     errors.push("metadata.buildMode must be profile or release");
   }
   if (!VALID_DEVICE_KINDS.has(metadata?.deviceKind)) {
-    errors.push("metadata.deviceKind must be physical or emulator");
+    errors.push("metadata.deviceKind must be physical, emulator or browser");
   }
   if (!VALID_DIRTY_STATES.has(metadata?.dirtyState)) {
     errors.push("metadata.dirtyState must be clean or dirty");
   }
-  if (!Number.isInteger(metadata?.refreshRateHz) || metadata.refreshRateHz <= 0) {
-    errors.push("metadata.refreshRateHz must be a positive integer");
+  const refreshRateIsValid = metadata?.deviceKind === "browser"
+    ? metadata?.refreshRateHz === "not_applicable"
+    : Number.isInteger(metadata?.refreshRateHz) && metadata.refreshRateHz > 0;
+  if (!refreshRateIsValid) {
+    errors.push("metadata.refreshRateHz must be a positive integer, or not_applicable for browser");
   }
   if (!snapshot?.metrics || typeof snapshot.metrics !== "object" || Array.isArray(snapshot.metrics)) {
     errors.push("metrics must be a map");
@@ -67,8 +75,17 @@ function validatePerformanceSnapshot(snapshot) {
     if (!Array.isArray(metric.samples)) {
       errors.push(`metrics.${name}.samples must be an array`);
     } else if (metric.status === "measured") {
-      if (metric.samples.length === 0 || metric.samples.some((sample) => !isFiniteNumber(sample))) {
+      const samplesAreFinite = metric.samples.length > 0 &&
+        metric.samples.every((sample) => isFiniteNumber(sample));
+      if (!samplesAreFinite) {
         errors.push(`metrics.${name}.measured samples must be finite and non-empty`);
+      }
+      if (!VALID_MEASUREMENT_TYPES.has(metric.measurementType)) {
+        errors.push(`metrics.${name}.measurementType must be runtime or static`);
+      } else if (samplesAreFinite && metric.measurementType === "runtime" && metric.samples.length < 5) {
+        errors.push(`metrics.${name}.runtime requires at least 5 samples`);
+      } else if (samplesAreFinite && metric.measurementType === "static" && metric.samples.length !== 1) {
+        errors.push(`metrics.${name}.static requires exactly 1 sample`);
       }
     } else if (metric.samples.length !== 0) {
       errors.push(`metrics.${name}.${metric.status} samples must be empty`);
@@ -89,7 +106,7 @@ function validatePerformanceSnapshot(snapshot) {
 }
 
 function compatibleSnapshots(baseline, candidate) {
-  return REQUIRED_METADATA.filter((field) => field !== "commit").every((field) =>
+  return REQUIRED_METADATA.filter((field) => !PROVENANCE_METADATA.has(field)).every((field) =>
     baseline.metadata[field] === candidate.metadata[field]);
 }
 
@@ -106,22 +123,34 @@ function comparePerformanceSnapshots(baseline, candidate) {
   for (const name of new Set([...Object.keys(baseline.metrics), ...Object.keys(candidate.metrics)])) {
     const base = baseline.metrics[name];
     const next = candidate.metrics[name];
+    const baselineBudget = base?.budget?.maxRegressionPercent;
     if (!next || next.status !== "measured") {
-      metrics[name] = {status: next?.status ?? "not_collected", reason: next?.reason ?? "candidate metric missing"};
+      if (base?.status === "measured" && baselineBudget !== null && baselineBudget !== undefined) {
+        metrics[name] = {
+          status: "incomplete",
+          reason: next?.reason ?? "budgeted candidate metric missing",
+        };
+      } else {
+        metrics[name] = {
+          status: next?.status ?? "not_collected",
+          reason: next?.reason ?? "candidate metric missing",
+        };
+      }
       continue;
     }
     if (!base || base.status !== "measured") {
       metrics[name] = {status: "unbudgeted", reason: "baseline metric is not measured"};
       continue;
     }
-    if (base.unit !== next.unit || base.direction !== next.direction) {
+    if (base.unit !== next.unit || base.direction !== next.direction ||
+        base.measurementType !== next.measurementType) {
       metrics[name] = {
         status: "incompatible",
-        reason: "metric unit or direction differs",
+        reason: "metric unit, direction or measurement type differs",
       };
       continue;
     }
-    const budget = next.budget?.maxRegressionPercent;
+    const budget = baselineBudget;
     if (budget === null || budget === undefined) {
       metrics[name] = {status: "unbudgeted", reason: "no explicit regression budget"};
       continue;
@@ -140,6 +169,7 @@ function comparePerformanceSnapshots(baseline, candidate) {
       candidateValue,
       regressionPercent,
       budgetPercent: budget,
+      budgetSource: "baseline",
     };
   }
   return {status: "compared", metrics};

@@ -1,4 +1,6 @@
 const admin = require("firebase-admin");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "start_search_matcher"});
 const {
   getReadOnlyUserVoipTokenState,
 } = require("./voip_tokens");
@@ -314,10 +316,10 @@ async function tryCreateStudentPairForSearchRequest({
                   backgroundStudentResponderPrePushWait,
               },
             }).catch((error) => {
-              console.warn("Protocol v2 terminal recovery deferred", {
+              safeLog.warn("protocol_v2_terminal_recovery_deferred", {
                 sessionId: lockResult.sessionId,
                 pairAttemptId: lockResult.pairAttemptId,
-                error: readErrorMessage(error, "recovery_deferred"),
+                error,
               });
             });
             if (failedParticipantId === normalizeString(userId)) {
@@ -393,14 +395,11 @@ async function tryCreateStudentPairForSearchRequest({
                   backgroundStudentResponderPrePushWait,
             });
         } catch (error) {
-          console.error(
-            "Failed to notify background student responder",
-            {
-              sessionId: lockResult.sessionId,
-              responderId: lockResult.responderId,
-              error: readErrorMessage(error, "notify_failed"),
-            },
-          );
+          safeLog.error("background_student_notification_failed", {
+            sessionId: lockResult.sessionId,
+            responderId: lockResult.responderId,
+            error,
+          });
           backgroundStudentNotifyResult = {
             shouldNotify: false,
             reason: "notify_failed",
@@ -464,14 +463,11 @@ async function tryCreateStudentPairForSearchRequest({
             tokenReader: teacherResponderTokenReader,
           });
         } catch (error) {
-          console.error(
-            "Failed to notify teacher responder",
-            {
-              sessionId: lockResult.sessionId,
-              responderId: lockResult.responderId,
-              error: readErrorMessage(error, "notify_failed"),
-            },
-          );
+          safeLog.error("teacher_notification_failed", {
+            sessionId: lockResult.sessionId,
+            responderId: lockResult.responderId,
+            error,
+          });
           teacherNotifyResult = {
             shouldNotify: false,
             reason: "notify_failed",

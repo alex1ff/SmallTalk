@@ -1,6 +1,8 @@
 const {operationId} = require("./passive_search_policy");
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "start_search"});
 const {
   usageDocRef,
 } = require("./subscription_usage_shared");
@@ -395,18 +397,18 @@ async function startSearchCallable(data, context, options = {}) {
         startResult.requestData?.requestId,
       );
       if (isFirestoreIndexUnavailableError(error)) {
-        console.warn("startSearch matching skipped while index is unavailable", {
+        safeLog.warn("start_search_index_unavailable", {
           userId,
           requestId: requestIdForFailure,
-          error: readErrorMessage(error, "index_unavailable"),
+          error,
         });
         return startResult.response;
       }
 
-      console.error("startSearch matching failed", {
+      safeLog.error("start_search_matching_failed", {
         userId,
         requestId: requestIdForFailure,
-        error: readErrorMessage(error, "start_search_failed"),
+        error,
       });
       try {
         await failUnboundStartSearchRequestForError({
@@ -416,10 +418,10 @@ async function startSearchCallable(data, context, options = {}) {
           error,
         });
       } catch (cleanupError) {
-        console.error("startSearch failure cleanup failed", {
+        safeLog.error("start_search_failure_cleanup_failed", {
           userId,
           requestId: requestIdForFailure,
-          error: readErrorMessage(cleanupError, "cleanup_failed"),
+          error: cleanupError,
         });
       }
       throw error;

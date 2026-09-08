@@ -1,6 +1,8 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const {FieldPath, FieldValue} = require("firebase-admin/firestore");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "conversation_unlock_events"});
 const {
   buildConversationParticipantMap,
   buildConversationSeed,
@@ -249,9 +251,9 @@ async function processPendingUnlockEvent(eventRef, sessionId) {
     return outcome;
   } catch (error) {
     await markUnlockEventFailedIfCurrent(eventRef, claimed.attemptCount, error);
-    console.error("❌ Error processing unlock event:", {
+    safeLog.error("chat_unlock_write_failed", {
       sessionId,
-      message: error.message,
+      error,
     });
     return null;
   }
@@ -465,9 +467,9 @@ async function maybeWriteCallEventForProcessedOutcome({
       },
       { merge: true },
     );
-    console.error("❌ Error creating conversation call event:", {
+    safeLog.error("conversation_event_write_failed", {
       sessionId,
-      message: error?.message || "Unknown error",
+      error,
     });
     return { status: "failed" };
   }

@@ -7,6 +7,7 @@ import '/flutter_flow/permissions_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/flutter_flow/flutter_flow_widgets.dart';
 import '/services/partner_filter_preferences.dart';
+import '/services/safe_debug_log.dart';
 import '/services/user_match_profile.dart';
 import '/services/supported_location_catalog.dart';
 import 'dart:async';
@@ -177,7 +178,7 @@ class _WaitingForTeacherPageWidgetState
         _handleSnapshot(data);
       },
       onError: (error) {
-        debugPrint('WaitingForTeacher: session stream error: $error');
+        safeDebugLog('WaitingForTeacher: session stream error: $error');
         if (mounted) {
           safeSetState(() {
             _sessionData = null;
@@ -330,7 +331,7 @@ class _WaitingForTeacherPageWidgetState
 
     try {
       if (currentUserDocument == null) {
-        debugPrint(
+        safeDebugLog(
           'WaitingForTeacher: user profile is not ready yet, delaying createVideoSession.',
         );
         _createSessionRequested = false;
@@ -349,7 +350,7 @@ class _WaitingForTeacherPageWidgetState
           ruText: 'Разрешите доступ к камере и микрофону, чтобы начать звонок.',
           enText: 'Allow camera and microphone access to start a call.',
         );
-        debugPrint(
+        safeDebugLog(
           'WaitingForTeacher: camera or microphone permission denied before createVideoSession.',
         );
         return;
@@ -369,7 +370,7 @@ class _WaitingForTeacherPageWidgetState
             enText: 'Your profile is incomplete. Check your learning language.',
           ),
         );
-        debugPrint(
+        safeDebugLog(
             'WaitingForTeacher: missing user data for createVideoSession');
         return;
       }
@@ -397,7 +398,7 @@ class _WaitingForTeacherPageWidgetState
       // If cancel was requested while createVideoSession was in-flight,
       // immediately cancel the newly created session on the server.
       if (_cancelRequested && sessionId != null) {
-        debugPrint(
+        safeDebugLog(
           'WaitingForTeacher: cancel was requested while creating session. '
           'Cancelling session $sessionId now.',
         );
@@ -415,7 +416,7 @@ class _WaitingForTeacherPageWidgetState
           status: status,
           fallbackMessage: backendMessage,
         );
-        debugPrint(
+        safeDebugLog(
           'WaitingForTeacher: createVideoSession returned without sessionId '
           '(status: ${status ?? "unknown"})',
         );
@@ -434,7 +435,7 @@ class _WaitingForTeacherPageWidgetState
         fallbackMessage: _sanitizeMessage(error.message),
         errorCode: error.code,
       );
-      debugPrint(
+      safeDebugLog(
         'WaitingForTeacher: createVideoSession failed: '
         '${error.code} ${error.message}',
       );
@@ -445,7 +446,7 @@ class _WaitingForTeacherPageWidgetState
       _createMessage = _createFailureMessage(
         fallbackMessage: _sanitizeMessage(error.toString()),
       );
-      debugPrint(
+      safeDebugLog(
           'WaitingForTeacher: unexpected createVideoSession error: $error');
     } finally {
       _isCreating = false;
@@ -480,11 +481,11 @@ class _WaitingForTeacherPageWidgetState
         errorCode: error.code,
         succeeded: false,
       );
-      debugPrint(
+      safeDebugLog(
         'WaitingForTeacher: cancelCall failed: ${error.code} ${error.message}',
       );
     } catch (error) {
-      debugPrint('WaitingForTeacher: unexpected cancelCall error: $error');
+      safeDebugLog('WaitingForTeacher: unexpected cancelCall error: $error');
     }
   }
 
@@ -502,7 +503,7 @@ class _WaitingForTeacherPageWidgetState
         try {
           await completer.future.timeout(const Duration(seconds: 8));
         } on TimeoutException {
-          debugPrint(
+          safeDebugLog(
             'WaitingForTeacher: cancel timeout while waiting createVideoSession',
           );
         }
@@ -512,7 +513,7 @@ class _WaitingForTeacherPageWidgetState
       if (currentSessionId != null) {
         await _cancelSession(currentSessionId);
       } else {
-        debugPrint(
+        safeDebugLog(
           'WaitingForTeacher: cancel requested before sessionId was created. '
           'Skipping cancelCall.',
         );
@@ -624,7 +625,7 @@ class _WaitingForTeacherPageWidgetState
       }
     }
 
-    debugPrint('WaitingForTeacher: getSessionTokens failed: $lastError');
+    safeDebugLog('WaitingForTeacher: getSessionTokens failed: $lastError');
     return null;
   }
 

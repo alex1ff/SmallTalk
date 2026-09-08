@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:small_talk/custom_code/widgets/call_controls_bar.dart';
 
@@ -13,8 +14,16 @@ Widget _buildSubject({
   VoidCallback? onMicrophonePressed,
   VoidCallback? onChatPressed,
   VoidCallback? onEndCallPressed,
+  Locale locale = const Locale('ru'),
 }) {
   return MaterialApp(
+    locale: locale,
+    supportedLocales: const [Locale('ru'), Locale('en')],
+    localizationsDelegates: const [
+      GlobalMaterialLocalizations.delegate,
+      GlobalWidgetsLocalizations.delegate,
+      GlobalCupertinoLocalizations.delegate,
+    ],
     home: Scaffold(
       backgroundColor: Colors.black,
       body: Center(
@@ -133,6 +142,57 @@ void main() {
       ),
     );
     expect(tooltip.message, 'Открыть чат, Больше 99 непрочитанных сообщений');
+    semantics.dispose();
+  });
+
+  testWidgets('exposes English labels hints and tooltips', (tester) async {
+    final semantics = tester.ensureSemantics();
+
+    await tester.pumpWidget(
+      _buildSubject(
+        locale: const Locale('en'),
+        cameraEnabled: false,
+        microphoneEnabled: false,
+        unreadChatCount: 120,
+        onTranslationPressed: () {},
+      ),
+    );
+
+    final camera = tester.getSemantics(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Semantics &&
+            widget.properties.label == 'Camera off. Turn camera on',
+      ),
+    );
+    expect(camera.hint, 'Toggles the camera during the call');
+    expect(camera.flagsCollection.isToggled, isFalse);
+
+    final chat = tester.getSemantics(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Semantics &&
+            widget.properties.label ==
+                'Chat closed. Open chat. More than 99 unread messages',
+      ),
+    );
+    expect(chat.hint, 'Opens or closes the call chat');
+
+    final translationTooltip = tester.widget<Tooltip>(
+      find.descendant(
+        of: find.byKey(callTranslationControlKey),
+        matching: find.byType(Tooltip),
+      ),
+    );
+    expect(translationTooltip.message, 'Quick translation');
+
+    final endCall = tester.getSemantics(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Semantics && widget.properties.label == 'End call',
+      ),
+    );
+    expect(endCall.hint, 'Ends the current video call');
     semantics.dispose();
   });
 

@@ -15,6 +15,7 @@
     "test:events": "node --test event_chat_inbox.test.js create_event.test.js edit_event.test.js cancel_event.test.js join_event.test.js leave_event.test.js create_video_session.test.js send_event_chat_message.test.js get_event_chat_access_state.test.js report_event.test.js report_event_chat_message.test.js get_event_history.test.js open_event_organizer_chat.test.js event_city_catalog.test.js event_city_catalog_generation.test.js event_public_projection.test.js event_public_backfill.test.js sync_event_public_projection.test.js get_event_details.test.js trial_access.test.js revenue_cat_webhook.test.js deployment_readiness.test.js call_lifecycle_contract.test.js",
     "test:password-reset": "node --test password_reset.test.js email_verification.test.js",
     "test:backend-source": "node --test backend_source.test.js",
+    "test:safe-logging": "node --test safe_log.test.js call_lifecycle_logs.test.js",
     "test:legacy-fallback-manifest": "node --test legacy_fallback_manifest.test.js",
     "test:performance-budget": "node --test performance_budget.test.js",
     "test:critical-flow-matrix": "node --test critical_flow_matrix.test.js",

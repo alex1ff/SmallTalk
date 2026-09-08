@@ -63,6 +63,8 @@ const {
   reserveDirectPairInTransaction,
   reserveMatchPairInTransaction,
 } = require("./match_pair_lock");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "create_video_session"});
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -171,7 +173,7 @@ function compareCandidateDetails(leftId, rightId, detailsById) {
 exports.createVideoSession = functions
   .runWith({ secrets: [...apnsSecrets, ...dailySecrets] })
   .https.onCall(async (data, context) => {
-    console.log("📹 createVideoSession started");
+    safeLog.log("video_session_start_requested");
 
     try {
       if (!context.auth) {
@@ -233,7 +235,7 @@ exports.createVideoSession = functions
         tutorDebugSamples.push(payload);
       };
 
-      console.log("📹 createVideoSession params", {
+      safeLog.log("create_video_session_params", {
         requesterId,
         requestedLanguage: readLanguageCode(language) || null,
         matchMode: isDirectTutorCall ? "direct" : "filtered",
@@ -275,7 +277,7 @@ exports.createVideoSession = functions
           nowMillis: Date.now(),
         });
         if (!accessDecision.allowed) {
-          console.warn("🛑 createVideoSession blocked by access policy", {
+          safeLog.warn("call_access_blocked", {
             requesterId,
             reason: accessDecision.reason,
           });
@@ -339,7 +341,7 @@ exports.createVideoSession = functions
         totalQueriedCandidates = 1;
 
         if (!directTutorDoc.exists) {
-          console.log("📹 createVideoSession direct tutor not found", {
+          safeLog.warn("direct_tutor_not_found", {
             requesterId,
             directTutorId,
           });
@@ -358,7 +360,7 @@ exports.createVideoSession = functions
           } else {
             tutorFilterStats.unsupportedRole += 1;
           }
-          console.log("📹 createVideoSession direct tutor has invalid role", {
+          safeLog.warn("direct_tutor_invalid_role", {
             requesterId,
             directTutorId,
             role: tutorData.role || null,
@@ -450,7 +452,7 @@ exports.createVideoSession = functions
           [directTutorId],
           {
             bypassUserIds: repeatBypassUserIds,
-            requesterEmail: requesterData.email || context.auth.token.email,
+            requesterEmail: requesterData.email || context.auth.token?.email,
             userEmailsById: candidateEmailsById,
           },
         );
@@ -523,7 +525,7 @@ exports.createVideoSession = functions
         const candidateQueryResults = await Promise.all(
           CANDIDATE_QUERY_BUILDERS.map((buildQuery) =>
             buildQuery(db, normalizedLanguage).get().catch((queryError) => {
-              console.error("❌ Candidate query failed:", queryError.message);
+              safeLog.error("candidate_query_failed", {error: queryError});
               throw new functions.https.HttpsError(
                 "failed-precondition",
                 "Candidate query failed. Ensure required Firestore indexes are deployed.",
@@ -543,7 +545,7 @@ exports.createVideoSession = functions
 
         totalQueriedCandidates = candidateDocsById.size;
         if (candidateDocsById.size === 0) {
-          console.log("📹 createVideoSession found no candidates", {
+          safeLog.log("no_call_candidates", {
             normalizedLanguage,
           });
           return {
@@ -562,7 +564,7 @@ exports.createVideoSession = functions
           Array.from(candidateDocsById.keys()),
           {
             bypassUserIds: repeatBypassUserIds,
-            requesterEmail: requesterData.email || context.auth.token.email,
+            requesterEmail: requesterData.email || context.auth.token?.email,
             userEmailsById: candidateEmailsById,
           },
         );
@@ -842,10 +844,22 @@ exports.createVideoSession = functions
       if (shouldSampleTutorDebug && tutorDebugSamples.length > 0) {
         filteringSummary.sample = tutorDebugSamples;
       }
-      console.log("📊 Tutor filtering summary", filteringSummary);
+      safeLog.log("tutor_filtering_summary", {
+        requesterId: filteringSummary.requesterId,
+        requesterRole: filteringSummary.requesterRole,
+        requestedLanguage: filteringSummary.requestedLanguage,
+        matchMode: filteringSummary.matchMode,
+        directTutorId: filteringSummary.directTutorId,
+        preferredCountry: filteringSummary.preferredCountry,
+        preferredPartnerLevel: filteringSummary.preferredPartnerLevel,
+        totalTutorsQueried: filteringSummary.totalTutorsQueried,
+        totalCandidatesChecked: filteringSummary.totalCandidatesChecked,
+        matchedTutors: filteringSummary.matchedTutors,
+        counts: filteringSummary.rejected,
+      });
 
       if (availableTutors.length === 0) {
-        console.log("📹 createVideoSession no matching tutors after filtering", {
+        safeLog.log("no_matching_tutors", {
           requesterId,
           requestedLanguage: normalizedLanguage,
           matchMode: isDirectTutorCall ? "direct" : "filtered",
@@ -867,15 +881,8 @@ exports.createVideoSession = functions
           tutorDetails,
         );
         availableTutors.splice(0, availableTutors.length, ...orderedTutors);
-        console.log("📊 Matched tutors after sorting", {
+        safeLog.log("tutors_sorted", {
           count: availableTutors.length,
-          topTutorPreview: availableTutors.slice(0, 3).map((id) => ({
-            tutorId: id,
-            locationMatch: tutorDetails[id].locationMatch,
-            approvedTeacher: tutorDetails[id].approvedTeacher,
-            ratingAverage: tutorDetails[id].ratingAverage,
-            legacyPriorityScore: tutorDetails[id].legacyPriorityScore,
-          })),
         });
       }
 
@@ -900,12 +907,9 @@ exports.createVideoSession = functions
         precreatedRoomName = dailyRoom.name;
         precreatedRoomCreatedAt = Date.now();
 
-        console.log("✅ Precreated Daily room for session", {
-          roomName: precreatedRoomName,
-          roomUrl: precreatedRoomUrl,
-        });
+        safeLog.log("daily_room_precreated", {requesterId});
       } catch (roomError) {
-        console.error("⚠️ Failed to precreate Daily room:", roomError.message);
+        safeLog.error("daily_room_precreate_failed", {requesterId, error: roomError});
       }
 
       const sessionData = {
@@ -988,7 +992,7 @@ exports.createVideoSession = functions
             availableTutors,
             {
               bypassUserIds: repeatBypassUserIds,
-              requesterEmail: requesterData.email || context.auth.token.email,
+              requesterEmail: requesterData.email || context.auth.token?.email,
               userEmailsById: candidateEmailsById,
             },
           );
@@ -1154,7 +1158,9 @@ exports.createVideoSession = functions
           ]));
         }
         if (skippedLockCandidateIds.length > 0) {
-          console.log("⏭️ Skipped locked candidates:", skippedLockCandidateIds);
+          safeLog.log("locked_candidates_skipped", {
+            counts: {skipped: skippedLockCandidateIds.length},
+          });
         }
         if (!lockResult?.locked || !selectedResponderId || !finalSessionData) {
           return {
@@ -1195,7 +1201,7 @@ exports.createVideoSession = functions
         const excludedCount = countExcludedRepeatCandidates(
           creation.repeatPreventionContext,
         );
-        console.log("📹 createVideoSession final repeat guard blocked session", {
+        safeLog.log("repeat_guard_blocked", {
           requesterId,
           requestedLanguage: normalizedLanguage,
           matchMode: isDirectTutorCall ? "direct" : "filtered",
@@ -1212,7 +1218,7 @@ exports.createVideoSession = functions
         };
       }
 
-      console.log("✅ Video session created:", sessionRef.id);
+      safeLog.log("video_session_created", {sessionId: sessionRef.id});
 
       if (creation.selectedResponderId && creation.pushPayload) {
         const freshValidationSnap = await sessionRef.get();
@@ -1233,10 +1239,7 @@ exports.createVideoSession = functions
           );
         }
       } else {
-        console.log(
-          "⏭️ Skipping legacy tutor notification fallback for locked session",
-          sessionRef.id,
-        );
+        safeLog.log("legacy_notification_skipped", {sessionId: sessionRef.id});
       }
 
       return {
@@ -1248,16 +1251,19 @@ exports.createVideoSession = functions
         matchedTutors: creation.matchedTutors,
       };
     } catch (error) {
-      console.error("❌ Error creating video session:", error);
+      safeLog.error("video_session_create_failed", {error});
       if (error.code) throw error;
-      throw new functions.https.HttpsError("internal", error.message);
+      throw new functions.https.HttpsError(
+        "internal",
+        "Unable to start a call right now. Please try again.",
+      );
     }
   });
 
 // 🔔 ОТПРАВКА VOIP PUSH ПРЕПОДАВАТЕЛЮ
 async function sendVoipPushToTutor(tutorId, callData) {
   try {
-    console.log("📲 Preparing VoIP push for tutor:", tutorId);
+    safeLog.log("voip_push_prepare", {tutorId});
 
     const tutorDoc = await admin
       .firestore()
@@ -1266,7 +1272,7 @@ async function sendVoipPushToTutor(tutorId, callData) {
       .get();
 
     if (!tutorDoc.exists) {
-      console.log("⚠️ Tutor document not found:", tutorId);
+      safeLog.warn("voip_push_recipient_not_found", {tutorId});
       return;
     }
 
@@ -1282,7 +1288,7 @@ async function sendVoipPushToTutor(tutorId, callData) {
       await getUserVoipTokens(tutorId, tutorData);
 
     if (!voipPushToken && !fcmToken) {
-      console.log("⚠️ Tutor has no push tokens saved");
+      safeLog.warn("voip_push_tokens_missing", {tutorId});
       return;
     }
 
@@ -1295,20 +1301,19 @@ async function sendVoipPushToTutor(tutorId, callData) {
           topic: voipTopic,
           payload: apnsPayload,
         });
-        console.log("✅ APNs VoIP push sent successfully");
+        safeLog.log("voip_apns_push_sent", {tutorId});
         return;
       } catch (error) {
-        console.error("❌ Error sending APNs VoIP push:", error.message);
+        safeLog.error("voip_apns_push_failed", {tutorId, error});
       }
     }
 
     if (!fcmToken) {
-      console.log("⚠️ No FCM token available for fallback");
+      safeLog.warn("voip_fcm_token_missing", {tutorId});
       return;
     }
 
-    console.log("📱 FCM token found");
-    console.log("📦 Using apns-topic for FCM fallback:", bundleId);
+    safeLog.log("voip_fcm_fallback", {tutorId, platform: "ios"});
 
     const message = buildTeacherIncomingCallFcmMessage({
       token: fcmToken,
@@ -1317,11 +1322,11 @@ async function sendVoipPushToTutor(tutorId, callData) {
     });
 
     const response = await admin.messaging().send(message);
-    console.log("✅ FCM push sent successfully. Message ID:", response);
+    safeLog.log("voip_fcm_push_sent", {tutorId});
 
     return response;
   } catch (error) {
-    console.error("❌ Error sending VoIP push to tutor:", error);
+    safeLog.error("voip_push_failed", {tutorId, error});
     return null;
   }
 }
@@ -1437,12 +1442,10 @@ async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) 
     );
 
     if (!assignment || !assignment.shouldNotify) {
-      console.log(
-        "⏭️ Skipping tutor notification for session",
+      safeLog.log("tutor_notification_skipped", {
         sessionId,
-        "reason:",
-        assignment?.skipReason || "unknown",
-      );
+        reasonCode: assignment?.skipReason || "unknown",
+      });
       return;
     }
 
@@ -1451,10 +1454,7 @@ async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) 
 
     const freshValidationSnap = await sessionRef.get();
     if (!freshValidationSnap.exists) {
-      console.log(
-        "⏭️ Skipping tutor notification. Session disappeared:",
-        sessionId,
-      );
+      safeLog.warn("tutor_notification_session_missing", {sessionId});
       return;
     }
 
@@ -1467,17 +1467,19 @@ async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) 
         responderId: nextTutor,
       })
     ) {
-      console.log(
-        "⏭️ Skipping tutor notification after validation. reason:",
-        `status_${freshValidation.status || "unknown"}`,
-        `currentTutor_${freshValidation.currentTutorId || "none"}`,
-      );
+      safeLog.log("tutor_notification_assignment_changed", {
+        sessionId,
+        reasonCode: `status_${freshValidation.status || "unknown"}`,
+      });
       return;
     }
 
-    console.log("✅ Firestore notification created for tutor:", nextTutor);
+    safeLog.log("tutor_notification_created", {
+      sessionId,
+      responderId: nextTutor,
+    });
 
-    console.log("📲 Sending VoIP push to tutor...");
+    safeLog.log("voip_push_send_started", {sessionId, responderId: nextTutor});
     try {
       await sendVoipPushToTutor(nextTutor, {
         ...pushPayload,
@@ -1487,14 +1489,11 @@ async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) 
         studentPhoto: pushPayload.studentPhoto,
         language: pushPayload.language || "",
       });
-      console.log("✅ VoIP push sent to tutor");
+      safeLog.log("voip_push_sent", {sessionId, responderId: nextTutor});
     } catch (pushError) {
-      console.error(
-        "⚠️ Failed to send VoIP push (non-critical):",
-        pushError.message,
-      );
+      safeLog.error("voip_push_failed", {sessionId, responderId: nextTutor, error: pushError});
     }
   } catch (error) {
-    console.error("❌ Error sending notification:", error);
+    safeLog.error("tutor_notification_failed", {sessionId, error});
   }
 }

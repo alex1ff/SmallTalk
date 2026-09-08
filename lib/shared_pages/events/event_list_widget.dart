@@ -745,6 +745,174 @@ class _EventListWidgetState extends State<EventListWidget> {
                           countryCodeHint: selectedState?.countryCodeHint,
                         ));
 
+            Widget boxSliver(Widget child) => SliverToBoxAdapter(child: child);
+            Widget cardsSliver(
+              List<EventListCardViewModel> cards, {
+              _EventListPaginationViewState paginationState =
+                  const _EventListPaginationViewState(),
+            }) =>
+                _EventListCardsSliver(
+                  eventCards: cards,
+                  selectedCity: selectedState?.selected,
+                  canOpenEventCardChat: _canOpenEventCardChat,
+                  onPrimaryPressed: onPrimaryPressed,
+                  openEventCardDetail: _openEventCardDetail,
+                  openEventCardChat: _openEventCardChat,
+                  paginationState: paginationState,
+                  showParticipantRequiredSnackBar: () =>
+                      _showEventListChatParticipantRequiredSnackBar(context),
+                );
+            Widget boxCards(List<EventListCardViewModel> cards) =>
+                _EventListCards(
+                  eventCards: cards,
+                  selectedCity: selectedState?.selected,
+                  canOpenEventCardChat: _canOpenEventCardChat,
+                  onPrimaryPressed: onPrimaryPressed,
+                  openEventCardDetail: _openEventCardDetail,
+                  openEventCardChat: _openEventCardChat,
+                  showParticipantRequiredSnackBar: () =>
+                      _showEventListChatParticipantRequiredSnackBar(context),
+                );
+
+            Widget eventCardsSliver(
+              AsyncSnapshot<List<EventListCardViewModel>> eventsSnapshot,
+            ) {
+              if (!canShowEventCards) {
+                return const SliverToBoxAdapter(child: SizedBox.shrink());
+              }
+              if (widget.isLoadingEvents) {
+                return boxSliver(
+                  hasVisibleEventCards
+                      ? _EventListPreviousCardsState(
+                          cards: eventCards,
+                          selectedCity: selectedState?.selected,
+                          isRefreshing: true,
+                          canOpenEventCardChat: _canOpenEventCardChat,
+                          onPrimaryPressed: onPrimaryPressed,
+                          openEventCardDetail: _openEventCardDetail,
+                          openEventCardChat: _openEventCardChat,
+                          showParticipantRequiredSnackBar: () =>
+                              _showEventListChatParticipantRequiredSnackBar(
+                            context,
+                          ),
+                        )
+                      : const _EventListLoadingState(),
+                );
+              }
+              if (hasEventListError) {
+                return SliverMainAxisGroup(
+                  slivers: [
+                    boxSliver(
+                      _EventListErrorState(
+                        message: widget.eventListErrorMessage,
+                        onRetryPressed: widget.onRetryEventsPressed,
+                        compact: hasVisibleEventCards,
+                      ),
+                    ),
+                    if (hasVisibleEventCards) ...[
+                      boxSliver(
+                        const SizedBox(height: ExpatlioDesign.space12),
+                      ),
+                      boxSliver(boxCards(eventCards)),
+                    ],
+                  ],
+                );
+              }
+              if (eventCardsFuture == null) {
+                return eventCards.isEmpty
+                    ? boxSliver(const _EventListEmptyState())
+                    : boxSliver(boxCards(eventCards));
+              }
+
+              final activeLoadKey = _eventListLoadKey;
+              final paginationState =
+                  _eventListPaginationViewState(activeLoadKey);
+              final previousCards = _previousCardsForActiveKey(activeLoadKey);
+              if (eventsSnapshot.connectionState != ConnectionState.done) {
+                final initialCards = _eventCardsFutureInitialCards;
+                if (initialCards != null) {
+                  return initialCards.isEmpty
+                      ? boxSliver(const _EventListEmptyState())
+                      : cardsSliver(
+                          visibleCards(initialCards),
+                          paginationState: paginationState,
+                        );
+                }
+                if (previousCards != null) {
+                  return boxSliver(
+                    _EventListPreviousCardsState(
+                      cards: visibleCards(previousCards.cards),
+                      selectedCity: selectedState?.selected,
+                      isRefreshing: true,
+                      showEmptyState: previousCards.key.activeDataKey ==
+                          activeLoadKey?.activeDataKey,
+                      canOpenEventCardChat: _canOpenEventCardChat,
+                      onPrimaryPressed: onPrimaryPressed,
+                      openEventCardDetail: _openEventCardDetail,
+                      openEventCardChat: _openEventCardChat,
+                      showParticipantRequiredSnackBar: () =>
+                          _showEventListChatParticipantRequiredSnackBar(
+                        context,
+                      ),
+                    ),
+                  );
+                }
+                return boxSliver(const _EventListLoadingState());
+              }
+              if (eventsSnapshot.hasError) {
+                if (previousCards != null) {
+                  return boxSliver(
+                    _EventListPreviousCardsState(
+                      cards: visibleCards(previousCards.cards),
+                      selectedCity: selectedState?.selected,
+                      errorMessage: null,
+                      onRetryPressed: _retryEventCardsLoad,
+                      canOpenEventCardChat: _canOpenEventCardChat,
+                      onPrimaryPressed: onPrimaryPressed,
+                      openEventCardDetail: _openEventCardDetail,
+                      openEventCardChat: _openEventCardChat,
+                      showParticipantRequiredSnackBar: () =>
+                          _showEventListChatParticipantRequiredSnackBar(
+                        context,
+                      ),
+                    ),
+                  );
+                }
+                return boxSliver(
+                  _EventListErrorState(
+                    message: null,
+                    onRetryPressed: _retryEventCardsLoad,
+                  ),
+                );
+              }
+
+              final loadedCards = visibleCards(
+                eventsSnapshot.data ?? const <EventListCardViewModel>[],
+              );
+              return loadedCards.isEmpty
+                  ? boxSliver(const _EventListEmptyState())
+                  : cardsSliver(
+                      loadedCards,
+                      paginationState: paginationState,
+                    );
+            }
+
+            int eventCardsSemanticCount(
+              AsyncSnapshot<List<EventListCardViewModel>> eventsSnapshot,
+            ) {
+              if (!canShowEventCards ||
+                  widget.isLoadingEvents ||
+                  hasEventListError ||
+                  eventCardsFuture == null ||
+                  eventsSnapshot.hasError) {
+                return 0;
+              }
+              if (eventsSnapshot.connectionState != ConnectionState.done) {
+                return _eventCardsFutureInitialCards?.length ?? 0;
+              }
+              return eventsSnapshot.data?.length ?? 0;
+            }
+
             return Scaffold(
               backgroundColor: ExpatlioDesign.background,
               floatingActionButton: showParticipantActionFailure
@@ -821,225 +989,69 @@ class _EventListWidgetState extends State<EventListWidget> {
                       ),
                       const SizedBox(height: 10),
                       Expanded(
-                        child: SingleChildScrollView(
-                          key: eventListScrollViewKey,
-                          controller: _scrollController,
-                          clipBehavior: Clip.none,
-                          padding: const EdgeInsetsDirectional.only(
-                            bottom: ExpatlioDesign.pageBottomSpacing,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              _EventDateChips(
-                                selectedFilter: _selectedDateFilter,
-                                onChanged: _selectDateFilter,
-                              ),
-                              const SizedBox(height: ExpatlioDesign.space8),
-                              _EventLevelChips(
-                                selectedLevel: _selectedLevel,
-                                onChanged: _selectLevelFilter,
-                              ),
-                              if (selectedState != null &&
-                                  (selectedState.needsCitySelection ||
-                                      selectedState
-                                          .hasOutdatedProfileCity)) ...[
-                                const SizedBox(
-                                  height: ExpatlioDesign.space16,
-                                ),
-                                _EventCitySelector(
-                                  selectedCity: selectedState.selected,
-                                  hasOutdatedProfileCity:
-                                      selectedState.hasOutdatedProfileCity,
-                                  showsMissingLocationPrompt:
-                                      selectedState.needsCitySelection &&
-                                          !selectedState.hasOutdatedProfileCity,
-                                  onPressed: onCitySelectorPressed,
-                                ),
-                              ],
-                              if (canShowEventCards) ...[
-                                const SizedBox(height: ExpatlioDesign.space16),
-                                if (widget.isLoadingEvents) ...[
-                                  if (hasVisibleEventCards)
-                                    _EventListPreviousCardsState(
-                                      cards: eventCards,
-                                      selectedCity: selectedState?.selected,
-                                      isRefreshing: true,
-                                      canOpenEventCardChat:
-                                          _canOpenEventCardChat,
-                                      onPrimaryPressed: onPrimaryPressed,
-                                      openEventCardDetail: _openEventCardDetail,
-                                      openEventCardChat: _openEventCardChat,
-                                      showParticipantRequiredSnackBar: () =>
-                                          _showEventListChatParticipantRequiredSnackBar(
-                                        context,
+                        child: FutureBuilder<List<EventListCardViewModel>>(
+                          key: ValueKey(_eventListLoadKey),
+                          future: eventCardsFuture,
+                          initialData: _eventCardsFutureInitialCards,
+                          builder: (context, eventsSnapshot) {
+                            return CustomScrollView(
+                              key: eventListScrollViewKey,
+                              controller: _scrollController,
+                              clipBehavior: Clip.none,
+                              semanticChildCount:
+                                  eventCardsSemanticCount(eventsSnapshot),
+                              slivers: [
+                                SliverToBoxAdapter(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      _EventDateChips(
+                                        selectedFilter: _selectedDateFilter,
+                                        onChanged: _selectDateFilter,
                                       ),
-                                    )
-                                  else
-                                    const _EventListLoadingState(),
-                                ] else if (hasEventListError) ...[
-                                  _EventListErrorState(
-                                    message: widget.eventListErrorMessage,
-                                    onRetryPressed: widget.onRetryEventsPressed,
-                                    compact: hasVisibleEventCards,
-                                  ),
-                                  if (hasVisibleEventCards) ...[
-                                    const SizedBox(
-                                      height: ExpatlioDesign.space12,
-                                    ),
-                                    _EventListCards(
-                                      eventCards: eventCards,
-                                      selectedCity: selectedState?.selected,
-                                      canOpenEventCardChat:
-                                          _canOpenEventCardChat,
-                                      onPrimaryPressed: onPrimaryPressed,
-                                      openEventCardDetail: _openEventCardDetail,
-                                      openEventCardChat: _openEventCardChat,
-                                      showParticipantRequiredSnackBar: () =>
-                                          _showEventListChatParticipantRequiredSnackBar(
-                                        context,
+                                      const SizedBox(
+                                        height: ExpatlioDesign.space8,
                                       ),
-                                    ),
-                                  ],
-                                ] else if (eventCardsFuture != null)
-                                  FutureBuilder<List<EventListCardViewModel>>(
-                                    key: ValueKey(_eventListLoadKey),
-                                    future: eventCardsFuture,
-                                    initialData: _eventCardsFutureInitialCards,
-                                    builder: (context, eventsSnapshot) {
-                                      final activeLoadKey = _eventListLoadKey;
-                                      final paginationState =
-                                          _eventListPaginationViewState(
-                                        activeLoadKey,
-                                      );
-                                      final previousCards =
-                                          _previousCardsForActiveKey(
-                                        activeLoadKey,
-                                      );
-                                      if (eventsSnapshot.connectionState !=
-                                          ConnectionState.done) {
-                                        final initialCards =
-                                            _eventCardsFutureInitialCards;
-                                        if (initialCards != null) {
-                                          if (initialCards.isEmpty) {
-                                            return const _EventListEmptyState();
-                                          }
-                                          return _EventListCards(
-                                            eventCards:
-                                                visibleCards(initialCards),
-                                            selectedCity:
-                                                selectedState?.selected,
-                                            canOpenEventCardChat:
-                                                _canOpenEventCardChat,
-                                            onPrimaryPressed: onPrimaryPressed,
-                                            openEventCardDetail:
-                                                _openEventCardDetail,
-                                            openEventCardChat:
-                                                _openEventCardChat,
-                                            paginationState: paginationState,
-                                            showParticipantRequiredSnackBar: () =>
-                                                _showEventListChatParticipantRequiredSnackBar(
-                                              context,
-                                            ),
-                                          );
-                                        }
-                                        if (previousCards != null) {
-                                          return _EventListPreviousCardsState(
-                                            cards: visibleCards(
-                                                previousCards.cards),
-                                            selectedCity:
-                                                selectedState?.selected,
-                                            isRefreshing: true,
-                                            showEmptyState: previousCards
-                                                    .key.activeDataKey ==
-                                                activeLoadKey?.activeDataKey,
-                                            canOpenEventCardChat:
-                                                _canOpenEventCardChat,
-                                            onPrimaryPressed: onPrimaryPressed,
-                                            openEventCardDetail:
-                                                _openEventCardDetail,
-                                            openEventCardChat:
-                                                _openEventCardChat,
-                                            showParticipantRequiredSnackBar: () =>
-                                                _showEventListChatParticipantRequiredSnackBar(
-                                              context,
-                                            ),
-                                          );
-                                        }
-                                        return const _EventListLoadingState();
-                                      }
-                                      if (eventsSnapshot.hasError) {
-                                        if (previousCards != null) {
-                                          return _EventListPreviousCardsState(
-                                            cards: visibleCards(
-                                                previousCards.cards),
-                                            selectedCity:
-                                                selectedState?.selected,
-                                            errorMessage: null,
-                                            onRetryPressed:
-                                                _retryEventCardsLoad,
-                                            canOpenEventCardChat:
-                                                _canOpenEventCardChat,
-                                            onPrimaryPressed: onPrimaryPressed,
-                                            openEventCardDetail:
-                                                _openEventCardDetail,
-                                            openEventCardChat:
-                                                _openEventCardChat,
-                                            showParticipantRequiredSnackBar: () =>
-                                                _showEventListChatParticipantRequiredSnackBar(
-                                              context,
-                                            ),
-                                          );
-                                        }
-                                        return _EventListErrorState(
-                                          message: null,
-                                          onRetryPressed: _retryEventCardsLoad,
-                                        );
-                                      }
-
-                                      final loadedCards = visibleCards(
-                                        eventsSnapshot.data ??
-                                            const <EventListCardViewModel>[],
-                                      );
-                                      if (loadedCards.isEmpty) {
-                                        return const _EventListEmptyState();
-                                      }
-
-                                      return _EventListCards(
-                                        eventCards: loadedCards,
-                                        selectedCity: selectedState?.selected,
-                                        canOpenEventCardChat:
-                                            _canOpenEventCardChat,
-                                        onPrimaryPressed: onPrimaryPressed,
-                                        openEventCardDetail:
-                                            _openEventCardDetail,
-                                        openEventCardChat: _openEventCardChat,
-                                        paginationState: paginationState,
-                                        showParticipantRequiredSnackBar: () =>
-                                            _showEventListChatParticipantRequiredSnackBar(
-                                          context,
+                                      _EventLevelChips(
+                                        selectedLevel: _selectedLevel,
+                                        onChanged: _selectLevelFilter,
+                                      ),
+                                      if (selectedState != null &&
+                                          (selectedState.needsCitySelection ||
+                                              selectedState
+                                                  .hasOutdatedProfileCity)) ...[
+                                        const SizedBox(
+                                          height: ExpatlioDesign.space16,
                                         ),
-                                      );
-                                    },
-                                  )
-                                else if (eventCards.isEmpty)
-                                  const _EventListEmptyState()
-                                else
-                                  _EventListCards(
-                                    eventCards: eventCards,
-                                    selectedCity: selectedState?.selected,
-                                    canOpenEventCardChat: _canOpenEventCardChat,
-                                    onPrimaryPressed: onPrimaryPressed,
-                                    openEventCardDetail: _openEventCardDetail,
-                                    openEventCardChat: _openEventCardChat,
-                                    showParticipantRequiredSnackBar: () =>
-                                        _showEventListChatParticipantRequiredSnackBar(
-                                      context,
-                                    ),
+                                        _EventCitySelector(
+                                          selectedCity: selectedState.selected,
+                                          hasOutdatedProfileCity: selectedState
+                                              .hasOutdatedProfileCity,
+                                          showsMissingLocationPrompt:
+                                              selectedState
+                                                      .needsCitySelection &&
+                                                  !selectedState
+                                                      .hasOutdatedProfileCity,
+                                          onPressed: onCitySelectorPressed,
+                                        ),
+                                      ],
+                                      if (canShowEventCards)
+                                        const SizedBox(
+                                          height: ExpatlioDesign.space16,
+                                        ),
+                                    ],
                                   ),
+                                ),
+                                eventCardsSliver(eventsSnapshot),
+                                const SliverToBoxAdapter(
+                                  child: SizedBox(
+                                    height: ExpatlioDesign.pageBottomSpacing,
+                                  ),
+                                ),
                               ],
-                            ],
-                          ),
+                            );
+                          },
                         ),
                       ),
                     ],
@@ -2830,7 +2842,6 @@ class _EventListCards extends StatelessWidget {
     required this.openEventCardDetail,
     required this.openEventCardChat,
     required this.showParticipantRequiredSnackBar,
-    this.paginationState = const _EventListPaginationViewState(),
   });
 
   final List<EventListCardViewModel> eventCards;
@@ -2843,7 +2854,6 @@ class _EventListCards extends StatelessWidget {
     required EventSelectedCity? selectedCity,
   }) openEventCardChat;
   final VoidCallback showParticipantRequiredSnackBar;
-  final _EventListPaginationViewState paginationState;
 
   @override
   Widget build(BuildContext context) {
@@ -2873,9 +2883,93 @@ class _EventListCards extends StatelessWidget {
           if (eventCard != eventCards.last)
             const SizedBox(height: ExpatlioDesign.space12),
         ],
+      ],
+    );
+  }
+}
+
+class _EventListCardsSliver extends StatelessWidget {
+  const _EventListCardsSliver({
+    required this.eventCards,
+    required this.selectedCity,
+    required this.canOpenEventCardChat,
+    required this.onPrimaryPressed,
+    required this.openEventCardDetail,
+    required this.openEventCardChat,
+    required this.showParticipantRequiredSnackBar,
+    this.paginationState = const _EventListPaginationViewState(),
+  });
+
+  final List<EventListCardViewModel> eventCards;
+  final EventSelectedCity? selectedCity;
+  final bool Function(EventListCardViewModel event) canOpenEventCardChat;
+  final ValueChanged<EventListCardViewModel>? onPrimaryPressed;
+  final ValueChanged<EventListCardViewModel> openEventCardDetail;
+  final void Function({
+    required EventListCardViewModel event,
+    required EventSelectedCity? selectedCity,
+  }) openEventCardChat;
+  final VoidCallback showParticipantRequiredSnackBar;
+  final _EventListPaginationViewState paginationState;
+
+  @override
+  Widget build(BuildContext context) {
+    return SliverMainAxisGroup(
+      slivers: [
+        SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (context, index) {
+              if (index.isOdd) {
+                return const SizedBox(height: ExpatlioDesign.space12);
+              }
+              final eventCard = eventCards[index ~/ 2];
+              return RepaintBoundary(
+                key: ValueKey<String>('event_list_lazy_${eventCard.eventId}'),
+                child: _EventCardShell(
+                  card: eventCard,
+                  onPressed: eventCard.eventId.trim().isEmpty
+                      ? null
+                      : () => openEventCardDetail(eventCard),
+                  onPrimaryPressed: onPrimaryPressed == null
+                      ? null
+                      : () => onPrimaryPressed?.call(eventCard),
+                  onChatPressed: canOpenEventCardChat(eventCard)
+                      ? () => openEventCardChat(
+                            event: eventCard,
+                            selectedCity: selectedCity,
+                          )
+                      : null,
+                  onChatParticipantRequiredPressed: eventCard.chatCtaState ==
+                          EventListChatCtaState.participantOnly
+                      ? showParticipantRequiredSnackBar
+                      : null,
+                ),
+              );
+            },
+            childCount: eventCards.isEmpty ? 0 : eventCards.length * 2 - 1,
+            addRepaintBoundaries: false,
+            semanticIndexCallback: (_, index) =>
+                index.isEven ? index ~/ 2 : null,
+            findChildIndexCallback: (key) {
+              if (key is! ValueKey<String> ||
+                  !key.value.startsWith('event_list_lazy_')) {
+                return null;
+              }
+              final eventId = key.value.substring('event_list_lazy_'.length);
+              final cardIndex = eventCards.indexWhere(
+                (card) => card.eventId == eventId,
+              );
+              return cardIndex < 0 ? null : cardIndex * 2;
+            },
+          ),
+        ),
         if (paginationState.isVisible) ...[
-          const SizedBox(height: ExpatlioDesign.space12),
-          _EventListPaginationFooter(state: paginationState),
+          const SliverToBoxAdapter(
+            child: SizedBox(height: ExpatlioDesign.space12),
+          ),
+          SliverToBoxAdapter(
+            child: _EventListPaginationFooter(state: paginationState),
+          ),
         ],
       ],
     );

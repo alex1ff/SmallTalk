@@ -1,6 +1,8 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const axios = require("axios");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "email_verification"});
 
 const RESEND_SEND_EMAIL_URL = "https://api.resend.com/emails";
 const RESEND_TIMEOUT_MS = 10000;
@@ -319,11 +321,10 @@ async function sendCustomEmailVerificationHandler(data, context, deps = {}) {
       throw error;
     }
 
-    console.error("sendCustomEmailVerification failed", {
+    safeLog.error("verification_email_failed", {
       uid,
-      code: error?.code || null,
-      response: error?.response?.data || null,
-      message: error?.message || "Unknown error",
+      errorCode: error?.code,
+      error,
     });
 
     throw new functions.https.HttpsError(

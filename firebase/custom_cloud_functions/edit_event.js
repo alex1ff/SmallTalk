@@ -1,5 +1,7 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "edit_event"});
 
 const {
   __private__: {
@@ -311,7 +313,11 @@ exports.editEvent = functions
         if (err instanceof functions.https.HttpsError) {
           throw err;
         }
-        console.error("editEvent failed", {uid, eventId: payload.eventId, err});
+        safeLog.error("edit_event_failed", {
+          uid,
+          eventId: payload.eventId,
+          error: err,
+        });
         throw new functions.https.HttpsError(
             "internal",
             "Unable to edit event",

@@ -32,6 +32,8 @@ const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const axios = require("axios");
 const {defineSecret} = require("firebase-functions/params");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "grant_promo_entitlement"});
 
 const revenueCatSecretKey = defineSecret("REVENUECAT_SECRET_KEY");
 
@@ -77,7 +79,7 @@ exports.grantPromoEntitlement = functions
       memory: "256MB",
     })
     .https.onCall(async (data, context) => {
-      console.log("🎁 grantPromoEntitlement called");
+      safeLog.log("promo_grant_started");
 
       if (!context.auth) {
         throw new functions.https.HttpsError(
@@ -86,7 +88,7 @@ exports.grantPromoEntitlement = functions
         );
       }
       if (context.auth.token.admin !== true) {
-        console.warn("🛑 grantPromoEntitlement non-admin caller", {
+        safeLog.warn("promo_grant_non_admin", {
           callerUid: context.auth.uid,
         });
         throw new functions.https.HttpsError(
@@ -128,7 +130,7 @@ exports.grantPromoEntitlement = functions
 
       const apiKey = getRevenueCatSecretKey();
       if (!apiKey) {
-        console.error("❌ REVENUECAT_SECRET_KEY not configured");
+        safeLog.error("revenuecat_secret_missing");
         throw new functions.https.HttpsError(
             "failed-precondition",
             "RevenueCat is not configured on the server",
@@ -141,11 +143,10 @@ exports.grantPromoEntitlement = functions
         `${encodeURIComponent(PRO_ENTITLEMENT_ID)}/promotional`;
       const body = buildRequestBody({duration, customDays});
 
-      console.log("🎁 grantPromoEntitlement requesting RC", {
+      safeLog.log("promo_grant_requested", {
         targetUid,
-        url,
-        body: {...body, customDaysSecondsMasked: undefined},
         callerUid: context.auth.uid,
+        duration: body.duration,
       });
 
       try {
@@ -175,7 +176,7 @@ exports.grantPromoEntitlement = functions
           revenueCatResponseStatus: response.status,
         });
 
-        console.log("✅ grantPromoEntitlement succeeded", {
+        safeLog.log("promo_grant_succeeded", {
           targetUid,
           duration: body.duration,
           status: response.status,
@@ -189,11 +190,10 @@ exports.grantPromoEntitlement = functions
       } catch (err) {
         const status = err?.response?.status || null;
         const responseBody = err?.response?.data || null;
-        console.error("❌ grantPromoEntitlement RC API error", {
+        safeLog.error("promo_grant_failed", {
           targetUid,
           status,
-          responseBody,
-          message: err?.message,
+          error: err,
         });
 
         if (status === 404) {

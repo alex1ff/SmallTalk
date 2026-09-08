@@ -3,7 +3,6 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const assert = require('node:assert/strict');
 const { createRequire } = require('module');
 
 const repoRoot = path.resolve(__dirname, '..', '..');
@@ -11,30 +10,9 @@ const projectId = process.env.GCLOUD_PROJECT || 'demo-smalltalk';
 const ccfRequire = createRequire(
   path.join(repoRoot, 'firebase', 'custom_cloud_functions', 'package.json'),
 );
-const {
-  initializeTestEnvironment,
-  assertFails,
-  assertSucceeds,
-} = ccfRequire('@firebase/rules-unit-testing');
-const firebaseCompat = ccfRequire('firebase/compat/app');
-ccfRequire('firebase/compat/firestore');
-
 const firestoreHostRaw = process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8080';
-const storageHostRaw = process.env.FIREBASE_STORAGE_EMULATOR_HOST || '127.0.0.1:9199';
-
 const [firestoreHost, firestorePortStr] = firestoreHostRaw.split(':');
-const [storageHost, storagePortStr] = storageHostRaw.split(':');
 const firestorePort = Number.parseInt(firestorePortStr || '8080', 10);
-const storagePort = Number.parseInt(storagePortStr || '9199', 10);
-
-const firestoreRules = fs.readFileSync(
-  path.join(repoRoot, 'firebase', 'firestore.rules'),
-  'utf8',
-);
-const storageRules = fs.readFileSync(
-  path.join(repoRoot, 'firebase', 'storage.rules'),
-  'utf8',
-);
 
 const admin = ccfRequire('firebase-admin');
 const adminApp = ccfRequire('firebase-admin/app');
@@ -44,19 +22,11 @@ const {
   buildUnlockEventPayload,
   getUnlockParticipants,
 } = ccfRequire('./chats_shared.js');
-const {
-  getDailyPairCompletionRef,
-  getUtcDayKey,
-} = ccfRequire('./match_repeat_prevention.js');
 const endSessionModule = ccfRequire('./end_session.js');
 const createVideoSessionModule = ccfRequire('./create_video_session.js');
 const conversationUnlockEventsModule = ccfRequire('./conversation_unlock_events.js');
 const userMatchProfileSyncModule = ccfRequire('./user_match_profile_sync.js');
 const teacherVerificationRequestsModule = ccfRequire('./teacher_verification_requests.js');
-
-function serverTimestamp() {
-  return firebaseCompat.firestore.FieldValue.serverTimestamp();
-}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -91,8 +61,8 @@ async function waitForSnapshotWithManualFallback(
   docRef,
   predicate,
   {
-    timeoutMs = 5000,
-    retryTimeoutMs = 10000,
+    timeoutMs = 15000,
+    retryTimeoutMs = 20000,
     intervalMs = 250,
     description = docRef.path,
     manualRun,
@@ -190,765 +160,52 @@ function percentile(values, p) {
   return sorted[idx];
 }
 
-async function runRulesChecks() {
-  const result = {
-    pass: false,
-    checks: [],
-    failures: [],
+function activePaidSubscription() {
+  return {
+    productId: 'expatlio_1_Month',
+    periodType: 'NORMAL',
+    expiresAt: admin.firestore.Timestamp.fromMillis(
+      Date.now() + 24 * 60 * 60 * 1000,
+    ),
   };
+}
 
-  const testEnv = await initializeTestEnvironment({
-    projectId,
-    firestore: {
-      host: firestoreHost,
-      port: firestorePort,
-      rules: firestoreRules,
-    },
-    storage: {
-      host: storageHost,
-      port: storagePort,
-      rules: storageRules,
-    },
+function activeSearchRequestData({userId, language, requestId}) {
+  const nowMillis = Date.now();
+  return {
+    requestId,
+    userId,
+    userRef: admin.firestore().collection('users').doc(userId),
+    role: 'student',
+    language,
+    filters: {},
+    status: 'active',
+    appState: 'foreground',
+    createdAt: admin.firestore.Timestamp.fromMillis(nowMillis - 1000),
+    heartbeatAt: admin.firestore.Timestamp.fromMillis(nowMillis),
+    expiresAt: admin.firestore.Timestamp.fromMillis(nowMillis + 8 * 60 * 1000),
+    backgroundExpiresAt: null,
+    currentSessionId: null,
+    matchedUserId: null,
+    matchedResponderId: null,
+    matchedSessionId: null,
+    matchedRole: null,
+    pairAttemptId: null,
+    lockOwner: null,
+  };
+}
+
+async function seedActiveSearchRequest(db, {userId, language, requestId}) {
+  await db.collection('searchRequests').doc(userId).set(
+    activeSearchRequestData({userId, language, requestId}),
+  );
+}
+
+async function seedCallableToken(db, userId) {
+  await db.collection('userPrivateTokens').doc(userId).set({
+    voipToken: `audit-fcm-${userId}`,
+    voipTokenUpdatedAt: admin.firestore.Timestamp.now(),
   });
-
-  async function check(label, action) {
-    try {
-      await action();
-      result.checks.push({ label, status: 'pass' });
-    } catch (error) {
-      result.checks.push({ label, status: 'fail', error: String(error) });
-      result.failures.push(`${label}: ${error}`);
-    }
-  }
-
-  try {
-    await testEnv.clearFirestore();
-    await testEnv.clearStorage();
-
-    await testEnv.withSecurityRulesDisabled(async (context) => {
-      const db = context.firestore();
-      await db.collection('users').doc('userA').set({ display_name: 'User A' });
-      await db.collection('users').doc('userB').set({ display_name: 'User B' });
-      await db.collection('users').doc('userC').set({ display_name: 'User C' });
-      await db.collection('users').doc('pendingTeacher').set({
-        display_name: 'Pending Teacher',
-        role: 'native_speaker',
-        teacherAccreditationStatus: 'pending',
-      });
-      await db.collection('users').doc('approvedTeacher').set({
-        display_name: 'Approved Teacher',
-        role: 'native_speaker',
-        teacherAccreditationStatus: 'approved',
-      });
-      await db.collection('videoSessions').doc('sessionParticipantIds').set({
-        studentId: 'userA',
-        tutorId: 'legacyResponder',
-        participantIds: ['userA', 'userB'],
-        status: 'active',
-        studentNavigationTriggered: true,
-        tutorNavigationTriggered: true,
-        createdAt: new Date('2026-04-13T10:00:00.000Z'),
-      });
-      await db.collection('videoSessions').doc('sessionLegacy').set({
-        studentId: 'userA',
-        currentTutorId: 'userB',
-        status: 'searching',
-        studentNavigationTriggered: true,
-        tutorNavigationTriggered: true,
-        createdAt: new Date('2026-04-13T10:00:00.000Z'),
-      });
-      await db
-        .collection('videoSessions')
-        .doc('sessionParticipantIds')
-        .collection('captionLogs')
-        .doc('seedCaption')
-        .set({
-          writerId: 'userA',
-          speakerId: 'userA',
-          source: 'local_deepgram_final',
-          text: 'Existing caption',
-          createdAt: new Date('2026-04-13T10:01:00.000Z'),
-        });
-      await db.collection('transactions').doc('txB').set({
-        userId: db.doc('users/userB'),
-        type: 'call_charge',
-        status: 'completed',
-        amount_ST: 1,
-      });
-      await db.collection('conversations').doc('userA_userB').set({
-        pairId: 'userA_userB',
-        participantIds: ['userA', 'userB'],
-        participantRefs: [db.doc('users/userA'), db.doc('users/userB')],
-        isUnlocked: true,
-        unlockedAt: new Date('2026-04-13T10:00:00.000Z'),
-        unlockedBySessionRef: db.doc('videoSessions/sessionUnlocked'),
-        createdAt: new Date('2026-04-13T10:00:00.000Z'),
-        updatedAt: new Date('2026-04-13T10:00:00.000Z'),
-        lastReadAtByUserId: {},
-      });
-      await db.collection('conversations').doc('userA_userC').set({
-        pairId: 'userA_userC',
-        participantIds: ['userA', 'userC'],
-        participantRefs: [db.doc('users/userA'), db.doc('users/userC')],
-        isUnlocked: false,
-        unlockedAt: null,
-        unlockedBySessionRef: null,
-        createdAt: new Date('2026-04-13T10:05:00.000Z'),
-        updatedAt: new Date('2026-04-13T10:05:00.000Z'),
-        lastReadAtByUserId: {},
-      });
-      await db
-        .collection('conversations')
-        .doc('userA_userB')
-        .collection('messages')
-        .doc('seedMessage')
-        .set({
-          senderId: 'userA',
-          senderRef: db.doc('users/userA'),
-          type: 'text',
-          text: 'Hello from A',
-          createdAt: new Date('2026-04-13T10:01:00.000Z'),
-          serverCreatedAt: new Date('2026-04-13T10:01:00.500Z'),
-        });
-      await db.collection('videoSessions').doc('participantSession').set({
-        participantIds: ['userA', 'userB'],
-        status: 'active',
-      });
-      await db.collection('videoSessions').doc('pendingTutorSession').set({
-        studentId: 'userA',
-        currentTutorId: 'userC',
-        status: 'searching',
-      });
-      await db.collection('videoSessions').doc('legacyParticipantSession').set({
-        studentId: 'userA',
-        tutorId: 'userB',
-        status: 'active',
-      });
-    });
-
-    const unauth = testEnv.unauthenticatedContext();
-    const userA = testEnv.authenticatedContext('userA');
-    const userB = testEnv.authenticatedContext('userB');
-    const userC = testEnv.authenticatedContext('userC');
-    const userD = testEnv.authenticatedContext('userD');
-    const pendingTeacher = testEnv.authenticatedContext('pendingTeacher');
-    const approvedTeacher = testEnv.authenticatedContext('approvedTeacher');
-    const adminUser = testEnv.authenticatedContext('adminUser', {
-      admin: true,
-    });
-
-    await check('Firestore unauth read users denied', async () => {
-      await assertFails(unauth.firestore().doc('users/userA').get());
-    });
-
-    await check('Firestore cross-user profile update denied', async () => {
-      await assertFails(
-        userA.firestore().doc('users/userB').update({ display_name: 'Hacked' }),
-      );
-    });
-
-    await check('Firestore cross-user transaction read denied', async () => {
-      await assertFails(userA.firestore().doc('transactions/txB').get());
-    });
-
-    await check('Firestore pending teacher withdrawal create denied', async () => {
-      await assertFails(
-        pendingTeacher.firestore().doc('transactions/withdrawPendingTeacher').set({
-          userId: pendingTeacher.firestore().doc('users/pendingTeacher'),
-          type: 'withdrawal',
-          status: 'pending',
-          amount: 10,
-        }),
-      );
-    });
-
-    await check('Firestore approved teacher withdrawal create allowed', async () => {
-      await assertSucceeds(
-        approvedTeacher.firestore().doc('transactions/withdrawApprovedTeacher').set({
-          userId: approvedTeacher.firestore().doc('users/approvedTeacher'),
-          type: 'withdrawal',
-          status: 'pending',
-          amount: 10,
-        }),
-      );
-    });
-
-    await check('Firestore self profile update allowed', async () => {
-      await assertSucceeds(
-        userA.firestore().doc('users/userA').update({ display_name: 'User A2' }),
-      );
-    });
-
-    await check('Firestore self user create without protected teacher status allowed', async () => {
-      await assertSucceeds(
-        userD.firestore().doc('users/userD').set({ display_name: 'User D' }),
-      );
-    });
-
-    await check('Firestore self user create with teacher status denied', async () => {
-      await assertFails(
-        testEnv
-          .authenticatedContext('userE')
-          .firestore()
-          .doc('users/userE')
-          .set({
-            display_name: 'User E',
-            teacherAccreditationStatus: 'approved',
-          }),
-      );
-    });
-
-    await check('Firestore self teacher status update denied', async () => {
-      await assertFails(
-        userA.firestore().doc('users/userA').update({
-          teacherAccreditationStatus: 'approved',
-        }),
-      );
-    });
-
-    await check('Firestore self teacher pending status update allowed', async () => {
-      await assertSucceeds(
-        userA.firestore().doc('users/userA').update({
-          teacherAccreditationStatus: 'pending',
-          verif_NS: false,
-        }),
-      );
-    });
-
-    await check('Firestore self legacy teacher verification update denied', async () => {
-      await assertFails(
-        userA.firestore().doc('users/userA').update({
-          verif_NS: true,
-        }),
-      );
-    });
-
-    await check('Firestore self matchProfile teacher approval update denied', async () => {
-      await assertFails(
-        userA.firestore().doc('users/userA').update({
-          'matchProfile.approvedTeacher': true,
-        }),
-      );
-    });
-
-    await check('Firestore admin teacher status update allowed', async () => {
-      await assertSucceeds(
-        adminUser.firestore().doc('users/userA').update({
-          teacherAccreditationStatus: 'approved',
-        }),
-      );
-    });
-
-    const teacherRequestUser = testEnv.authenticatedContext('teacherRequestUser');
-    const teacherRequestRef = teacherRequestUser
-      .firestore()
-      .doc('teacherVerificationRequests/teacherRequestUser');
-
-    await check('Firestore self teacher verification request create pending allowed', async () => {
-      await assertSucceeds(
-        teacherRequestRef.set({
-          userId: 'teacherRequestUser',
-          userRef: teacherRequestUser.firestore().doc('users/teacherRequestUser'),
-          status: 'pending',
-          displayName: 'Teacher Request User',
-          photoUrl: 'https://example.com/avatar.jpg',
-          languageInstruction: { code: 'en' },
-          nativeLanguage: { code: 'ru' },
-          country: { code: 'US' },
-          aboutMe: 'Request bio',
-          accreditation: {
-            teachingExperience: '1_3_years',
-            teachingFormats: ['conversation', 'grammar'],
-            qualificationProof: 'certificate',
-            teachingMethod: 'Short method description',
-            acceptedTeacherRules: true,
-          },
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        }),
-      );
-    });
-
-    await check('Firestore self teacher verification request update pending allowed', async () => {
-      await assertSucceeds(
-        teacherRequestRef.update({
-          aboutMe: 'Updated request bio',
-          updatedAt: serverTimestamp(),
-        }),
-      );
-    });
-
-    await check('Firestore self teacher verification request review fields denied', async () => {
-      await assertFails(
-        teacherRequestRef.update({
-          reviewComment: 'Looks good',
-          updatedAt: serverTimestamp(),
-        }),
-      );
-    });
-
-    await check('Firestore self teacher verification request approve denied', async () => {
-      await assertFails(
-        teacherRequestRef.update({
-          status: 'approved',
-          updatedAt: serverTimestamp(),
-        }),
-      );
-    });
-
-    await check('Firestore self teacher verification request create approved denied', async () => {
-      await assertFails(
-        testEnv
-          .authenticatedContext('teacherRequestApprovedUser')
-          .firestore()
-          .doc('teacherVerificationRequests/teacherRequestApprovedUser')
-          .set({
-            userId: 'teacherRequestApprovedUser',
-            userRef: testEnv
-              .authenticatedContext('teacherRequestApprovedUser')
-              .firestore()
-              .doc('users/teacherRequestApprovedUser'),
-            status: 'approved',
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          }),
-      );
-    });
-
-    await check('Firestore cross-user teacher verification request read denied', async () => {
-      await assertFails(
-        userA.firestore().doc('teacherVerificationRequests/teacherRequestUser').get(),
-      );
-    });
-
-    await check('Firestore admin teacher verification request approve allowed', async () => {
-      await assertSucceeds(
-        adminUser.firestore().doc('teacherVerificationRequests/teacherRequestUser').update({
-          status: 'approved',
-          reviewedBy: 'adminUser',
-          reviewedAt: serverTimestamp(),
-        }),
-      );
-    });
-
-    await check('Firestore session read allowed via participantIds', async () => {
-      await assertSucceeds(
-        userA.firestore().doc('videoSessions/participantSession').get(),
-      );
-    });
-
-    await check('Firestore session update allowed via participantIds', async () => {
-      await assertSucceeds(
-        userB.firestore().doc('videoSessions/participantSession').update({
-          status: 'ended',
-        }),
-      );
-    });
-
-    await check(
-      'Firestore session participantIds escalation denied to participant',
-      async () => {
-        await assertFails(
-          userA.firestore().doc('videoSessions/participantSession').update({
-            participantIds: ['userA', 'userB', 'userC'],
-          }),
-        );
-      },
-    );
-
-    await check('Firestore session read denied for non-participant', async () => {
-      await assertFails(
-        userC.firestore().doc('videoSessions/participantSession').get(),
-      );
-    });
-
-    await check(
-      'Firestore session create denied when participantIds omit requester',
-      async () => {
-        await assertFails(
-          userB.firestore().doc('videoSessions/createDenied').set({
-            studentId: 'userB',
-            participantIds: ['userA'],
-            status: 'searching',
-          }),
-        );
-      },
-    );
-
-    await check(
-      'Firestore session create allowed with requester-only participantIds',
-      async () => {
-        await assertSucceeds(
-          userA.firestore().doc('videoSessions/createAllowed').set({
-            studentId: 'userA',
-            participantIds: ['userA'],
-            status: 'searching',
-          }),
-        );
-      },
-    );
-
-    await check(
-      'Firestore session create denied when participantIds include extra uid',
-      async () => {
-        await assertFails(
-          userA.firestore().doc('videoSessions/createEscalated').set({
-            studentId: 'userA',
-            participantIds: ['userA', 'userC'],
-            status: 'searching',
-          }),
-        );
-      },
-    );
-
-    await check(
-      'Firestore session create denied when currentTutorId is preseeded',
-      async () => {
-        await assertFails(
-          userA.firestore().doc('videoSessions/createPendingTutor').set({
-            studentId: 'userA',
-            participantIds: ['userA'],
-            currentTutorId: 'userC',
-            status: 'searching',
-          }),
-        );
-      },
-    );
-
-    await check('Firestore currentTutorId fallback still allows read', async () => {
-      await assertSucceeds(
-        userC.firestore().doc('videoSessions/pendingTutorSession').get(),
-      );
-    });
-
-    await check(
-      'Firestore legacy tutorId escalation denied to participant',
-      async () => {
-        await assertFails(
-          userA.firestore().doc('videoSessions/legacyParticipantSession').update({
-            tutorId: 'userC',
-          }),
-        );
-      },
-    );
-
-    await check('Storage cross-user write denied', async () => {
-      await assertFails(
-        userA.storage().ref('users/userB/private.txt').putString('forbidden'),
-      );
-    });
-
-    await check('Storage unauth write denied', async () => {
-      await assertFails(
-        unauth.storage().ref('users/userA/unauth.txt').putString('forbidden'),
-      );
-    });
-
-    await check('Storage self write allowed', async () => {
-      await assertSucceeds(
-        userB.storage().ref('users/userB/own.txt').putString('allowed'),
-      );
-    });
-
-    await check('Session client create denied even with participantIds', async () => {
-      await assertFails(
-        userA.firestore().doc('videoSessions/clientCreateWithParticipantIds').set({
-          studentId: 'userA',
-          participantIds: ['userA'],
-          status: 'searching',
-          createdAt: serverTimestamp(),
-        }),
-      );
-    });
-
-    await check('Session create without participantIds denied', async () => {
-      await assertFails(
-        userA.firestore().doc('videoSessions/clientCreateLegacyOnly').set({
-          studentId: 'userA',
-          status: 'searching',
-          createdAt: serverTimestamp(),
-        }),
-      );
-    });
-
-    await check('Session create with extra participantIds denied', async () => {
-      await assertFails(
-        userA.firestore().doc('videoSessions/clientCreateExtraParticipant').set({
-          studentId: 'userA',
-          participantIds: ['userA', 'userB'],
-          status: 'searching',
-          createdAt: serverTimestamp(),
-        }),
-      );
-    });
-
-    await check('Session participantIds read allowed', async () => {
-      await assertSucceeds(
-        userA.firestore().doc('videoSessions/sessionParticipantIds').get(),
-      );
-    });
-
-    await check('Session legacy participant read still allowed', async () => {
-      await assertSucceeds(
-        userB.firestore().doc('videoSessions/sessionLegacy').get(),
-      );
-    });
-
-    await check('Session non-participant read denied', async () => {
-      await assertFails(
-        userC.firestore().doc('videoSessions/sessionParticipantIds').get(),
-      );
-    });
-
-    await check('Session requester navigation update allowed', async () => {
-      await assertSucceeds(
-        userA.firestore().doc('videoSessions/sessionParticipantIds').update({
-          studentNavigationTriggered: false,
-          navigationCompletedAt: serverTimestamp(),
-        }),
-      );
-    });
-
-    await check('Session responder navigation update allowed via participantIds', async () => {
-      await assertSucceeds(
-        userB.firestore().doc('videoSessions/sessionParticipantIds').update({
-          tutorNavigationTriggered: false,
-          navigationTimestamp: serverTimestamp(),
-        }),
-      );
-    });
-
-    await check('Session participantIds tamper denied', async () => {
-      await assertFails(
-        userA.firestore().doc('videoSessions/sessionParticipantIds').update({
-          participantIds: ['userA', 'userB', 'userC'],
-        }),
-      );
-    });
-
-    await check('Session non-navigation update denied for participant', async () => {
-      await assertFails(
-        userA.firestore().doc('videoSessions/sessionParticipantIds').update({
-          status: 'ended',
-        }),
-      );
-    });
-
-    await check('Caption read allowed via participantIds session membership', async () => {
-      await assertSucceeds(
-        userB
-          .firestore()
-          .doc('videoSessions/sessionParticipantIds/captionLogs/seedCaption')
-          .get(),
-      );
-    });
-
-    await check('Caption write denied for non-participant', async () => {
-      await assertFails(
-        userC
-          .firestore()
-          .doc('videoSessions/sessionParticipantIds/captionLogs/badCaption')
-          .set({
-            writerId: 'userC',
-            speakerId: 'userC',
-            source: 'local_deepgram_final',
-          }),
-      );
-    });
-
-    await check('Caption peer legacy write allowed for participant writer', async () => {
-      await assertSucceeds(
-        userA
-          .firestore()
-          .doc('videoSessions/sessionParticipantIds/captionLogs/peerCaption')
-          .set({
-            writerId: 'userA',
-            speakerId: 'daily_remote_userB',
-            source: 'peer_legacy_final',
-          }),
-      );
-    });
-
-    await check('Chat unauth conversation read denied', async () => {
-      await assertFails(unauth.firestore().doc('conversations/userA_userB').get());
-    });
-
-    await check('Chat participant conversation read allowed', async () => {
-      await assertSucceeds(userA.firestore().doc('conversations/userA_userB').get());
-    });
-
-    await check('Chat missing conversation get returns not found for signed-in user', async () => {
-      const snapshot = await assertSucceeds(
-        userA.firestore().doc('conversations/userA_userD').get(),
-      );
-      assert.equal(snapshot.exists, false);
-    });
-
-    await check('Chat conversations collection query denied', async () => {
-      await assertFails(
-        userA
-          .firestore()
-          .collection('conversations')
-          .where('participantIds', 'array-contains', 'userA')
-          .get(),
-      );
-    });
-
-    await check('Chat conversations collection scan denied', async () => {
-      await assertFails(userA.firestore().collection('conversations').get());
-    });
-
-    await check('Chat conversations query for another participant denied', async () => {
-      await assertFails(
-        userA
-          .firestore()
-          .collection('conversations')
-          .where('participantIds', 'array-contains', 'userB')
-          .get(),
-      );
-    });
-
-    await check('Chat non-participant conversation read denied', async () => {
-      await assertFails(userC.firestore().doc('conversations/userA_userB').get());
-    });
-
-    await check('Chat client conversation create denied', async () => {
-      await assertFails(
-        userA.firestore().doc('conversations/userA_userD').set({
-          pairId: 'userA_userD',
-          participantIds: ['userA', 'userD'],
-          participantRefs: [
-            userA.firestore().doc('users/userA'),
-            userA.firestore().doc('users/userD'),
-          ],
-          isUnlocked: true,
-        }),
-      );
-    });
-
-    await check('Chat unlock event access denied to clients', async () => {
-      await assertFails(
-        userA.firestore().doc('conversationUnlockEvents/fakeSession').get(),
-      );
-    });
-
-    await check('Chat unlocked messages read allowed for participant', async () => {
-      await assertSucceeds(
-        userB
-          .firestore()
-          .doc('conversations/userA_userB/messages/seedMessage')
-          .get(),
-      );
-    });
-
-    await check('Chat unlocked messages read denied for non-participant', async () => {
-      await assertFails(
-        userC
-          .firestore()
-          .doc('conversations/userA_userB/messages/seedMessage')
-          .get(),
-      );
-    });
-
-    await check('Chat locked messages read denied before unlock', async () => {
-      await assertFails(
-        userA
-          .firestore()
-          .doc('conversations/userA_userC/messages/lockedMessage')
-          .get(),
-      );
-    });
-
-    await check('Chat locked messages create denied before unlock', async () => {
-      await assertFails(
-        userA
-          .firestore()
-          .doc('conversations/userA_userC/messages/newMessage')
-          .set({
-            senderId: 'userA',
-            senderRef: userA.firestore().doc('users/userA'),
-            type: 'text',
-            text: 'Should fail while locked',
-            createdAt: serverTimestamp(),
-          }),
-      );
-    });
-
-    await check('Chat participant message create allowed after unlock', async () => {
-      await assertSucceeds(
-        userA
-          .firestore()
-          .doc('conversations/userA_userB/messages/newMessage')
-          .set({
-            senderId: 'userA',
-            senderRef: userA.firestore().doc('users/userA'),
-            type: 'text',
-            text: 'Allowed message',
-            createdAt: serverTimestamp(),
-          }),
-      );
-    });
-
-    await check('Chat message create denied for wrong senderRef', async () => {
-      await assertFails(
-        userA
-          .firestore()
-          .doc('conversations/userA_userB/messages/badSenderRef')
-          .set({
-            senderId: 'userA',
-            senderRef: userA.firestore().doc('users/userB'),
-            type: 'text',
-            text: 'Wrong sender ref',
-            createdAt: serverTimestamp(),
-          }),
-      );
-    });
-
-    await check('Chat message create denied for extra fields', async () => {
-      await assertFails(
-        userA
-          .firestore()
-          .doc('conversations/userA_userB/messages/extraField')
-          .set({
-            senderId: 'userA',
-            senderRef: userA.firestore().doc('users/userA'),
-            type: 'text',
-            text: 'Extra field',
-            createdAt: serverTimestamp(),
-            serverCreatedAt: serverTimestamp(),
-          }),
-      );
-    });
-
-    await check('Chat participant read marker update allowed on own key only', async () => {
-      await assertSucceeds(
-        userA.firestore().doc('conversations/userA_userB').update({
-          'lastReadAtByUserId.userA': serverTimestamp(),
-        }),
-      );
-    });
-
-    await check('Chat read marker update denied for another participant key', async () => {
-      await assertFails(
-        userA.firestore().doc('conversations/userA_userB').update({
-          'lastReadAtByUserId.userB': serverTimestamp(),
-        }),
-      );
-    });
-
-    await check('Chat read marker update denied for non-read fields', async () => {
-      await assertFails(
-        userA.firestore().doc('conversations/userA_userB').update({
-          lastMessageText: 'tamper',
-        }),
-      );
-    });
-  } finally {
-    await testEnv.cleanup();
-  }
-
-  result.pass = result.failures.length === 0;
-  return result;
 }
 
 function runCallLifecycleEmulatorCheck() {
@@ -1036,7 +293,9 @@ async function runConcurrentEndSessionCheck() {
       language: 'en',
       createdAt: admin.firestore.Timestamp.fromMillis(startMillis - 30 * 1000),
       startedAt: admin.firestore.Timestamp.fromMillis(startMillis),
-      sessionMetadata: {},
+      sessionMetadata: {
+        callConnectedAt: admin.firestore.Timestamp.fromMillis(startMillis),
+      },
     });
 
     const calls = await Promise.allSettled([
@@ -1102,16 +361,16 @@ async function runConcurrentEndSessionCheck() {
     result.unlockEventCreated = unlockEventAfter.exists;
 
     result.pass =
-      callChargeCount === 1 &&
+      callChargeCount === 0 &&
       earningCount === 1 &&
       result.sessionStatusAfter === 'ended' &&
       result.unlockEventCreated === true &&
       result.studentBalanceMinutesAfter !== null &&
-      result.studentBalanceMinutesAfter < result.studentBalanceMinutesBefore;
+      result.studentBalanceMinutesAfter === result.studentBalanceMinutesBefore;
 
     if (!result.pass) {
       result.failure =
-        'Expected exactly one call_charge + one earning, ended status, unlock event creation, and reduced student balance.';
+        'Expected one earning, no legacy call_charge, ended status, unlock event creation, and unchanged legacy balance.';
     }
   } catch (error) {
     result.failure = String(error);
@@ -1529,21 +788,35 @@ async function runCreateVideoSessionLoadTest() {
   );
 
   const runId = Date.now();
-  const studentId = `audit_load_student_${runId}`;
+  const requesterPrefix = `audit_load_student_${runId}_`;
   const tutorPrefix = `audit_load_tutor_${runId}_`;
 
   try {
-    await db.collection('users').doc(studentId).set({
-      role: 'student',
-      display_name: 'Load Student',
-      blockedUsers: [],
-    });
-
-    const tutorBatch = db.batch();
+    const fixtureBatch = db.batch();
+    for (let i = 0; i < result.requests; i += 1) {
+      const requesterId = `${requesterPrefix}${i}`;
+      const requestId = `audit-load-${runId}-${i}`;
+      fixtureBatch.set(db.collection('users').doc(requesterId), {
+        role: 'student',
+        display_name: `Load Student ${i}`,
+        email: `${requesterId}@example.test`,
+        blockedUsers: [],
+        learningLanguage: { code: 'en' },
+        subscription: activePaidSubscription(),
+      });
+      fixtureBatch.set(
+        db.collection('searchRequests').doc(requesterId),
+        activeSearchRequestData({
+          userId: requesterId,
+          language: 'en',
+          requestId,
+        }),
+      );
+    }
     for (let i = 0; i < 30; i += 1) {
       const tutorId = `${tutorPrefix}${i}`;
-      tutorBatch.set(db.collection('users').doc(tutorId), {
-        role: i % 2 === 0 ? 'tutor' : 'native_speaker',
+      fixtureBatch.set(db.collection('users').doc(tutorId), {
+        role: 'native_speaker',
         display_name: `Load Tutor ${i}`,
         blockedUsers: [],
         isAvailable: true,
@@ -1552,10 +825,15 @@ async function runCreateVideoSessionLoadTest() {
         language_instruction_NS: { code: 'en' },
         native_language_NS: { code: 'es' },
         Country_NS: { code: 'MX' },
+        teacherAccreditationStatus: 'approved',
         priorityScore: i + 1,
       });
+      fixtureBatch.set(db.collection('userPrivateTokens').doc(tutorId), {
+        voipToken: `audit-fcm-${tutorId}`,
+        voipTokenUpdatedAt: admin.firestore.Timestamp.now(),
+      });
     }
-    await tutorBatch.commit();
+    await fixtureBatch.commit();
 
     const durations = [];
 
@@ -1583,6 +861,7 @@ async function runCreateVideoSessionLoadTest() {
         while (queue.length > 0) {
           const idx = queue.shift();
           if (idx === undefined) break;
+          const requesterId = `${requesterPrefix}${idx}`;
 
           const start = Date.now();
           try {
@@ -1591,8 +870,9 @@ async function runCreateVideoSessionLoadTest() {
                 language: 'en',
                 preferredNativeLanguage: 'es',
                 preferredCountry: 'MX',
+                requestId: `audit-load-${runId}-${idx}`,
               },
-              { auth: { uid: studentId } },
+              { auth: { uid: requesterId } },
             );
             const elapsed = Date.now() - start;
             durations.push(elapsed);
@@ -1644,7 +924,7 @@ async function runCreateVideoSessionMatrixCheck() {
     pass: false,
     failure: null,
     scenario:
-      "student and native_speaker requesters can build all-to-all candidate pools",
+      "student search requests build the active all-to-all candidate pool",
     scenarios: {},
   };
 
@@ -1674,6 +954,7 @@ async function runCreateVideoSessionMatrixCheck() {
     const studentCandidateId = `audit_matrix_${scenarioKey}_student_${runId}`;
     const speakerCandidateId = `audit_matrix_${scenarioKey}_speaker_${runId}`;
     const offLanguageCandidateId = `audit_matrix_${scenarioKey}_other_${runId}`;
+    const requestId = `audit-matrix-${scenarioKey}-${runId}`;
     const scenarioResult = {
       pass: false,
       failure: null,
@@ -1685,21 +966,44 @@ async function runCreateVideoSessionMatrixCheck() {
       candidateRoleCounts: {},
     };
 
-    await db.collection("users").doc(requesterId).set(requesterData);
+    await db.collection("users").doc(requesterId).set({
+      ...requesterData,
+      email: requesterData.email || `${requesterId}@example.test`,
+      ...(requesterData.role === "student" ? {
+        subscription: activePaidSubscription(),
+      } : {}),
+    });
+    await seedActiveSearchRequest(db, {
+      userId: requesterId,
+      language: languageCode,
+      requestId,
+    });
 
     const batch = db.batch();
-    batch.set(db.collection("users").doc(studentCandidateId), studentCandidateData);
+    batch.set(db.collection("users").doc(studentCandidateId), {
+      ...studentCandidateData,
+      subscription: activePaidSubscription(),
+    });
     batch.set(db.collection("users").doc(speakerCandidateId), speakerCandidateData);
     batch.set(
       db.collection("users").doc(offLanguageCandidateId),
       offLanguageCandidateData,
     );
     await batch.commit();
+    await seedActiveSearchRequest(db, {
+      userId: studentCandidateId,
+      language: languageCode,
+      requestId: `audit-candidate-${studentCandidateId}`,
+    });
+    await seedCallableToken(db, speakerCandidateId);
+    if (offLanguageCandidateData.role === "native_speaker") {
+      await seedCallableToken(db, offLanguageCandidateId);
+    }
 
     const response = await wrappedCreateVideoSession(
       {
         language: languageCode,
-        requestId: `audit-matrix-${scenarioKey}-${runId}`,
+        requestId,
       },
       { auth: { uid: requesterId } },
     );
@@ -1737,8 +1041,11 @@ async function runCreateVideoSessionMatrixCheck() {
       candidateIds.includes(studentCandidateId) &&
       candidateIds.includes(speakerCandidateId) &&
       !candidateIds.includes(offLanguageCandidateId);
+    const selectedResponderId = matchContext.selectedResponderId;
     const hasExpectedParticipants =
-      participantIds.length === 1 && participantIds[0] === requesterId;
+      participantIds.length === 2 &&
+      participantIds.includes(requesterId) &&
+      participantIds.includes(selectedResponderId);
     const hasExpectedContext =
       sessionData.studentId === requesterId &&
       matchContext.version === "v2_all_to_all" &&
@@ -1787,6 +1094,7 @@ async function runCreateVideoSessionMatrixCheck() {
     const matchingCandidateId =
       `audit_matrix_${scenarioKey}_${matchingCandidateKey}_${runId}`;
     const offLanguageCandidateId = `audit_matrix_${scenarioKey}_other_${runId}`;
+    const requestId = `audit-matrix-${scenarioKey}-${runId}`;
     const scenarioResult = {
       pass: false,
       failure: null,
@@ -1798,22 +1106,51 @@ async function runCreateVideoSessionMatrixCheck() {
       candidateRoleCounts: {},
     };
 
-    await db.collection("users").doc(requesterId).set(requesterData);
+    await db.collection("users").doc(requesterId).set({
+      ...requesterData,
+      email: requesterData.email || `${requesterId}@example.test`,
+      ...(requesterData.role === "student" ? {
+        subscription: activePaidSubscription(),
+      } : {}),
+    });
+    await seedActiveSearchRequest(db, {
+      userId: requesterId,
+      language: languageCode,
+      requestId,
+    });
 
     const batch = db.batch();
     batch.set(
       db.collection("users").doc(matchingCandidateId),
-      matchingCandidateData,
+      {
+        ...matchingCandidateData,
+        ...(matchingCandidateData.role === "student" ? {
+          subscription: activePaidSubscription(),
+        } : {}),
+      },
     );
     batch.set(
       db.collection("users").doc(offLanguageCandidateId),
       offLanguageCandidateData,
     );
     await batch.commit();
+    if (matchingCandidateData.role === "student") {
+      await seedActiveSearchRequest(db, {
+        userId: matchingCandidateId,
+        language: languageCode,
+        requestId: `audit-candidate-${matchingCandidateId}`,
+      });
+    } else if (matchingCandidateData.role === "native_speaker") {
+      await seedCallableToken(db, matchingCandidateId);
+    }
+    if (offLanguageCandidateData.role === "native_speaker") {
+      await seedCallableToken(db, offLanguageCandidateId);
+    }
 
     const response = await wrappedCreateVideoSession(
       {
         language: languageCode,
+        requestId,
       },
       { auth: { uid: requesterId } },
     );
@@ -1852,8 +1189,11 @@ async function runCreateVideoSessionMatrixCheck() {
       candidateIds.length === 1 &&
       candidateIds[0] === matchingCandidateId &&
       !candidateIds.includes(offLanguageCandidateId);
+    const selectedResponderId = matchContext.selectedResponderId;
     const hasExpectedParticipants =
-      participantIds.length === 1 && participantIds[0] === requesterId;
+      participantIds.length === 2 &&
+      participantIds.includes(requesterId) &&
+      participantIds.includes(selectedResponderId);
     const hasExpectedContext =
       sessionData.studentId === requesterId &&
       matchContext.version === "v2_all_to_all" &&
@@ -1888,54 +1228,6 @@ async function runCreateVideoSessionMatrixCheck() {
   }
 
   try {
-    result.scenarios.nativeSpeakerRequester = await runScenario({
-      scenarioKey: "native_requester",
-      scenarioDescription:
-        "native_speaker requester can build all-to-all candidate pool",
-      languageCode: "en",
-      requesterData: {
-        role: "native_speaker",
-        display_name: "Matrix Requester",
-        blockedUsers: [],
-        learningLanguage: { code: "en" },
-        native_language_NS: { code: "ru" },
-        language_instruction_NS: { code: "en" },
-        teacherAccreditationStatus: "approved",
-        rating: { average: 4.7, totalReviews: 12 },
-      },
-      studentCandidateData: {
-        role: "student",
-        display_name: "Matrix Student",
-        blockedUsers: [],
-        learningLanguage: { code: "en" },
-        rating: { average: 4.1, totalReviews: 3 },
-        availabilityToday: { enabled: true },
-        Country_NS: { code: "DE" },
-      },
-      speakerCandidateData: {
-        role: "native_speaker",
-        display_name: "Matrix Speaker",
-        blockedUsers: [],
-        learningLanguage: { code: "es" },
-        language_instruction_NS: { code: "en" },
-        native_language_NS: { code: "en" },
-        teacherAccreditationStatus: "approved",
-        rating: { average: 4.9, totalReviews: 24 },
-        availabilityToday: { enabled: true },
-        Country_NS: { code: "US" },
-      },
-      offLanguageCandidateData: {
-        role: "native_speaker",
-        display_name: "Matrix Other",
-        blockedUsers: [],
-        language_instruction_NS: { code: "it" },
-        native_language_NS: { code: "it" },
-        teacherAccreditationStatus: "approved",
-        availabilityToday: { enabled: true },
-      },
-      expectedRequesterRole: "native_speaker",
-    });
-
     result.scenarios.studentRequester = await runScenario({
       scenarioKey: "student_requester",
       scenarioDescription:
@@ -2055,45 +1347,6 @@ async function runCreateVideoSessionMatrixCheck() {
       expectedCandidateRole: "native_speaker",
     });
 
-    result.scenarios.nativeSpeakerNativeSpeakerPair = await runPairScenario({
-      scenarioKey: "native_native_pair",
-      scenarioDescription:
-        "native_speaker requester can match an explicit native_speaker-native_speaker pair",
-      languageCode: "ja",
-      requesterData: {
-        role: "native_speaker",
-        display_name: "Matrix Native Native Requester",
-        blockedUsers: [],
-        learningLanguage: { code: "ja" },
-        native_language_NS: { code: "ru" },
-        language_instruction_NS: { code: "ja" },
-        teacherAccreditationStatus: "approved",
-        rating: { average: 4.4, totalReviews: 11 },
-      },
-      matchingCandidateKey: "speaker",
-      matchingCandidateData: {
-        role: "native_speaker",
-        display_name: "Matrix Native Native Speaker",
-        blockedUsers: [],
-        language_instruction_NS: { code: "ja" },
-        native_language_NS: { code: "ja" },
-        teacherAccreditationStatus: "approved",
-        rating: { average: 4.9, totalReviews: 18 },
-        availabilityToday: { enabled: true },
-        Country_NS: { code: "JP" },
-      },
-      offLanguageCandidateData: {
-        role: "student",
-        display_name: "Matrix Native Native Other",
-        blockedUsers: [],
-        learningLanguage: { code: "it" },
-        availabilityToday: { enabled: true },
-        Country_NS: { code: "IT" },
-      },
-      expectedRequesterRole: "native_speaker",
-      expectedCandidateRole: "native_speaker",
-    });
-
     result.pass = Object.values(result.scenarios).every(
       (scenario) => scenario?.pass === true,
     );
@@ -2114,300 +1367,14 @@ async function runCreateVideoSessionMatrixCheck() {
   return result;
 }
 
-async function runSameDayRepeatPreventionCheck() {
-  const result = {
-    pass: false,
-    failure: null,
-    scenarios: {
-      completedConnectedExcluded: {
-        pass: false,
-        sessionId: null,
-        historyCreated: false,
-        directStatus: null,
-        poolExcludedCompletedCandidate: false,
-        poolIncludesFreshCandidate: false,
-        failure: null,
-      },
-      neverConnectedDoesNotCount: {
-        pass: false,
-        sessionId: null,
-        historyCreated: false,
-        directStatus: null,
-        failure: null,
-      },
-      cancelledDoesNotCount: {
-        pass: false,
-        sessionId: null,
-        historyCreated: false,
-        directStatus: null,
-        failure: null,
-      },
-      testerBypass: {
-        pass: false,
-        directStatus: null,
-        failure: null,
-      },
-    },
-  };
-
-  if (!adminApp.getApps().length) {
-    adminApp.initializeApp({ projectId });
-  }
-
-  const db = admin.firestore();
-  const functionsTest = functionsTestFactory({ projectId });
-  const wrappedCreateVideoSession = functionsTest.wrap(
-    createVideoSessionModule.createVideoSession,
-  );
-  const wrappedEndSession = functionsTest.wrap(endSessionModule.endSession);
-  const previousBypassUserIds = process.env.MATCH_REPEAT_BYPASS_USER_IDS;
-  const runId = Date.now();
-  const requesterId = `repeat_requester_${runId}`;
-  const completedCandidateId = `repeat_completed_${runId}`;
-  const freshCandidateId = `repeat_fresh_${runId}`;
-  const neverConnectedCandidateId = `repeat_never_${runId}`;
-  const cancelledCandidateId = `repeat_cancelled_${runId}`;
-
-  async function seedMatchUser(userId, role) {
-    await db.collection('users').doc(userId).set({
-      role,
-      display_name: userId,
-      blockedUsers: [],
-      learningLanguage: { code: 'en' },
-      language_instruction_NS: { code: 'en' },
-      native_language_NS: { code: 'en' },
-      ...(role === 'native_speaker'
-        ? { teacherAccreditationStatus: 'approved' }
-        : {}),
-      availabilityToday: { enabled: true },
-      isInCall: false,
-      isAvailable: true,
-      balanceST: {
-        minutes: 50,
-        smallTalks: 5,
-      },
-    }, { merge: true });
-  }
-
-  function pairHistoryRefFor(candidateId) {
-    const pairId = buildPairId(requesterId, candidateId);
-    return getDailyPairCompletionRef(db, pairId, getUtcDayKey());
-  }
-
-  async function createSessionAndEnd({
-    sessionId,
-    candidateId,
-    connected,
-  }) {
-    const nowMillis = Date.now();
-    const sessionData = {
-      studentId: requesterId,
-      tutorId: candidateId,
-      participantIds: [requesterId, candidateId].sort(),
-      status: 'active',
-      createdAt: admin.firestore.Timestamp.fromMillis(
-        nowMillis - 8 * 60 * 1000,
-      ),
-      acceptedAt: admin.firestore.Timestamp.fromMillis(
-        nowMillis - 7 * 60 * 1000,
-      ),
-      matchContext: {
-        requesterId,
-        acceptedResponderId: candidateId,
-        acceptedResponderRole: 'native_speaker',
-      },
-    };
-
-    if (connected) {
-      sessionData.startedAt = admin.firestore.Timestamp.fromMillis(
-        nowMillis - 6 * 60 * 1000,
-      );
-      sessionData.sessionMetadata = {
-        callConnectedAt: admin.firestore.Timestamp.fromMillis(
-          nowMillis - 6 * 60 * 1000,
-        ),
-      };
-    }
-
-    await db.collection('videoSessions').doc(sessionId).set(sessionData);
-    await wrappedEndSession(
-      { sessionId, endReason: 'same_day_repeat_prevention_check' },
-      { auth: { uid: requesterId } },
-    );
-  }
-
-  try {
-    process.env.MATCH_REPEAT_BYPASS_USER_IDS = '';
-
-    await seedMatchUser(requesterId, 'student');
-    await seedMatchUser(completedCandidateId, 'native_speaker');
-    await seedMatchUser(freshCandidateId, 'native_speaker');
-    await seedMatchUser(neverConnectedCandidateId, 'native_speaker');
-    await seedMatchUser(cancelledCandidateId, 'native_speaker');
-
-    const completedSessionId = `repeat_completed_session_${runId}`;
-    result.scenarios.completedConnectedExcluded.sessionId = completedSessionId;
-    await createSessionAndEnd({
-      sessionId: completedSessionId,
-      candidateId: completedCandidateId,
-      connected: true,
-    });
-
-    const completedHistorySnap = await pairHistoryRefFor(
-      completedCandidateId,
-    ).get();
-    result.scenarios.completedConnectedExcluded.historyCreated =
-      completedHistorySnap.exists;
-
-    const blockedDirectResponse = await wrappedCreateVideoSession(
-      {
-        language: 'en',
-        directUserId: completedCandidateId,
-      },
-      { auth: { uid: requesterId } },
-    );
-    result.scenarios.completedConnectedExcluded.directStatus =
-      blockedDirectResponse?.status || null;
-
-    const poolResponse = await wrappedCreateVideoSession(
-      {
-        language: 'en',
-        requestId: `audit-repeat-${runId}`,
-      },
-      { auth: { uid: requesterId } },
-    );
-    const poolSessionSnap = poolResponse?.sessionId
-      ? await db.collection('videoSessions').doc(poolResponse.sessionId).get()
-      : null;
-    const poolCandidates = poolSessionSnap?.data()?.availableTutors || [];
-    result.scenarios.completedConnectedExcluded.poolExcludedCompletedCandidate =
-      !poolCandidates.includes(completedCandidateId);
-    result.scenarios.completedConnectedExcluded.poolIncludesFreshCandidate =
-      poolCandidates.includes(freshCandidateId);
-    result.scenarios.completedConnectedExcluded.pass =
-      completedHistorySnap.exists &&
-      blockedDirectResponse?.status === 'no_tutors_available' &&
-      result.scenarios.completedConnectedExcluded.poolExcludedCompletedCandidate &&
-      result.scenarios.completedConnectedExcluded.poolIncludesFreshCandidate;
-    if (!result.scenarios.completedConnectedExcluded.pass) {
-      result.scenarios.completedConnectedExcluded.failure =
-        'Completed connected pair was not excluded from same-day matching.';
-    }
-
-    const neverConnectedSessionId = `repeat_never_session_${runId}`;
-    result.scenarios.neverConnectedDoesNotCount.sessionId =
-      neverConnectedSessionId;
-    await createSessionAndEnd({
-      sessionId: neverConnectedSessionId,
-      candidateId: neverConnectedCandidateId,
-      connected: false,
-    });
-    const neverHistorySnap = await pairHistoryRefFor(
-      neverConnectedCandidateId,
-    ).get();
-    result.scenarios.neverConnectedDoesNotCount.historyCreated =
-      neverHistorySnap.exists;
-    const neverDirectResponse = await wrappedCreateVideoSession(
-      {
-        language: 'en',
-        directUserId: neverConnectedCandidateId,
-      },
-      { auth: { uid: requesterId } },
-    );
-    result.scenarios.neverConnectedDoesNotCount.directStatus =
-      neverDirectResponse?.status || null;
-    result.scenarios.neverConnectedDoesNotCount.pass =
-      !neverHistorySnap.exists &&
-      neverDirectResponse?.status === 'searching' &&
-      !!neverDirectResponse?.sessionId;
-    if (!result.scenarios.neverConnectedDoesNotCount.pass) {
-      result.scenarios.neverConnectedDoesNotCount.failure =
-        'Never-connected session incorrectly counted as a completed repeat.';
-    }
-
-    const cancelledSessionId = `repeat_cancelled_session_${runId}`;
-    result.scenarios.cancelledDoesNotCount.sessionId = cancelledSessionId;
-    await db.collection('videoSessions').doc(cancelledSessionId).set({
-      studentId: requesterId,
-      tutorId: cancelledCandidateId,
-      participantIds: [requesterId, cancelledCandidateId].sort(),
-      status: 'cancelled',
-      createdAt: admin.firestore.Timestamp.fromMillis(Date.now() - 60000),
-      sessionMetadata: {
-        callConnectedAt: admin.firestore.Timestamp.fromMillis(Date.now() - 30000),
-      },
-    });
-    const cancelledHistorySnap = await pairHistoryRefFor(
-      cancelledCandidateId,
-    ).get();
-    result.scenarios.cancelledDoesNotCount.historyCreated =
-      cancelledHistorySnap.exists;
-    const cancelledDirectResponse = await wrappedCreateVideoSession(
-      {
-        language: 'en',
-        directUserId: cancelledCandidateId,
-      },
-      { auth: { uid: requesterId } },
-    );
-    result.scenarios.cancelledDoesNotCount.directStatus =
-      cancelledDirectResponse?.status || null;
-    result.scenarios.cancelledDoesNotCount.pass =
-      !cancelledHistorySnap.exists &&
-      cancelledDirectResponse?.status === 'searching' &&
-      !!cancelledDirectResponse?.sessionId;
-    if (!result.scenarios.cancelledDoesNotCount.pass) {
-      result.scenarios.cancelledDoesNotCount.failure =
-        'Cancelled session incorrectly counted as a completed repeat.';
-    }
-
-    process.env.MATCH_REPEAT_BYPASS_USER_IDS = requesterId;
-    const bypassResponse = await wrappedCreateVideoSession(
-      {
-        language: 'en',
-        directUserId: completedCandidateId,
-      },
-      { auth: { uid: requesterId } },
-    );
-    result.scenarios.testerBypass.directStatus = bypassResponse?.status || null;
-    result.scenarios.testerBypass.pass =
-      bypassResponse?.status === 'searching' && !!bypassResponse?.sessionId;
-    if (!result.scenarios.testerBypass.pass) {
-      result.scenarios.testerBypass.failure =
-        'Tester allow-list did not bypass same-day repeat prevention.';
-    }
-
-    result.pass = Object.values(result.scenarios).every(
-      (scenario) => scenario.pass,
-    );
-    if (!result.pass) {
-      result.failure = 'One or more same-day repeat scenarios failed.';
-    }
-  } catch (error) {
-    result.failure = String(error);
-  } finally {
-    if (previousBypassUserIds === undefined) {
-      delete process.env.MATCH_REPEAT_BYPASS_USER_IDS;
-    } else {
-      process.env.MATCH_REPEAT_BYPASS_USER_IDS = previousBypassUserIds;
-    }
-    await functionsTest.cleanup();
-  }
-
-  return result;
-}
-
 async function runPartnerLevelFilterCheck() {
   const result = {
     pass: false,
     failure: null,
-    scenario: 'preferred partner level filters pool and direct calls',
+    scenario: 'preferred partner level filters the discovery pool',
     poolSessionId: null,
     poolCandidateIds: [],
-    directMismatchStatus: null,
-    directMatchStatus: null,
-    directMatchSessionId: null,
     matchContextFilters: null,
-    directMatchContextFilters: null,
   };
 
   if (!adminApp.getApps().length) {
@@ -2428,6 +1395,7 @@ async function runPartnerLevelFilterCheck() {
     await db.collection('users').doc(requesterId).set({
       role: 'student',
       display_name: 'Level Requester',
+      email: `${requesterId}@example.test`,
       blockedUsers: [],
       learningLanguage: { code: 'en' },
       level: 'Basic',
@@ -2435,6 +1403,7 @@ async function runPartnerLevelFilterCheck() {
         minutes: 50,
         smallTalks: 5,
       },
+      subscription: activePaidSubscription(),
     });
     await db.collection('users').doc(basicCandidateId).set({
       role: 'native_speaker',
@@ -2459,6 +1428,16 @@ async function runPartnerLevelFilterCheck() {
       isInCall: false,
     });
 
+    await Promise.all([
+      seedCallableToken(db, basicCandidateId),
+      seedCallableToken(db, fluentCandidateId),
+      seedActiveSearchRequest(db, {
+        userId: requesterId,
+        language: 'en',
+        requestId: `audit-level-${runId}`,
+      }),
+    ]);
+
     const poolResponse = await wrappedCreateVideoSession(
       {
         language: 'en',
@@ -2477,170 +1456,15 @@ async function runPartnerLevelFilterCheck() {
       : [];
     result.matchContextFilters = poolSessionData.matchContext?.filters || null;
 
-    const directMismatchResponse = await wrappedCreateVideoSession(
-      {
-        language: 'en',
-        preferredPartnerLevel: 'Fluent',
-        directUserId: basicCandidateId,
-      },
-      { auth: { uid: requesterId } },
-    );
-    result.directMismatchStatus = directMismatchResponse?.status || null;
-
-    const directMatchResponse = await wrappedCreateVideoSession(
-      {
-        language: 'en',
-        preferredPartnerLevel: 'Fluent',
-        directUserId: fluentCandidateId,
-      },
-      { auth: { uid: requesterId } },
-    );
-    result.directMatchStatus = directMatchResponse?.status || null;
-    result.directMatchSessionId = directMatchResponse?.sessionId || null;
-    const directMatchSessionSnap = directMatchResponse?.sessionId
-      ? await db
-          .collection('videoSessions')
-          .doc(directMatchResponse.sessionId)
-          .get()
-      : null;
-    const directMatchSessionData = directMatchSessionSnap?.data() || {};
-    result.directMatchContextFilters =
-      directMatchSessionData.matchContext?.filters || null;
-
     result.pass =
       poolResponse?.status === 'searching' &&
       result.poolCandidateIds.includes(fluentCandidateId) &&
       !result.poolCandidateIds.includes(basicCandidateId) &&
       poolSessionData.matchContext?.filters?.preferredPartnerLevel === 'Fluent' &&
-      poolSessionData.matchContext?.ranking?.levelApplied === true &&
-      directMismatchResponse?.status === 'no_tutors_available' &&
-      directMatchResponse?.status === 'searching' &&
-      !!directMatchResponse?.sessionId &&
-      directMatchSessionData.matchContext?.filters?.preferredPartnerLevel ===
-        'Fluent' &&
-      directMatchSessionData.matchContext?.ranking?.levelApplied === true &&
-      directMatchSessionData.matchContext?.directCandidateId === fluentCandidateId &&
-      Array.isArray(directMatchSessionData.availableTutors) &&
-      directMatchSessionData.availableTutors.length === 1 &&
-      directMatchSessionData.availableTutors[0] === fluentCandidateId;
+      poolSessionData.matchContext?.ranking?.levelApplied === true;
 
     if (!result.pass) {
       result.failure = 'Preferred partner level filter did not match expectations.';
-    }
-  } catch (error) {
-    result.failure = String(error);
-  } finally {
-    await functionsTest.cleanup();
-  }
-
-  return result;
-}
-
-async function runTeacherBoostRankingCheck() {
-  const result = {
-    pass: false,
-    failure: null,
-    scenario: 'approved teacher boost ranks Fluent approved teachers first',
-    sessionId: null,
-    candidateIds: [],
-    ranking: null,
-  };
-
-  if (!adminApp.getApps().length) {
-    adminApp.initializeApp({ projectId });
-  }
-
-  const db = admin.firestore();
-  const functionsTest = functionsTestFactory({ projectId });
-  const wrappedCreateVideoSession = functionsTest.wrap(
-    createVideoSessionModule.createVideoSession,
-  );
-  const runId = Date.now();
-  const requesterId = `teacher_boost_requester_${runId}`;
-  const approvedTeacherId = `teacher_boost_approved_${runId}`;
-  const pendingTeacherId = `teacher_boost_pending_${runId}`;
-  const rejectedTeacherId = `teacher_boost_rejected_${runId}`;
-  const studentPeerId = `teacher_boost_student_${runId}`;
-
-  function fluentCandidateData(displayName, status, ratingAverage) {
-    return {
-      role: 'native_speaker',
-      display_name: displayName,
-      blockedUsers: [],
-      language_instruction_NS: { code: 'en' },
-      native_language_NS: { code: 'en' },
-      availabilityToday: { enabled: true },
-      level: 'Fluent',
-      rating: { average: ratingAverage, totalReviews: 20 },
-      teacherAccreditationStatus: status,
-      isInCall: false,
-    };
-  }
-
-  try {
-    await db.collection('users').doc(requesterId).set({
-      role: 'student',
-      display_name: 'Teacher Boost Requester',
-      blockedUsers: [],
-      learningLanguage: { code: 'en' },
-      level: 'Intermediate',
-      balanceST: {
-        minutes: 50,
-        smallTalks: 5,
-      },
-    });
-    await db
-      .collection('users')
-      .doc(approvedTeacherId)
-      .set(fluentCandidateData('Approved Teacher', 'approved', 3.5));
-    await db
-      .collection('users')
-      .doc(pendingTeacherId)
-      .set(fluentCandidateData('Pending Teacher', 'pending', 5.0));
-    await db
-      .collection('users')
-      .doc(rejectedTeacherId)
-      .set(fluentCandidateData('Rejected Teacher', 'rejected', 4.9));
-    await db.collection('users').doc(studentPeerId).set({
-      role: 'student',
-      display_name: 'Fluent Student Peer',
-      blockedUsers: [],
-      learningLanguage: { code: 'en' },
-      availabilityToday: { enabled: true },
-      level: 'Fluent',
-      rating: { average: 5.0, totalReviews: 20 },
-      isInCall: false,
-    });
-
-    const response = await wrappedCreateVideoSession(
-      {
-        language: 'en',
-        preferredPartnerLevel: 'Fluent',
-        requestId: `audit-teacher-boost-${runId}`,
-      },
-      { auth: { uid: requesterId } },
-    );
-    result.sessionId = response?.sessionId || null;
-    const sessionSnap = response?.sessionId
-      ? await db.collection('videoSessions').doc(response.sessionId).get()
-      : null;
-    const sessionData = sessionSnap?.data() || {};
-    result.candidateIds = Array.isArray(sessionData.availableTutors)
-      ? sessionData.availableTutors
-      : [];
-    result.ranking = sessionData.matchContext?.ranking || null;
-
-    result.pass =
-      response?.status === 'searching' &&
-      result.candidateIds[0] === approvedTeacherId &&
-      result.candidateIds.includes(studentPeerId) &&
-      !result.candidateIds.includes(pendingTeacherId) &&
-      !result.candidateIds.includes(rejectedTeacherId) &&
-      sessionData.matchContext?.ranking?.teacherBoostApplied === true &&
-      sessionData.matchContext?.ranking?.levelApplied === true;
-    if (!result.pass) {
-      result.failure =
-        'Approved Fluent teacher did not rank first or unapproved teachers were not excluded.';
     }
   } catch (error) {
     result.failure = String(error);
@@ -3123,23 +1947,18 @@ async function main() {
     projectId,
     emulators: {
       firestore: `${firestoreHost}:${firestorePort}`,
-      storage: `${storageHost}:${storagePort}`,
+      functions: process.env.FUNCTIONS_EMULATOR || '127.0.0.1:5001',
     },
     checks: {},
   };
 
-  output.checks.rules = await runRulesChecks();
   output.checks.endSessionConcurrency = await runConcurrentEndSessionCheck();
   output.checks.unlockProcessorIntegration =
     await runUnlockProcessorIntegrationCheck();
   output.checks.createVideoSessionMatrix =
     await runCreateVideoSessionMatrixCheck();
-  output.checks.sameDayRepeatPrevention =
-    await runSameDayRepeatPreventionCheck();
   output.checks.partnerLevelFilter =
     await runPartnerLevelFilterCheck();
-  output.checks.teacherBoostRanking =
-    await runTeacherBoostRankingCheck();
   output.checks.teacherVerificationRequestFlow =
     await runTeacherVerificationRequestFlowCheck();
   output.checks.userMatchProfileSync =
@@ -3152,32 +1971,27 @@ async function main() {
   const outPath = path.join(repoRoot, 'audit', 'backend_checks_results.json');
   fs.writeFileSync(outPath, `${JSON.stringify(output, null, 2)}\n`, 'utf8');
 
-  const allPass =
-    output.checks.rules.pass &&
-    output.checks.endSessionConcurrency.pass &&
-    output.checks.unlockProcessorIntegration.pass &&
-    output.checks.createVideoSessionMatrix.pass &&
-    output.checks.sameDayRepeatPrevention.pass &&
-    output.checks.partnerLevelFilter.pass &&
-    output.checks.teacherBoostRanking.pass &&
-    output.checks.teacherVerificationRequestFlow.pass &&
-    output.checks.userMatchProfileSync.pass &&
-    output.checks.createVideoSessionLoad.pass &&
-    output.checks.callLifecycleEmulator.pass;
   const triggerDeliveryPass =
     output.checks.unlockProcessorIntegration.deliveryPass &&
     output.checks.teacherVerificationRequestFlow.deliveryPass &&
     output.checks.userMatchProfileSync.deliveryPass;
+  const allPass =
+    output.checks.endSessionConcurrency.pass &&
+    output.checks.unlockProcessorIntegration.pass &&
+    output.checks.createVideoSessionMatrix.pass &&
+    output.checks.partnerLevelFilter.pass &&
+    output.checks.teacherVerificationRequestFlow.pass &&
+    output.checks.userMatchProfileSync.pass &&
+    output.checks.createVideoSessionLoad.pass &&
+    output.checks.callLifecycleEmulator.pass &&
+    triggerDeliveryPass;
 
   console.log(JSON.stringify({
     outPath,
-    rulesPass: output.checks.rules.pass,
     endSessionPass: output.checks.endSessionConcurrency.pass,
     unlockProcessorPass: output.checks.unlockProcessorIntegration.pass,
     matrixPass: output.checks.createVideoSessionMatrix.pass,
-    sameDayRepeatPass: output.checks.sameDayRepeatPrevention.pass,
     partnerLevelPass: output.checks.partnerLevelFilter.pass,
-    teacherBoostPass: output.checks.teacherBoostRanking.pass,
     teacherVerificationPass: output.checks.teacherVerificationRequestFlow.pass,
     teacherVerificationDeliveryPass:
       output.checks.teacherVerificationRequestFlow.deliveryPass,

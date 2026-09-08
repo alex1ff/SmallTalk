@@ -55,6 +55,8 @@ const {
 const {
   reconcileSessionTrialCallsInTransaction,
 } = require("./trial_access");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "process_expired_notifications"});
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -433,7 +435,7 @@ exports.processExpiredNotifications = functions
   .runWith({ secrets: [...apnsSecrets, ...dailySecrets] })
   .pubsub.schedule("every 1 minutes")
   .onRun(async () => {
-    console.log("⏰ Processing expired notifications (updated version)...");
+    safeLog.log("expired_notifications_run_started");
     const now = admin.firestore.Timestamp.now();
 
     try {
@@ -447,27 +449,29 @@ exports.processExpiredNotifications = functions
         .get();
 
       if (expiredQuery.empty) {
-        console.log("📭 No expired notifications found");
+        safeLog.log("expired_notifications_empty");
         return null;
       }
 
-      console.log(`⏰ Found ${expiredQuery.size} expired notifications`);
+      safeLog.log("expired_notifications_found", {
+        counts: {expired: expiredQuery.size},
+      });
 
       for (const doc of expiredQuery.docs) {
         try {
           await processExpiredNotification(doc);
         } catch (error) {
-          console.error(
-            `❌ Error processing notification ${doc.id}:`,
-            error.message,
-          );
+          safeLog.error("expired_notification_failed", {
+            notificationId: doc.id,
+            error,
+          });
         }
       }
 
-      console.log("✅ Expired notifications processing completed");
+      safeLog.log("expired_notifications_run_completed");
       return null;
     } catch (error) {
-      console.error("❌ Error processing expired notifications:", error);
+      safeLog.error("expired_notifications_run_failed", {error});
       return null;
     }
   });
@@ -478,7 +482,7 @@ async function processExpiredNotification(notificationDoc) {
   const initialNotificationData = notificationDoc.data() || {};
   const sessionId = initialNotificationData.sessionId;
   try {
-    console.log(`📺 Processing expired notification: ${notificationId}`);
+    safeLog.log("expired_notification_started", {notificationId, sessionId});
     logCallLifecycleEvent({
       event: "timeout_processing_started",
       source: "processExpiredNotifications",
@@ -501,10 +505,7 @@ async function processExpiredNotification(notificationDoc) {
             nowMillis: Date.now(),
           });
       } catch (error) {
-        console.error(
-          "⚠️ Failed to collect fresh responder pool after timeout:",
-          error.message,
-        );
+        safeLog.error("timeout_responder_pool_failed", {sessionId, error});
       }
     }
 
@@ -763,10 +764,14 @@ async function processExpiredNotification(notificationDoc) {
           ]));
         }
         if (skippedCandidateIds.length > 0) {
-          console.log("⏭️ Skipped non-callable candidates:", skippedCandidateIds);
+          safeLog.log("non_callable_candidates_skipped", {
+            counts: {skipped: skippedCandidateIds.length},
+          });
         }
         if (skippedLockCandidateIds.length > 0) {
-          console.log("⏭️ Skipped locked candidates:", skippedLockCandidateIds);
+          safeLog.log("locked_candidates_skipped", {
+            counts: {skipped: skippedLockCandidateIds.length},
+          });
         }
 
         if (!nextTutor) {
@@ -864,12 +869,10 @@ async function processExpiredNotification(notificationDoc) {
     );
 
     if (!transition || (!transition.shouldNotify && !transition.shouldRecordMissed)) {
-      console.log(
-        "⏭️ Skipping expired notification processing for",
+      safeLog.log("expired_notification_skipped", {
         notificationId,
-        "reason:",
-        transition?.skipReason || "unknown",
-      );
+        reasonCode: transition?.skipReason || "unknown",
+      });
       logCallLifecycleEvent({
         event: "timeout_skipped",
         source: "processExpiredNotifications",
@@ -898,9 +901,10 @@ async function processExpiredNotification(notificationDoc) {
     };
 
     if (transition.shouldRecordMissed) {
-      console.log(
-        `👤 Current responder ${transition.timedOutResponderId} did not respond - searching next`,
-      );
+      safeLog.log("timed_out_responder_reroute", {
+        notificationId,
+        responderId: transition.timedOutResponderId,
+      });
       try {
         await ensureConversationCallEventForSession({
           db: admin.firestore(),
@@ -916,7 +920,10 @@ async function processExpiredNotification(notificationDoc) {
           partnerId: transition.timedOutResponderId,
         });
       } catch (error) {
-        console.error("⚠️ Failed to create missed call event:", error);
+        safeLog.error("missed_call_event_write_failed", {
+          sessionId,
+          error,
+        });
       }
     }
 
@@ -940,11 +947,10 @@ async function processExpiredNotification(notificationDoc) {
 
     if (transition.shouldNotify) {
       const pushPayload = transition.pushPayload || {};
-      console.log("📨 Sending notification to next tutor:", transition.nextTutor);
-      console.log(
-        "✅ Firestore notification created for tutor:",
-        transition.nextTutor,
-      );
+      safeLog.log("timeout_handoff_notification_created", {
+        sessionId,
+        responderId: transition.nextTutor,
+      });
 
       const validationReads = [sessionRef.get()];
       if (transition.notificationId) {
@@ -956,9 +962,7 @@ async function processExpiredNotification(notificationDoc) {
       const [freshValidationSnap, notificationValidationSnap] =
         await Promise.all(validationReads);
       if (!freshValidationSnap.exists) {
-        console.log(
-          "⏭️ Skipping push because session disappeared after assignment",
-        );
+        safeLog.warn("timeout_push_session_missing", {sessionId});
         logCallLifecycleEvent({
           event: "timeout_push_skipped",
           source: "processExpiredNotifications",
@@ -980,9 +984,7 @@ async function processExpiredNotification(notificationDoc) {
           transition.nextTutor,
         )
       ) {
-        console.log(
-          "⏭️ Skipping push because tutor assignment changed after transaction",
-        );
+        safeLog.log("timeout_push_assignment_changed", {sessionId});
         logCallLifecycleEvent({
           event: "timeout_push_skipped",
           source: "processExpiredNotifications",
@@ -1003,9 +1005,7 @@ async function processExpiredNotification(notificationDoc) {
           responderId: transition.nextTutor,
         })
       ) {
-        console.log(
-          "⏭️ Skipping push because tutor is already accepting the session",
-        );
+        safeLog.log("timeout_push_responder_busy", {sessionId});
         logCallLifecycleEvent({
           event: "timeout_push_skipped",
           source: "processExpiredNotifications",
@@ -1026,9 +1026,7 @@ async function processExpiredNotification(notificationDoc) {
           notificationData.sessionId !== sessionId ||
           notificationData.recipientId !== transition.nextTutor
         ) {
-          console.log(
-            "⏭️ Skipping push because notification changed after assignment",
-          );
+          safeLog.log("timeout_push_notification_changed", {sessionId});
           logCallLifecycleEvent({
             event: "timeout_push_skipped",
             source: "processExpiredNotifications",
@@ -1056,10 +1054,10 @@ async function processExpiredNotification(notificationDoc) {
           pushResult,
         });
         if (pushLogDecision.isError) {
-          console.error(
-            "⚠️ Failed to send VoIP push (non-critical):",
-            pushLogDecision.reason,
-          );
+          safeLog.error("timeout_voip_push_failed", {
+            sessionId,
+            errorCode: pushLogDecision.errorCode,
+          });
           logCallLifecycleError({
             event: pushLogDecision.event,
             source: "processExpiredNotifications",
@@ -1071,12 +1069,15 @@ async function processExpiredNotification(notificationDoc) {
           });
         } else {
           if (pushLogDecision.result === "sent") {
-            console.log("✅ VoIP push sent to next tutor");
+            safeLog.log("timeout_voip_push_sent", {
+              sessionId,
+              responderId: transition.nextTutor,
+            });
           } else {
-            console.log(
-              "⏭️ VoIP push not sent:",
-              pushLogDecision.skipReason || "unknown",
-            );
+            safeLog.log("timeout_voip_push_skipped", {
+              sessionId,
+              reasonCode: pushLogDecision.skipReason || "unknown",
+            });
           }
           logCallLifecycleEvent({
             event: pushLogDecision.event,
@@ -1089,10 +1090,7 @@ async function processExpiredNotification(notificationDoc) {
           });
         }
       } catch (pushError) {
-        console.error(
-          "⚠️ Failed to send VoIP push (non-critical):",
-          pushError.message,
-        );
+        safeLog.error("timeout_voip_push_failed", {sessionId, error: pushError});
         logCallLifecycleError({
           event: "timeout_push_failed",
           source: "processExpiredNotifications",
@@ -1106,9 +1104,13 @@ async function processExpiredNotification(notificationDoc) {
     }
 
     logTimeoutCompleted();
-    console.log(`✅ Notification ${notificationId} processed successfully`);
+    safeLog.log("expired_notification_completed", {notificationId, sessionId});
   } catch (error) {
-    console.error(`❌ Error processing notification ${notificationId}:`, error);
+    safeLog.error("expired_notification_failed", {
+      notificationId,
+      sessionId,
+      error,
+    });
     logCallLifecycleError({
       event: "timeout_failed",
       source: "processExpiredNotifications",
@@ -1140,7 +1142,7 @@ exports.__private__ = {
 // 🔔 ОТПРАВКА VOIP PUSH ПРЕПОДАВАТЕЛЮ
 async function sendVoipPushToTutor(tutorId, callData) {
   try {
-    console.log("📲 Preparing VoIP push for tutor:", tutorId);
+    safeLog.log("voip_push_prepare", {tutorId});
 
     const tutorDoc = await admin
       .firestore()
@@ -1149,7 +1151,7 @@ async function sendVoipPushToTutor(tutorId, callData) {
       .get();
 
     if (!tutorDoc.exists) {
-      console.log("⚠️ Tutor document not found:", tutorId);
+      safeLog.warn("voip_push_recipient_not_found", {tutorId});
       return {
         sent: false,
         reason: "tutor_not_found",
@@ -1168,7 +1170,7 @@ async function sendVoipPushToTutor(tutorId, callData) {
       await getUserVoipTokens(tutorId, tutorData);
 
     if (!voipPushToken && !fcmToken) {
-      console.log("⚠️ Tutor has no push tokens saved");
+      safeLog.warn("voip_push_tokens_missing", {tutorId});
       return {
         sent: false,
         reason: "no_push_tokens",
@@ -1184,13 +1186,13 @@ async function sendVoipPushToTutor(tutorId, callData) {
           topic: voipTopic,
           payload: apnsPayload,
         });
-        console.log("✅ APNs VoIP push sent successfully");
+        safeLog.log("voip_apns_push_sent", {tutorId});
         return {
           sent: true,
           channel: "apns",
         };
       } catch (error) {
-        console.error("❌ Error sending APNs VoIP push:", error.message);
+        safeLog.error("voip_apns_push_failed", {tutorId, error});
         if (!fcmToken) {
           return {
             sent: false,
@@ -1203,15 +1205,14 @@ async function sendVoipPushToTutor(tutorId, callData) {
     }
 
     if (!fcmToken) {
-      console.log("⚠️ No FCM token available for fallback");
+      safeLog.warn("voip_fcm_token_missing", {tutorId});
       return {
         sent: false,
         reason: "no_fcm_token",
       };
     }
 
-    console.log("📱 FCM token found");
-    console.log("📦 Using apns-topic for FCM fallback:", bundleId);
+    safeLog.log("voip_fcm_fallback", {tutorId, platform: "ios"});
 
     const message = buildTeacherIncomingCallFcmMessage({
       token: fcmToken,
@@ -1220,7 +1221,7 @@ async function sendVoipPushToTutor(tutorId, callData) {
     });
 
     const response = await admin.messaging().send(message);
-    console.log("✅ FCM push sent successfully. Message ID:", response);
+    safeLog.log("voip_fcm_push_sent", {tutorId});
 
     return {
       sent: true,
@@ -1228,7 +1229,7 @@ async function sendVoipPushToTutor(tutorId, callData) {
       messageId: response,
     };
   } catch (error) {
-    console.error("❌ Error sending VoIP push to tutor:", error);
+    safeLog.error("voip_push_failed", {tutorId, error});
     return {
       sent: false,
       reason: "push_send_failed",

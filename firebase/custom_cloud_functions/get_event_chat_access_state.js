@@ -1,5 +1,7 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "get_event_chat_access_state"});
 
 const REQUEST_TIMEOUT_SECONDS = 30;
 const EVENT_STATUS_ACTIVE = "active";
@@ -253,7 +255,7 @@ exports.getEventChatAccessState = functions
         if (err instanceof functions.https.HttpsError) {
           throw err;
         }
-        console.error("getEventChatAccessState failed", {uid, err});
+        safeLog.error("event_chat_access_state_failed", {uid, error: err});
         throw new functions.https.HttpsError(
             "internal",
             "Could not load event chat access state",

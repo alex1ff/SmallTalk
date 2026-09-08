@@ -1,9 +1,14 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const {createSafeConsole} = require("./safe_log");
 const {
   applyTransferEvent,
   transactionDocumentIdForEvent,
 } = require("./revenue_cat_webhook").__private__;
+
+const safeConsole = createSafeConsole({
+  source: "retry_pending_revenuecat_transfers",
+});
 
 exports.retryPendingRevenueCatTransfers = functions.pubsub
     .schedule("every 5 minutes")
@@ -53,9 +58,8 @@ exports.retryPendingRevenueCatTransfers = functions.pubsub
         });
         if (!result.pending && !result.duplicate) resolved += 1;
       }
-      console.log("✅ Pending RevenueCat transfers retried", {
-        scanned: snapshot.size,
-        resolved,
+      safeConsole.log("revenuecat_transfer_retry_completed", {
+        counts: {scanned: snapshot.size, resolved},
       });
       return null;
     });

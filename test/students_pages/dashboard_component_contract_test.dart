@@ -77,6 +77,9 @@ void main() {
     expect(source, isNot(contains('count == null || count <= 0')));
     expect(source, isNot(contains('количество людей недоступно')));
     expect(source, isNot(contains('people count unavailable')));
+    expect(source, contains('_partnerCountCacheKeysLoaded'));
+    expect(source, contains('_partnerCacheScope()'));
+    expect(source, contains('userScope: cacheScope'));
   });
 
   test('student dashboard start search access checks stay ordered', () {
@@ -163,12 +166,15 @@ void main() {
     expect(source, contains("'requestId': requestId"));
   });
 
-  test('local search timeout offers explicit passive consent without manual stop', () {
+  test(
+      'local search timeout offers explicit passive consent without manual stop',
+      () {
     final source = File(
       'lib/students_pages/students_dashboard/students_dashboard_widget.dart',
     ).readAsStringSync();
     final start = source.indexOf('void _handleForegroundSearchNoticeDue');
-    final end = source.indexOf('void _showForegroundSearchNoticeIfNeeded', start);
+    final end =
+        source.indexOf('void _showForegroundSearchNoticeIfNeeded', start);
     final transition = source.substring(start, end);
     expect(transition, contains('StudentDashboardSearchState.choosingQueue'));
     expect(transition, contains('_clearSearchHeartbeatTimer()'));

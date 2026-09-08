@@ -26,6 +26,8 @@ const {
 const {
   buildRoomJoinParticipantMetadata,
 } = require("./room_join_signals");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "daily_webhook"});
 
 const dailyWebhookSecret = defineSecret("DAILY_WEBHOOK_SECRET");
 const dailyApiSecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
@@ -522,7 +524,7 @@ exports.dailyWebhook = functions
 
     const expectedSecret = dailyWebhookSecret.value();
     if (!expectedSecret) {
-      console.error("❌ DAILY_WEBHOOK_SECRET not configured");
+      safeLog.error("daily_webhook_secret_missing");
       res.status(500).send("Server not configured");
       return;
     }
@@ -535,7 +537,7 @@ exports.dailyWebhook = functions
       signatureHeader,
       timestampHeader,
     })) {
-      console.warn("⚠️ dailyWebhook signature validation failed");
+      safeLog.warn("daily_webhook_signature_invalid");
       res.status(401).send("Unauthorized");
       return;
     }
@@ -565,7 +567,7 @@ exports.dailyWebhook = functions
         .get();
       const candidate = findCandidateSessionDoc(querySnapshot, event);
       if (!candidate) {
-        console.warn("⚠️ dailyWebhook ignored event without unique session", {
+        safeLog.warn("daily_webhook_session_ambiguous", {
           eventId: event.eventId,
           roomName: event.roomName,
         });
@@ -577,10 +579,10 @@ exports.dailyWebhook = functions
       try {
         presenceData = await getDailyRoomPresence(event.roomName);
       } catch (error) {
-        console.error("⚠️ dailyWebhook Daily presence check failed", {
+        safeLog.error("daily_presence_check_failed", {
           eventId: event.eventId,
           roomName: event.roomName,
-          error: error?.message || error,
+          error,
         });
       }
 
@@ -615,7 +617,7 @@ exports.dailyWebhook = functions
         };
       });
 
-      console.log("✅ dailyWebhook processed", {
+      safeLog.log("daily_webhook_processed", {
         eventId: event.eventId,
         updated: result.updated,
         reason: result.reason,
@@ -623,9 +625,9 @@ exports.dailyWebhook = functions
       });
       res.status(200).send("OK");
     } catch (error) {
-      console.error("❌ dailyWebhook failed", {
+      safeLog.error("daily_webhook_failed", {
         eventId: event.eventId,
-        error: error?.message || error,
+        error,
       });
       res.status(500).send("Internal error");
     }

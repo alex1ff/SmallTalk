@@ -6,6 +6,7 @@ Widget _buildSubject({
   required int displaySeconds,
   bool hasCountdown = false,
   bool isWarning = false,
+  bool useEnglish = false,
 }) {
   return MaterialApp(
     home: Scaffold(
@@ -15,6 +16,7 @@ Widget _buildSubject({
           displaySeconds: displaySeconds,
           hasCountdown: hasCountdown,
           isWarning: isWarning,
+          useEnglish: useEnglish,
         ),
       ),
     ),
@@ -75,5 +77,19 @@ void main() {
 
     expect(find.text('4:56'), findsOneWidget);
     expect(find.text('до лимита'), findsOneWidget);
+  });
+
+  testWidgets('renders countdown labels in English', (tester) async {
+    await tester.pumpWidget(
+      _buildSubject(
+        displaySeconds: 59,
+        hasCountdown: true,
+        isWarning: true,
+        useEnglish: true,
+      ),
+    );
+
+    expect(find.text('1 minute remaining'), findsOneWidget);
+    expect(find.textContaining('лимит'), findsNothing);
   });
 }

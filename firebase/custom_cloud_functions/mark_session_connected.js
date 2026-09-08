@@ -25,6 +25,8 @@ const {
   markSessionTrialCallContextsConnectedInTransaction,
   readSessionTrialCallContextsInTransaction,
 } = require("./trial_access");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "mark_session_connected"});
 
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 const MAX_SESSION_ID_LENGTH = 128;
@@ -426,9 +428,9 @@ exports.markSessionConnected = functions
     try {
       presenceData = await getDailyRoomPresence(signalResult.dailyRoomName);
     } catch (error) {
-      console.error("⚠️ Daily presence verification failed:", {
+      safeLog.error("daily_presence_verification_failed", {
         sessionId,
-        error: error?.message || error,
+        error,
       });
       const {
         shouldVerifyDailyPresence: _shouldVerifyDailyPresence,

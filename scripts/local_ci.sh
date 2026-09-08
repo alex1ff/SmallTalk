@@ -3,6 +3,12 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
+if [[ "${1:-}" != "--checks" ]]; then
+  exec node scripts/local_ci_runner.js
+fi
+
+node --test scripts/local_ci_runner.test.js
+
 flutter pub get
 flutter analyze
 flutter test

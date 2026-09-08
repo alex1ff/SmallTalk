@@ -1,5 +1,6 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const {createSafeConsole} = require("./safe_log");
 
 const {
   REGISTRATION_GIFT_MINUTES,
@@ -8,6 +9,7 @@ const {
 
 const REQUEST_TIMEOUT_SECONDS = 30;
 const REGISTRATION_GIFT_MAX_ACCOUNT_AGE_MS = 24 * 60 * 60 * 1000;
+const safeConsole = createSafeConsole({source: "claim_registration_gift"});
 
 function hasMapValue(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -199,7 +201,7 @@ exports.claimRegistrationGift = functions
         if (err instanceof functions.https.HttpsError) {
           throw err;
         }
-        console.error("claimRegistrationGift failed", {uid, err});
+        safeConsole.error("registration_gift_claim_failed", {uid, error: err});
         throw new functions.https.HttpsError(
             "internal",
             "Unable to claim registration gift",

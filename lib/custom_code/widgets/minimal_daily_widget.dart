@@ -421,6 +421,19 @@ class MinimalDailyWidget extends StatefulWidget {
 
 class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     with WidgetsBindingObserver, TickerProviderStateMixin {
+  bool _usesEnglishUi = false;
+
+  String _text({required String ru, required String en}) =>
+      _usesEnglishUi ? en : ru;
+
+  String _captionRuntimeMessage(String code, String fallback) {
+    return localizedCaptionRuntimeMessage(
+      useEnglish: _usesEnglishUi,
+      code: code,
+      fallback: fallback,
+    );
+  }
+
   static final _processDailyLease = DailySessionLease();
   late final _dailySession = DailySessionController<CallClient>(
     lease: _processDailyLease,
@@ -462,8 +475,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     resolveCredential: ({bool forceRefresh = false}) =>
         _resolveDeepgramCredential(forceRefresh: forceRefresh),
     onMessage: _handleDeepgramMessage,
-    onIssue: ({required code, required message}) =>
-        _reportCaptionRuntimeIssue(code: code, message: message),
+    onIssue: ({required code, required message}) => _reportCaptionRuntimeIssue(
+      code: code,
+      message: _captionRuntimeMessage(code, message),
+    ),
     onCredentialUnavailable: _reportGenericCredentialUnavailable,
     onStreamingChanged: (streaming) {
       if (mounted && !_disposed) {
@@ -608,21 +623,24 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   static const int _callCheckpointNoticeDurationMs = 4000;
   static const int _sessionLimitWarningLeadSeconds = 60;
   static const double _chatWideBreakpoint = 720;
-  static const List<_CallCheckpointNotice> _callCheckpointNotices =
-      <_CallCheckpointNotice>[
-    _CallCheckpointNotice(
-      minutes: 5,
-      title: 'Прошло 5 минут',
-      subtitle: 'Продолжай, если тебе комфортно.',
-      accentColor: Color(0xFFA0BBFF),
-    ),
-    _CallCheckpointNotice(
-      minutes: 10,
-      title: 'Прошло 10 минут',
-      subtitle: 'Можно завершить звонок, когда будешь готов(а).',
-      accentColor: Color(0xFF7430E8),
-    ),
-  ];
+  _CallCheckpointNotice _checkpointNotice(int minutes) => _CallCheckpointNotice(
+        minutes: minutes,
+        title: _text(
+          ru: 'Прошло $minutes минут',
+          en: '$minutes minutes elapsed',
+        ),
+        subtitle: minutes == 5
+            ? _text(
+                ru: 'Продолжай, если тебе комфортно.',
+                en: 'Keep going if you feel comfortable.',
+              )
+            : _text(
+                ru: 'Можно завершить звонок, когда будешь готов(а).',
+                en: 'You can end the call whenever you are ready.',
+              ),
+        accentColor:
+            minutes == 5 ? const Color(0xFFA0BBFF) : const Color(0xFF7430E8),
+      );
 
   @override
   void initState() {
@@ -631,6 +649,12 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     _chatFocusNode.addListener(_handleChatFocusChanged);
     _deepgramCredential = _configuredDeepgramCredentialFor(widget);
     _initializeWidget();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _usesEnglishUi = Localizations.localeOf(context).languageCode == 'en';
   }
 
   void _handleChatFocusChanged() {
@@ -756,7 +780,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       } on DeepgramCredentialException catch (error) {
         _reportCaptionRuntimeIssue(
           code: error.code,
-          message: error.message,
+          message: _captionRuntimeMessage(error.code, error.message),
         );
         if (kDebugMode) print('Deepgram credential: refresh_rejected');
       } catch (_) {
@@ -783,8 +807,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     }
     _reportCaptionRuntimeIssue(
       code: 'caption_token_unavailable',
-      message:
-          'Субтитры временно недоступны: не удалось получить токен распознавания.',
+      message: _text(
+        ru: 'Субтитры временно недоступны: не удалось получить токен распознавания.',
+        en: 'Captions are temporarily unavailable: speech recognition access could not be obtained.',
+      ),
     );
   }
 
@@ -863,8 +889,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     _updateState(_state.copyWith(
       connectionState: ConnectionState.failed,
       hasTerminalError: true,
-      error:
-          'Не удалось безопасно перезапустить звонок. Закройте и снова откройте приложение.',
+      error: _text(
+        ru: 'Не удалось безопасно перезапустить звонок. Закройте и снова откройте приложение.',
+        en: 'The call could not restart safely. Close and reopen the app.',
+      ),
     ));
   }
 
@@ -1153,12 +1181,12 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
   String _participantDisplayName(
     ParticipantId participantId, {
-    String fallback = 'Собеседник',
+    String? fallback,
   }) {
     final participant = _callClient?.participants.all[participantId];
     return participant_identity.resolveRemoteParticipantName(
       username: participant?.info.username,
-      fallback: fallback,
+      fallback: fallback ?? _text(ru: 'Собеседник', en: 'Partner'),
     );
   }
 
@@ -1758,7 +1786,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       _updateState(_state.copyWith(
         connectionState: ConnectionState.failed,
         hasTerminalError: false,
-        error: safeDecision.userMessage,
+        error: _text(
+          ru: safeDecision.userMessage,
+          en: safeDecision.userMessageEn,
+        ),
       ));
       return;
     }
@@ -1766,7 +1797,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     _updateState(_state.copyWith(
       connectionState: ConnectionState.failed,
       hasTerminalError: false,
-      error: safeDecision.userMessage,
+      error: _text(
+        ru: safeDecision.userMessage,
+        en: safeDecision.userMessageEn,
+      ),
     ));
 
     if (_state.retryCount < _maxRetryAttempts) {
@@ -1902,15 +1936,19 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         case deepgram_parser.DeepgramMessageKind.invalidEnvelope:
           _reportCaptionRuntimeIssue(
             code: 'deepgram_message_parse_failed',
-            message:
-                'Субтитры временно недоступны: не удалось обработать ответ распознавания.',
+            message: _text(
+              ru: 'Субтитры временно недоступны: не удалось обработать ответ распознавания.',
+              en: 'Captions are temporarily unavailable: the speech recognition response could not be processed.',
+            ),
           );
           return;
         case deepgram_parser.DeepgramMessageKind.serviceError:
           _reportCaptionRuntimeIssue(
             code: 'deepgram_error_frame',
-            message:
-                'Субтитры временно недоступны: сервис распознавания вернул ошибку.',
+            message: _text(
+              ru: 'Субтитры временно недоступны: сервис распознавания вернул ошибку.',
+              en: 'Captions are temporarily unavailable: the speech recognition service returned an error.',
+            ),
           );
           return;
         case deepgram_parser.DeepgramMessageKind.utteranceEnd:
@@ -1932,8 +1970,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     } catch (_) {
       _reportCaptionRuntimeIssue(
         code: 'deepgram_message_parse_failed',
-        message:
-            'Субтитры временно недоступны: не удалось обработать ответ распознавания.',
+        message: _text(
+          ru: 'Субтитры временно недоступны: не удалось обработать ответ распознавания.',
+          en: 'Captions are temporarily unavailable: the speech recognition response could not be processed.',
+        ),
       );
       if (kDebugMode) print('Deepgram message: processing_failed');
     }
@@ -2894,9 +2934,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       unawaited(_requestAutoEndAtSessionLimit());
     }
     for (final minutes in update.checkpointMinutes) {
-      _showCallCheckpointNotice(_callCheckpointNotices.firstWhere(
-        (notice) => notice.minutes == minutes,
-      ));
+      _showCallCheckpointNotice(_checkpointNotice(minutes));
     }
   }
 
@@ -2971,20 +3009,35 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       _showCallCheckpointNotice(
         _CallCheckpointNotice(
           minutes: -2,
-          title: 'Продление не выполнено',
+          title: _text(
+            ru: 'Продление не выполнено',
+            en: 'Extension failed',
+          ),
           subtitle: error.code == 'failed-precondition'
-              ? 'Лимит уже недоступен или звонок уже продлён.'
-              : 'Не удалось отправить согласие на продление.',
+              ? _text(
+                  ru: 'Лимит уже недоступен или звонок уже продлён.',
+                  en: 'The limit is no longer available or the call has already been extended.',
+                )
+              : _text(
+                  ru: 'Не удалось отправить согласие на продление.',
+                  en: 'Could not submit your extension consent.',
+                ),
           accentColor: const Color(0xFFFF6B6B),
         ),
       );
     } catch (_) {
       _showCallCheckpointNotice(
-        const _CallCheckpointNotice(
+        _CallCheckpointNotice(
           minutes: -2,
-          title: 'Продление не выполнено',
-          subtitle: 'Не удалось отправить согласие на продление.',
-          accentColor: Color(0xFFFF6B6B),
+          title: _text(
+            ru: 'Продление не выполнено',
+            en: 'Extension failed',
+          ),
+          subtitle: _text(
+            ru: 'Не удалось отправить согласие на продление.',
+            en: 'Could not submit your extension consent.',
+          ),
+          accentColor: const Color(0xFFFF6B6B),
         ),
       );
     } finally {
@@ -3090,7 +3143,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     if (kDebugMode) print('Daily widget: initialization_failed');
 
     _updateState(_state.copyWith(
-      error: 'Не удалось подготовить звонок. Повторите попытку.',
+      error: _text(
+        ru: 'Не удалось подготовить звонок. Повторите попытку.',
+        en: 'Could not prepare the call. Please try again.',
+      ),
     ));
   }
 
@@ -3478,25 +3534,28 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
     // Remote participant just left — call is ending, not "waiting".
     if (_remoteLeftTimer != null) {
-      return 'Звонок завершается...';
+      return _text(ru: 'Звонок завершается...', en: 'Ending call...');
     }
 
     final status = widget.sessionStatus?.trim().toLowerCase();
     final isStudent = widget.isStudent == true;
 
     if (status == 'ended' || status == 'cancelled' || status == 'expired') {
-      return 'Звонок завершается...';
+      return _text(ru: 'Звонок завершается...', en: 'Ending call...');
     }
 
     if (status == 'searching' && isStudent) {
-      return 'Ищем собеседника...';
+      return _text(ru: 'Ищем собеседника...', en: 'Finding a partner...');
     }
 
     if (_state.connectionState != ConnectionState.connected) {
-      return 'Соединяемся...';
+      return _text(ru: 'Соединяемся...', en: 'Connecting...');
     }
 
-    return 'Ожидаем подключение собеседника...';
+    return _text(
+      ru: 'Ожидаем подключение собеседника...',
+      en: 'Waiting for your partner to connect...',
+    );
   }
 
   Widget _buildPrimaryVideo({bool? showRemoteParticipant}) {
@@ -3519,6 +3578,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
           isWarning: hasCountdown &&
               remainingSeconds > 0 &&
               remainingSeconds <= _sessionLimitWarningLeadSeconds,
+          useEnglish: _usesEnglishUi,
         );
       },
     );
@@ -3567,76 +3627,84 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   Widget _buildCallCheckpointNoticeCard(_CallCheckpointNotice notice) {
     final accentColor = notice.accentColor;
 
-    return RepaintBoundary(
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-            horizontal: ExpatlioDesign.space16,
-            vertical: ExpatlioDesign.space12),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.72),
-          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
-          border: Border.all(
-            color: accentColor.withValues(alpha: 0.46),
-            width: 1.1,
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      label: '${notice.title}. ${notice.subtitle}',
+      child: ExcludeSemantics(
+        child: RepaintBoundary(
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+                horizontal: ExpatlioDesign.space16,
+                vertical: ExpatlioDesign.space12),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.72),
+              borderRadius:
+                  BorderRadius.circular(ExpatlioDesign.radiusExtraLarge),
+              border: Border.all(
+                color: accentColor.withValues(alpha: 0.46),
+                width: 1.1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.22),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.max,
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: accentColor.withValues(alpha: 0.18),
+                    borderRadius:
+                        BorderRadius.circular(ExpatlioDesign.radiusMedium),
+                  ),
+                  child: Icon(
+                    Icons.schedule_rounded,
+                    color: accentColor,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: ExpatlioDesign.space12),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        notice.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          height: 1.1,
+                        ),
+                      ),
+                      const SizedBox(height: ExpatlioDesign.space4),
+                      Text(
+                        notice.subtitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.78),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w400,
+                          height: 1.25,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.22),
-              blurRadius: 20,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.max,
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: accentColor.withValues(alpha: 0.18),
-                borderRadius:
-                    BorderRadius.circular(ExpatlioDesign.radiusMedium),
-              ),
-              child: Icon(
-                Icons.schedule_rounded,
-                color: accentColor,
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: ExpatlioDesign.space12),
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    notice.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      height: 1.1,
-                    ),
-                  ),
-                  const SizedBox(height: ExpatlioDesign.space4),
-                  Text(
-                    notice.subtitle,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.78),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w400,
-                      height: 1.25,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
         ),
       ),
     );
@@ -3663,18 +3731,39 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         ? const Color(0xFF3DDC97)
         : const Color(0xFFFFB020);
     final title = hasOtherRequest && !hasOwnRequest
-        ? 'Собеседник хочет продлить'
+        ? _text(
+            ru: 'Собеседник хочет продлить',
+            en: 'Your partner wants to extend',
+          )
         : hasOwnRequest
-            ? 'Ждём согласия собеседника'
-            : 'Продлить разговор?';
+            ? _text(
+                ru: 'Ждём согласия собеседника',
+                en: 'Waiting for your partner',
+              )
+            : _text(ru: 'Продлить разговор?', en: 'Extend the call?');
     final subtitle = hasOtherRequest && !hasOwnRequest
-        ? 'Подтвердите +$extensionMinutes минут, чтобы лимит стал 10 минут.'
+        ? _text(
+            ru: 'Подтвердите +$extensionMinutes минут, чтобы лимит стал 10 минут.',
+            en: 'Confirm +$extensionMinutes minutes to extend the limit to 10 minutes.',
+          )
         : hasOwnRequest
-            ? 'Ваше согласие сохранено. Звонок продлится, когда второй участник согласится.'
-            : 'Можно добавить +$extensionMinutes минут, если оба участника согласятся до конца лимита.';
+            ? _text(
+                ru: 'Ваше согласие сохранено. Звонок продлится, когда второй участник согласится.',
+                en: 'Your consent is saved. The call will extend when your partner agrees.',
+              )
+            : _text(
+                ru: 'Можно добавить +$extensionMinutes минут, если оба участника согласятся до конца лимита.',
+                en: 'You can add +$extensionMinutes minutes if both participants agree before the limit ends.',
+              );
     final buttonLabel = hasOtherRequest && !hasOwnRequest
-        ? 'Подтвердить +$extensionMinutes мин'
-        : 'Продлить на +$extensionMinutes мин';
+        ? _text(
+            ru: 'Подтвердить +$extensionMinutes мин',
+            en: 'Confirm +$extensionMinutes min',
+          )
+        : _text(
+            ru: 'Продлить на +$extensionMinutes мин',
+            en: 'Extend by +$extensionMinutes min',
+          );
 
     return RepaintBoundary(
       child: Container(
@@ -3803,7 +3892,9 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     }
 
     if (!_state.cameraEnabled) {
-      return _buildPlaceholder('Камера выключена');
+      return _buildPlaceholder(
+        _text(ru: 'Камера выключена', en: 'Camera off'),
+      );
     }
 
     return _buildMirroredLocalVideoView();
@@ -3841,11 +3932,15 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   Widget _buildLocalVideo() {
     try {
       if (_localVideoController == null) {
-        return _buildPlaceholder('Инициализация камеры...');
+        return _buildPlaceholder(
+          _text(ru: 'Инициализация камеры...', en: 'Starting camera...'),
+        );
       }
 
       if (!_state.cameraEnabled) {
-        return _buildPlaceholder('Камера выключена');
+        return _buildPlaceholder(
+          _text(ru: 'Камера выключена', en: 'Camera off'),
+        );
       }
 
       return _buildMirroredLocalVideoView(
@@ -3853,7 +3948,9 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       );
     } catch (_) {
       if (kDebugMode) print('Daily video: local_build_failed');
-      return _buildPlaceholder('Видео недоступно');
+      return _buildPlaceholder(
+        _text(ru: 'Видео недоступно', en: 'Video unavailable'),
+      );
     }
   }
 
@@ -3891,13 +3988,19 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
       final controller = _state.remoteControllers[participantId];
 
       if (controller == null) {
-        return _buildPlaceholder('Подключаем видео собеседника...');
+        return _buildPlaceholder(_text(
+          ru: 'Подключаем видео собеседника...',
+          en: 'Connecting partner video...',
+        ));
       }
 
       final participant = _callClient?.participants.remote[participantId];
 
       if (participant == null) {
-        return _buildPlaceholder('Подключаем видео собеседника...');
+        return _buildPlaceholder(_text(
+          ru: 'Подключаем видео собеседника...',
+          en: 'Connecting partner video...',
+        ));
       }
 
       final hasVideo = participant.media?.camera.state != MediaState.off ||
@@ -3918,14 +4021,25 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
 
       if (!hasVideo) {
         return withinGrace
-            ? _buildPlaceholder('Подключаем видео собеседника...')
-            : _buildPlaceholder('Камера участника выключена');
+            ? _buildPlaceholder(_text(
+                ru: 'Подключаем видео собеседника...',
+                en: 'Connecting partner video...',
+              ))
+            : _buildPlaceholder(
+                _text(
+                    ru: 'Камера участника выключена', en: 'Partner camera off'),
+              );
       }
 
-      return _buildPlaceholder('Подключаем видео собеседника...');
+      return _buildPlaceholder(_text(
+        ru: 'Подключаем видео собеседника...',
+        en: 'Connecting partner video...',
+      ));
     } catch (_) {
       if (kDebugMode) print('Daily video: remote_build_failed');
-      return _buildPlaceholder('Видео недоступно');
+      return _buildPlaceholder(
+        _text(ru: 'Видео недоступно', en: 'Video unavailable'),
+      );
     }
   }
 
@@ -4077,11 +4191,14 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  'Субтитры временно недоступны',
+                Text(
+                  _text(
+                    ru: 'Субтитры временно недоступны',
+                    en: 'Captions temporarily unavailable',
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
@@ -4483,9 +4600,9 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  'Чат',
-                  style: TextStyle(
+                Text(
+                  _text(ru: 'Чат', en: 'Chat'),
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
@@ -4493,8 +4610,14 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                 ),
                 Text(
                   _hasRemoteParticipantPresent()
-                      ? 'Сообщения видны только во время звонка'
-                      : 'Сообщения можно отправлять после подключения собеседника',
+                      ? _text(
+                          ru: 'Сообщения видны только во время звонка',
+                          en: 'Messages are visible only during the call',
+                        )
+                      : _text(
+                          ru: 'Сообщения можно отправлять после подключения собеседника',
+                          en: 'You can send messages after your partner connects',
+                        ),
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.62),
                     fontSize: 12,
@@ -4507,11 +4630,14 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
             container: true,
             button: true,
             enabled: true,
-            label: 'Закрыть чат',
-            hint: 'Скрывает панель чата',
+            label: _text(ru: 'Закрыть чат', en: 'Close chat'),
+            hint: _text(
+              ru: 'Скрывает панель чата',
+              en: 'Closes the chat panel',
+            ),
             onTap: () => _setChatOpen(false),
             child: Tooltip(
-              message: 'Закрыть чат',
+              message: _text(ru: 'Закрыть чат', en: 'Close chat'),
               excludeFromSemantics: true,
               child: ExcludeSemantics(
                 child: IconButton(
@@ -4560,10 +4686,13 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                       ),
                     ),
                     const SizedBox(height: ExpatlioDesign.space16),
-                    const Text(
-                      'Сообщения появятся здесь',
+                    Text(
+                      _text(
+                        ru: 'Сообщения появятся здесь',
+                        en: 'Messages will appear here',
+                      ),
                       textAlign: TextAlign.center,
-                      style: TextStyle(
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -4572,8 +4701,14 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                     const SizedBox(height: ExpatlioDesign.space8),
                     Text(
                       _hasRemoteParticipantPresent()
-                          ? 'Напишите первое сообщение собеседнику.'
-                          : 'Дождитесь подключения второго участника, чтобы начать чат.',
+                          ? _text(
+                              ru: 'Напишите первое сообщение собеседнику.',
+                              en: 'Send the first message to your partner.',
+                            )
+                          : _text(
+                              ru: 'Дождитесь подключения второго участника, чтобы начать чат.',
+                              en: 'Wait for your partner to connect before starting the chat.',
+                            ),
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.68),
@@ -4634,7 +4769,9 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
             Padding(
               padding: const EdgeInsets.only(bottom: ExpatlioDesign.space4),
               child: Text(
-                message.isLocal ? 'Вы' : message.senderName,
+                message.isLocal
+                    ? _text(ru: 'Вы', en: 'You')
+                    : message.senderName,
                 style: TextStyle(
                   color: labelColor,
                   fontSize: 11,
@@ -4697,7 +4834,10 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                 ExpatlioDesign.space16,
                 ExpatlioDesign.space12),
             child: Text(
-              'Собеседник еще не в звонке. Сообщение можно отправить после подключения.',
+              _text(
+                ru: 'Собеседник еще не в звонке. Сообщение можно отправить после подключения.',
+                en: 'Your partner is not in the call yet. You can send a message after they connect.',
+              ),
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.56),
                 fontSize: 11,
@@ -4708,11 +4848,15 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
           controller: _chatTextController,
           focusNode: _chatFocusNode,
           hintText: hasRemoteParticipant
-              ? 'Написать сообщение'
-              : 'Ожидаем собеседника...',
+              ? _text(ru: 'Написать сообщение', en: 'Write a message')
+              : _text(
+                  ru: 'Ожидаем собеседника...', en: 'Waiting for partner...'),
           sendButtonSemanticLabel: composerEnabled
-              ? 'Отправить сообщение'
-              : 'Отправка сообщения недоступна',
+              ? _text(ru: 'Отправить сообщение', en: 'Send message')
+              : _text(
+                  ru: 'Отправка сообщения недоступна',
+                  en: 'Message sending unavailable',
+                ),
           enabled: composerEnabled,
           isSending: _callChatController.isSending,
           onSendPressed: () => unawaited(_sendChatMessage()),
@@ -4744,7 +4888,8 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
           ),
           const SizedBox(width: ExpatlioDesign.space8),
           Text(
-            'Переподключение... (${_state.retryCount}/$_maxRetryAttempts)',
+            '${_text(ru: 'Переподключение...', en: 'Reconnecting...')} '
+            '(${_state.retryCount}/$_maxRetryAttempts)',
             style: const TextStyle(color: Colors.white, fontSize: 12),
           ),
         ],
@@ -4767,9 +4912,12 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
           children: [
             const Icon(Icons.error, color: Colors.white, size: 48),
             const SizedBox(height: ExpatlioDesign.space16),
-            const Text(
-              'Не удалось подключиться',
-              style: TextStyle(
+            Text(
+              _text(
+                ru: 'Не удалось подключиться',
+                en: 'Could not connect',
+              ),
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 17.0,
                 fontWeight: FontWeight.bold,
@@ -4780,7 +4928,11 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
               constraints: const BoxConstraints(maxHeight: 100),
               child: SingleChildScrollView(
                 child: Text(
-                  _state.error ?? 'Неизвестная ошибка',
+                  _state.error ??
+                      _text(
+                        ru: 'Неизвестная ошибка',
+                        en: 'Unknown error',
+                      ),
                   style: const TextStyle(color: Colors.white70, fontSize: 12),
                   textAlign: TextAlign.center,
                 ),
@@ -4793,7 +4945,9 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
                   _updateState(_state.copyWith(retryCount: 0));
                   _performReconnection();
                 },
-                child: const Text('Повторить попытку'),
+                child: Text(
+                  _text(ru: 'Повторить попытку', en: 'Try again'),
+                ),
               ),
             ],
           ],

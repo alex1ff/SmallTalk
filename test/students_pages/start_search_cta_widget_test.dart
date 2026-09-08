@@ -18,6 +18,7 @@ import 'package:small_talk/custom_code/actions/check_active_session_and_navigate
 import 'package:small_talk/custom_code/actions/start_student_session_listener.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/flutter_flow/nav/nav.dart';
+import 'package:small_talk/flutter_flow/permissions_util.dart';
 import 'package:small_talk/shared_pages/video_call_page/video_call_page_widget.dart';
 import 'package:small_talk/services/nearby_partner_count_cache.dart';
 import 'package:small_talk/services/passive_search_service.dart';
@@ -179,6 +180,7 @@ void main() {
   });
 
   setUp(() {
+    invalidateCameraAndMicrophonePermissionCache();
     TestWidgetsFlutterBinding.instance
         .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     Duration? searchClockOffset;
@@ -917,6 +919,7 @@ void main() {
       languageCode: 'en',
       countryCode: '',
       partnerLevel: '',
+      userScope: 'student-partner-count-cache-test',
     );
     final preferences = await SharedPreferences.getInstance();
     await preferences.setInt(cacheKey, 4);
@@ -962,6 +965,7 @@ void main() {
       languageCode: 'en',
       countryCode: '',
       partnerLevel: '',
+      userScope: 'student-partner-preview-cache-test',
     );
     final preferences = await SharedPreferences.getInstance();
     final previewCache = NearbyPartnerPreviewCache(preferences);
@@ -6817,8 +6821,7 @@ void main() {
 
     expect(find.text('Ищем собеседника'), findsOneWidget);
     expect(find.text('Начать поиск'), findsNothing);
-    expect(_checkPermissionStatusCallCount,
-        greaterThan(permissionChecksAfterStop));
+    expect(_checkPermissionStatusCallCount, permissionChecksAfterStop);
     expect(_requestPermissionsCallCount, permissionRequestsAfterStop);
 
     await tester.pumpWidget(const SizedBox.shrink());

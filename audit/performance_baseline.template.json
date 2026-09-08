@@ -8,10 +8,13 @@
     "buildMode": "profile",
     "deviceModel": "<device-model>",
     "osVersion": "<os-version>",
-    "deviceKind": "emulator",
-    "refreshRateHz": 60,
+    "deviceKind": "<physical|emulator|browser>",
+    "refreshRateHz": "<positive integer; not_applicable for browser>",
     "scenarioVersion": "<scenario-version>",
-    "collectionMethod": "<repeatable-command-or-driver>"
+    "collectionMethod": "<repeatable-command-or-driver>",
+    "network": "<network-profile>",
+    "authState": "<authentication-state>",
+    "cacheState": "<cache-state>"
   },
   "metrics": {
     "startup_first_interactive_ms": {

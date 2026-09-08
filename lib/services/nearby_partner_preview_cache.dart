@@ -2,18 +2,20 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-const nearbyPartnerPreviewPrefsPrefix = 'ff_student_nearby_partner_preview_v1';
+const nearbyPartnerPreviewPrefsPrefix = 'ff_student_nearby_partner_preview_v2';
 
 String nearbyPartnerPreviewCacheKey({
   required String languageCode,
   required String countryCode,
   String cityKey = '',
   required String partnerLevel,
+  String userScope = '',
 }) {
   String normalize(String value) => value.trim().toLowerCase();
 
   return <String>[
     nearbyPartnerPreviewPrefsPrefix,
+    Uri.encodeComponent(normalize(userScope)),
     Uri.encodeComponent(normalize(languageCode)),
     Uri.encodeComponent(normalize(countryCode)),
     Uri.encodeComponent(normalize(cityKey)),

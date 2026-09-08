@@ -53,11 +53,25 @@ class CallControlsBar extends StatelessWidget {
           controlKey: callCameraControlKey,
           icon: cameraEnabled ? Icons.videocam : Icons.videocam_off,
           isActive: cameraEnabled,
-          tooltip: cameraEnabled ? 'Выключить камеру' : 'Включить камеру',
+          tooltip: cameraEnabled
+              ? _text(context, ru: 'Выключить камеру', en: 'Turn camera off')
+              : _text(context, ru: 'Включить камеру', en: 'Turn camera on'),
           semanticLabel: cameraEnabled
-              ? 'Камера включена. Выключить камеру'
-              : 'Камера выключена. Включить камеру',
-          semanticHint: 'Переключает камеру в звонке',
+              ? _text(
+                  context,
+                  ru: 'Камера включена. Выключить камеру',
+                  en: 'Camera on. Turn camera off',
+                )
+              : _text(
+                  context,
+                  ru: 'Камера выключена. Включить камеру',
+                  en: 'Camera off. Turn camera on',
+                ),
+          semanticHint: _text(
+            context,
+            ru: 'Переключает камеру в звонке',
+            en: 'Toggles the camera during the call',
+          ),
           semanticToggled: cameraEnabled,
           onPressed: onCameraPressed,
         ),
@@ -65,12 +79,33 @@ class CallControlsBar extends StatelessWidget {
           controlKey: callMicrophoneControlKey,
           icon: microphoneEnabled ? Icons.mic : Icons.mic_off,
           isActive: microphoneEnabled,
-          tooltip:
-              microphoneEnabled ? 'Выключить микрофон' : 'Включить микрофон',
+          tooltip: microphoneEnabled
+              ? _text(
+                  context,
+                  ru: 'Выключить микрофон',
+                  en: 'Mute microphone',
+                )
+              : _text(
+                  context,
+                  ru: 'Включить микрофон',
+                  en: 'Unmute microphone',
+                ),
           semanticLabel: microphoneEnabled
-              ? 'Микрофон включен. Выключить микрофон'
-              : 'Микрофон выключен. Включить микрофон',
-          semanticHint: 'Переключает микрофон в звонке',
+              ? _text(
+                  context,
+                  ru: 'Микрофон включен. Выключить микрофон',
+                  en: 'Microphone on. Mute microphone',
+                )
+              : _text(
+                  context,
+                  ru: 'Микрофон выключен. Включить микрофон',
+                  en: 'Microphone muted. Unmute microphone',
+                ),
+          semanticHint: _text(
+            context,
+            ru: 'Переключает микрофон в звонке',
+            en: 'Toggles the microphone during the call',
+          ),
           semanticToggled: microphoneEnabled,
           onPressed: onMicrophonePressed,
         ),
@@ -78,9 +113,13 @@ class CallControlsBar extends StatelessWidget {
           controlKey: callChatControlKey,
           icon: isChatOpen ? Icons.chat_bubble : Icons.chat_bubble_outline,
           isActive: isChatOpen,
-          tooltip: _chatControlTooltip(),
-          semanticLabel: _chatControlSemanticLabel(),
-          semanticHint: 'Открывает или скрывает чат звонка',
+          tooltip: _chatControlTooltip(context),
+          semanticLabel: _chatControlSemanticLabel(context),
+          semanticHint: _text(
+            context,
+            ru: 'Открывает или скрывает чат звонка',
+            en: 'Opens or closes the call chat',
+          ),
           semanticToggled: isChatOpen,
           onPressed: onChatPressed,
           badgeCount: unreadChatCount,
@@ -90,18 +129,42 @@ class CallControlsBar extends StatelessWidget {
             controlKey: callTranslationControlKey,
             icon: Icons.translate_rounded,
             isActive: true,
-            tooltip: 'Быстрый перевод',
-            semanticLabel: 'Открыть быстрый перевод',
-            semanticHint: 'Переводит слово или фразу во время звонка',
+            tooltip: _text(
+              context,
+              ru: 'Быстрый перевод',
+              en: 'Quick translation',
+            ),
+            semanticLabel: _text(
+              context,
+              ru: 'Открыть быстрый перевод',
+              en: 'Open quick translation',
+            ),
+            semanticHint: _text(
+              context,
+              ru: 'Переводит слово или фразу во время звонка',
+              en: 'Translates a word or phrase during the call',
+            ),
             onPressed: callback,
           ),
         _CallControlButton(
           controlKey: callEndControlKey,
           icon: Icons.call_end,
           isActive: true,
-          tooltip: 'Завершить звонок',
-          semanticLabel: 'Завершить звонок',
-          semanticHint: 'Завершает текущий видеозвонок',
+          tooltip: _text(
+            context,
+            ru: 'Завершить звонок',
+            en: 'End call',
+          ),
+          semanticLabel: _text(
+            context,
+            ru: 'Завершить звонок',
+            en: 'End call',
+          ),
+          semanticHint: _text(
+            context,
+            ru: 'Завершает текущий видеозвонок',
+            en: 'Ends the current video call',
+          ),
           onPressed: onEndCallPressed,
           isEndCall: true,
         ),
@@ -109,31 +172,57 @@ class CallControlsBar extends StatelessWidget {
     );
   }
 
-  String _chatControlTooltip() {
-    final baseLabel = isChatOpen ? 'Закрыть чат' : 'Открыть чат';
+  String _chatControlTooltip(BuildContext context) {
+    final baseLabel = isChatOpen
+        ? _text(context, ru: 'Закрыть чат', en: 'Close chat')
+        : _text(context, ru: 'Открыть чат', en: 'Open chat');
     if (!isChatOpen && unreadChatCount > 0) {
-      return '$baseLabel, ${_unreadMessagesSemanticLabel(unreadChatCount)}';
+      return '$baseLabel, '
+          '${_unreadMessagesSemanticLabel(context, unreadChatCount)}';
     }
     return baseLabel;
   }
 
-  String _chatControlSemanticLabel() {
+  String _chatControlSemanticLabel(BuildContext context) {
     if (isChatOpen) {
-      return 'Чат открыт. Закрыть чат';
+      return _text(
+        context,
+        ru: 'Чат открыт. Закрыть чат',
+        en: 'Chat open. Close chat',
+      );
     }
     if (unreadChatCount > 0) {
-      return 'Чат закрыт. Открыть чат. '
-          '${_unreadMessagesSemanticLabel(unreadChatCount)}';
+      return '${_text(context, ru: 'Чат закрыт. Открыть чат.', en: 'Chat closed. Open chat.')} '
+          '${_unreadMessagesSemanticLabel(context, unreadChatCount)}';
     }
-    return 'Чат закрыт. Открыть чат';
+    return _text(
+      context,
+      ru: 'Чат закрыт. Открыть чат',
+      en: 'Chat closed. Open chat',
+    );
   }
 
-  String _unreadMessagesSemanticLabel(int count) {
+  String _unreadMessagesSemanticLabel(BuildContext context, int count) {
     if (count > 99) {
-      return 'Больше 99 непрочитанных сообщений';
+      return _text(
+        context,
+        ru: 'Больше 99 непрочитанных сообщений',
+        en: 'More than 99 unread messages',
+      );
     }
-    return 'Непрочитанных сообщений: ${_formatUnreadChatCount(count)}';
+    return _text(
+      context,
+      ru: 'Непрочитанных сообщений: ${_formatUnreadChatCount(count)}',
+      en: 'Unread messages: ${_formatUnreadChatCount(count)}',
+    );
   }
+
+  String _text(
+    BuildContext context, {
+    required String ru,
+    required String en,
+  }) =>
+      Localizations.localeOf(context).languageCode == 'en' ? en : ru;
 
   String _formatUnreadChatCount(int count) => count > 99 ? '99+' : '$count';
 }

@@ -34,6 +34,8 @@ derived from a server-owned participant field or participant document.
 | `userPublicProfiles/{uid}` | Any signed-in user | Deny | Deny | Deny | Server projection; contains public profile data only |
 | `teacherVerificationRequests/{uid}` | Owner or support admin | Owner pending request with validated snapshot, or support admin | Owner can keep pending and cannot set review fields; support admin can review | Support admin | Proof paths must remain scoped to the owner |
 | `searchRequests/{uid}` | Owner or support-admin single get; list denied to both | Deny | Deny | Deny | Protected root; server matchmaking only |
+| `passiveSearches/{uid}` | Owner single get only | Deny | Deny | Deny | Server passive-search consent and presence |
+| `activeSearchAttempts/**`, `passiveSearchOperations/**`, `passiveSearchDeliveries/**` | Deny, including support admin | Deny | Deny | Deny | Protected server coordination/idempotency state |
 | `videoSessions/{id}` | Participant; support admin via fallback | Deny | Participant navigation fields only, or support admin | Deny | Server owns lifecycle and participant authority |
 | `videoSessions/{id}/captionLogs/{log}` | Participant; support admin via fallback | Participant with bounded caption/diagnostic schema | Participant with immutable identity/source fields | Deny | Writer and speaker IDs must be session participants |
 | `videoSessions/{id}/aiFeedback/{uid}` | Feedback owner who is a participant; support admin via fallback | Deny | Deny | Deny | Server AI generation |
@@ -58,6 +60,11 @@ derived from a server-owned participant field or participant document.
 | `eventCreationCounters/**`, `eventCreateRequests/**` | Deny, including support admin | Deny | Deny | Deny | Protected server idempotency/rate-limit state |
 | `eventReports/**`, `chatMessageReports/**` | Support admin | Deny | Deny | Deny | Protected moderation evidence |
 | Any unmatched path | Support admin only | Deny | Deny | Deny | Temporary support fallback; new roots require an explicit review |
+
+Cloud Storage follows the same deny-by-default approach: authenticated users
+may read and write only `users/{auth.uid}/**`; cross-user, unauthenticated and
+all paths outside `users/{uid}/**` are denied. Admin SDK operations bypass
+Storage Rules in the same way as Firestore Admin SDK operations.
 
 Server code also uses unmatched operational roots such as `analytics`,
 `maintenanceJobs`, `revenueCatPendingTransfers` and
@@ -84,13 +91,18 @@ composite indexes exist. Keep these shapes synchronized with
 
 Install both dependency trees first with `npm ci --ignore-scripts` and
 `npm ci --prefix firebase/custom_cloud_functions --ignore-scripts`, then run
-`npm run firestore:rules:test`. It starts an isolated demo-project Firestore
-emulator and executes all seven dedicated rules suites sequentially.
+`npm run firestore:rules:test`. It starts isolated demo-project Firestore and
+Storage emulators and executes all eight dedicated rules suites sequentially.
 The suite covers positive client flows plus denial of cross-user access,
 privilege-field changes, catch-all writes, protected-root admin reads, field
-addition/removal during read-marker updates, and promo-field tampering.
+addition/removal during read-marker updates, promo-field tampering and
+owner-only Storage paths.
 
-The manual `backend:checks` runner contains an older embedded rules harness and
-broader integration/load checks. It is useful for diagnostics but is not the
-canonical rules gate until its stale expectations are reconciled with the
-dedicated suites.
+`npm run backend:checks` first runs that canonical rules suite and then executes
+only the unique backend integration/load checks: concurrent session ending,
+conversation unlock processing, current matchmaking/session shape, partner
+level filtering, verification/profile trigger delivery, 20-request load and
+the call-lifecycle emulator scenario. It no longer carries a second copy of
+rules expectations. Disabled same-day-repeat enforcement and the deliberately
+removed teacher-only ranking are covered by their current unit contracts, not
+by obsolete integration expectations.

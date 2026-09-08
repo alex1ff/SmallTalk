@@ -1,5 +1,7 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "request_withdrawal"});
 const {
   isApprovedTeacher,
 } = require("./video_sessions_shared");
@@ -135,7 +137,7 @@ exports.requestWithdrawal = functions
         if (err instanceof functions.https.HttpsError) {
           throw err;
         }
-        console.error("requestWithdrawal failed", {uid, err});
+        safeLog.error("request_withdrawal_failed", {uid, error: err});
         throw new functions.https.HttpsError(
             "internal",
             "Unable to create withdrawal request",
