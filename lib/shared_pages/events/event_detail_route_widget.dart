@@ -90,6 +90,8 @@ class EventDetailPublicPreview {
     this.organizerPhotoUrl,
     this.participantsCount,
     this.capacity,
+    this.joinCtaState = EventDetailJoinCtaState.join,
+    this.restrictedToUserId,
   });
 
   final String eventId;
@@ -107,6 +109,8 @@ class EventDetailPublicPreview {
   final String? organizerPhotoUrl;
   final int? participantsCount;
   final int? capacity;
+  final EventDetailJoinCtaState joinCtaState;
+  final String? restrictedToUserId;
 }
 
 typedef EventChatThreadOpener = Future<void> Function(
@@ -411,6 +415,11 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
     if (preview == null) {
       return null;
     }
+    final restrictedToUserId = preview.restrictedToUserId;
+    if (restrictedToUserId != null &&
+        restrictedToUserId != _eventStreamDataKey.userId) {
+      return null;
+    }
     try {
       return normalizeEventDetailId(preview.eventId) ==
               _eventStreamDataKey.eventId
@@ -442,7 +451,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       participants: const <EventDetailParticipantViewModel>[],
       participantsCount: preview.participantsCount,
       capacity: preview.capacity,
-      joinCtaState: EventDetailJoinCtaState.join,
+      joinCtaState: preview.joinCtaState,
     );
     return _EventDetailRefreshErrorOverlay(
       isVisible: hasRefreshError,
@@ -1056,6 +1065,9 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
             final hasResolvedParticipantSnapshot = !participantSnapshot
                     .hasError &&
                 participantSnapshot.connectionState != ConnectionState.waiting;
+            final pendingPreviewJoinCtaState = hasResolvedParticipantSnapshot
+                ? null
+                : _matchingInitialPreview?.joinCtaState;
             _clearLocalMembershipIfParticipantSnapshotCaughtUp(
               eventId: eventId,
               isActiveParticipant: isActiveParticipant,
@@ -1107,14 +1119,16 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
                 participants: const <EventDetailParticipantViewModel>[],
                 participantsCount: null,
                 capacity: null,
-                joinCtaState: EventDetailJoinCtaState.join,
-                onPrimaryCtaPressed: isActive
-                    ? () => _handleJoin(
-                          event,
-                          displayedParticipantsCount:
-                              confirmedParticipantsCount ?? 0,
-                        )
-                    : null,
+                joinCtaState:
+                    pendingPreviewJoinCtaState ?? EventDetailJoinCtaState.join,
+                onPrimaryCtaPressed:
+                    isActive && pendingPreviewJoinCtaState == null
+                        ? () => _handleJoin(
+                              event,
+                              displayedParticipantsCount:
+                                  confirmedParticipantsCount ?? 0,
+                            )
+                        : null,
               );
             }
 
@@ -1171,21 +1185,27 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
                         ? EventDetailJoinCtaState.optimisticJoined
                         : pendingDesiredJoined == false
                             ? EventDetailJoinCtaState.optimisticLeft
-                            : _eventDetailJoinStateForEvent(
-                                event,
-                                isCanceled: false,
-                                isJoined: isJoinedForActions,
-                                isJoining: _isJoining,
-                                hasStarted: hasStarted,
-                                resolvedParticipantsCount:
-                                    displayedParticipantsCount,
-                              );
+                            : pendingPreviewJoinCtaState != null
+                                ? pendingPreviewJoinCtaState
+                                : _eventDetailJoinStateForEvent(
+                                    event,
+                                    isCanceled: false,
+                                    isJoined: isJoinedForActions,
+                                    isJoining: _isJoining,
+                                    hasStarted: hasStarted,
+                                    resolvedParticipantsCount:
+                                        displayedParticipantsCount,
+                                  );
                 final joinCtaState = isOrganizerActiveParticipant &&
                         resolvedJoinCtaState == EventDetailJoinCtaState.joined
                     ? EventDetailJoinCtaState.joinedLocked
                     : resolvedJoinCtaState;
-                final canJoin = joinCtaState == EventDetailJoinCtaState.join;
+                final canJoin = (pendingPreviewJoinCtaState == null ||
+                        hasResolvedParticipantSnapshot) &&
+                    joinCtaState == EventDetailJoinCtaState.join;
                 final canLeave = !isOrganizerActiveParticipant &&
+                    (pendingPreviewJoinCtaState == null ||
+                        hasResolvedParticipantSnapshot) &&
                     joinCtaState == EventDetailJoinCtaState.joined;
 
                 Widget buildContent(

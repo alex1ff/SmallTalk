@@ -192,6 +192,7 @@ function event(overrides = {}) {
   return {
     organizerId: "organizer-1",
     title: "Conversation club",
+    description: "Meet and practice English together.",
     status: "active",
     canceledAt: null,
     startsAt: timestamp("2026-06-20T10:00:00.000Z"),
@@ -206,6 +207,10 @@ function event(overrides = {}) {
     languageNameRu: "Английский",
     levelMin: "B1",
     levelMax: "C1",
+    organizerDisplayName: "Organizer",
+    organizerPhotoUrl: "https://img/organizer",
+    participantsCount: 3,
+    capacity: 10,
     ...overrides,
   };
 }
@@ -378,6 +383,11 @@ test("getEventHistoryHandler returns sorted eligible event history", async () =>
     languageNameRu: "Английский",
     levelMin: "B1",
     levelMax: "C1",
+    description: "Meet and practice English together.",
+    organizerDisplayName: "Organizer",
+    organizerPhotoUrl: "https://img/organizer",
+    participantsCount: 3,
+    capacity: 10,
   });
   assert.deepEqual(collectionGroupCalls[0], {
     collectionId: "participants",

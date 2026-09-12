@@ -269,6 +269,47 @@ void main() {
     );
   });
 
+  testWidgets('private preview is hidden after the authenticated user changes',
+      (tester) async {
+    final controller = StreamController<DocumentSnapshot>.broadcast();
+    addTearDown(controller.close);
+    final preview = EventDetailPublicPreview(
+      eventId: 'event-1',
+      title: 'User A private event',
+      description: 'Private history description',
+      languageCode: 'en',
+      levelMin: 'B1',
+      levelMax: 'C1',
+      startsAt: DateTime.utc(2099, 6, 18, 15),
+      timeZoneId: 'UTC',
+      organizerDisplayName: 'Organizer A',
+      publicLocationLabel: 'Exact place for user A',
+      restrictedToUserId: 'user-a',
+    );
+
+    Widget buildRoute() => _buildDetailRouteTestApp(
+          eventId: 'event-1',
+          initialPreview: preview,
+          snapshotStream: (_) => controller.stream,
+        );
+
+    currentUser = _TestAuthUser('user-a');
+    UxSessionCacheLifecycle.updateAuthenticatedUser('user-a');
+    await tester.pumpWidget(buildRoute());
+    await tester.pump();
+    expect(find.text('User A private event'), findsOneWidget);
+    expect(find.text('Exact place for user A'), findsOneWidget);
+
+    currentUser = _TestAuthUser('user-b');
+    UxSessionCacheLifecycle.updateAuthenticatedUser('user-b');
+    await tester.pumpWidget(buildRoute());
+    await tester.pump();
+
+    expect(find.text('User A private event'), findsNothing);
+    expect(find.text('Exact place for user A'), findsNothing);
+    expect(find.byKey(eventDetailRouteLoadingKey), findsOneWidget);
+  });
+
   testWidgets('cold detail load keeps the full loading state', (tester) async {
     final controller = StreamController<DocumentSnapshot>.broadcast(sync: true);
 
@@ -348,6 +389,143 @@ void main() {
 
       await tester.pumpWidget(const SizedBox.shrink());
       await controller.close();
+    },
+  );
+
+  testWidgets(
+    'history membership CTA stays stable while participant state resolves',
+    (tester) async {
+      final eventController = StreamController<DocumentSnapshot>.broadcast();
+      final participantController =
+          StreamController<DocumentSnapshot>.broadcast();
+      addTearDown(eventController.close);
+      addTearDown(participantController.close);
+      currentUser = _TestAuthUser('participant-1');
+      UxSessionCacheLifecycle.updateAuthenticatedUser('participant-1');
+      final preview = EventDetailPublicPreview(
+        eventId: 'event-1',
+        title: 'Upcoming joined event',
+        description: 'History preview',
+        languageCode: 'en',
+        levelMin: 'B1',
+        levelMax: 'C1',
+        startsAt: DateTime.utc(2099, 6, 18, 15),
+        timeZoneId: 'UTC',
+        organizerDisplayName: 'Organizer',
+        joinCtaState: EventDetailJoinCtaState.joined,
+        restrictedToUserId: 'participant-1',
+      );
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventDetailRouteWidget(
+            eventId: 'event-1',
+            initialPreview: preview,
+            snapshotStream: (_) => eventController.stream,
+            participantSnapshotStream: (_) => participantController.stream,
+            participantsStream: (_) =>
+                Stream<List<EventParticipantsRecord>>.value(
+              const <EventParticipantsRecord>[],
+            ),
+          ),
+          locale: const Locale('en'),
+        ),
+      );
+      await tester.pump();
+      expect(find.text('Leave'), findsOneWidget);
+      expect(find.text('Join'), findsNothing);
+
+      eventController.add(
+        _FakeEventDocumentSnapshot(
+          reference: EventsRecord.collection.doc('event-1'),
+          data: _eventData(
+            title: 'Confirmed upcoming event',
+            organizerId: 'organizer-1',
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Leave'), findsOneWidget);
+      expect(find.text('Join'), findsNothing);
+
+      participantController.add(
+        _FakeEventDocumentSnapshot(
+          reference: EventsRecord.collection
+              .doc('event-1')
+              .collection('participants')
+              .doc('participant-1'),
+          data: _participantData(
+            userId: 'participant-1',
+            status: 'active',
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Leave'), findsOneWidget);
+      expect(find.text('Join'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'history join preview stays disabled while participant state is pending',
+    (tester) async {
+      final eventController = StreamController<DocumentSnapshot>.broadcast();
+      final participantController =
+          StreamController<DocumentSnapshot>.broadcast();
+      addTearDown(eventController.close);
+      addTearDown(participantController.close);
+      currentUser = _TestAuthUser('participant-1');
+      UxSessionCacheLifecycle.updateAuthenticatedUser('participant-1');
+      final preview = EventDetailPublicPreview(
+        eventId: 'event-1',
+        title: 'Upcoming event',
+        description: 'History preview',
+        languageCode: 'en',
+        levelMin: 'B1',
+        levelMax: 'C1',
+        startsAt: DateTime.utc(2099, 6, 18, 15),
+        timeZoneId: 'UTC',
+        organizerDisplayName: 'Organizer',
+        restrictedToUserId: 'participant-1',
+      );
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          home: EventDetailRouteWidget(
+            eventId: 'event-1',
+            initialPreview: preview,
+            snapshotStream: (_) => eventController.stream,
+            participantSnapshotStream: (_) => participantController.stream,
+            participantsStream: (_) =>
+                Stream<List<EventParticipantsRecord>>.value(
+              const <EventParticipantsRecord>[],
+            ),
+          ),
+          locale: const Locale('en'),
+        ),
+      );
+      eventController.add(
+        _FakeEventDocumentSnapshot(
+          reference: EventsRecord.collection.doc('event-1'),
+          data: _eventData(
+            title: 'Confirmed upcoming event',
+            organizerId: 'organizer-1',
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Join'), findsOneWidget);
+      expect(
+        tester
+            .getSemantics(find.byKey(eventDetailPrimaryCtaKey))
+            .flagsCollection
+            .isEnabled,
+        isFalse,
+      );
     },
   );
 

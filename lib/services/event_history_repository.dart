@@ -47,6 +47,11 @@ class EventHistoryItem {
     this.languageNameRu,
     this.levelMin,
     this.levelMax,
+    this.description,
+    this.organizerDisplayName,
+    this.organizerPhotoUrl,
+    this.participantsCount,
+    this.capacity,
   });
 
   final String eventId;
@@ -70,6 +75,11 @@ class EventHistoryItem {
   final String? languageNameRu;
   final String? levelMin;
   final String? levelMax;
+  final String? description;
+  final String? organizerDisplayName;
+  final String? organizerPhotoUrl;
+  final int? participantsCount;
+  final int? capacity;
 
   bool get isOrganizer => participantRole == 'organizer';
 }
@@ -177,6 +187,11 @@ EventHistoryItem _parseHistoryItem(Object? value) {
     languageNameRu: _optionalString(data, 'languageNameRu'),
     levelMin: _optionalString(data, 'levelMin'),
     levelMax: _optionalString(data, 'levelMax'),
+    description: _optionalString(data, 'description'),
+    organizerDisplayName: _optionalString(data, 'organizerDisplayName'),
+    organizerPhotoUrl: _optionalString(data, 'organizerPhotoUrl'),
+    participantsCount: _optionalInt(data, 'participantsCount'),
+    capacity: _optionalInt(data, 'capacity'),
   );
 }
 
@@ -243,6 +258,17 @@ int _requiredInt(Map<String, dynamic> data, String field) {
     return value;
   }
   throw FormatException('Expected integer field "$field".');
+}
+
+int? _optionalInt(Map<String, dynamic> data, String field) {
+  final value = data[field];
+  if (value == null) {
+    return null;
+  }
+  if (value is int) {
+    return value;
+  }
+  throw FormatException('Expected nullable integer field "$field".');
 }
 
 EventHistoryTimelineStatus _requiredTimelineStatus(

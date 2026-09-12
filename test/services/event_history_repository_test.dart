@@ -43,6 +43,11 @@ void main() {
       expect(result.items.first.languageNameRu, 'Английский');
       expect(result.items.first.levelMin, 'B1');
       expect(result.items.first.levelMax, 'C1');
+      expect(result.items.first.description, 'Meet and practice English.');
+      expect(result.items.first.organizerDisplayName, 'Organizer');
+      expect(result.items.first.organizerPhotoUrl, 'https://img/organizer');
+      expect(result.items.first.participantsCount, 3);
+      expect(result.items.first.capacity, 10);
       expect(result.items.last.eventId, 'event-2');
       expect(result.items.last.isOrganizer, true);
       expect(result.items.last.timelineStatus, EventHistoryTimelineStatus.past);
@@ -126,6 +131,11 @@ Map<String, dynamic> historyResponse({
           'languageNameRu': 'Английский',
           'levelMin': 'B1',
           'levelMax': 'C1',
+          'description': 'Meet and practice English.',
+          'organizerDisplayName': 'Organizer',
+          'organizerPhotoUrl': 'https://img/organizer',
+          'participantsCount': 3,
+          'capacity': 10,
           ...?itemOverrides,
         },
         <String, dynamic>{
@@ -150,6 +160,11 @@ Map<String, dynamic> historyResponse({
           'languageNameRu': null,
           'levelMin': null,
           'levelMax': null,
+          'description': null,
+          'organizerDisplayName': null,
+          'organizerPhotoUrl': null,
+          'participantsCount': null,
+          'capacity': null,
         },
       ],
       'limit': 50,

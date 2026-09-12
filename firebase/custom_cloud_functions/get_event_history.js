@@ -303,6 +303,12 @@ function buildEventHistoryItem({
     languageNameRu: optionalString(eventData.languageNameRu),
     levelMin: optionalString(eventData.levelMin),
     levelMax: optionalString(eventData.levelMax),
+    description: optionalString(eventData.description),
+    organizerDisplayName: optionalString(eventData.organizerDisplayName),
+    organizerPhotoUrl: optionalString(eventData.organizerPhotoUrl),
+    participantsCount: Number.isInteger(eventData.participantsCount) ?
+      eventData.participantsCount : null,
+    capacity: Number.isInteger(eventData.capacity) ? eventData.capacity : null,
   };
 }
 

@@ -1,16 +1,20 @@
 import 'dart:async';
 
 import 'package:firebase_auth_platform_interface/firebase_auth_platform_interface.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:small_talk/backend/backend.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/services/event_history_repository.dart';
 import 'package:small_talk/services/event_list_date_bounds.dart';
+import 'package:small_talk/services/ux_session_cache_lifecycle.dart';
 import 'package:small_talk/shared_pages/events/event_history_widget.dart';
+import 'package:small_talk/shared_pages/events/event_detail_route_widget.dart';
+import 'package:small_talk/shared_pages/events/event_detail_widget.dart';
 
 const _supportedLocales = [
   Locale('ru'),
@@ -281,10 +285,76 @@ void main() {
       decoration.border,
       Border.all(color: const Color(0xFFEBEBEB)),
     );
+    final firstLevelBadge = find.descendant(
+      of: firstCard,
+      matching: find.byKey(eventHistoryLevelBadgeKey),
+    );
+    expect(
+      tester.getSize(firstLevelBadge).width,
+      lessThan(tester.getSize(firstCard).width / 2),
+    );
 
     await tester.tap(firstCard);
 
     expect(openedItem?.eventId, 'event-1');
+  });
+
+  testWidgets('opens event detail from history with an immediate preview',
+      (tester) async {
+    UxSessionCacheLifecycle.updateAuthenticatedUser('user-a');
+    addTearDown(
+      () => UxSessionCacheLifecycle.updateAuthenticatedUser(null),
+    );
+    final snapshotController = StreamController<DocumentSnapshot>();
+    addTearDown(snapshotController.close);
+    final item = historyItem(
+      eventId: 'preview-event',
+      title: 'Preview event',
+      timelineStatus: EventHistoryTimelineStatus.past,
+    );
+    final router = GoRouter(
+      initialLocation: EventHistoryWidget.routePath,
+      routes: [
+        GoRoute(
+          name: EventHistoryWidget.routeName,
+          path: EventHistoryWidget.routePath,
+          builder: (_, __) => _historyWidget(
+            historyLoader: (_) async => historyResult(items: [item]),
+          ),
+        ),
+        GoRoute(
+          name: EventDetailWidget.routeName,
+          path: EventDetailWidget.routePath,
+          builder: (_, state) {
+            final extra = state.extra! as Map<String, dynamic>;
+            return EventDetailRouteWidget(
+              eventId: state.pathParameters['eventId']!,
+              initialPreview: extra[eventDetailPublicPreviewExtraKey]!
+                  as EventDetailPublicPreview,
+              snapshotStream: (_) => snapshotController.stream,
+            );
+          },
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp.router(
+        locale: const Locale('en'),
+        supportedLocales: _supportedLocales,
+        localizationsDelegates: _localizationsDelegates,
+        routerConfig: router,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventHistoryItemKey('preview-event')));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(find.byKey(eventDetailRouteLoadingKey), findsNothing);
+    expect(find.text('Preview event'), findsOneWidget);
+    expect(find.text('Meet and practice English.'), findsOneWidget);
+    expect(find.text('Joined'), findsOneWidget);
   });
 
   testWidgets('same-owner remount refreshes cached history silently',
@@ -938,4 +1008,9 @@ EventHistoryItem historyItem({
       languageNameEn: 'English',
       levelMin: 'B1',
       levelMax: 'C1',
+      description: 'Meet and practice English.',
+      organizerDisplayName: 'Organizer',
+      organizerPhotoUrl: 'https://img/organizer',
+      participantsCount: 3,
+      capacity: 10,
     );

@@ -13,6 +13,7 @@ import '/services/ux_loading_state.dart';
 import '/services/ux_session_cache_lifecycle.dart';
 import '/services/ux_session_loaded_result_cache.dart';
 import '/shared_pages/design/expatlio_design.dart';
+import '/shared_pages/events/event_detail_route_widget.dart';
 import '/shared_pages/events/event_detail_widget.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -26,6 +27,8 @@ const ValueKey<String> eventHistoryListKey =
     ValueKey<String>('event_history_list');
 const ValueKey<String> eventHistoryErrorRetryButtonKey =
     ValueKey<String>('event_history_error_retry_button');
+const ValueKey<String> eventHistoryLevelBadgeKey =
+    ValueKey<String>('event_history_level_badge');
 
 ValueKey<String> eventHistoryItemKey(String eventId) =>
     ValueKey<String>('event_history_item_$eventId');
@@ -435,6 +438,13 @@ class _EventHistoryWidgetState extends State<EventHistoryWidget> {
     context.pushNamed(
       EventDetailWidget.routeName,
       pathParameters: <String, String>{'eventId': item.eventId},
+      extra: <String, dynamic>{
+        eventDetailPublicPreviewExtraKey: eventHistoryDetailPreview(
+          context,
+          item,
+          restrictedToUserId: ownerUserId,
+        ),
+      },
     );
   }
 
@@ -975,28 +985,75 @@ class _EventHistoryLevelBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      key: eventHistoryLevelBadgeKey,
       constraints: const BoxConstraints(minHeight: 30.0),
-      alignment: Alignment.center,
-      padding: const EdgeInsetsDirectional.symmetric(horizontal: 10.0),
+      padding: const EdgeInsetsDirectional.symmetric(
+        horizontal: 10.0,
+        vertical: 4.0,
+      ),
       decoration: BoxDecoration(
         color: ExpatlioDesign.primary.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
       ),
-      child: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: ExpatlioDesign.textStyle(
-          context,
-          color: ExpatlioDesign.primary,
-          size: _eventHistoryMetaFontSize,
-          weight: FontWeight.w700,
-          height: 1.18,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: ExpatlioDesign.textStyle(
+              context,
+              color: ExpatlioDesign.primary,
+              size: _eventHistoryMetaFontSize,
+              weight: FontWeight.w700,
+              height: 1.18,
+            ),
+          ),
+        ],
       ),
     );
   }
 }
+
+@visibleForTesting
+EventDetailPublicPreview eventHistoryDetailPreview(
+  BuildContext context,
+  EventHistoryItem item, {
+  required String restrictedToUserId,
+}) =>
+    EventDetailPublicPreview(
+      eventId: item.eventId,
+      title: item.title,
+      description: eventDetailPublicPreviewDescription(item.description ?? ''),
+      languageCode: item.languageCode ?? '',
+      languageNameEn: item.languageNameEn,
+      languageNameRu: item.languageNameRu,
+      levelMin: item.levelMin ?? '',
+      levelMax: item.levelMax ?? '',
+      startsAt: item.startsAt,
+      timeZoneId: item.timeZoneId,
+      organizerDisplayName: item.organizerDisplayName ?? '',
+      organizerPhotoUrl: item.organizerPhotoUrl,
+      publicLocationLabel: _eventHistoryLocationLabel(context, item),
+      participantsCount: item.participantsCount,
+      capacity: item.capacity,
+      restrictedToUserId: restrictedToUserId,
+      joinCtaState: switch (item.timelineStatus) {
+        EventHistoryTimelineStatus.upcoming =>
+          item.participantStatus == 'active'
+              ? item.isOrganizer
+                  ? EventDetailJoinCtaState.joinedLocked
+                  : EventDetailJoinCtaState.joined
+              : EventDetailJoinCtaState.join,
+        EventHistoryTimelineStatus.past => item.participantStatus == 'active'
+            ? EventDetailJoinCtaState.joinedLocked
+            : EventDetailJoinCtaState.past,
+        EventHistoryTimelineStatus.canceled => EventDetailJoinCtaState.canceled,
+        EventHistoryTimelineStatus.left => EventDetailJoinCtaState.join,
+      },
+    );
 
 class _EventHistoryLanguageBadge extends StatelessWidget {
   const _EventHistoryLanguageBadge({required this.label});
