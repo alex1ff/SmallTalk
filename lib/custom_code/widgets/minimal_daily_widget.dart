@@ -11,6 +11,7 @@ import 'index.dart'; // Imports other custom widgets
 import '/custom_code/actions/index.dart'; // Imports custom actions
 import '/flutter_flow/custom_functions.dart'; // Imports custom functions
 import 'package:flutter/material.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 // Begin custom widget code
 // DO NOT REMOVE OR MODIFY THE CODE ABOVE!
 
@@ -645,6 +646,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   @override
   void initState() {
     super.initState();
+    _setCallScreenAwake(true);
     WidgetsBinding.instance.addObserver(this);
     _chatFocusNode.addListener(_handleChatFocusChanged);
     _deepgramCredential = _configuredDeepgramCredentialFor(widget);
@@ -660,6 +662,16 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
   void _handleChatFocusChanged() {
     if (!mounted || _disposed) return;
     setState(() {});
+  }
+
+  void _setCallScreenAwake(bool enabled) {
+    unawaited(() async {
+      try {
+        await WakelockPlus.toggle(enable: enabled);
+      } catch (_) {
+        if (kDebugMode) print('Call screen awake: update_failed');
+      }
+    }());
   }
 
   /// Initialize widget with proper error handling
@@ -2698,6 +2710,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
         }
         break;
       case AppLifecycleState.resumed:
+        _setCallScreenAwake(true);
         if (!_appInForeground) {
           _appInForeground = true;
           _handleAppForeground();
@@ -5109,6 +5122,7 @@ class _MinimalDailyWidgetState extends State<MinimalDailyWidget>
     if (kDebugMode) print('Disposing widget...');
 
     _disposed = true;
+    _setCallScreenAwake(false);
     unawaited(_deepgramTransport.dispose());
     _callTimer.dispose();
     WidgetsBinding.instance.removeObserver(this);

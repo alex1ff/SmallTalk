@@ -64,8 +64,8 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
   String? _lastLoggedRoomName;
   String? _lastLoggedRoomUrl;
   String? _deepgramAccessToken;
-  bool _deepgramTokenLoading = false;
   String? _deepgramTokenLoadingSessionId;
+  Future<String?>? _deepgramTokenRequest;
   String? _lastDeepgramTokenSessionId;
   late Future<bool> _mediaPermissionsFuture;
 
@@ -177,7 +177,6 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
     if (force || !hasInitialRoom || !hasInitialToken) {
       unawaited(_fetchSessionTokens(force: force));
     }
-    unawaited(_fetchDeepgramToken(force: force));
     return true;
   }
 
@@ -215,10 +214,9 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
     final sessionPath = widget.videoDocRef?.path;
     final sessionId = widget.videoDocRef?.id;
     if (sessionId == null || sessionId.isEmpty) return null;
-    if (!force &&
-        _deepgramTokenLoading &&
-        _deepgramTokenLoadingSessionId == sessionId) {
-      return _deepgramAccessToken;
+    final activeRequest = _deepgramTokenRequest;
+    if (activeRequest != null && _deepgramTokenLoadingSessionId == sessionId) {
+      return activeRequest;
     }
     if (!force &&
         _lastDeepgramTokenSessionId == sessionId &&
@@ -227,11 +225,30 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
     }
 
     if (!mounted) return _deepgramAccessToken;
-    setState(() {
-      _deepgramTokenLoading = true;
-      _deepgramTokenLoadingSessionId = sessionId;
-    });
 
+    final request = _requestDeepgramToken(
+      sessionId: sessionId,
+      sessionPath: sessionPath,
+      throwOnFailure: throwOnFailure,
+    );
+    _deepgramTokenLoadingSessionId = sessionId;
+    _deepgramTokenRequest = request;
+
+    try {
+      return await request;
+    } finally {
+      if (identical(_deepgramTokenRequest, request)) {
+        _deepgramTokenRequest = null;
+        _deepgramTokenLoadingSessionId = null;
+      }
+    }
+  }
+
+  Future<String?> _requestDeepgramToken({
+    required String sessionId,
+    required String? sessionPath,
+    required bool throwOnFailure,
+  }) async {
     try {
       final result = await FirebaseFunctions.instance
           .httpsCallable('getDeepgramToken')
@@ -277,13 +294,6 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
         );
       }
       return _deepgramAccessToken;
-    } finally {
-      if (mounted && _deepgramTokenLoadingSessionId == sessionId) {
-        setState(() {
-          _deepgramTokenLoading = false;
-          _deepgramTokenLoadingSessionId = null;
-        });
-      }
     }
   }
 
@@ -320,8 +330,8 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
     _lastLoggedRoomName = null;
     _lastLoggedRoomUrl = null;
     _deepgramAccessToken = null;
-    _deepgramTokenLoading = false;
     _deepgramTokenLoadingSessionId = null;
+    _deepgramTokenRequest = null;
     _lastDeepgramTokenSessionId = null;
   }
 
@@ -740,7 +750,6 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                       videoCallPageVideoSessionsRecord,
                     ),
                     isStudent: isStudent,
-                    deepgramCredential: _nonEmpty(_deepgramAccessToken),
                     deepgramLanguage: resolvedLanguage,
                     username: currentUserDisplayName,
                     enableDeepgram: true,

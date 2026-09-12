@@ -283,7 +283,7 @@ class _InCallTranslationSheetState extends State<InCallTranslationSheet> {
                   maxLength: 250,
                   textInputAction: TextInputAction.done,
                   onChanged: _handleTextChanged,
-                  onSubmitted: (_) => _translate(),
+                  onSubmitted: (_) => _focusNode.unfocus(),
                   decoration: InputDecoration(
                     hintText: FFLocalizations.of(context).getVariableText(
                       ruText: 'Введите слово или фразу',

@@ -140,6 +140,7 @@ dependencies:
   video_player_avfoundation: 2.7.1
   video_player_platform_interface: 6.3.0
   video_player_web: 2.3.5
+  wakelock_plus: 1.4.0
   web_socket_channel: ^3.0.3
   adaptive_platform_ui: ^0.1.104
   # Required by adaptive_platform_ui for its iOS fallback icons.

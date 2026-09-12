@@ -1117,21 +1117,11 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     );
   }
 
-  Color _selectedReviewColor(BuildContext context, int rating) {
-    switch (rating) {
-      case 1:
-        return const Color(0xFF850000);
-      case 2:
-        return const Color(0xFFFF0000);
-      case 3:
-        return const Color(0xFFFF3D00);
-      case 4:
-        return const Color(0xFFFF7000);
-      case 5:
-        return const Color(0xFFFFC600);
-      default:
-        return FlutterFlowTheme.of(context).secondaryBackground;
-    }
+  Color _reviewRatingColor(BuildContext context) {
+    if (_model.rating <= 0) return const Color(0xFFD8D8DE);
+    if (_model.rating <= 2) return FlutterFlowTheme.of(context).error;
+    if (_model.rating == 3) return const Color(0xFFFF8A00);
+    return const Color(0xFFFFC600);
   }
 
   Widget _buildReviewStarButton(BuildContext context, int value) {
@@ -1139,14 +1129,14 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     return Expanded(
       child: FlutterFlowIconButton(
         borderColor: Colors.transparent,
-        borderRadius: ExpatlioDesign.radiusSmall,
-        buttonSize: 55.0,
+        borderRadius: ExpatlioDesign.radiusMedium,
+        buttonSize: 48.0,
         icon: Icon(
-          FFIcons.kstar012,
+          Icons.star_rounded,
           color: currentRating >= value
-              ? _selectedReviewColor(context, currentRating)
-              : FlutterFlowTheme.of(context).secondaryBackground,
-          size: 40.0,
+              ? _reviewRatingColor(context)
+              : const Color(0xFFD8D8DE),
+          size: 38.0,
         ),
         onPressed: _model.isSubmittingReview
             ? null
@@ -1263,62 +1253,93 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
         Container(
           width: double.infinity,
           decoration: BoxDecoration(
-            color: ExpatlioDesign.card,
+            color: FlutterFlowTheme.of(context).primaryBackground,
             borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
+            border: Border.all(color: ExpatlioDesign.border),
           ),
-          alignment: const AlignmentDirectional(0.0, 0.0),
           child: Padding(
             padding: const EdgeInsetsDirectional.fromSTEB(
-                ExpatlioDesign.space8,
-                ExpatlioDesign.space32,
-                ExpatlioDesign.space8,
-                ExpatlioDesign.space32),
-            child: Row(
-              mainAxisSize: MainAxisSize.max,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(
-                5,
-                (index) => _buildReviewStarButton(context, index + 1),
-              ),
+              ExpatlioDesign.space16,
+              ExpatlioDesign.space16,
+              ExpatlioDesign.space16,
+              ExpatlioDesign.space20,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  FFLocalizations.of(context).getVariableText(
+                    ruText: 'Оставить отзыв',
+                    enText: 'Leave feedback',
+                  ),
+                  style: ExpatlioDesign.textStyle(
+                    context,
+                    size: 17.0,
+                    weight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: ExpatlioDesign.space4),
+                Text(
+                  FFLocalizations.of(context).getVariableText(
+                    ruText:
+                        'Оцените разговор и напишите пару слов о собеседнике.',
+                    enText:
+                        'Rate the call and write a few words about your partner.',
+                  ),
+                  style: ExpatlioDesign.textStyle(
+                    context,
+                    color: ExpatlioDesign.muted,
+                    size: 13.0,
+                  ),
+                ),
+                const SizedBox(height: ExpatlioDesign.space16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(
+                    5,
+                    (index) => _buildReviewStarButton(context, index + 1),
+                  ),
+                ),
+                const SizedBox(height: ExpatlioDesign.space12),
+                TextFormField(
+                  controller: _model.reviewCommentTextController,
+                  focusNode: _model.reviewCommentFocusNode,
+                  onChanged: (_) => EasyDebounce.debounce(
+                    '_model.reviewCommentTextController',
+                    Duration.zero,
+                    () => safeSetState(() {}),
+                  ),
+                  autofocus: false,
+                  textCapitalization: TextCapitalization.sentences,
+                  textInputAction: TextInputAction.done,
+                  obscureText: false,
+                  decoration: ExpatlioDesign.formFieldDecoration(
+                    context,
+                    hintText: reviewCommentHintText(context, _model.rating),
+                    maxLines: 5,
+                  ),
+                  style: ExpatlioDesign.formTextStyle(context),
+                  maxLines: 5,
+                  minLines: 3,
+                  cursorColor: ExpatlioDesign.primary,
+                  enableInteractiveSelection: true,
+                  validator: _model.reviewCommentTextControllerValidator
+                      .asValidator(context),
+                  inputFormatters: [
+                    if (!isAndroid && !isiOS)
+                      TextInputFormatter.withFunction((oldValue, newValue) {
+                        return TextEditingValue(
+                          selection: newValue.selection,
+                          text: newValue.text.toCapitalization(
+                            TextCapitalization.sentences,
+                          ),
+                        );
+                      }),
+                  ],
+                ),
+              ],
             ),
           ),
-        ),
-        const SizedBox(height: ExpatlioDesign.space12),
-        TextFormField(
-          controller: _model.reviewCommentTextController,
-          focusNode: _model.reviewCommentFocusNode,
-          onChanged: (_) => EasyDebounce.debounce(
-            '_model.reviewCommentTextController',
-            Duration.zero,
-            () => safeSetState(() {}),
-          ),
-          autofocus: false,
-          textCapitalization: TextCapitalization.sentences,
-          textInputAction: TextInputAction.done,
-          obscureText: false,
-          decoration: ExpatlioDesign.formFieldDecoration(
-            context,
-            hintText: reviewCommentHintText(context, _model.rating),
-            maxLines: 12,
-          ),
-          style: ExpatlioDesign.formTextStyle(context),
-          maxLines: 12,
-          minLines: 2,
-          cursorColor: ExpatlioDesign.primary,
-          enableInteractiveSelection: true,
-          validator:
-              _model.reviewCommentTextControllerValidator.asValidator(context),
-          inputFormatters: [
-            if (!isAndroid && !isiOS)
-              TextInputFormatter.withFunction((oldValue, newValue) {
-                return TextEditingValue(
-                  selection: newValue.selection,
-                  text: newValue.text.toCapitalization(
-                    TextCapitalization.sentences,
-                  ),
-                );
-              }),
-          ],
         ),
         const SizedBox(height: ExpatlioDesign.space16),
         _buildReviewSubmitButton(context, session),
@@ -1377,36 +1398,24 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
         final hasReviewed =
             resolvedReviewRef != null || (snapshot.data?.hasReviewed ?? false);
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              FFLocalizations.of(context).getVariableText(
-                ruText: hasReviewed ? 'Отзыв оставлен' : 'Оставить отзыв',
-                enText: hasReviewed ? 'Review submitted' : 'Leave feedback',
-              ),
-              style: FlutterFlowTheme.of(context).bodyMedium.override(
-                    fontFamily: 'Cool',
-                    fontSize: 22.0,
-                    letterSpacing: 0.0,
-                    fontWeight: FontWeight.normal,
-                  ),
-            ),
-            const SizedBox(height: ExpatlioDesign.space12),
-            !snapshot.hasData && _model.reviewRefOverride == null
-                ? _buildLoadingState(context)
-                : PairReviewContent(
-                    hasReviewed: hasReviewed,
-                    reviewContent: resolvedReviewRef != null
-                        ? _buildStoredReview(
-                            context,
-                            reviewRef: resolvedReviewRef,
-                          )
-                        : null,
-                    reviewFallbackText: reviewAlreadyLeftMessage(context),
-                    formContent: _buildReviewForm(context, session),
-                  ),
-          ],
+        if (!snapshot.hasData && _model.reviewRefOverride == null) {
+          return _buildLoadingState(context);
+        }
+
+        return PairReviewContent(
+          hasReviewed: hasReviewed,
+          reviewContent: resolvedReviewRef != null
+              ? _buildStoredReview(
+                  context,
+                  reviewRef: resolvedReviewRef,
+                )
+              : null,
+          reviewNoteText: FFLocalizations.of(context).getVariableText(
+            ruText: 'Отзыв на собеседника уже оставлен',
+            enText: 'A review for your partner has already been submitted',
+          ),
+          reviewFallbackText: reviewAlreadyLeftMessage(context),
+          formContent: _buildReviewForm(context, session),
         );
       },
     );
