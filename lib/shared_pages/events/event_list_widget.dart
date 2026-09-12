@@ -6187,22 +6187,29 @@ class _EventCardPrimaryCta extends StatelessWidget {
   Widget build(BuildContext context) {
     final membershipResolved =
         membershipState == EventListMembershipState.resolved;
-    final showsDetails = !membershipResolved;
-    final enabled = onPressed != null &&
+    final showsDetails =
+        membershipState == EventListMembershipState.lookupFailed;
+    final membershipPending =
+        membershipState == EventListMembershipState.pending;
+    final enabled = !membershipPending &&
+        onPressed != null &&
         (showsDetails ||
             state == EventListJoinCtaState.join ||
             state == EventListJoinCtaState.joined);
     final isJoinedAction = state == EventListJoinCtaState.joined;
+    final showActionStyle = enabled ||
+        (membershipPending &&
+            (state == EventListJoinCtaState.join || isJoinedAction));
     final backgroundColor = showsDetails
         ? ExpatlioDesign.secondarySystemBackground
-        : enabled
+        : showActionStyle
             ? isJoinedAction
                 ? _eventListSoftPrimaryBackground
                 : ExpatlioDesign.primary
             : ExpatlioDesign.secondarySystemBackground;
     final textColor = showsDetails
         ? ExpatlioDesign.primary
-        : enabled
+        : showActionStyle
             ? isJoinedAction
                 ? ExpatlioDesign.primary
                 : Colors.white
@@ -6212,18 +6219,21 @@ class _EventCardPrimaryCta extends StatelessWidget {
     final actionPending = state == EventListJoinCtaState.joining ||
         state == EventListJoinCtaState.leaving;
     final visibleLabel = switch (membershipState) {
-      EventListMembershipState.pending ||
       EventListMembershipState.lookupFailed =>
         FFLocalizations.of(context).getVariableText(
           ruText: 'Подробнее',
           enText: 'Details',
         ),
+      EventListMembershipState.pending ||
       EventListMembershipState.resolved =>
         _eventPrimaryCtaLabel(context, state),
     };
-    final semanticsLabel = membershipResolved
-        ? _eventPrimaryCtaSemanticsLabel(context, state)
-        : visibleLabel;
+    final semanticsLabel = membershipPending
+        ? FFLocalizations.of(context).getVariableText(
+            ruText: 'Проверяем участие', enText: 'Checking participation')
+        : membershipResolved
+            ? _eventPrimaryCtaSemanticsLabel(context, state)
+            : visibleLabel;
 
     return Semantics(
       key: eventListCardPrimaryCtaKey,
@@ -6326,10 +6336,10 @@ class _EventCardChatCta extends StatelessWidget {
     );
     final canHandleTap = effectiveOnPressed != null;
     final foregroundColor =
-        canHandleTap ? ExpatlioDesign.text : ExpatlioDesign.disabled;
-    final backgroundColor = enabled
-        ? ExpatlioDesign.secondarySystemBackground
-        : ExpatlioDesign.secondarySystemBackground.withValues(alpha: 0.62);
+        canHandleTap || membershipState == EventListMembershipState.pending
+            ? ExpatlioDesign.text
+            : ExpatlioDesign.disabled;
+    const backgroundColor = ExpatlioDesign.secondarySystemBackground;
 
     return Semantics(
       key: eventListCardChatCtaKey,
@@ -6962,7 +6972,7 @@ class _EventCitySelector extends StatelessWidget {
                   },
             borderRadius: BorderRadius.circular(ExpatlioDesign.controlRadius),
             child: Container(
-              constraints: const BoxConstraints(minHeight: 54),
+              constraints: const BoxConstraints(minHeight: 44),
               padding: const EdgeInsetsDirectional.fromSTEB(
                 ExpatlioDesign.space16,
                 10,
@@ -6975,6 +6985,8 @@ class _EventCitySelector extends StatelessWidget {
                 radius: ExpatlioDesign.radiusLarge,
               ),
               child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Row(

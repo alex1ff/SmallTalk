@@ -6440,7 +6440,7 @@ void main() {
         <String>{'organizer-user', 'profile-participant'},
       ]);
       expect(membershipCompleter.isCompleted, isFalse);
-      expect(find.text('Подробнее'), findsOneWidget);
+      expect(find.text('Присоединиться'), findsOneWidget);
 
       final eventRef = EventsRecord.collection.doc('profile-preload-event');
       membershipCompleter.complete(
@@ -8017,118 +8017,146 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-    'keeps membership actions neutral until the participant lookup completes',
-    (tester) async {
-      currentUser = _TestAuthUser('pending-member');
-      currentUserDocument = _userFixture(
-        uid: 'pending-member',
-        data: {
-          'display_name': 'Pending Member',
-          'profileCity': _profileCityFixture(
-            countryCode: 'RU',
-            cityKey: 'moscow',
-            catalogVersion: _catalog.catalogVersion,
-          ).toMap(),
-        },
-      );
-      final membershipCompleter = Completer<EventParticipantsRecord?>();
-      addTearDown(() {
-        if (!membershipCompleter.isCompleted) {
-          membershipCompleter.complete(null);
-        }
-      });
-      var membershipLookups = 0;
+  for (final alreadyJoined in [false, true]) {
+    testWidgets(
+      'keeps membership actions disabled until lookup completes (joined=$alreadyJoined)',
+      (tester) async {
+        currentUser = _TestAuthUser('pending-member');
+        currentUserDocument = _userFixture(
+          uid: 'pending-member',
+          data: {
+            'display_name': 'Pending Member',
+            'profileCity': _profileCityFixture(
+              countryCode: 'RU',
+              cityKey: 'moscow',
+              catalogVersion: _catalog.catalogVersion,
+            ).toMap(),
+          },
+        );
+        final membershipCompleter = Completer<EventParticipantsRecord?>();
+        addTearDown(() {
+          if (!membershipCompleter.isCompleted) {
+            membershipCompleter.complete(null);
+          }
+        });
+        var membershipLookups = 0;
 
-      await tester.pumpWidget(
-        _buildTestApp(
-          home: EventListWidget(
-            cityCatalogOverride: _catalog,
-            languageCatalogOverride: _languageCatalog,
-            initialSelectedCity: _selectedCityFixture(),
-            nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
-            eventPageLoader: (
-              collection,
-              recordBuilder, {
-              queryBuilder,
-              nextPageMarker,
-              required pageSize,
-              required isStream,
-            }) async {
-              return FFFirestorePage<EventsRecord>(
-                [
-                  _eventsRecordFixture(
-                    'pending-membership-event',
-                    title: 'Pending membership event',
-                    startsAt: DateTime.utc(2035, 6, 14, 15),
-                  ),
-                ],
-                null,
-                null,
-              );
-            },
-            currentUserParticipantLoader: (eventRef, userId) {
-              membershipLookups += 1;
-              return membershipCompleter.future;
-            },
-            activeParticipantsLoader: (_) async =>
-                const <EventParticipantsRecord>[],
+        await tester.pumpWidget(
+          _buildTestApp(
+            home: EventListWidget(
+              cityCatalogOverride: _catalog,
+              languageCatalogOverride: _languageCatalog,
+              initialSelectedCity: _selectedCityFixture(),
+              nowUtcProvider: () => DateTime.utc(2035, 6, 14, 9),
+              eventPageLoader: (
+                collection,
+                recordBuilder, {
+                queryBuilder,
+                nextPageMarker,
+                required pageSize,
+                required isStream,
+              }) async {
+                return FFFirestorePage<EventsRecord>(
+                  [
+                    _eventsRecordFixture(
+                      'pending-membership-event',
+                      title: 'Pending membership event',
+                      startsAt: DateTime.utc(2035, 6, 14, 15),
+                    ),
+                  ],
+                  null,
+                  null,
+                );
+              },
+              currentUserParticipantLoader: (eventRef, userId) {
+                membershipLookups += 1;
+                return membershipCompleter.future;
+              },
+              activeParticipantsLoader: (_) async =>
+                  const <EventParticipantsRecord>[],
+            ),
           ),
-        ),
-      );
-      await tester.pump();
-      await tester.pump();
+        );
+        await tester.pump();
+        await tester.pump();
 
-      expect(membershipLookups, 1);
-      expect(find.text('Pending membership event'), findsOneWidget);
-      expect(find.text('Подробнее'), findsOneWidget);
-      expect(find.text('Присоединиться'), findsNothing);
-      final pendingPrimarySemantics =
-          tester.getSemantics(find.byKey(eventListCardPrimaryCtaKey));
-      expect(pendingPrimarySemantics.flagsCollection.isButton, isTrue);
-      expect(pendingPrimarySemantics.flagsCollection.isEnabled, isTrue);
-      final pendingChatSemantics =
-          tester.getSemantics(find.byKey(eventListCardChatCtaKey));
-      expect(pendingChatSemantics.flagsCollection.isButton, isTrue);
-      expect(pendingChatSemantics.flagsCollection.isEnabled, isFalse);
-      expect(pendingChatSemantics.label, contains('Проверяем доступ к чату'));
-      final pendingChatInkWell = tester.widget<InkWell>(
-        find.descendant(
-          of: find.byKey(eventListCardChatCtaKey),
-          matching: find.byType(InkWell),
-        ),
-      );
-      expect(pendingChatInkWell.onTap, isNull);
-      final beforeGeometry = _eventCardGeometry(tester);
+        expect(membershipLookups, 1);
+        expect(find.text('Pending membership event'), findsOneWidget);
+        expect(find.text('Подробнее'), findsNothing);
+        expect(find.text('Присоединиться'), findsOneWidget);
+        final pendingPrimarySemantics =
+            tester.getSemantics(find.byKey(eventListCardPrimaryCtaKey));
+        expect(pendingPrimarySemantics.flagsCollection.isButton, isTrue);
+        expect(pendingPrimarySemantics.flagsCollection.isEnabled, isFalse);
+        final pendingChatSemantics =
+            tester.getSemantics(find.byKey(eventListCardChatCtaKey));
+        expect(pendingChatSemantics.flagsCollection.isButton, isTrue);
+        expect(pendingChatSemantics.flagsCollection.isEnabled, isFalse);
+        expect(pendingChatSemantics.label, contains('Проверяем доступ к чату'));
+        final pendingChatInkWell = tester.widget<InkWell>(
+          find.descendant(
+            of: find.byKey(eventListCardChatCtaKey),
+            matching: find.byType(InkWell),
+          ),
+        );
+        expect(pendingChatInkWell.onTap, isNull);
+        final beforeGeometry = _eventCardGeometry(tester);
+        List<Object?> actionAppearance() => [
+              for (final key in [
+                eventListCardPrimaryCtaKey,
+                eventListCardChatCtaKey
+              ]) ...[
+                tester
+                    .widget<Material>(find.descendant(
+                        of: find.byKey(key), matching: find.byType(Material)))
+                    .color,
+                tester
+                    .widget<Text>(find.descendant(
+                        of: find.byKey(key), matching: find.byType(Text)))
+                    .data,
+                tester
+                    .widget<Text>(find.descendant(
+                        of: find.byKey(key), matching: find.byType(Text)))
+                    .style
+                    ?.color,
+              ],
+            ];
+        final beforeAppearance = actionAppearance();
 
-      await tester.tap(find.byKey(eventListCardChatCtaKey));
-      await tester.pump();
+        await tester.tap(find.byKey(eventListCardChatCtaKey));
+        await tester.pump();
 
-      expect(find.text('Pending membership event'), findsOneWidget);
-      expect(find.byType(SnackBar), findsNothing);
-      expect(tester.takeException(), isNull);
+        expect(find.text('Pending membership event'), findsOneWidget);
+        expect(find.byType(SnackBar), findsNothing);
+        expect(tester.takeException(), isNull);
 
-      final eventRef = EventsRecord.collection.doc('pending-membership-event');
-      membershipCompleter.complete(
-        _eventParticipantRecordFixture(
-          eventRef,
-          userId: 'pending-member',
-          displayName: 'Pending Member',
-          joinedAt: DateTime.utc(2035, 6, 14, 10),
-        ),
-      );
-      await tester.pump();
-      await tester.pump();
+        final eventRef =
+            EventsRecord.collection.doc('pending-membership-event');
+        membershipCompleter.complete(
+          alreadyJoined
+              ? _eventParticipantRecordFixture(
+                  eventRef,
+                  userId: 'pending-member',
+                  displayName: 'Pending Member',
+                  joinedAt: DateTime.utc(2035, 6, 14, 10),
+                )
+              : null,
+        );
+        await tester.pump();
+        await tester.pump();
 
-      expect(find.text('Подробнее'), findsNothing);
-      expect(find.text('Покинуть'), findsOneWidget);
-      final joinedChatSemantics =
-          tester.getSemantics(find.byKey(eventListCardChatCtaKey));
-      expect(joinedChatSemantics.flagsCollection.isEnabled, isTrue);
-      expect(_eventCardGeometry(tester), beforeGeometry);
-      expect(tester.takeException(), isNull);
-    },
-  );
+        expect(find.text('Подробнее'), findsNothing);
+        expect(find.text(alreadyJoined ? 'Покинуть' : 'Присоединиться'),
+            findsOneWidget);
+        final joinedChatSemantics =
+            tester.getSemantics(find.byKey(eventListCardChatCtaKey));
+        expect(joinedChatSemantics.flagsCollection.isEnabled, alreadyJoined);
+        if (!alreadyJoined) expect(actionAppearance(), beforeAppearance);
+        expect(_eventCardGeometry(tester), beforeGeometry);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets(
     'keeps membership geometry stable when the participant lookup fails',
@@ -8202,7 +8230,7 @@ void main() {
 
       expect(pageLoads, 1);
       expect(membershipLookups, 1);
-      expect(find.text('Подробнее'), findsOneWidget);
+      expect(find.text('Присоединиться'), findsOneWidget);
       final beforeGeometry = _eventCardGeometry(tester);
 
       membershipCompleter.completeError(StateError('membership failed'));
@@ -12589,7 +12617,8 @@ void main() {
     expect(receivedPreview?.participantsCount, isNull);
   });
 
-  testWidgets('unknown membership Details opens the public event preview',
+  testWidgets(
+      'pending membership blocks Join but card opens the public preview',
       (tester) async {
     final router = GoRouter(
       initialLocation: EventListWidget.routePath,
@@ -12623,8 +12652,11 @@ void main() {
     await tester.pumpWidget(_buildRouterTestApp(router));
     await tester.pumpAndSettle();
 
-    expect(find.text('Подробнее'), findsOneWidget);
+    expect(find.text('Присоединиться'), findsOneWidget);
     await tester.tap(find.byKey(eventListCardPrimaryCtaKey));
+    await tester.pump();
+    expect(router.getCurrentLocation(), EventListWidget.routePath);
+    await tester.tap(find.text('Разговорный клуб: кофе и английский'));
     await tester.pumpAndSettle();
 
     expect(router.getCurrentLocation(), '/events/pending-event-123');
