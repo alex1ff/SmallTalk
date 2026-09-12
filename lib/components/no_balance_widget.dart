@@ -62,7 +62,7 @@ class _NoBalanceWidgetState extends State<NoBalanceWidget> {
   @override
   Widget build(BuildContext context) {
     final hasTrial = isTrialSubscription(currentUserDocument);
-    return SafeArea(
+    final content = SafeArea(
       top: false,
       child: SingleChildScrollView(
         child: Stack(
@@ -233,6 +233,10 @@ class _NoBalanceWidgetState extends State<NoBalanceWidget> {
           ],
         ),
       ),
+    );
+    return DecoratedBox(
+      decoration: ExpatlioDesign.sheetDecoration(),
+      child: content,
     );
   }
 }
