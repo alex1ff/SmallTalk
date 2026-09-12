@@ -145,9 +145,9 @@ reset, or consume a trial call.
   types must be explicitly allowlisted before release.
 - `canBrowseApp`: authenticated user.
 - `canViewEventPreview`: authenticated user, reading only a public projection.
-- `canStartCall`: `isPaidPremium`, or `isTrial` plus trial state `eligible`,
-  server time before the deadline, no active call, and server time at/after
-  `retryNotBeforeAt`.
+- `canStartCall`: `isPaidPremium`, or active unexpired `giftMinutes`, or
+  `isTrial` plus trial state `eligible`, server time before the deadline, no
+  active call, and server time at/after `retryNotBeforeAt`.
 - `canReadProtectedEvent`: `isPaidPremium`, `isAdmin`, event organizer, or an
   existing enrolled participant. This predicate applies to details, participant
   reads, event chat/history, and organizer chat.
@@ -159,15 +159,12 @@ All call-start and event-detail checks are enforced server-side. UI gating is
 only a presentation layer and must fail closed when subscription data is stale
 or unavailable.
 
-`giftMinutes` no longer grants student call access in this flow. Deployment
-order is: (1) deploy the server gate that ignores legacy student gift minutes,
-(2) stop automatic registration gift grants (explicit promo-code redemption is
-still a separate admin-controlled feature), (3) remove gift-minute CTAs and
-legacy balances from the student UI. Existing balances expire naturally and
-are not converted into calls or refunds. Remove the
-existing 60-minute/day and 8-hour/week subscription ceilings for paid Premium;
-retain only infrastructure abuse/rate protection that does not present as a
-plan limit.
+`giftMinutes` grants short-lived student call access and is consumed by the
+existing server-side call settlement path. Promo redemption refreshes the
+canonical user document before returning success, and the client gate treats
+an active bucket as usable access. Remove the existing 60-minute/day and
+8-hour/week subscription ceilings for paid Premium; retain only infrastructure
+abuse/rate protection that does not present as a plan limit.
 
 Events use a separate `events_public` projection containing only preview-safe
 fields (title, city, start time, short description, cover image, and capacity
