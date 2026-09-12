@@ -90,6 +90,10 @@ function qualifyingSessionData() {
     endedAt: Timestamp.fromMillis(Date.parse("2026-04-19T09:05:00Z")),
     studentId: "student",
     tutorId: "teacher",
+    participantInfos: {
+      student: {displayName: "Alice", photoUrl: null},
+      teacher: {displayName: "Bob", photoUrl: "https://img/bob"},
+    },
     sessionMetadata: {
       callConnectedAt: Timestamp.fromMillis(Date.parse("2026-04-19T09:00:30Z")),
     },
@@ -211,6 +215,13 @@ test("persistCallChatForUser upserts conversation and is idempotent", async () =
     {
       student: true,
       teacher: true,
+    },
+  );
+  assert.deepEqual(
+    store.get("conversations/student_teacher").participantInfoByUserId,
+    {
+      student: {displayName: "Alice", photoUrl: null},
+      teacher: {displayName: "Bob", photoUrl: "https://img/bob"},
     },
   );
   assert.equal(

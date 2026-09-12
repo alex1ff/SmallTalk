@@ -254,23 +254,33 @@ bool hasCompletedStudentOnboardingContract({
 String? validateStudentOnboardingPage({
   required StudentOnboardingPage page,
   required StudentOnboardingDraft draft,
+  String languageCode = 'ru',
 }) {
+  final isRussian = languageCode.toLowerCase().startsWith('ru');
   switch (page) {
     case StudentOnboardingPage.name:
       if (draft.displayName.trim().isEmpty) {
-        return 'Пожалуйста, представьтесь';
+        return isRussian
+            ? 'Пожалуйста, представьтесь'
+            : 'Please enter your name';
       }
       return _studentNameRegex.hasMatch(draft.displayName.trim())
           ? null
-          : 'Неверное имя';
+          : isRussian
+              ? 'Неверное имя'
+              : 'Invalid name';
     case StudentOnboardingPage.learningLanguage:
       return hasLanguageSelection(draft.learningLanguage)
           ? null
-          : 'Выберите язык из списка';
+          : isRussian
+              ? 'Выберите язык из списка'
+              : 'Select a language from the list';
     case StudentOnboardingPage.country:
       return hasCountrySelection(draft.country)
           ? null
-          : 'Выберите локацию из списка';
+          : isRussian
+              ? 'Выберите локацию из списка'
+              : 'Select a location from the list';
     case StudentOnboardingPage.gender:
     case StudentOnboardingPage.level:
       return null;

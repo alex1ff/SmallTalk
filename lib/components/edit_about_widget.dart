@@ -50,7 +50,10 @@ class _EditAboutWidgetState extends State<EditAboutWidget> {
     if (_model.aboutMeTextController.text == '') {
       await actions.showTopNotification(
         context,
-        'Напишите хотя бы пару слов',
+        FFLocalizations.of(context).getVariableText(
+          ruText: 'Напишите хотя бы пару слов',
+          enText: 'Please write at least a few words',
+        ),
         '',
         true,
       );

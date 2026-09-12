@@ -21,6 +21,7 @@ Future<void> openChatThread(
   BuildContext context, {
   required DocumentReference? conversationRef,
   ConversationsRecord? initialConversation,
+  ChatPartnerPreview? initialPartnerPreview,
   ChatConversationPreparation? preparation,
 }) {
   return Navigator.of(context, rootNavigator: true).push(
@@ -29,10 +30,12 @@ Future<void> openChatThread(
           ? ChatThreadWidget(
               conversationRef: conversationRef,
               initialConversation: initialConversation,
+              initialPartnerPreview: initialPartnerPreview,
             )
           : DeferredChatThreadWidget(
               conversationRef: conversationRef,
               initialConversation: initialConversation,
+              initialPartnerPreview: initialPartnerPreview,
               preparation: preparation,
             ),
     ),
@@ -51,10 +54,12 @@ class DeferredChatThreadWidget extends StatefulWidget {
     required this.conversationRef,
     required this.preparation,
     this.initialConversation,
+    this.initialPartnerPreview,
   });
 
   final DocumentReference? conversationRef;
   final ConversationsRecord? initialConversation;
+  final ChatPartnerPreview? initialPartnerPreview;
   final ChatConversationPreparation preparation;
 
   @override
@@ -135,6 +140,7 @@ class _DeferredChatThreadWidgetState extends State<DeferredChatThreadWidget> {
       return ChatThreadWidget(
         conversationRef: widget.conversationRef,
         initialConversation: widget.initialConversation,
+        initialPartnerPreview: widget.initialPartnerPreview,
       );
     }
 

@@ -77,6 +77,10 @@ const ValueKey<String> profileProgressLoadingKey =
     ValueKey<String>('profile_progress_loading');
 const ValueKey<String> profileProgressRetryKey =
     ValueKey<String>('profile_progress_retry');
+const ValueKey<String> profileAccountIdCopyKey =
+    ValueKey<String>('profile_account_id_copy');
+const ValueKey<String> profileSupportMenuAnchorKey =
+    ValueKey<String>('profile_support_menu_anchor');
 const ValueKey<String> profileTariffSectionKey =
     ValueKey<String>('profile_tariff_section');
 const ValueKey<String> profileTariffCardKey =
@@ -185,7 +189,8 @@ class ProfileWidget extends StatefulWidget {
   State<ProfileWidget> createState() => _ProfileWidgetState();
 }
 
-class _ProfileWidgetState extends State<ProfileWidget> {
+class _ProfileWidgetState extends State<ProfileWidget>
+    with WidgetsBindingObserver {
   static const double _statTileCompactBreakpoint = 132.0;
   static const double _statTileStackedBreakpoint = 92.0;
 
@@ -193,7 +198,10 @@ class _ProfileWidgetState extends State<ProfileWidget> {
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
   final _appLanguageMenuKey = GlobalKey();
-  final _supportMenuKey = GlobalKey();
+  final _supportMenuAnchorRenderKey = GlobalKey();
+  final _supportMenuFocusNode = FocusNode();
+  final _supportMenuEmailFocusNode = FocusNode();
+  _SupportContactPopupRoute? _supportMenuRoute;
   static const _emailVerificationPollInterval = Duration(seconds: 8);
   Timer? _emailVerificationPollTimer;
   Timer? _giftExpiryTimer;
@@ -202,7 +210,6 @@ class _ProfileWidgetState extends State<ProfileWidget> {
   bool _emailVerificationRefreshing = false;
   bool _isAppLanguageMenuOpen = false;
   bool _isSupportMenuOpen = false;
-  OverlayEntry? _supportOverlayEntry;
   static const _supportEmail = 'support@expatlio.com';
   static const _supportTelegram = '@expatlio_support';
 
@@ -216,6 +223,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _model = createModel(context, () => ProfileModel());
     ProfileModel.ensureSessionCacheLifecycleRegistered();
     unawaited(_refreshEmailVerificationStatus(showResult: false));
@@ -224,12 +232,20 @@ class _ProfileWidgetState extends State<ProfileWidget> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _giftExpiryTimer?.cancel();
     _stopEmailVerificationPolling();
-    _supportOverlayEntry?.remove();
+    _dismissSupportMenu();
+    _supportMenuFocusNode.dispose();
+    _supportMenuEmailFocusNode.dispose();
     _model.dispose();
 
     super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    _dismissSupportMenu();
   }
 
   void _scheduleGiftExpiryRefresh(DateTime? expiresAt) {
@@ -1175,77 +1191,76 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     safeSetState(() {});
   }
 
-  Future<void> _openSupportContactPicker() async {
-    final anchorContext = _supportMenuKey.currentContext;
-    if (anchorContext == null || !mounted) {
+  Future<void> _toggleSupportContactPicker() async {
+    if (_isSupportMenuOpen) {
+      _dismissSupportMenu();
       return;
     }
 
-    if (_supportOverlayEntry != null) {
-      _closeSupportContactPicker();
-      return;
-    }
-
-    final anchorBox = anchorContext.findRenderObject() as RenderBox?;
-    final overlay = Overlay.of(anchorContext);
+    final anchorBox = _supportMenuAnchorRenderKey.currentContext
+        ?.findRenderObject() as RenderBox?;
+    final overlay = Overlay.of(context, rootOverlay: true);
     final overlayBox = overlay.context.findRenderObject() as RenderBox?;
-    if (anchorBox == null || overlayBox == null || !anchorBox.attached) {
+    if (anchorBox == null ||
+        overlayBox == null ||
+        !anchorBox.attached ||
+        !overlayBox.attached) {
       return;
     }
 
     final anchorOffset =
         anchorBox.localToGlobal(Offset.zero, ancestor: overlayBox);
-    const viewportMargin = ExpatlioDesign.pagePadding;
-    final menuWidth = math.min(
-      292.0,
-      overlayBox.size.width - (viewportMargin * 2),
+    final anchorRect = anchorOffset & anchorBox.size;
+    final navigator = Navigator.of(context, rootNavigator: true);
+    late final _SupportContactPopupRoute route;
+    route = _SupportContactPopupRoute(
+      anchorRect: anchorRect,
+      email: _supportEmail,
+      telegram: _supportTelegram,
+      emailFocusNode: _supportMenuEmailFocusNode,
+      onEmailTap: () {
+        _dismissSupportMenu(route);
+        unawaited(launchURL('mailto:$_supportEmail'));
+      },
+      onTelegramTap: () {
+        _dismissSupportMenu(route);
+        unawaited(launchURL('https://t.me/expatlio_support'));
+      },
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
     );
-    final maxMenuLeft = math.max(
-        viewportMargin, overlayBox.size.width - menuWidth - viewportMargin);
-    final menuLeft = (anchorOffset.dx + anchorBox.size.width - menuWidth)
-        .clamp(viewportMargin, maxMenuLeft)
-        .toDouble();
-    final menuTop = anchorOffset.dy + anchorBox.size.height + 8.0;
-
+    _supportMenuRoute = route;
     safeSetState(() => _isSupportMenuOpen = true);
-    _supportOverlayEntry = OverlayEntry(
-      builder: (context) => Stack(
-        children: [
-          Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onTap: _closeSupportContactPicker,
-            ),
-          ),
-          PositionedDirectional(
-            start: menuLeft,
-            top: menuTop,
-            width: menuWidth,
-            child: SupportContactMenu(
-              email: _supportEmail,
-              telegram: _supportTelegram,
-              onEmailTap: () {
-                _closeSupportContactPicker();
-                unawaited(launchURL('mailto:$_supportEmail'));
-              },
-              onTelegramTap: () {
-                _closeSupportContactPicker();
-                unawaited(launchURL('https://t.me/expatlio_support'));
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-    overlay.insert(_supportOverlayEntry!);
+
+    await navigator.push<void>(route);
+    if (!mounted || !identical(_supportMenuRoute, route)) {
+      return;
+    }
+    _supportMenuRoute = null;
+    safeSetState(() => _isSupportMenuOpen = false);
+    _supportMenuFocusNode.requestFocus();
   }
 
-  void _closeSupportContactPicker() {
-    _supportOverlayEntry?.remove();
-    _supportOverlayEntry = null;
-    if (mounted) {
-      safeSetState(() => _isSupportMenuOpen = false);
+  void _dismissSupportMenu([_SupportContactPopupRoute? requestedRoute]) {
+    final route = requestedRoute ?? _supportMenuRoute;
+    if (route == null || !route.isActive) {
+      return;
     }
+    final navigator = route.navigator;
+    if (navigator == null) {
+      return;
+    }
+    if (route.isCurrent) {
+      navigator.pop();
+    } else {
+      navigator.removeRoute(route);
+    }
+  }
+
+  bool _closeSupportMenuOnScroll(ScrollNotification notification) {
+    if (notification is ScrollStartNotification && _isSupportMenuOpen) {
+      _dismissSupportMenu();
+    }
+    return false;
   }
 
   Future<T?> _showProfileOptionsMenu<T>(
@@ -1820,10 +1835,6 @@ class _ProfileWidgetState extends State<ProfileWidget> {
             statsResult == null ? '—' : (allTimeStats?.totalEarned ?? '0');
         final wordsCount =
             wordsResult == null ? '—' : (words?.length ?? 0).toString();
-        final isLoading = state.wordsState.isInitialLoading ||
-            state.wordsState.isRefreshing ||
-            state.statsState.isInitialLoading ||
-            state.statsState.isRefreshing;
         final hasError = state.wordsState.hasError || state.statsState.hasError;
         final localizations = FFLocalizations.of(context);
 
@@ -1859,27 +1870,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                             size: 20.0,
                           ),
                         )
-                      : isLoading
-                          ? Semantics(
-                              key: profileProgressLoadingKey,
-                              container: true,
-                              liveRegion: true,
-                              label: localizations.getVariableText(
-                                ruText: 'Загрузка прогресса',
-                                enText: 'Loading progress',
-                              ),
-                              child: const ExcludeSemantics(
-                                child: Center(
-                                  child: SizedBox.square(
-                                    dimension: 18.0,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2.0,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            )
-                          : null,
+                      : null,
                 ),
               ],
             ),
@@ -2339,10 +2330,12 @@ class _ProfileWidgetState extends State<ProfileWidget> {
     Color? color,
     Widget? trailing,
     IconData? trailingIcon,
+    FocusNode? focusNode,
   }) {
     final resolvedColor = color ?? ExpatlioDesign.primary;
 
     return InkWell(
+      focusNode: focusNode,
       splashColor: Colors.transparent,
       highlightColor: Colors.transparent,
       onTap: onTap,
@@ -2477,17 +2470,25 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                 onTap: () => context.pushNamed(BlackListWidget.routeName),
               ),
               _menuDivider(),
-              _menuRow(
-                context,
-                rowKey: _supportMenuKey,
-                icon: Icons.headset_mic_outlined,
-                label: FFLocalizations.of(context).getText(
-                  '7benyvw2' /* Служба поддержки */,
+              Semantics(
+                container: true,
+                expanded: _isSupportMenuOpen,
+                child: KeyedSubtree(
+                  key: _supportMenuAnchorRenderKey,
+                  child: _menuRow(
+                    context,
+                    rowKey: profileSupportMenuAnchorKey,
+                    icon: Icons.headset_mic_outlined,
+                    label: FFLocalizations.of(context).getText(
+                      '7benyvw2' /* Служба поддержки */,
+                    ),
+                    trailingIcon: _isSupportMenuOpen
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    focusNode: _supportMenuFocusNode,
+                    onTap: () => unawaited(_toggleSupportContactPicker()),
+                  ),
                 ),
-                trailingIcon: _isSupportMenuOpen
-                    ? Icons.keyboard_arrow_up_rounded
-                    : Icons.keyboard_arrow_down_rounded,
-                onTap: () => unawaited(_openSupportContactPicker()),
               ),
               _menuDivider(),
               _menuRow(
@@ -2564,6 +2565,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
               ),
             ),
             InkWell(
+              key: profileAccountIdCopyKey,
               borderRadius: BorderRadius.circular(ExpatlioDesign.radiusSmall),
               onTap: () async {
                 await Clipboard.setData(ClipboardData(text: userId));
@@ -2571,7 +2573,10 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                 await actions.showTopNotification(
                   context,
                   '',
-                  'ID аккаунта скопирован',
+                  FFLocalizations.of(context).getVariableText(
+                    ruText: 'ID аккаунта скопирован',
+                    enText: 'Account ID copied',
+                  ),
                   false,
                 );
               },
@@ -2629,38 +2634,41 @@ class _ProfileWidgetState extends State<ProfileWidget> {
   Widget _newProfileBody(BuildContext context, UsersRecord user) {
     return SafeArea(
       bottom: false,
-      child: SingleChildScrollView(
-        padding: const EdgeInsetsDirectional.fromSTEB(
-          ExpatlioDesign.pagePadding,
-          ExpatlioDesign.space0,
-          ExpatlioDesign.pagePadding,
-          ExpatlioDesign.pageBottomSpacing,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              FFLocalizations.of(context).getVariableText(
-                ruText: 'Профиль',
-                enText: 'Profile',
+      child: NotificationListener<ScrollNotification>(
+        onNotification: _closeSupportMenuOnScroll,
+        child: SingleChildScrollView(
+          padding: const EdgeInsetsDirectional.fromSTEB(
+            ExpatlioDesign.pagePadding,
+            ExpatlioDesign.space0,
+            ExpatlioDesign.pagePadding,
+            ExpatlioDesign.pageBottomSpacing,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                FFLocalizations.of(context).getVariableText(
+                  ruText: 'Профиль',
+                  enText: 'Profile',
+                ),
+                textAlign: TextAlign.center,
+                style: ExpatlioDesign.textStyle(
+                  context,
+                  size: 28,
+                  weight: FontWeight.w800,
+                ),
               ),
-              textAlign: TextAlign.center,
-              style: ExpatlioDesign.textStyle(
-                context,
-                size: 28,
-                weight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: ExpatlioDesign.itemSpacing),
-            _profileHeaderCard(context, user),
-            _progressSection(context, user),
-            const SizedBox(height: ExpatlioDesign.sectionGap),
-            _tariffSection(context, user),
-            const SizedBox(height: ExpatlioDesign.sectionGap),
-            _settingsSection(context, user),
-            const SizedBox(height: ExpatlioDesign.sectionGap),
-            _profileFooter(context, user.reference.id),
-          ],
+              const SizedBox(height: ExpatlioDesign.itemSpacing),
+              _profileHeaderCard(context, user),
+              _progressSection(context, user),
+              const SizedBox(height: ExpatlioDesign.sectionGap),
+              _tariffSection(context, user),
+              const SizedBox(height: ExpatlioDesign.sectionGap),
+              _settingsSection(context, user),
+              const SizedBox(height: ExpatlioDesign.sectionGap),
+              _profileFooter(context, user.reference.id),
+            ],
+          ),
         ),
       ),
     );
@@ -2727,40 +2735,44 @@ class _ProfileWidgetState extends State<ProfileWidget> {
               backgroundColor: ExpatlioDesign.background,
               body: SafeArea(
                 bottom: false,
-                child: SingleChildScrollView(
-                  key: profileContentKey,
-                  padding: const EdgeInsetsDirectional.fromSTEB(
-                    ExpatlioDesign.pagePadding,
-                    ExpatlioDesign.space0,
-                    ExpatlioDesign.pagePadding,
-                    ExpatlioDesign.pageBottomSpacing,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(
-                        height: ExpatlioDesign.pageHeaderHeight,
-                        child: Center(
-                          child: Text(
-                            FFLocalizations.of(context).getVariableText(
-                              ruText: 'Профиль',
-                              enText: 'Profile',
+                child: NotificationListener<ScrollNotification>(
+                  onNotification: _closeSupportMenuOnScroll,
+                  child: SingleChildScrollView(
+                    key: profileContentKey,
+                    padding: const EdgeInsetsDirectional.fromSTEB(
+                      ExpatlioDesign.pagePadding,
+                      ExpatlioDesign.space0,
+                      ExpatlioDesign.pagePadding,
+                      ExpatlioDesign.pageBottomSpacing,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          height: ExpatlioDesign.pageHeaderHeight,
+                          child: Center(
+                            child: Text(
+                              FFLocalizations.of(context).getVariableText(
+                                ruText: 'Профиль',
+                                enText: 'Profile',
+                              ),
+                              style:
+                                  ExpatlioDesign.pageHeaderTitleStyle(context),
                             ),
-                            style: ExpatlioDesign.pageHeaderTitleStyle(context),
                           ),
                         ),
-                      ),
-                      const SizedBox(height: ExpatlioDesign.itemSpacing),
-                      _profileHeaderCard(context, user),
-                      const SizedBox(height: ExpatlioDesign.sectionGap),
-                      _progressSection(context, user),
-                      const SizedBox(height: ExpatlioDesign.sectionGap),
-                      _tariffSection(context, user),
-                      const SizedBox(height: ExpatlioDesign.sectionGap),
-                      _settingsSection(context, user),
-                      const SizedBox(height: ExpatlioDesign.sectionGap),
-                      _profileFooter(context, user.reference.id),
-                    ],
+                        const SizedBox(height: ExpatlioDesign.itemSpacing),
+                        _profileHeaderCard(context, user),
+                        const SizedBox(height: ExpatlioDesign.sectionGap),
+                        _progressSection(context, user),
+                        const SizedBox(height: ExpatlioDesign.sectionGap),
+                        _tariffSection(context, user),
+                        const SizedBox(height: ExpatlioDesign.sectionGap),
+                        _settingsSection(context, user),
+                        const SizedBox(height: ExpatlioDesign.sectionGap),
+                        _profileFooter(context, user.reference.id),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -3956,6 +3968,7 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                     color: ExpatlioDesign.border,
                                   ),
                                   InkWell(
+                                    key: profileAccountIdCopyKey,
                                     splashColor: Colors.transparent,
                                     focusColor: Colors.transparent,
                                     hoverColor: Colors.transparent,
@@ -3967,7 +3980,11 @@ class _ProfileWidgetState extends State<ProfileWidget> {
                                       await actions.showTopNotification(
                                         context,
                                         '',
-                                        'ID аккаунта скопирован',
+                                        FFLocalizations.of(context)
+                                            .getVariableText(
+                                          ruText: 'ID аккаунта скопирован',
+                                          enText: 'Account ID copied',
+                                        ),
                                         false,
                                       );
                                     },
@@ -4420,6 +4437,208 @@ class _ProfileProgressSectionState extends State<_ProfileProgressSection> {
       () => _subscribe(notify: true),
     );
   }
+}
+
+class _SupportContactPopupRoute extends PopupRoute<void> {
+  _SupportContactPopupRoute({
+    required this.anchorRect,
+    required this.email,
+    required this.telegram,
+    required this.emailFocusNode,
+    required this.onEmailTap,
+    required this.onTelegramTap,
+    required this.barrierLabel,
+  });
+
+  final Rect anchorRect;
+  final String email;
+  final String telegram;
+  final FocusNode emailFocusNode;
+  final VoidCallback onEmailTap;
+  final VoidCallback onTelegramTap;
+
+  @override
+  final String barrierLabel;
+
+  @override
+  bool get barrierDismissible => true;
+
+  @override
+  Color? get barrierColor => Colors.transparent;
+
+  @override
+  Duration get transitionDuration => const Duration(milliseconds: 120);
+
+  void _dismiss() {
+    if (isCurrent) {
+      navigator?.pop();
+    }
+  }
+
+  @override
+  void didChangeNext(Route<dynamic>? nextRoute) {
+    super.didChangeNext(nextRoute);
+    if (nextRoute == null) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (isActive && !isCurrent) {
+        navigator?.removeRoute(this);
+      }
+    });
+  }
+
+  @override
+  Widget buildPage(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+  ) {
+    final mediaQuery = MediaQuery.of(context);
+    final scaledNavLabelHeight = mediaQuery.textScaler.scale(10) * 1.3;
+    final bottomNavigationExtent =
+        54.0 + math.max(35.0, mediaQuery.padding.bottom) + scaledNavLabelHeight;
+
+    final menu = CustomSingleChildLayout(
+      delegate: _SupportContactMenuLayoutDelegate(
+        anchorRect: anchorRect,
+        safePadding: mediaQuery.padding,
+        bottomObstruction:
+            math.max(bottomNavigationExtent, mediaQuery.viewInsets.bottom),
+      ),
+      child: FadeTransition(
+        opacity: CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOut,
+          reverseCurve: Curves.easeIn,
+        ),
+        child: Semantics(
+          scopesRoute: true,
+          explicitChildNodes: true,
+          label: FFLocalizations.of(context).getVariableText(
+            ruText: 'Контакты службы поддержки',
+            enText: 'Support contacts',
+          ),
+          child: SingleChildScrollView(
+            key: supportContactMenuKey,
+            primary: false,
+            child: SupportContactMenu(
+              email: email,
+              telegram: telegram,
+              emailFocusNode: emailFocusNode,
+              onEmailTap: onEmailTap,
+              onTelegramTap: onTelegramTap,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    return MediaQuery.removePadding(
+      context: context,
+      removeTop: true,
+      removeBottom: true,
+      removeLeft: true,
+      removeRight: true,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Semantics(
+            button: true,
+            label: barrierLabel,
+            onTap: _dismiss,
+            child: Listener(
+              behavior: HitTestBehavior.opaque,
+              onPointerDown: (_) => _dismiss(),
+              onPointerSignal: (_) => _dismiss(),
+              child: const SizedBox.expand(),
+            ),
+          ),
+          menu,
+        ],
+      ),
+    );
+  }
+}
+
+class _SupportContactMenuLayoutDelegate extends SingleChildLayoutDelegate {
+  const _SupportContactMenuLayoutDelegate({
+    required this.anchorRect,
+    required this.safePadding,
+    required this.bottomObstruction,
+  });
+
+  static const _gap = 8.0;
+  static const _viewportMargin = 16.0;
+  static const _preferredWidth = 292.0;
+  static const _preferredMaxHeight = 320.0;
+
+  final Rect anchorRect;
+  final EdgeInsets safePadding;
+  final double bottomObstruction;
+
+  Rect _availableRect(Size size) => Rect.fromLTRB(
+        math.max(_viewportMargin, safePadding.left),
+        math.max(_viewportMargin, safePadding.top),
+        size.width - math.max(_viewportMargin, safePadding.right),
+        size.height - math.max(_viewportMargin, bottomObstruction),
+      );
+
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) {
+    final availableRect = _availableRect(constraints.biggest);
+    final availableAbove = math.max(
+      0.0,
+      anchorRect.top - _gap - availableRect.top,
+    );
+    final availableBelow = math.max(
+      0.0,
+      availableRect.bottom - anchorRect.bottom - _gap,
+    );
+    final width = math.min(_preferredWidth, availableRect.width);
+    final maxHeight = math.min(
+      _preferredMaxHeight,
+      math.max(availableAbove, availableBelow),
+    );
+    return BoxConstraints(
+      minWidth: width,
+      maxWidth: width,
+      maxHeight: math.max(0.0, maxHeight),
+    );
+  }
+
+  @override
+  Offset getPositionForChild(Size size, Size childSize) {
+    final availableRect = _availableRect(size);
+    final availableAbove = math.max(
+      0.0,
+      anchorRect.top - _gap - availableRect.top,
+    );
+    final availableBelow = math.max(
+      0.0,
+      availableRect.bottom - anchorRect.bottom - _gap,
+    );
+    final opensBelow = availableBelow >= childSize.height ||
+        (availableBelow >= availableAbove && availableBelow > 0);
+    final preferredTop = opensBelow
+        ? anchorRect.bottom + _gap
+        : anchorRect.top - _gap - childSize.height;
+    final maxLeft = availableRect.right - childSize.width;
+    final left = (anchorRect.right - childSize.width)
+        .clamp(availableRect.left, math.max(availableRect.left, maxLeft))
+        .toDouble();
+    final maxTop = availableRect.bottom - childSize.height;
+    final top = preferredTop
+        .clamp(availableRect.top, math.max(availableRect.top, maxTop))
+        .toDouble();
+    return Offset(left, top);
+  }
+
+  @override
+  bool shouldRelayout(_SupportContactMenuLayoutDelegate oldDelegate) =>
+      anchorRect != oldDelegate.anchorRect ||
+      safePadding != oldDelegate.safePadding ||
+      bottomObstruction != oldDelegate.bottomObstruction;
 }
 
 class _ProfileMenuOption<T> {

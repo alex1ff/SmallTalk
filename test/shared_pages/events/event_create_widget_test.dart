@@ -13,6 +13,7 @@ import 'package:small_talk/backend/backend.dart';
 import 'package:small_talk/flutter_flow/flutter_flow_util.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/shared_pages/events/event_create_widget.dart';
+import 'package:small_talk/shared_pages/events/event_detail_route_widget.dart';
 import 'package:small_talk/shared_pages/events/event_detail_widget.dart';
 import 'package:small_talk/services/event_action_error_mapper.dart';
 import 'package:small_talk/services/event_actions_repository.dart';
@@ -124,9 +125,31 @@ GoRouter _buildEventCreateRouter({
       GoRoute(
         name: EventDetailWidget.routeName,
         path: EventDetailWidget.routePath,
-        builder: (context, state) => EventDetailWidget(
-          eventId: state.pathParameters['eventId']!,
-        ),
+        builder: (context, state) {
+          final extra = state.extra;
+          final preview = extra is Map
+              ? eventDetailPublicPreviewFromParam(
+                  extra[eventDetailPublicPreviewExtraKey],
+                )
+              : null;
+          return EventDetailWidget(
+            eventId: state.pathParameters['eventId']!,
+            levelMin: preview?.levelMin,
+            levelMax: preview?.levelMax,
+            languageCode: preview?.languageCode,
+            languageNameEn: preview?.languageNameEn,
+            languageNameRu: preview?.languageNameRu,
+            title: preview?.title,
+            description: preview?.description,
+            organizerDisplayName: preview?.organizerDisplayName,
+            organizerPhotoUrl: preview?.organizerPhotoUrl,
+            startsAt: preview?.startsAt,
+            timeZoneId: preview?.timeZoneId,
+            locationName: preview?.publicLocationLabel,
+            participantsCount: preview?.participantsCount,
+            capacity: preview?.capacity,
+          );
+        },
       ),
     ],
   );
@@ -1887,6 +1910,7 @@ void main() {
     expect(requestIds, <String>[_requestId(0)]);
     expect(generatedRequestIds, <String>[_requestId(0)]);
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.text('Создаём…'), findsOneWidget);
     expect(
       tester
           .widget<TextButton>(find.byKey(eventCreateSubmitButtonKey))
@@ -1914,12 +1938,21 @@ void main() {
   });
 
   testWidgets('successful create opens created event detail', (tester) async {
+    currentUser = _TestAuthUser('create-owner');
     var submitCount = 0;
     var cacheInvalidations = 0;
+    var cacheSeeds = 0;
     void recordCacheInvalidation() => cacheInvalidations += 1;
+    void recordCacheSeed(EventListCreatedEventSeed _) => cacheSeeds += 1;
     EventListCacheInvalidation.register(recordCacheInvalidation);
+    EventListCacheInvalidation.registerCreatedEventSeeder(recordCacheSeed);
     addTearDown(
-      () => EventListCacheInvalidation.unregister(recordCacheInvalidation),
+      () {
+        EventListCacheInvalidation.unregister(recordCacheInvalidation);
+        EventListCacheInvalidation.unregisterCreatedEventSeeder(
+          recordCacheSeed,
+        );
+      },
     );
     final analyticsTracker = _RecordingEventsAnalyticsTracker();
     final router = _buildEventCreateRouter(
@@ -1945,7 +1978,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(submitCount, 1);
-    expect(cacheInvalidations, 1);
+    expect(cacheInvalidations, 0);
+    expect(cacheSeeds, 1);
     expect(
       analyticsTracker
           .payloadsFor(EventsAnalyticsService.eventCreatedEventName),
@@ -1964,7 +1998,7 @@ void main() {
     expect(router.getCurrentLocation(), '/events/event-1');
     expect(find.byType(EventCreateWidget), findsNothing);
     expect(find.byType(EventDetailWidget), findsOneWidget);
-    expect(find.text('event-1'), findsOneWidget);
+    expect(find.text('Клуб'), findsOneWidget);
 
     await tester.tap(find.byKey(eventDetailBackButtonKey));
     await tester.pumpAndSettle();
@@ -2030,6 +2064,10 @@ void main() {
 
     expect(router.getCurrentLocation(), '/events/event-1');
     expect(find.byType(EventDetailWidget), findsOneWidget);
+    expect(find.text('Клуб'), findsOneWidget);
+    expect(find.text('Говорим на английском.'), findsOneWidget);
+    expect(find.text('Bali, Indonesia'), findsOneWidget);
+    expect(find.text('Кафе на Арбате'), findsNothing);
   });
 
   testWidgets('create completion after leaving form does not open detail',

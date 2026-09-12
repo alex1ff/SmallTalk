@@ -621,7 +621,10 @@ void main() {
     await tester.pump();
     expect(notifications, [
       (message: 'Заявка на вывод создана!', isError: false),
-      (message: 'offline', isError: true),
+      (
+        message: 'Не удалось создать заявку на вывод. Попробуйте позже.',
+        isError: true,
+      ),
     ]);
     expect(tester.takeException(), isNull);
   });

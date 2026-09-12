@@ -510,7 +510,7 @@ class _PayCopyWidgetState extends State<PayCopyWidget> {
         return;
       }
       await _showPaymentNotification(
-        error.message ?? 'Не удалось создать заявку на вывод',
+        _withdrawalErrorMessage(error.code),
         isError: true,
       );
       return;
@@ -521,9 +521,31 @@ class _PayCopyWidgetState extends State<PayCopyWidget> {
     }
 
     await _showPaymentNotification(
-      'Заявка на вывод создана!',
+      FFLocalizations.of(context).getVariableText(
+        ruText: 'Заявка на вывод создана!',
+        enText: 'Withdrawal request created!',
+      ),
       isError: false,
     );
+  }
+
+  String _withdrawalErrorMessage(String code) {
+    final localizations = FFLocalizations.of(context);
+    return switch (code) {
+      'failed-precondition' => localizations.getVariableText(
+          ruText: 'Проверьте реквизиты и доступный баланс.',
+          enText: 'Check your payment details and available balance.',
+        ),
+      'unauthenticated' => localizations.getVariableText(
+          ruText: 'Войдите в аккаунт и попробуйте снова.',
+          enText: 'Sign in and try again.',
+        ),
+      _ => localizations.getVariableText(
+          ruText: 'Не удалось создать заявку на вывод. Попробуйте позже.',
+          enText:
+              'Could not create the withdrawal request. Please try again later.',
+        ),
+    };
   }
 
   Future<void> _showPaymentNotification(

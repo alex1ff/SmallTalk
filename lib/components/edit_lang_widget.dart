@@ -61,7 +61,10 @@ class _EditLangWidgetState extends State<EditLangWidget> {
       } else {
         await actions.showTopNotification(
           context,
-          'Выберите язык из списка',
+          FFLocalizations.of(context).getVariableText(
+            ruText: 'Выберите язык из списка',
+            enText: 'Select a language from the list',
+          ),
           '',
           true,
         );
@@ -95,7 +98,10 @@ class _EditLangWidgetState extends State<EditLangWidget> {
                 BottomSheetHeader(
                   title: valueOrDefault<String>(
                     widget.title,
-                    'Язык',
+                    FFLocalizations.of(context).getVariableText(
+                      ruText: 'Язык',
+                      enText: 'Language',
+                    ),
                   ),
                 ),
                 Flexible(

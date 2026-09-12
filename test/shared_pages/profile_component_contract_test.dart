@@ -14,7 +14,10 @@ void main() {
     expect(source, contains("ruText: 'Мои события'"));
     expect(source, contains('EventHistoryWidget.routeName'));
     expect(source, isNot(contains('class _ProfileDropdownMenuItem')));
-    expect(source, isNot(contains('class _SupportContactMenu')));
+    expect(
+      source,
+      isNot(contains(RegExp(r'class _SupportContactMenu\s'))),
+    );
     expect(source, isNot(contains('class _SupportContactCard')));
   });
 }

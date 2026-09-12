@@ -4135,18 +4135,17 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
                                             ExpatlioDesign.space0),
                                         child: TextButton(
                                           onPressed: () async {
-                                            await showModalBottomSheet(
+                                            await showPromoRedeemSheet(
                                               context: context,
-                                              isScrollControlled: true,
-                                              backgroundColor:
-                                                  Colors.transparent,
-                                              builder: (_) =>
-                                                  const PromoRedeemWidget(),
                                             );
                                             safeSetState(() {});
                                           },
                                           child: Text(
-                                            'У меня есть промокод',
+                                            FFLocalizations.of(context)
+                                                .getVariableText(
+                                              ruText: 'У меня есть промокод',
+                                              enText: 'I have a promo code',
+                                            ),
                                             style:
                                                 ExpatlioDesign.buttonTextStyle(
                                               context,

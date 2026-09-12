@@ -166,7 +166,10 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
       if (mounted) {
         await actions.showTopNotification(
           context,
-          'Не удалось сохранить профиль',
+          FFLocalizations.of(context).getVariableText(
+            ruText: 'Не удалось сохранить профиль',
+            enText: 'Could not save your profile',
+          ),
           '',
           true,
         );
@@ -187,6 +190,7 @@ class _AcquaintanceSTUDENTWidgetState extends State<AcquaintanceSTUDENTWidget> {
       final validationMessage = validateStudentOnboardingPage(
         page: page,
         draft: _draft,
+        languageCode: FFLocalizations.of(context).languageCode,
       );
       if (validationMessage != null) {
         await _showValidationError(validationMessage);

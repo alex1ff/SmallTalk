@@ -93,23 +93,29 @@ function buildPartnerAvailableMessage({token, recipientId, passive,
   const expiry = Math.min(activeSearchDeadlineMillis(active),
     timestampToMillis(passive.expiresAt));
   const ru = passive.locale === "ru";
-  const name = String(activeUser.display_name || activeUser.displayName ||
-    activeUser.name || (ru ? "Собеседник" : "A partner")).slice(0, 80);
+  const providedName = activeUser.display_name || activeUser.displayName ||
+    activeUser.name;
+  const nameRu = String(providedName || "Собеседник").slice(0, 80);
+  const nameEn = String(providedName || "A partner").slice(0, 80);
   const cityValue = activeUser.profileCity?.label || activeUser.profileCity?.name ||
     activeUser.cityName || activeUser.city ||
     activeUser.location?.cityName || activeUser.location?.city;
   const city = typeof cityValue === "string" ? cityValue.trim().slice(0, 80) : "";
-  const who = city ? `${name} ${ru ? "из" : "from"} ${city}` : name;
+  const whoRu = city ? `${nameRu} из ${city}` : nameRu;
+  const whoEn = city ? `${nameEn} from ${city}` : nameEn;
+  const localizedWho = ru ? whoRu : whoEn;
   return {
     token,
     notification: {
       title: ru ? "Собеседник найден" : "A partner is available",
-      body: ru ? `${who} ждет собеседника. Подключитесь прямо сейчас` :
-        `${who} is waiting for a partner. Connect now`,
+      body: ru ? `${localizedWho} ждет собеседника. Подключитесь прямо сейчас` :
+        `${localizedWho} is waiting for a partner. Connect now`,
     },
     data: {type: "partner_available", recipientId,
       requestId: passive.requestId, activeUserId,
-      activeRequestId: active.requestId, expiresAt: new Date(expiry).toISOString()},
+      activeRequestId: active.requestId, expiresAt: new Date(expiry).toISOString(),
+      bodyRu: `${whoRu} ждет собеседника. Подключитесь прямо сейчас`,
+      bodyEn: `${whoEn} is waiting for a partner. Connect now`},
     android: {ttl: Math.max(0, expiry - nowMillis),
       collapseKey: operationId(recipientId, passive.requestId)},
     apns: {headers: {"apns-push-type": "alert", "apns-priority": "10",

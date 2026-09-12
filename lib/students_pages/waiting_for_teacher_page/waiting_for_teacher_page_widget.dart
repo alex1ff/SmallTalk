@@ -116,14 +116,6 @@ class _WaitingForTeacherPageWidgetState
     return trimmed;
   }
 
-  String? _sanitizeMessage(String? value) {
-    final message = _nonEmpty(value);
-    if (message == null) return null;
-    const maxLen = 200;
-    if (message.length <= maxLen) return message;
-    return '${message.substring(0, maxLen)}…';
-  }
-
   String _snapshotFingerprint(Map<String, dynamic>? data) {
     if (data == null) return 'null';
 
@@ -233,7 +225,6 @@ class _WaitingForTeacherPageWidgetState
 
   String _createFailureMessage({
     String? status,
-    String? fallbackMessage,
     String? errorCode,
   }) {
     if (status == 'expired') {
@@ -258,14 +249,10 @@ class _WaitingForTeacherPageWidgetState
       );
     }
 
-    if (fallbackMessage != null) {
-      return fallbackMessage;
-    }
-
-    if (errorCode != null) {
+    if (errorCode == 'invalid-profile') {
       return _localizedText(
-        ruText: 'Не удалось начать поиск собеседника ($errorCode).',
-        enText: 'Failed to start matching ($errorCode).',
+        ruText: 'Профиль заполнен не полностью. Проверьте язык обучения.',
+        enText: 'Your profile is incomplete. Check your learning language.',
       );
     }
 
@@ -365,10 +352,7 @@ class _WaitingForTeacherPageWidgetState
         _model.sessionId = null;
         _createFailed = true;
         _createMessage = _createFailureMessage(
-          fallbackMessage: _localizedText(
-            ruText: 'Профиль заполнен не полностью. Проверьте язык обучения.',
-            enText: 'Your profile is incomplete. Check your learning language.',
-          ),
+          errorCode: 'invalid-profile',
         );
         safeDebugLog(
             'WaitingForTeacher: missing user data for createVideoSession');
@@ -409,12 +393,9 @@ class _WaitingForTeacherPageWidgetState
       if (sessionId == null) {
         _detachSessionListener();
         final status = _nonEmpty(resultMap['status']?.toString());
-        final backendMessage =
-            _sanitizeMessage(resultMap['message']?.toString());
         _createFailed = true;
         _createMessage = _createFailureMessage(
           status: status,
-          fallbackMessage: backendMessage,
         );
         safeDebugLog(
           'WaitingForTeacher: createVideoSession returned without sessionId '
@@ -432,7 +413,6 @@ class _WaitingForTeacherPageWidgetState
       _model.sessionId = null;
       _createFailed = true;
       _createMessage = _createFailureMessage(
-        fallbackMessage: _sanitizeMessage(error.message),
         errorCode: error.code,
       );
       safeDebugLog(
@@ -443,9 +423,7 @@ class _WaitingForTeacherPageWidgetState
       _detachSessionListener();
       _model.sessionId = null;
       _createFailed = true;
-      _createMessage = _createFailureMessage(
-        fallbackMessage: _sanitizeMessage(error.toString()),
-      );
+      _createMessage = _createFailureMessage();
       safeDebugLog(
           'WaitingForTeacher: unexpected createVideoSession error: $error');
     } finally {

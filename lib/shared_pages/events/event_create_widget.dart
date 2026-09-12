@@ -10,7 +10,9 @@ import '/components/profile_dropdown_menu_item.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
+import '/shared_pages/events/event_detail_route_widget.dart';
 import '/shared_pages/events/event_detail_widget.dart';
+import '/shared_pages/events/event_history_widget.dart';
 import '/services/event_action_error_mapper.dart';
 import '/services/event_actions_repository.dart';
 import '/services/event_city_catalog.dart';
@@ -22,6 +24,7 @@ import '/services/event_start_time_validation.dart';
 import '/services/event_temporary_city_selection.dart';
 import '/services/event_language_catalog.dart';
 import '/services/event_list_cache_invalidation.dart';
+import '/services/event_history_repository.dart';
 import '/services/event_level_helper.dart';
 import '/services/events_analytics_service.dart';
 import '/services/supported_location_catalog.dart';
@@ -1469,6 +1472,7 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
       _isSubmitting = true;
     });
     String? savedEventId;
+    EventDetailPublicPreview? savedEventPreview;
     try {
       final languageCatalog = await _languageCatalogFuture;
       if (!mounted) {
@@ -1508,12 +1512,87 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
           _activeCreatePayloadSignature = payloadSignature;
         }
 
+        final language = languageCatalog?.languageByPrimaryCode(languageCode);
+        final city = selectedCity.city;
+        final ownerUserId = currentUserUid.trim();
+        final organizerDisplayName = currentUserDisplayName.trim();
+        final organizerPhotoUrl = currentUserPhoto.trim();
+        final publicLocationLabel = _eventCreateCityLabel(context, city);
+        final previewDescription =
+            eventDetailPublicPreviewDescription(fields.description);
+
         final createResult = await EventActionsRepository.createEvent(
           createRequestId: createRequestId,
           fields: fields,
           invoker: widget.createEventInvoker,
         );
         savedEventId = createResult.eventId;
+        savedEventPreview = EventDetailPublicPreview(
+          eventId: createResult.eventId,
+          title: fields.title.trim(),
+          description: previewDescription,
+          languageCode: languageCode,
+          languageNameEn: language?.nameEn,
+          languageNameRu: language?.nameRu,
+          levelMin: fields.levelMin,
+          levelMax: fields.levelMax,
+          startsAt: fields.startsAt,
+          timeZoneId: city.timeZoneId,
+          organizerDisplayName: organizerDisplayName,
+          organizerPhotoUrl:
+              organizerPhotoUrl.isEmpty ? null : organizerPhotoUrl,
+          publicLocationLabel: publicLocationLabel,
+          participantsCount: 1,
+          capacity: fields.capacity,
+        );
+        if (ownerUserId.isNotEmpty) {
+          EventListCacheInvalidation.seedCreatedEvent(
+            EventListCreatedEventSeed(
+              eventId: createResult.eventId,
+              ownerUserId: ownerUserId,
+              countryCode: city.countryCode,
+              cityKey: city.cityKey,
+              title: fields.title.trim(),
+              description: previewDescription,
+              languageCode: languageCode,
+              languageNameEn: language?.nameEn,
+              languageNameRu: language?.nameRu,
+              levelMin: fields.levelMin,
+              levelMax: fields.levelMax,
+              startsAt: fields.startsAt,
+              timeZoneId: city.timeZoneId,
+              organizerDisplayName: organizerDisplayName,
+              organizerPhotoUrl:
+                  organizerPhotoUrl.isEmpty ? null : organizerPhotoUrl,
+              capacity: fields.capacity,
+            ),
+          );
+          EventHistoryWidget.seedCreatedEvent(
+            ownerUid: ownerUserId,
+            generatedAt: createResult.createdAt,
+            item: EventHistoryItem(
+              eventId: createResult.eventId,
+              title: fields.title.trim(),
+              startsAt: fields.startsAt,
+              timeZoneId: city.timeZoneId,
+              status: 'active',
+              participantRole: 'organizer',
+              participantStatus: 'active',
+              joinedAt: createResult.createdAt,
+              timelineStatus: EventHistoryTimelineStatus.upcoming,
+              locationName: fields.locationName,
+              countryCode: city.countryCode,
+              cityKey: city.cityKey,
+              cityNameEn: city.cityNameEn,
+              cityNameRu: city.cityNameRu,
+              languageCode: languageCode,
+              languageNameEn: language?.nameEn,
+              languageNameRu: language?.nameRu,
+              levelMin: fields.levelMin,
+              levelMax: fields.levelMax,
+            ),
+          );
+        }
         _trackEventCreatedIfNeeded(
           eventId: createResult.eventId,
           selectedCity: selectedCity,
@@ -1535,8 +1614,8 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
           selectedCity: selectedCity,
           tracker: analyticsTracker,
         );
+        EventListCacheInvalidation.invalidate();
       }
-      EventListCacheInvalidation.invalidate();
     } catch (error) {
       if (!mounted) {
         return;
@@ -1568,6 +1647,11 @@ class _EventCreateWidgetState extends State<EventCreateWidget> {
       pathParameters: <String, String>{
         'eventId': savedEventId,
       },
+      extra: savedEventPreview == null
+          ? null
+          : <String, dynamic>{
+              eventDetailPublicPreviewExtraKey: savedEventPreview,
+            },
     );
   }
 
@@ -2190,14 +2274,40 @@ class _EventCreateSubmitBar extends StatelessWidget {
                         disabledForegroundColor: Colors.white,
                       ),
                       child: isSubmitting
-                          ? const SizedBox.square(
-                              dimension: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.4,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Colors.white,
+                          ? Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const SizedBox.square(
+                                  dimension: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
                                 ),
-                              ),
+                                const SizedBox(width: ExpatlioDesign.space8),
+                                Flexible(
+                                  child: Text(
+                                    FFLocalizations.of(context).getVariableText(
+                                      ruText: formMode == EventFormMode.create
+                                          ? 'Создаём…'
+                                          : 'Сохраняем…',
+                                      enText: formMode == EventFormMode.create
+                                          ? 'Creating…'
+                                          : 'Saving…',
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: ExpatlioDesign.textStyle(
+                                      context,
+                                      color: Colors.white,
+                                      size: 16,
+                                      weight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             )
                           : Text(
                               FFLocalizations.of(context).getVariableText(

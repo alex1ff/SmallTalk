@@ -2,6 +2,9 @@ import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
 
+const ValueKey<String> supportContactMenuKey =
+    ValueKey<String>('support_contact_menu');
+
 class SupportContactMenu extends StatelessWidget {
   const SupportContactMenu({
     super.key,
@@ -9,12 +12,14 @@ class SupportContactMenu extends StatelessWidget {
     required this.telegram,
     required this.onEmailTap,
     required this.onTelegramTap,
+    this.emailFocusNode,
   });
 
   final String email;
   final String telegram;
   final VoidCallback onEmailTap;
   final VoidCallback onTelegramTap;
+  final FocusNode? emailFocusNode;
 
   @override
   Widget build(BuildContext context) {
@@ -59,6 +64,8 @@ class SupportContactMenu extends StatelessWidget {
               title: 'Email',
               value: email,
               onTap: onEmailTap,
+              focusNode: emailFocusNode,
+              autofocus: emailFocusNode != null,
             ),
             const SizedBox(height: ExpatlioDesign.space8),
             _SupportContactCard(
@@ -80,16 +87,22 @@ class _SupportContactCard extends StatelessWidget {
     required this.title,
     required this.value,
     required this.onTap,
+    this.focusNode,
+    this.autofocus = false,
   });
 
   final IconData icon;
   final String title;
   final String value;
   final VoidCallback onTap;
+  final FocusNode? focusNode;
+  final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
+      focusNode: focusNode,
+      autofocus: autofocus,
       borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
       onTap: onTap,
       child: Container(

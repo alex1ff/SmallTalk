@@ -59,10 +59,15 @@ class PartnerAvailabilityInvitation {
 }
 
 class _ForegroundAvailabilityNotice {
-  const _ForegroundAvailabilityNotice(this.invitation, this.body);
+  const _ForegroundAvailabilityNotice(
+    this.invitation, {
+    this.bodyRu,
+    this.bodyEn,
+  });
 
   final PartnerAvailabilityInvitation invitation;
-  final String? body;
+  final String? bodyRu;
+  final String? bodyEn;
 }
 
 /// Normal notifications have their own lifecycle. Receiving one never accepts
@@ -131,8 +136,8 @@ class PartnerAvailabilityNotifications with WidgetsBindingObserver {
       _pending = null;
     }
     if (userId != null) {
-      _foregroundNotices.removeWhere(
-          (_, notice) => notice.invitation.recipientId != userId);
+      _foregroundNotices
+          .removeWhere((_, notice) => notice.invitation.recipientId != userId);
       _drainForegroundNotices();
     }
     unawaited(drain());
@@ -142,8 +147,11 @@ class PartnerAvailabilityNotifications with WidgetsBindingObserver {
     final invitation = PartnerAvailabilityInvitation.fromData(data);
     if (invitation == null || !invitation.expiresAt.isAfter(_now())) return;
     if (_userId != null && invitation.recipientId != _userId) return;
-    _foregroundNotices[invitation.key] =
-        _ForegroundAvailabilityNotice(invitation, body);
+    _foregroundNotices[invitation.key] = _ForegroundAvailabilityNotice(
+      invitation,
+      bodyRu: _nonEmptyNotificationText(data['bodyRu']),
+      bodyEn: _nonEmptyNotificationText(data['bodyEn']),
+    );
     _drainForegroundNotices();
   }
 
@@ -158,12 +166,12 @@ class PartnerAvailabilityNotifications with WidgetsBindingObserver {
     final notices = _foregroundNotices.values
         .where((notice) => notice.invitation.recipientId == userId)
         .toList();
-    _foregroundNotices.removeWhere(
-        (_, notice) => notice.invitation.recipientId == userId);
+    _foregroundNotices
+        .removeWhere((_, notice) => notice.invitation.recipientId == userId);
     for (final notice in notices) {
       if (!notice.invitation.expiresAt.isAfter(_now())) continue;
       _show(
-        notice.body ??
+        (_isRussian ? notice.bodyRu : notice.bodyEn) ??
             _text(
               'Появился собеседник. Подключитесь прямо сейчас.',
               'A partner is waiting. Join now.',
@@ -178,6 +186,15 @@ class PartnerAvailabilityNotifications with WidgetsBindingObserver {
         }),
       );
     }
+  }
+
+  bool get _isRussian =>
+      _context != null && FFLocalizations.of(_context!).languageCode == 'ru';
+
+  static String? _nonEmptyNotificationText(Object? value) {
+    if (value is! String) return null;
+    final normalized = value.trim();
+    return normalized.isEmpty ? null : normalized;
   }
 
   void _scheduleDrain() {

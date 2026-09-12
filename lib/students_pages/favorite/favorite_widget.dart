@@ -14,9 +14,11 @@ import '/flutter_flow/flutter_flow_util.dart';
 import '/shared_pages/chat_call_event_presentation.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/shared_pages/chat_thread/open_chat_thread.dart';
+import '/shared_pages/chat_thread/chat_thread_widget.dart';
 import '/shared_pages/events/event_group_chat_widget.dart';
 import '/services/event_group_chat_repository.dart';
 import '/services/new_account_inbox_bootstrap.dart';
+import '/services/user_public_profile_preload_repository.dart';
 import '/services/ux_loading_state.dart';
 import '/services/ux_session_cache_lifecycle.dart';
 import '/services/ux_session_loaded_result_cache.dart';
@@ -528,6 +530,7 @@ class FavoriteWidget extends StatefulWidget {
     @visibleForTesting this.debugInboxChatsWatcher,
     @visibleForTesting this.debugLatestEventChatMessageSource,
     @visibleForTesting this.debugUserProfileLoader,
+    @visibleForTesting this.debugUserProfilesBatchLoader,
     @visibleForTesting this.debugEventLoader,
     @visibleForTesting this.debugAuthenticatedUidReader,
     @visibleForTesting this.debugHiddenChatWriter,
@@ -546,6 +549,7 @@ class FavoriteWidget extends StatefulWidget {
   final FavoriteInboxChatsWatcher? debugInboxChatsWatcher;
   final FavoriteLatestEventChatMessageSource? debugLatestEventChatMessageSource;
   final FavoriteUserProfileLoader? debugUserProfileLoader;
+  final UserPublicProfileBatchLoader? debugUserProfilesBatchLoader;
   final FavoriteEventLoader? debugEventLoader;
   final FavoriteAuthenticatedUidReader? debugAuthenticatedUidReader;
   final FavoriteHiddenChatWriter? debugHiddenChatWriter;
@@ -646,6 +650,11 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
   int _eventChatsRetryToken = 0;
   int _latestMessagesRetryToken = 0;
   bool _ownerBoundaryInvalidationScheduled = false;
+  late final UserPublicProfilePreloadRepository _publicProfileRepository;
+  String? _conversationProfilesPreloadKey;
+  final Set<String> _settledMissingProfileUserIds = <String>{};
+  final Map<String, DateTime> _profileRetryAfterByUserId = <String, DateTime>{};
+  static const _profileFailureRetryDelay = Duration(seconds: 15);
 
   static void _ensureSessionCacheLifecycleRegistered() {
     UxSessionCacheLifecycle.register(_clearSessionCache);
@@ -707,13 +716,26 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
   ) {
     final cacheKey = (currentUid, ref.path);
     final generation = _sessionCacheGeneration;
+    if (widget.debugUserProfileLoader == null) {
+      if (_settledMissingProfileUserIds.contains(ref.id)) {
+        return Future<UserPublicProfilesRecord?>.value();
+      }
+      final retryAfter = _profileRetryAfterByUserId[ref.id];
+      if (retryAfter != null && DateTime.now().isBefore(retryAfter)) {
+        return Future<UserPublicProfilesRecord?>.value();
+      }
+      _profileRetryAfterByUserId.remove(ref.id);
+      return _publicProfileRepository.preload(<String>[ref.id]).then((result) {
+        if (!_sourceOwnerIsCurrent(currentUid, generation)) {
+          return null;
+        }
+        _rememberProfilePreloadResult(result);
+        return result.profilesByUserId[ref.id];
+      });
+    }
     return _userFutureCacheByUid.putIfAbsent(
       cacheKey,
-      () => (widget.debugUserProfileLoader?.call(ref) ??
-              UserPublicProfilesRecord.maybeGetDocumentOnce(
-                UserPublicProfilesRecord.collection.doc(ref.id),
-              ))
-          .then((profile) {
+      () => widget.debugUserProfileLoader!(ref).then((profile) {
         if (!_sourceOwnerIsCurrent(currentUid, generation)) {
           if (!_ownerIsCurrent(currentUid)) {
             _scheduleOwnerBoundaryInvalidation(currentUid);
@@ -739,8 +761,70 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     DocumentReference ref,
   ) =>
       _ownerIsCurrent(currentUid)
-          ? _userProfileCacheByUid[(currentUid, ref.path)]
+          ? widget.debugUserProfileLoader == null
+              ? _publicProfileRepository.readCached(ref.id)
+              : _userProfileCacheByUid[(currentUid, ref.path)]
           : null;
+
+  void _ensureConversationProfilesPreloaded(
+    String currentUid,
+    int sourceEpoch,
+    List<ConversationsRecord> conversations,
+  ) {
+    if ((widget.debugUserProfileLoader != null &&
+            widget.debugUserProfilesBatchLoader == null) ||
+        !_authEpochOwnerIsCurrent(currentUid, sourceEpoch)) {
+      return;
+    }
+    final partnerIds = conversations
+        .take(UserPublicProfilePreloadRepository.maxBatchSize)
+        .map((conversation) =>
+            _otherParticipantRef(conversation, currentUid)?.id)
+        .whereType<String>()
+        .where((userId) => userId.isNotEmpty)
+        .toSet()
+        .toList(growable: false)
+      ..sort();
+    final preloadKey = '$currentUid:${partnerIds.join(',')}';
+    if (_conversationProfilesPreloadKey == preloadKey) {
+      return;
+    }
+    _conversationProfilesPreloadKey = preloadKey;
+    if (partnerIds.isEmpty) {
+      return;
+    }
+    unawaited(
+      _publicProfileRepository.preload(partnerIds).then((result) {
+        if (!_authEpochOwnerIsCurrent(currentUid, sourceEpoch)) {
+          return;
+        }
+        _rememberProfilePreloadResult(result);
+        if (result.profilesByUserId.isNotEmpty &&
+            mounted &&
+            _authEpochOwnerIsCurrent(currentUid, sourceEpoch)) {
+          setState(() {});
+        }
+      }),
+    );
+  }
+
+  void _rememberProfilePreloadResult(UserPublicProfilePreloadResult result) {
+    _settledMissingProfileUserIds
+      ..removeAll(result.profilesByUserId.keys)
+      ..addAll(result.missingUserIds);
+    _profileRetryAfterByUserId
+      ..removeWhere((userId, _) =>
+          result.profilesByUserId.containsKey(userId) ||
+          result.missingUserIds.contains(userId))
+      ..addEntries(
+        result.failedUserIds.map(
+          (userId) => MapEntry(
+            userId,
+            DateTime.now().add(_profileFailureRetryDelay),
+          ),
+        ),
+      );
+  }
 
   Future<EventsRecord?> _getEventFuture(String currentUid, String eventId) {
     final generation = _sessionCacheGeneration;
@@ -995,9 +1079,8 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     DocumentReference partnerRef,
     UserPublicProfilesRecord? profile,
   ) {
-    final profilePhotoUrl = _publicProfilePhotoUrl(profile);
-    if (profilePhotoUrl.isNotEmpty) {
-      return profilePhotoUrl;
+    if (profile != null) {
+      return _publicProfilePhotoUrl(profile);
     }
 
     return _conversationParticipantPhotoUrl(conversation, partnerRef);
@@ -1602,8 +1685,9 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
   Future<void> _openConversation(
     String currentUid,
     ConversationsRecord conversation,
-    int sourceEpoch,
-  ) async {
+    int sourceEpoch, {
+    ChatPartnerPreview? partnerPreview,
+  }) async {
     if (!_authEpochOwnerIsCurrent(currentUid, sourceEpoch) ||
         !conversation.participantIds.contains(currentUid)) {
       return;
@@ -1617,6 +1701,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
       context,
       conversationRef: conversation.reference,
       initialConversation: conversation,
+      initialPartnerPreview: partnerPreview,
     );
   }
 
@@ -1835,200 +1920,221 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
       return const SizedBox.shrink();
     }
 
-    return FutureBuilder<UserPublicProfilesRecord?>(
+    return KeyedSubtree(
       key: favoriteConversationAsyncRowKey(
         ownerUid: currentUid,
         conversationPath: conversation.reference.path,
       ),
-      future: _getUserFuture(currentUid, partnerRef),
-      initialData: _cachedUserProfile(currentUid, partnerRef),
-      builder: (context, partnerSnapshot) {
-        if (!_authEpochOwnerIsCurrent(currentUid, sourceEpoch)) {
-          _scheduleOwnerBoundaryInvalidation(currentUid);
-          return const SizedBox.shrink();
-        }
-        if (kDebugMode && partnerSnapshot.hasError) {
-          debugPrint(
-            'FavoriteWidget: failed to load partner: '
-            '${partnerSnapshot.error.runtimeType}',
+      child: FutureBuilder<UserPublicProfilesRecord?>(
+        key: ValueKey<(String, String, String)>((
+          currentUid,
+          conversation.reference.path,
+          partnerRef.path,
+        )),
+        future: _getUserFuture(currentUid, partnerRef),
+        initialData: _cachedUserProfile(currentUid, partnerRef),
+        builder: (context, partnerSnapshot) {
+          if (!_authEpochOwnerIsCurrent(currentUid, sourceEpoch)) {
+            _scheduleOwnerBoundaryInvalidation(currentUid);
+            return const SizedBox.shrink();
+          }
+          if (kDebugMode && partnerSnapshot.hasError) {
+            debugPrint(
+              'FavoriteWidget: failed to load partner: '
+              '${partnerSnapshot.error.runtimeType}',
+            );
+          }
+
+          final candidatePartner = partnerSnapshot.hasError
+              ? _cachedUserProfile(currentUid, partnerRef)
+              : partnerSnapshot.data;
+          final partner = candidatePartner != null &&
+                  isValidUserPublicProfileRecordForUserId(
+                    candidatePartner,
+                    partnerRef.id,
+                  )
+              ? candidatePartner
+              : null;
+          final partnerDisplayName = _partnerDisplayName(
+            conversation,
+            partnerRef,
+            partner,
           );
-        }
+          final partnerPhotoUrl = _partnerPhotoUrl(
+            conversation,
+            partnerRef,
+            partner,
+          );
+          final visiblePartnerDisplayName = partnerDisplayName.isNotEmpty
+              ? partnerDisplayName
+              : _fallbackPartnerDisplayName(context);
+          final unread = conversationIsUnreadForUser(conversation, currentUid);
+          final subtitle =
+              _conversationSubtitle(context, conversation, currentUid);
 
-        final partner = partnerSnapshot.hasError
-            ? _cachedUserProfile(currentUid, partnerRef)
-            : partnerSnapshot.data;
-        final partnerDisplayName = _partnerDisplayName(
-          conversation,
-          partnerRef,
-          partner,
-        );
-        final partnerPhotoUrl = _partnerPhotoUrl(
-          conversation,
-          partnerRef,
-          partner,
-        );
-        final visiblePartnerDisplayName = partnerDisplayName.isNotEmpty
-            ? partnerDisplayName
-            : _fallbackPartnerDisplayName(context);
-        final unread = conversationIsUnreadForUser(conversation, currentUid);
-        final subtitle =
-            _conversationSubtitle(context, conversation, currentUid);
-
-        return _dismissibleChatCard(
-          keyValue: _conversationHiddenKey(conversation),
-          onDelete: onDelete,
-          child: InkWell(
-            splashColor: Colors.transparent,
-            focusColor: Colors.transparent,
-            hoverColor: Colors.transparent,
-            highlightColor: Colors.transparent,
-            onTap: () => _openConversation(
-              currentUid,
-              conversation,
-              sourceEpoch,
-            ),
-            child: Container(
-              width: double.infinity,
-              margin: EdgeInsets.zero,
-              color: Colors.transparent,
-              child: _chatRowFrame(
-                dividerKey: favoriteChatDividerKey(
-                  _conversationHiddenKey(conversation),
+          return _dismissibleChatCard(
+            keyValue: _conversationHiddenKey(conversation),
+            onDelete: onDelete,
+            child: InkWell(
+              splashColor: Colors.transparent,
+              focusColor: Colors.transparent,
+              hoverColor: Colors.transparent,
+              highlightColor: Colors.transparent,
+              onTap: () => _openConversation(
+                currentUid,
+                conversation,
+                sourceEpoch,
+                partnerPreview: ChatPartnerPreview(
+                  userId: partnerRef.id,
+                  displayName: partnerDisplayName,
+                  photoUrl: partnerPhotoUrl,
+                  photoUrlIsAuthoritative: partner != null,
                 ),
-                child: Row(
-                  children: [
-                    Container(
-                      key: favoriteChatAvatarKey(
-                        _conversationHiddenKey(conversation),
-                      ),
-                      width: _favoriteChatAvatarSize,
-                      height: _favoriteChatAvatarSize,
-                      decoration: BoxDecoration(
-                        color: partnerPhotoUrl.isEmpty
-                            ? ExpatlioDesign.avatarFallbackBackground
-                            : ExpatlioDesign.card,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: ExpatlioDesign.border),
-                        image: partnerPhotoUrl.isNotEmpty
-                            ? DecorationImage(
-                                fit: BoxFit.cover,
-                                image: CachedNetworkImageProvider(
-                                  partnerPhotoUrl,
-                                  maxWidth: 108,
-                                  maxHeight: 108,
+              ),
+              child: Container(
+                width: double.infinity,
+                margin: EdgeInsets.zero,
+                color: Colors.transparent,
+                child: _chatRowFrame(
+                  dividerKey: favoriteChatDividerKey(
+                    _conversationHiddenKey(conversation),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        key: favoriteChatAvatarKey(
+                          _conversationHiddenKey(conversation),
+                        ),
+                        width: _favoriteChatAvatarSize,
+                        height: _favoriteChatAvatarSize,
+                        decoration: BoxDecoration(
+                          color: partnerPhotoUrl.isEmpty
+                              ? ExpatlioDesign.avatarFallbackBackground
+                              : ExpatlioDesign.card,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: ExpatlioDesign.border),
+                          image: partnerPhotoUrl.isNotEmpty
+                              ? DecorationImage(
+                                  fit: BoxFit.cover,
+                                  image: CachedNetworkImageProvider(
+                                    partnerPhotoUrl,
+                                    maxWidth: 108,
+                                    maxHeight: 108,
+                                  ),
+                                )
+                              : null,
+                        ),
+                        child: partnerPhotoUrl.isEmpty
+                            ? Center(
+                                child: Text(
+                                  ExpatlioDesign.avatarInitial(
+                                      visiblePartnerDisplayName),
+                                  style: ExpatlioDesign.textStyle(
+                                    context,
+                                    color: ExpatlioDesign.avatarFallbackText,
+                                    size: 14.0,
+                                    weight: FontWeight.w600,
+                                  ),
                                 ),
                               )
                             : null,
                       ),
-                      child: partnerPhotoUrl.isEmpty
-                          ? Center(
-                              child: Text(
-                                ExpatlioDesign.avatarInitial(
-                                    visiblePartnerDisplayName),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsetsDirectional.fromSTEB(
+                            ExpatlioDesign.itemSpacing,
+                            ExpatlioDesign.space0,
+                            ExpatlioDesign.space0,
+                            ExpatlioDesign.space0,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Row(
+                                      children: [
+                                        Flexible(
+                                          child: Text(
+                                            visiblePartnerDisplayName,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: ExpatlioDesign.textStyle(
+                                              context,
+                                              size: 16.0,
+                                              weight: unread
+                                                  ? FontWeight.w700
+                                                  : FontWeight.w600,
+                                            ),
+                                          ),
+                                        ),
+                                        if (isFriend)
+                                          const Padding(
+                                            padding: EdgeInsetsDirectional.only(
+                                                start: ExpatlioDesign.space8),
+                                            child: Icon(
+                                              Icons.star_rounded,
+                                              color: ExpatlioDesign.warning,
+                                              size: 18.0,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: ExpatlioDesign.space4),
+                              Text(
+                                subtitle,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: ExpatlioDesign.textStyle(
                                   context,
-                                  color: ExpatlioDesign.avatarFallbackText,
+                                  color: ExpatlioDesign.muted,
                                   size: 14.0,
-                                  weight: FontWeight.w600,
+                                  weight: FontWeight.w400,
                                 ),
                               ),
-                            )
-                          : null,
-                    ),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsetsDirectional.fromSTEB(
-                          ExpatlioDesign.itemSpacing,
-                          ExpatlioDesign.space0,
-                          ExpatlioDesign.space0,
-                          ExpatlioDesign.space0,
+                            ],
+                          ),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Row(
-                                    children: [
-                                      Flexible(
-                                        child: Text(
-                                          visiblePartnerDisplayName,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: ExpatlioDesign.textStyle(
-                                            context,
-                                            size: 16.0,
-                                            weight: unread
-                                                ? FontWeight.w700
-                                                : FontWeight.w600,
-                                          ),
-                                        ),
-                                      ),
-                                      if (isFriend)
-                                        const Padding(
-                                          padding: EdgeInsetsDirectional.only(
-                                              start: ExpatlioDesign.space8),
-                                          child: Icon(
-                                            Icons.star_rounded,
-                                            color: ExpatlioDesign.warning,
-                                            size: 18.0,
-                                          ),
-                                        ),
-                                    ],
-                                  ),
+                      ),
+                      _chatTimestampColumn(
+                        key: favoriteChatTimestampKey(
+                          _conversationHiddenKey(conversation),
+                        ),
+                        timestampTextKey: favoriteChatTimestampTextKey(
+                          _conversationHiddenKey(conversation),
+                        ),
+                        unreadSlotKey: favoriteChatUnreadSlotKey(
+                          _conversationHiddenKey(conversation),
+                        ),
+                        timestampText: _formatInboxTimestamp(
+                          conversation.lastMessageAt ?? conversation.unlockedAt,
+                        ),
+                        badge: unread
+                            ? _ConversationUnreadBadge(
+                                badgeKey: favoriteChatUnreadBadgeKey(
+                                  _conversationHiddenKey(conversation),
                                 ),
-                              ],
-                            ),
-                            const SizedBox(height: ExpatlioDesign.space4),
-                            Text(
-                              subtitle,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: ExpatlioDesign.textStyle(
-                                context,
-                                color: ExpatlioDesign.muted,
-                                size: 14.0,
-                                weight: FontWeight.w400,
-                              ),
-                            ),
-                          ],
-                        ),
+                                unreadCountStream:
+                                    _watchConversationUnreadCount(
+                                  conversation,
+                                  currentUid,
+                                ),
+                              )
+                            : null,
                       ),
-                    ),
-                    _chatTimestampColumn(
-                      key: favoriteChatTimestampKey(
-                        _conversationHiddenKey(conversation),
-                      ),
-                      timestampTextKey: favoriteChatTimestampTextKey(
-                        _conversationHiddenKey(conversation),
-                      ),
-                      unreadSlotKey: favoriteChatUnreadSlotKey(
-                        _conversationHiddenKey(conversation),
-                      ),
-                      timestampText: _formatInboxTimestamp(
-                        conversation.lastMessageAt ?? conversation.unlockedAt,
-                      ),
-                      badge: unread
-                          ? _ConversationUnreadBadge(
-                              badgeKey: favoriteChatUnreadBadgeKey(
-                                _conversationHiddenKey(conversation),
-                              ),
-                              unreadCountStream: _watchConversationUnreadCount(
-                                conversation,
-                                currentUid,
-                              ),
-                            )
-                          : null,
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 
@@ -2826,6 +2932,9 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
 
   void _retryMessagesTabSources() {
     setState(() {
+      _conversationProfilesPreloadKey = null;
+      _settledMissingProfileUserIds.clear();
+      _profileRetryAfterByUserId.clear();
       _friendsRetryToken += 1;
       _conversationsRetryToken += 1;
       _eventChatsRetryToken += 1;
@@ -2849,6 +2958,9 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     _eventChatsStream = null;
     _latestEventChatMessageStreams.clear();
     _conversationUnreadCountStreams.clear();
+    _conversationProfilesPreloadKey = null;
+    _settledMissingProfileUserIds.clear();
+    _profileRetryAfterByUserId.clear();
   }
 
   _FavoriteAuthOwnerEpoch _observeRawAuthOwner(String rawOwnerUid) {
@@ -2858,6 +2970,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     _authSourceEpoch += 1;
     if (ownerChanged) {
       _clearSessionCache();
+      _publicProfileRepository.clear();
     }
     _invalidateInstanceSources();
     _activeUid = ownerUid;
@@ -2878,6 +2991,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     }
 
     _clearSessionCache();
+    _publicProfileRepository.clear();
     _invalidateInstanceSources();
     _activeUid = currentUid;
   }
@@ -3045,6 +3159,9 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
   @override
   void initState() {
     super.initState();
+    _publicProfileRepository = UserPublicProfilePreloadRepository(
+      batchLoader: widget.debugUserProfilesBatchLoader,
+    );
     _ensureSessionCacheLifecycleRegistered();
     _lastRawAuthOwnerUid = widget.debugAuthUidStream == null
         ? favoriteAuthOwnerUid(FirebaseAuth.instance.currentUser?.uid)
@@ -3187,6 +3304,11 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                         final conversations =
                             conversationsState?.conversations ??
                                 <ConversationsRecord>[];
+                        _ensureConversationProfilesPreloaded(
+                          currentUid,
+                          sourceEpoch,
+                          conversations,
+                        );
 
                         return FavoriteChatSourceBuilder<
                             FavoriteEventChatsLoadState>(

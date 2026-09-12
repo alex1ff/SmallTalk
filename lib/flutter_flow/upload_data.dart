@@ -91,32 +91,55 @@ Future<List<SelectedFile>?> selectMediaWithSourceBottomSheet({
             mainAxisSize: MainAxisSize.min,
             children: [
               if (!kIsWeb) ...[
-                const BottomSheetHeader(title: 'Choose Source'),
+                BottomSheetHeader(
+                  title: FFLocalizations.of(context).getVariableText(
+                    ruText: 'Выберите источник',
+                    enText: 'Choose source',
+                  ),
+                ),
                 const Divider(),
               ],
               if (allowPhoto && allowVideo) ...[
                 createUploadMediaListTile(
-                  'Gallery (Photo)',
+                  FFLocalizations.of(context).getVariableText(
+                    ruText: 'Галерея (фото)',
+                    enText: 'Gallery (photo)',
+                  ),
                   MediaSource.photoGallery,
                 ),
                 const Divider(),
                 createUploadMediaListTile(
-                  'Gallery (Video)',
+                  FFLocalizations.of(context).getVariableText(
+                    ruText: 'Галерея (видео)',
+                    enText: 'Gallery (video)',
+                  ),
                   MediaSource.videoGallery,
                 ),
               ] else if (allowPhoto)
                 createUploadMediaListTile(
-                  'Gallery',
+                  FFLocalizations.of(context).getVariableText(
+                    ruText: 'Галерея',
+                    enText: 'Gallery',
+                  ),
                   MediaSource.photoGallery,
                 )
               else
                 createUploadMediaListTile(
-                  'Gallery',
+                  FFLocalizations.of(context).getVariableText(
+                    ruText: 'Галерея',
+                    enText: 'Gallery',
+                  ),
                   MediaSource.videoGallery,
                 ),
               if (!kIsWeb) ...[
                 const Divider(),
-                createUploadMediaListTile('Camera', MediaSource.camera),
+                createUploadMediaListTile(
+                  FFLocalizations.of(context).getVariableText(
+                    ruText: 'Камера',
+                    enText: 'Camera',
+                  ),
+                  MediaSource.camera,
+                ),
                 const Divider(),
               ],
               const SizedBox(height: ExpatlioDesign.space12),
@@ -219,13 +242,22 @@ Future<List<SelectedFile>?> selectMedia({
 }
 
 bool validateFileFormat(String filePath, BuildContext context) {
-  if (allowedFormats.contains(mime(filePath))) {
+  final detectedMime = mime(filePath);
+  if (allowedFormats.contains(detectedMime)) {
     return true;
   }
+  debugPrint('Rejected unsupported upload MIME type: $detectedMime');
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(
-      content: Text('Invalid file format: ${mime(filePath)}'),
+      content: Text(
+        FFLocalizations.of(context).getVariableText(
+          ruText:
+              'Неподдерживаемый формат файла. Выберите PNG, JPEG, GIF или MP4.',
+          enText:
+              'Unsupported file format. Choose a PNG, JPEG, GIF, or MP4 file.',
+        ),
+      ),
     ));
   return false;
 }

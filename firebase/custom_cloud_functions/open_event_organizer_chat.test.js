@@ -138,6 +138,15 @@ test("executeOpenEventOrganizerChatTransaction creates unlocked conversation",
     async () => {
       const {db, reads, store, writes} = createFakeFirestore({
         "events/event-1": activeEvent(),
+        "user_public_profiles/organizer-1": {
+          display_name: "Organizer",
+          photo_url: "https://img/organizer",
+          email: "must-not-copy@example.com",
+        },
+        "user_public_profiles/student-1": {
+          display_name: "Student",
+          photo_url: null,
+        },
       });
 
       const result = await executeOpenEventOrganizerChatTransaction({
@@ -149,6 +158,8 @@ test("executeOpenEventOrganizerChatTransaction creates unlocked conversation",
       assert.deepEqual(reads, [
         "events/event-1",
         "conversations/organizer-1_student-1",
+        "user_public_profiles/organizer-1",
+        "user_public_profiles/student-1",
       ]);
       assert.equal(result.conversationId, "organizer-1_student-1");
       assert.equal(
@@ -167,6 +178,13 @@ test("executeOpenEventOrganizerChatTransaction creates unlocked conversation",
         "organizer-1": true,
         "student-1": true,
       });
+      assert.deepEqual(conversation.participantInfoByUserId, {
+        "organizer-1": {
+          displayName: "Organizer",
+          photoUrl: "https://img/organizer",
+        },
+        "student-1": {displayName: "Student", photoUrl: null},
+      });
       assert.deepEqual(
           conversation.participantRefs.map((ref) => ref.path),
           ["users/organizer-1", "users/student-1"],
@@ -180,11 +198,25 @@ test("executeOpenEventOrganizerChatTransaction reuses unlocked conversation",
         pairId: "organizer-1_student-1",
         participantIds: ["organizer-1", "student-1"],
         participantMap: {"organizer-1": true, "student-1": true},
+        participantInfoByUserId: {
+          "organizer-1": {
+            displayName: "Old organizer",
+            photoUrl: "https://old/organizer",
+          },
+        },
         isUnlocked: true,
       };
       const {db, store, writes} = createFakeFirestore({
         "events/event-1": activeEvent(),
         "conversations/organizer-1_student-1": existingConversation,
+        "user_public_profiles/organizer-1": {
+          display_name: "Current organizer",
+          photo_url: null,
+        },
+        "user_public_profiles/student-1": {
+          display_name: "Student",
+          photo_url: "https://img/student",
+        },
       });
 
       const result = await executeOpenEventOrganizerChatTransaction({
@@ -194,9 +226,21 @@ test("executeOpenEventOrganizerChatTransaction reuses unlocked conversation",
       });
 
       assert.equal(result.conversationPath, "conversations/organizer-1_student-1");
-      assert.deepEqual(store.get("conversations/organizer-1_student-1"),
-          existingConversation);
-      assert.equal(writes.length, 0);
+      assert.deepEqual(
+          store.get("conversations/organizer-1_student-1")
+              .participantInfoByUserId,
+          {
+            "organizer-1": {
+              displayName: "Current organizer",
+              photoUrl: null,
+            },
+            "student-1": {
+              displayName: "Student",
+              photoUrl: "https://img/student",
+            },
+          },
+      );
+      assert.equal(writes.length, 1);
     });
 
 test("executeOpenEventOrganizerChatTransaction unlocks existing conversation",

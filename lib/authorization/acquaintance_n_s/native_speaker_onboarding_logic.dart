@@ -493,15 +493,21 @@ Map<String, dynamic> buildNativeSpeakerOnboardingUpdateData({
 String? validateNativeSpeakerOnboardingPage({
   required NativeSpeakerOnboardingPage page,
   required NativeSpeakerOnboardingDraft draft,
+  String languageCode = 'ru',
 }) {
+  final isRussian = languageCode.toLowerCase().startsWith('ru');
   switch (page) {
     case NativeSpeakerOnboardingPage.name:
       if (draft.displayName.trim().isEmpty) {
-        return 'Пожалуйста, представьтесь';
+        return isRussian
+            ? 'Пожалуйста, представьтесь'
+            : 'Please enter your name';
       }
       return functions.isValidName(draft.displayName.trim())
           ? null
-          : 'Неверное имя';
+          : isRussian
+              ? 'Неверное имя'
+              : 'Invalid name';
     case NativeSpeakerOnboardingPage.languageInstruction:
     case NativeSpeakerOnboardingPage.nativeLanguage:
       return hasNativeSpeakerLanguageSelection(
@@ -510,27 +516,39 @@ String? validateNativeSpeakerOnboardingPage({
             : draft.nativeLanguage,
       )
           ? null
-          : 'Выберите язык из списка';
+          : isRussian
+              ? 'Выберите язык из списка'
+              : 'Select a language from the list';
     case NativeSpeakerOnboardingPage.country:
       return hasNativeSpeakerCountrySelection(draft.country)
           ? null
-          : 'Выберите локацию из списка';
+          : isRussian
+              ? 'Выберите локацию из списка'
+              : 'Select a location from the list';
     case NativeSpeakerOnboardingPage.aboutMe:
       return draft.aboutMe.trim().isNotEmpty
           ? null
-          : 'Напишите хотя бы пару слов';
+          : isRussian
+              ? 'Напишите хотя бы пару слов'
+              : 'Write at least a few words';
     case NativeSpeakerOnboardingPage.accreditation:
       if (draft.teachingExperience?.trim().isNotEmpty != true) {
-        return 'Выберите опыт преподавания';
+        return isRussian
+            ? 'Выберите опыт преподавания'
+            : 'Select your teaching experience';
       }
       if (draft.qualificationProofs.isEmpty) {
-        return 'Выберите подтверждение квалификации';
+        return isRussian
+            ? 'Выберите подтверждение квалификации'
+            : 'Select proof of qualification';
       }
       if (shouldRequireNativeSpeakerQualificationFiles(
             draft.qualificationProofs,
           ) &&
           !hasNativeSpeakerQualificationEvidenceFiles(draft)) {
-        return 'Добавьте файлы подтверждения';
+        return isRussian
+            ? 'Добавьте файлы подтверждения'
+            : 'Add supporting files';
       }
       return null;
     case NativeSpeakerOnboardingPage.photo:
@@ -539,7 +557,9 @@ String? validateNativeSpeakerOnboardingPage({
         existingPhotoUrl: draft.existingPhotoUrl,
       )
           ? null
-          : 'Загрузите фото профиля';
+          : isRussian
+              ? 'Загрузите фото профиля'
+              : 'Upload a profile photo';
     case NativeSpeakerOnboardingPage.gender:
       return null;
   }

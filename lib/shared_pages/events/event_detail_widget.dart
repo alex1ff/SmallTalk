@@ -208,6 +208,25 @@ double _eventDetailScaledLineHeight(
       .ceilToDouble();
 }
 
+double _eventDetailActionLabelWidth(BuildContext context, String label) {
+  final painter = TextPainter(
+    text: TextSpan(
+      text: label,
+      style: ExpatlioDesign.textStyle(
+        context,
+        size: _eventDetailActionFontSize,
+        weight: FontWeight.w600,
+      ),
+    ),
+    textDirection: Directionality.of(context),
+    textScaler: MediaQuery.textScalerOf(context),
+    maxLines: 1,
+  )..layout();
+  final width = painter.width.ceilToDouble();
+  painter.dispose();
+  return width;
+}
+
 BoxDecoration _eventDetailCardDecoration() {
   return BoxDecoration(
     color: ExpatlioDesign.card,
@@ -351,7 +370,7 @@ class EventDetailWidget extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _EventDetailTopBar(
+            EventDetailTopBar(
               onSharePressed: onSharePressed,
               showReportAction: showReportAction,
               onReportPressed: onReportPressed,
@@ -1853,8 +1872,34 @@ class _EventDetailBottomActionBar extends StatelessWidget {
                     height: metrics.bottomActionHeight,
                     child: primaryCta,
                   );
+                  final chatLabel = FFLocalizations.of(context)
+                      .getVariableText(ruText: 'Чат', enText: 'Chat');
+                  final chatSlotWidth = math.max<double>(
+                    78,
+                    _eventDetailActionLabelWidth(context, chatLabel) +
+                        20 +
+                        ExpatlioDesign.space8 +
+                        20,
+                  );
+                  final primaryLabel =
+                      _eventDetailJoinCtaLabel(context, joinCtaState);
+                  final primaryHasProgress = joinCtaState ==
+                          EventDetailJoinCtaState.joining ||
+                      joinCtaState ==
+                          EventDetailJoinCtaState.optimisticJoined ||
+                      joinCtaState == EventDetailJoinCtaState.optimisticLeft;
+                  final primaryMinimumWidth = math.max<double>(
+                    120,
+                    _eventDetailActionLabelWidth(context, primaryLabel) +
+                        ExpatlioDesign.space16 * 2 +
+                        (primaryHasProgress ? 18 + ExpatlioDesign.space8 : 0),
+                  );
+                  final shouldStack = constraints.maxWidth <
+                      primaryMinimumWidth +
+                          ExpatlioDesign.space12 +
+                          chatSlotWidth;
 
-                  if (constraints.maxWidth < 320) {
+                  if (shouldStack) {
                     return Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1876,7 +1921,7 @@ class _EventDetailBottomActionBar extends StatelessWidget {
                       const SizedBox(width: ExpatlioDesign.space12),
                       SizedBox(
                         key: eventDetailChatCtaSlotKey,
-                        width: 78,
+                        width: chatSlotWidth,
                         height: metrics.bottomActionHeight,
                         child: chatCta,
                       ),
@@ -2240,8 +2285,8 @@ class _EventDetailOrganizerAvatar extends StatelessWidget {
   }
 }
 
-class _EventDetailTopBar extends StatelessWidget {
-  const _EventDetailTopBar({
+class EventDetailTopBar extends StatelessWidget {
+  const EventDetailTopBar({
     required this.onSharePressed,
     required this.showReportAction,
     required this.onReportPressed,

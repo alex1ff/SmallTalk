@@ -21,6 +21,7 @@ import '/components/chat_call_event_card.dart';
 import '/services/ux_loading_state.dart';
 import '/services/ux_session_cache_lifecycle.dart';
 import '/services/ux_session_loaded_result_cache.dart';
+import '/services/user_public_profile_preload_repository.dart';
 import 'chat_thread_formatters.dart';
 import 'chat_thread_model.dart';
 export 'chat_thread_model.dart';
@@ -110,6 +111,21 @@ typedef ChatThreadMessageWrite = Future<void> Function(
   DocumentReference messageRef,
   Map<String, dynamic> data,
 );
+
+@immutable
+class ChatPartnerPreview {
+  const ChatPartnerPreview({
+    required this.userId,
+    required this.displayName,
+    required this.photoUrl,
+    this.photoUrlIsAuthoritative = false,
+  });
+
+  final String userId;
+  final String displayName;
+  final String photoUrl;
+  final bool photoUrlIsAuthoritative;
+}
 
 ValueKey<String> chatThreadMessageItemKey(String messageKey) =>
     ValueKey<String>('chat_thread_message_item_$messageKey');
@@ -346,6 +362,7 @@ class ChatThreadWidget extends StatefulWidget {
     super.key,
     required this.conversationRef,
     this.initialConversation,
+    this.initialPartnerPreview,
     this.debugConversationStream,
     this.debugMessagesStream,
     this.debugPublicProfileStream,
@@ -355,6 +372,7 @@ class ChatThreadWidget extends StatefulWidget {
 
   final DocumentReference? conversationRef;
   final ConversationsRecord? initialConversation;
+  final ChatPartnerPreview? initialPartnerPreview;
   final ChatThreadConversationStream? debugConversationStream;
   final ChatThreadMessagesStream? debugMessagesStream;
   final ChatThreadPublicProfileStream? debugPublicProfileStream;
@@ -2296,6 +2314,12 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
   }) {
     var partnerName = partnerProfile?.displayName.trim() ?? '';
     if (partnerName.isEmpty) {
+      final preview = widget.initialPartnerPreview;
+      if (preview != null && preview.userId == partnerRef.id) {
+        partnerName = preview.displayName.trim();
+      }
+    }
+    if (partnerName.isEmpty) {
       partnerName = _conversationParticipantDisplayName(
         conversation,
         partnerRef,
@@ -2315,9 +2339,16 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
     required UserPublicProfilesRecord? partnerProfile,
     required DocumentReference partnerRef,
   }) {
-    final profilePhotoUrl = partnerProfile?.photoUrl.trim() ?? '';
-    if (profilePhotoUrl.isNotEmpty) {
-      return profilePhotoUrl;
+    if (partnerProfile != null) {
+      return partnerProfile.photoUrl.trim();
+    }
+
+    final preview = widget.initialPartnerPreview;
+    if (preview != null &&
+        preview.userId == partnerRef.id &&
+        (preview.photoUrlIsAuthoritative ||
+            preview.photoUrl.trim().isNotEmpty)) {
+      return preview.photoUrl.trim();
     }
 
     return _conversationParticipantPhotoUrl(conversation, partnerRef);
@@ -2576,6 +2607,11 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
               Column(
                 children: [
                   StreamBuilder<UserPublicProfilesRecord?>(
+                    key: ValueKey<(String, String, String)>((
+                      _activeOwnerUid,
+                      resolvedConversation.reference.path,
+                      partnerRef.path,
+                    )),
                     stream: _watchPublicProfile(partnerRef),
                     builder: (context, partnerSnapshot) {
                       if (partnerSnapshot.hasError) {
@@ -2583,6 +2619,17 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                           'ChatThreadWidget: partner public profile stream failed for ${partnerRef.path}: ${partnerSnapshot.error}',
                         );
                       }
+
+                      final profile = partnerSnapshot.hasError
+                          ? null
+                          : partnerSnapshot.data;
+                      final validatedProfile = profile != null &&
+                              isValidUserPublicProfileRecordForUserId(
+                                profile,
+                                partnerRef.id,
+                              )
+                          ? profile
+                          : null;
 
                       return AuthUserStreamWidget(
                         builder: (context) {
@@ -2597,9 +2644,7 @@ class _ChatThreadWidgetState extends State<ChatThreadWidget> {
                           return _buildHeader(
                             context,
                             conversation: resolvedConversation,
-                            partnerProfile: partnerSnapshot.hasError
-                                ? null
-                                : partnerSnapshot.data,
+                            partnerProfile: validatedProfile,
                             partnerRef: partnerRef,
                             isFriend: isFriend,
                             canUpdateFriend: hasOwnerDocument,

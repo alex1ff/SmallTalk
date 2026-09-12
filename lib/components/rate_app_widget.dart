@@ -55,7 +55,10 @@ class _RateAppWidgetState extends State<RateAppWidget> {
     if (_model.nameTextController.text == '') {
       await actions.showTopNotification(
         context,
-        'Напишите хотя бы пару слов',
+        FFLocalizations.of(context).getVariableText(
+          ruText: 'Напишите хотя бы пару слов',
+          enText: 'Please write at least a few words',
+        ),
         '',
         true,
       );
@@ -254,7 +257,10 @@ class _RateAppWidgetState extends State<RateAppWidget> {
                             ruText: 'Спасибо, что поделились!',
                             enText: 'Thanks!',
                           ),
-                    'Как общее впечатление?',
+                    FFLocalizations.of(context).getVariableText(
+                      ruText: 'Как общее впечатление?',
+                      enText: 'What\'s the overall impression?',
+                    ),
                   ),
                 ),
                 Padding(

@@ -202,7 +202,10 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
       if (showError && mounted) {
         await actions.showTopNotification(
           context,
-          'Пожалуйста, представьтесь',
+          FFLocalizations.of(context).getVariableText(
+            ruText: 'Пожалуйста, представьтесь',
+            enText: 'Please enter your name',
+          ),
           '',
           true,
         );
@@ -212,7 +215,15 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
 
     if (!functions.isValidName(name)) {
       if (showError && mounted) {
-        await actions.showTopNotification(context, 'Неверное имя', '', true);
+        await actions.showTopNotification(
+          context,
+          FFLocalizations.of(context).getVariableText(
+            ruText: 'Неверное имя',
+            enText: 'Invalid name',
+          ),
+          '',
+          true,
+        );
       }
       return false;
     }
@@ -229,7 +240,10 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
       if (showError && mounted) {
         await actions.showTopNotification(
           context,
-          'Не удалось сохранить имя',
+          FFLocalizations.of(context).getVariableText(
+            ruText: 'Не удалось сохранить имя',
+            enText: 'Could not save your name',
+          ),
           '',
           true,
         );
@@ -277,7 +291,10 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
       if (showError && mounted) {
         await actions.showTopNotification(
           context,
-          'Не удалось сохранить описание',
+          FFLocalizations.of(context).getVariableText(
+            ruText: 'Не удалось сохранить описание',
+            enText: 'Could not save your bio',
+          ),
           '',
           true,
         );
@@ -290,7 +307,7 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
     required VoidCallback apply,
     required VoidCallback restore,
     required Future<void> Function() persist,
-    required String errorMessage,
+    required String Function(BuildContext context) errorMessage,
   }) async {
     safeSetState(apply);
     try {
@@ -300,7 +317,12 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
         return;
       }
       safeSetState(restore);
-      await actions.showTopNotification(context, errorMessage, '', true);
+      await actions.showTopNotification(
+        context,
+        errorMessage(context),
+        '',
+        true,
+      );
     }
   }
 
@@ -699,7 +721,10 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
           ),
         ));
       },
-      errorMessage: 'Не удалось обновить локацию',
+      errorMessage: (context) => FFLocalizations.of(context).getVariableText(
+        ruText: 'Не удалось обновить локацию',
+        enText: 'Could not update your location',
+      ),
     );
   }
 
@@ -748,7 +773,10 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
           ),
         ));
       },
-      errorMessage: 'Не удалось обновить язык изучения',
+      errorMessage: (context) => FFLocalizations.of(context).getVariableText(
+        ruText: 'Не удалось обновить язык изучения',
+        enText: 'Could not update the language you are learning',
+      ),
     );
   }
 
@@ -825,7 +853,10 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
     if (nextPurpose.isEmpty) {
       await actions.showTopNotification(
         context,
-        'Выберите минимум одну цель',
+        FFLocalizations.of(context).getVariableText(
+          ruText: 'Выберите минимум одну цель',
+          enText: 'Select at least one goal',
+        ),
         '',
         true,
       );
@@ -890,7 +921,10 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
           ),
         ));
       },
-      errorMessage: 'Не удалось обновить язык обучения',
+      errorMessage: (context) => FFLocalizations.of(context).getVariableText(
+        ruText: 'Не удалось обновить язык обучения',
+        enText: 'Could not update your teaching language',
+      ),
     );
   }
 
@@ -940,7 +974,10 @@ class _ProfileEditWidgetState extends State<ProfileEditWidget> {
           ),
         ));
       },
-      errorMessage: 'Не удалось обновить родной язык',
+      errorMessage: (context) => FFLocalizations.of(context).getVariableText(
+        ruText: 'Не удалось обновить родной язык',
+        enText: 'Could not update your native language',
+      ),
     );
   }
 

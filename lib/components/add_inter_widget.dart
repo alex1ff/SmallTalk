@@ -186,8 +186,13 @@ class _AddInterWidgetState extends State<AddInterWidget> {
   Future<void> _saveInterval() async {
     if (_selectedEndMinutes <= _selectedStartMinutes) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Выберите корректный интервал времени'),
+        SnackBar(
+          content: Text(
+            FFLocalizations.of(context).getVariableText(
+              ruText: 'Выберите корректный интервал времени',
+              enText: 'Select a valid time interval',
+            ),
+          ),
         ),
       );
       return;
@@ -373,7 +378,10 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                     ExpatlioDesign.space0,
                     ExpatlioDesign.space0),
                 child: Text(
-                  'Выберите интервал',
+                  FFLocalizations.of(context).getVariableText(
+                    ruText: 'Выберите интервал',
+                    enText: 'Select an interval',
+                  ),
                   textAlign: TextAlign.start,
                   style: FlutterFlowTheme.of(context).bodyMedium.override(
                         fontFamily: 'Cool',
@@ -392,7 +400,10 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                 child: Row(
                   children: [
                     _buildSelectionCard(
-                      label: 'Начало',
+                      label: FFLocalizations.of(context).getVariableText(
+                        ruText: 'Начало',
+                        enText: 'Start',
+                      ),
                       value: _model.timeStart ?? '--:--',
                       isSelected:
                           _activeField == AvailabilityIntervalField.start,
@@ -402,7 +413,10 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                     ),
                     const SizedBox(width: ExpatlioDesign.space12),
                     _buildSelectionCard(
-                      label: 'Конец',
+                      label: FFLocalizations.of(context).getVariableText(
+                        ruText: 'Конец',
+                        enText: 'End',
+                      ),
                       value: _model.timeEnd ?? '--:--',
                       isSelected: _activeField == AvailabilityIntervalField.end,
                       onTap: () => _updateActiveField(
@@ -439,8 +453,14 @@ class _AddInterWidgetState extends State<AddInterWidget> {
                           alignment: AlignmentDirectional.centerStart,
                           child: Text(
                             _activeField == AvailabilityIntervalField.start
-                                ? 'Выбираем время начала'
-                                : 'Выбираем время окончания',
+                                ? FFLocalizations.of(context).getVariableText(
+                                    ruText: 'Выбираем время начала',
+                                    enText: 'Selecting the start time',
+                                  )
+                                : FFLocalizations.of(context).getVariableText(
+                                    ruText: 'Выбираем время окончания',
+                                    enText: 'Selecting the end time',
+                                  ),
                             style: FlutterFlowTheme.of(context)
                                 .bodyMedium
                                 .override(

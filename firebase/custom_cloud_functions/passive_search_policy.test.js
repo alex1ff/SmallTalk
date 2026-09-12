@@ -36,11 +36,21 @@ test("ordinary notification+data contains exact consent and no native call paylo
     activeUser: {display_name: "Маша", profileCity: {label: "New York"}}, nowMillis: at});
   assert.match(message.notification.body, /Маша из New York/);
   assert.deepEqual(message.data, {type: "partner_available", recipientId: "a", requestId: "p",
-    activeUserId: "b", activeRequestId: "s", expiresAt: "2026-09-05T12:02:00.000Z"});
+    activeUserId: "b", activeRequestId: "s", expiresAt: "2026-09-05T12:02:00.000Z",
+    bodyRu: "Маша из New York ждет собеседника. Подключитесь прямо сейчас",
+    bodyEn: "Маша from New York is waiting for a partner. Connect now"});
   assert.equal(message.apns.headers["apns-push-type"], "alert");
   assert.equal(message.android.ttl, 120000);
   assert.equal(message.android.notification, undefined);
   assert.equal(normalFcmToken({voipPushToken: "pushkit"}), "");
+});
+test("localized push bodies use separate fallback names", () => {
+  const message = buildPartnerAvailableMessage({token: "fcm", recipientId: "a",
+    passive: {locale: "ru", requestId: "p", expiresAt: at + 1800000},
+    activeUserId: "b", active: {requestId: "s", createdAt: at, expiresAt: at + 600000},
+    activeUser: {}, nowMillis: at});
+  assert.match(message.data.bodyRu, /^Собеседник /);
+  assert.match(message.data.bodyEn, /^A partner /);
 });
 test("catch-up notification query has its composite index", () => {
   const indexes = JSON.parse(fs.readFileSync(

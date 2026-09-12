@@ -1,6 +1,7 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const {
+  buildConversationParticipantInfoByUserId,
   buildConversationParticipantMap,
   buildPairId,
 } = require("./chats_shared");
@@ -84,6 +85,7 @@ function conversationSeed({
   db,
   pairId,
   participantIds,
+  participantInfoByUserId,
 }) {
   const now = admin.firestore.FieldValue.serverTimestamp();
   return {
@@ -93,6 +95,7 @@ function conversationSeed({
       db.doc(`users/${participantId}`),
     ),
     participantMap: buildConversationParticipantMap(participantIds),
+    participantInfoByUserId,
     isUnlocked: true,
     unlockedAt: now,
     createdAt: now,
@@ -183,6 +186,35 @@ async function executeOpenEventOrganizerChatTransaction({
       );
     }
 
+    const publicProfileSnaps = [];
+    for (const participantId of participantIds) {
+      publicProfileSnaps.push(await transaction.get(
+          db.collection("user_public_profiles").doc(participantId),
+      ));
+    }
+    const participantInfos = Object.fromEntries(
+        publicProfileSnaps
+            .filter((snapshot) => snapshot.exists)
+            .map((snapshot) => [snapshot.ref.id, snapshot.data() || {}]),
+    );
+    const participantInfoByUserId =
+      buildConversationParticipantInfoByUserId({
+        participants: {participantIds},
+        sessionData: {
+          participantInfos: Object.fromEntries(
+              Object.entries(participantInfos).map(([uid, profile]) => [
+                uid,
+                {
+                  displayName: profile.display_name ?? profile.displayName,
+                  photoUrl: profile.photo_url ?? profile.photoUrl ?? null,
+                },
+              ]),
+          ),
+        },
+        existingInfoByUserId: conversationData.participantInfoByUserId,
+        preferIncoming: true,
+      });
+
     if (!conversationSnap.exists) {
       transaction.set(
           conversationRef,
@@ -190,16 +222,21 @@ async function executeOpenEventOrganizerChatTransaction({
             db,
             pairId,
             participantIds,
+            participantInfoByUserId,
           }),
       );
-    } else if (conversationData.isUnlocked !== true) {
+    } else {
+      const updates = {participantInfoByUserId};
+      if (conversationData.isUnlocked !== true) {
+        Object.assign(updates, {
+          isUnlocked: true,
+          unlockedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
       transaction.set(
           conversationRef,
-          {
-            isUnlocked: true,
-            unlockedAt: admin.firestore.FieldValue.serverTimestamp(),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          },
+          updates,
           {merge: true},
       );
     }

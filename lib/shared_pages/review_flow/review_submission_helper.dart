@@ -453,11 +453,10 @@ String reviewErrorMessage(
         enText: 'Unable to submit a review for this call.',
       );
     default:
-      return error.message ??
-          FFLocalizations.of(context).getVariableText(
-            ruText: 'Не удалось отправить отзыв. Попробуйте снова.',
-            enText: 'Failed to submit review. Please try again.',
-          );
+      return FFLocalizations.of(context).getVariableText(
+        ruText: 'Не удалось отправить отзыв. Попробуйте снова.',
+        enText: 'Failed to submit review. Please try again.',
+      );
   }
 }
 

@@ -14,6 +14,17 @@ typedef EventListPageLoader = Future<FFFirestorePage<EventsRecord>> Function(
   required bool isStream,
 });
 
+class EventListFirestorePage extends FFFirestorePage<EventsRecord> {
+  EventListFirestorePage(
+    super.data,
+    super.dataStream,
+    super.nextPageMarker, {
+    required this.hasMore,
+  });
+
+  final bool hasMore;
+}
+
 class EventListQuerySpec {
   const EventListQuerySpec({
     required this.countryCode,
@@ -49,6 +60,11 @@ class EventListRepository {
 
   static CollectionReference get _publicEventsCollection =>
       FirebaseFirestore.instance.collection('events_public');
+
+  static bool pageHasMore(FFFirestorePage<EventsRecord> page) =>
+      page is EventListFirestorePage
+          ? page.hasMore
+          : page.nextPageMarker != null;
 
   static EventsRecord _publicEventFromSnapshot(DocumentSnapshot snapshot) =>
       EventsRecord.getDocumentFromData(
@@ -201,7 +217,7 @@ class EventListRepository {
     if (selectedRange == null) {
       return rawPage;
     }
-    return FFFirestorePage<EventsRecord>(
+    return EventListFirestorePage(
       filterEventsBySelectedLevel(
         rawPage.data,
         selectedRange: selectedRange,
@@ -213,6 +229,7 @@ class EventListRepository {
         ),
       ),
       rawPage.nextPageMarker,
+      hasMore: pageHasMore(rawPage),
     );
   }
 
@@ -289,18 +306,24 @@ class EventListRepository {
       );
 
       final rawNextPageMarker = rawPage.nextPageMarker;
-      if (rawNextPageMarker == null) {
-        return FFFirestorePage<EventsRecord>(visibleEvents, null, null);
+      if (!pageHasMore(rawPage) || rawNextPageMarker == null) {
+        return EventListFirestorePage(
+          visibleEvents,
+          null,
+          rawNextPageMarker,
+          hasMore: false,
+        );
       }
 
       lastRawCursor = rawNextPageMarker;
       rawCursor = rawNextPageMarker;
     }
 
-    return FFFirestorePage<EventsRecord>(
+    return EventListFirestorePage(
       visibleEvents,
       null,
       lastRawCursor,
+      hasMore: true,
     );
   }
 
@@ -385,12 +408,36 @@ Future<FFFirestorePage<EventsRecord>> _loadEventCollectionPage(
   DocumentSnapshot? nextPageMarker,
   required int pageSize,
   required bool isStream,
-}) =>
-    queryCollectionPage<EventsRecord>(
-      collection,
-      recordBuilder,
-      queryBuilder: queryBuilder,
-      nextPageMarker: nextPageMarker,
-      pageSize: pageSize,
-      isStream: isStream,
-    );
+}) async {
+  final builder = queryBuilder ?? (Query query) => query;
+  var query = builder(collection).limit(pageSize);
+  if (nextPageMarker != null) {
+    query = query.startAfterDocument(nextPageMarker);
+  }
+  Stream<QuerySnapshot>? snapshotStream;
+  final QuerySnapshot snapshot;
+  if (isStream) {
+    snapshotStream = query.snapshots();
+    snapshot = await snapshotStream.first;
+  } else {
+    snapshot = await query.get();
+  }
+  List<EventsRecord> records(QuerySnapshot source) => source.docs
+      .map(
+        (document) => safeGet(
+          () => recordBuilder(document),
+          (error) => print(
+            'Error serializing event ${document.reference.path}: $error',
+          ),
+        ),
+      )
+      .whereType<EventsRecord>()
+      .toList(growable: false);
+
+  return EventListFirestorePage(
+    records(snapshot),
+    snapshotStream?.map(records),
+    snapshot.docs.isEmpty ? null : snapshot.docs.last,
+    hasMore: snapshot.docs.length >= pageSize,
+  );
+}

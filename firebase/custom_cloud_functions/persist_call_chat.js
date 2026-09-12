@@ -4,6 +4,7 @@ const {FieldValue, Timestamp} = require("firebase-admin/firestore");
 const {
   CALL_EVENT_OUTCOME_COMPLETED,
   CONVERSATION_MESSAGE_TYPE_TEXT,
+  buildConversationParticipantInfoByUserId,
   buildConversationSeed,
   conversationMatchesUnlockParticipants,
   ensureConversationCallEventForSession,
@@ -266,6 +267,7 @@ async function persistCallChatForUser({
         buildConversationSeed({
           participants: eligibility,
           sessionRef,
+          sessionData,
         }),
       );
     } else if (conversationData.isUnlocked !== true) {
@@ -280,6 +282,18 @@ async function persistCallChatForUser({
         {merge: true},
       );
     }
+
+    transaction.set(
+      conversationRef,
+      {
+        participantInfoByUserId: buildConversationParticipantInfoByUserId({
+          participants: eligibility,
+          sessionData,
+          existingInfoByUserId: conversationData.participantInfoByUserId,
+        }),
+      },
+      {merge: true},
+    );
 
     let written = 0;
     let skipped = 0;

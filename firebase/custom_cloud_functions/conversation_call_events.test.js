@@ -11,6 +11,7 @@ const {
   CONVERSATION_MESSAGE_TYPE_CALL_EVENT,
   buildCallEventMessageId,
   buildCallEventMessagePayload,
+  buildConversationParticipantInfoByUserId,
   buildConversationParticipantMap,
   buildConversationSummaryUpdate,
   ensureConversationCallEventForSession,
@@ -147,6 +148,49 @@ test("buildConversationParticipantMap materializes query-friendly participants",
   );
 });
 
+test("conversation participant snapshot keeps safe identity and explicit avatar removal", () => {
+  const participants = {
+    studentId: "student",
+    tutorId: "teacher",
+    participantIds: ["student", "teacher"],
+  };
+  const result = buildConversationParticipantInfoByUserId({
+    participants,
+    existingInfoByUserId: {
+      outsider: {displayName: "Must not leak"},
+    },
+    sessionData: {
+      participantInfos: {
+        student: {displayName: "  Alice  ", photoUrl: null, email: "private"},
+        teacher: {displayName: "Bob", photoUrl: " https://new/teacher "},
+      },
+    },
+  });
+
+  assert.deepEqual(result, {
+    student: {displayName: "Alice", photoUrl: null},
+    teacher: {displayName: "Bob", photoUrl: "https://new/teacher"},
+  });
+
+  assert.deepEqual(
+    buildConversationParticipantInfoByUserId({
+      participants,
+      existingInfoByUserId: {
+        student: {displayName: "Current Alice", photoUrl: null},
+      },
+      sessionData: {
+        participantInfos: {
+          student: {
+            displayName: "Historical Alice",
+            photoUrl: "https://historical/alice",
+          },
+        },
+      },
+    }).student,
+    {displayName: "Current Alice", photoUrl: null},
+  );
+});
+
 test("startedAt-only sessions are not treated as verified connected calls", () => {
   const sessionData = {
     status: "ended",
@@ -191,6 +235,10 @@ test("ensureConversationCallEventForSession creates missed event for assigned un
       status: "searching",
       studentId: "student",
       currentTutorId: "teacher",
+      participantInfos: {
+        student: {displayName: "Alice", photoUrl: null},
+        teacher: {displayName: "Bob", photoUrl: "https://img/bob"},
+      },
     },
   });
 
@@ -210,6 +258,13 @@ test("ensureConversationCallEventForSession creates missed event for assigned un
   assert.equal(store.get(messagePath).callOutcome, CALL_EVENT_OUTCOME_MISSED);
   assert.equal(store.get(messagePath).callerId, "student");
   assert.equal(store.get(messagePath).recipientId, "teacher");
+  assert.deepEqual(
+    store.get("conversations/student_teacher").participantInfoByUserId,
+    {
+      student: {displayName: "Alice", photoUrl: null},
+      teacher: {displayName: "Bob", photoUrl: "https://img/bob"},
+    },
+  );
 });
 
 test("ensureConversationCallEventForSession creates cancelled event for cancelled session", async () => {

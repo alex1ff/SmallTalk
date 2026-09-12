@@ -344,6 +344,57 @@ void main() {
     expect(find.text('Обновлённое событие'), findsOneWidget);
   });
 
+  testWidgets('confirmed create is inserted into an existing history cache',
+      (tester) async {
+    final refreshCompleter = Completer<EventHistoryResult>();
+    var calls = 0;
+    addTearDown(() {
+      if (!refreshCompleter.isCompleted) {
+        refreshCompleter.complete(historyResult(items: const []));
+      }
+    });
+
+    Future<EventHistoryResult> loader(String userId) {
+      calls += 1;
+      return calls == 1
+          ? Future<EventHistoryResult>.value(
+              historyResult(
+                items: <EventHistoryItem>[
+                  historyItem(title: 'Existing event'),
+                ],
+              ),
+            )
+          : refreshCompleter.future;
+    }
+
+    await tester.pumpWidget(
+      _buildTestApp(home: _historyWidget(historyLoader: loader)),
+    );
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+
+    EventHistoryWidget.seedCreatedEvent(
+      ownerUid: 'user-a',
+      generatedAt: DateTime.parse('2026-06-18T12:00:00.000Z'),
+      item: historyItem(
+        eventId: 'created-event',
+        title: 'Just created event',
+        startsAt: DateTime.parse('2026-06-19T10:00:00.000Z'),
+        participantRole: 'organizer',
+      ),
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(home: _historyWidget(historyLoader: loader)),
+    );
+    await tester.pump();
+
+    expect(find.text('Just created event'), findsOneWidget);
+    expect(find.text('Existing event'), findsOneWidget);
+    expect(find.byKey(eventHistoryLoadingKey), findsNothing);
+  });
+
   testWidgets('silent refresh error preserves cached rows and scroll offset',
       (tester) async {
     final refreshCompleter = Completer<EventHistoryResult>();

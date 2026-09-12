@@ -6,12 +6,7 @@
 // and closes the sheet.
 //
 // Usage:
-//   await showModalBottomSheet(
-//     context: context,
-//     isScrollControlled: true,
-//     backgroundColor: Colors.transparent,
-//     builder: (_) => const PromoRedeemWidget(),
-//   );
+//   await showPromoRedeemSheet(context: context);
 
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
@@ -23,8 +18,31 @@ import '/flutter_flow/flutter_flow_widgets.dart';
 import '/shared_pages/design/expatlio_design.dart';
 import '/utils/subscription_utils.dart';
 
+typedef PromoRedeemOverride = Future<Map<dynamic, dynamic>> Function(
+  String code,
+);
+
+Future<bool?> showPromoRedeemSheet({
+  required BuildContext context,
+  PromoRedeemOverride? redeemOverride,
+}) {
+  return showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    isDismissible: false,
+    enableDrag: false,
+    backgroundColor: Colors.transparent,
+    builder: (_) => PromoRedeemWidget(redeemOverride: redeemOverride),
+  );
+}
+
 class PromoRedeemWidget extends StatefulWidget {
-  const PromoRedeemWidget({super.key});
+  const PromoRedeemWidget({
+    super.key,
+    this.redeemOverride,
+  });
+
+  final PromoRedeemOverride? redeemOverride;
 
   @override
   State<PromoRedeemWidget> createState() => _PromoRedeemWidgetState();
@@ -34,6 +52,8 @@ class _PromoRedeemWidgetState extends State<PromoRedeemWidget> {
   final TextEditingController _codeController = TextEditingController();
   final FocusNode _codeFocus = FocusNode();
   bool _isSubmitting = false;
+  bool _isFinishing = false;
+  bool _allowSuccessPop = false;
   String? _errorMessage;
   _SuccessInfo? _success;
 
@@ -61,12 +81,18 @@ class _PromoRedeemWidgetState extends State<PromoRedeemWidget> {
     });
 
     try {
-      final callable =
-          FirebaseFunctions.instance.httpsCallable('redeemPromoCode');
-      final result = await callable.call<Map<dynamic, dynamic>>({
-        'code': code,
-      });
-      final data = result.data;
+      final override = widget.redeemOverride;
+      final Map<dynamic, dynamic> data;
+      if (override != null) {
+        data = await override(code);
+      } else {
+        final callable =
+            FirebaseFunctions.instance.httpsCallable('redeemPromoCode');
+        final result = await callable.call<Map<dynamic, dynamic>>({
+          'code': code,
+        });
+        data = result.data;
+      }
       final minutes = (data['minutesGifted'] as num?)?.toInt() ?? 0;
       final remaining =
           (data['remainingMinutes'] as num?)?.toDouble() ?? minutes.toDouble();
@@ -88,11 +114,7 @@ class _PromoRedeemWidgetState extends State<PromoRedeemWidget> {
       if (!mounted) return;
       setState(() {
         _isSubmitting = false;
-        _errorMessage = e.message ??
-            FFLocalizations.of(context).getVariableText(
-              ruText: 'Не удалось активировать промокод. Попробуйте позже.',
-              enText: "Couldn't redeem the promo code. Try again later.",
-            );
+        _errorMessage = _localizedPromoError(e.code);
       });
     } catch (_) {
       if (!mounted) return;
@@ -106,46 +128,106 @@ class _PromoRedeemWidgetState extends State<PromoRedeemWidget> {
     }
   }
 
+  String _localizedPromoError(String code) {
+    final localization = FFLocalizations.of(context);
+    switch (code) {
+      case 'unauthenticated':
+        return localization.getVariableText(
+          ruText: 'Войдите в аккаунт и попробуйте снова.',
+          enText: 'Sign in and try again.',
+        );
+      case 'invalid-argument':
+        return localization.getVariableText(
+          ruText: 'Проверьте промокод и попробуйте снова.',
+          enText: 'Check the promo code and try again.',
+        );
+      case 'not-found':
+        return localization.getVariableText(
+          ruText: 'Промокод не найден.',
+          enText: 'Promo code not found.',
+        );
+      case 'already-exists':
+        return localization.getVariableText(
+          ruText: 'Этот промокод уже активирован.',
+          enText: 'This promo code has already been redeemed.',
+        );
+      case 'failed-precondition':
+        return localization.getVariableText(
+          ruText: 'Промокод истёк или больше недоступен.',
+          enText: 'This promo code has expired or is no longer available.',
+        );
+      default:
+        return localization.getVariableText(
+          ruText: 'Не удалось активировать промокод. Попробуйте позже.',
+          enText: "Couldn't redeem the promo code. Try again later.",
+        );
+    }
+  }
+
+  void _finishSuccess() {
+    if (!mounted || _isFinishing || _success == null) {
+      return;
+    }
+    _isFinishing = true;
+    setState(() => _allowSuccessPop = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        Navigator.of(context).pop(true);
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = FlutterFlowTheme.of(context);
     final success = _success;
-    return Padding(
-      padding: MediaQuery.viewInsetsOf(context),
-      child: Container(
-        decoration: ExpatlioDesign.sheetDecoration(),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            BottomSheetHeader(
-              title: success != null
-                  ? FFLocalizations.of(context).getVariableText(
-                      ruText: 'Промокод активирован',
-                      enText: 'Promo code redeemed',
-                    )
-                  : FFLocalizations.of(context).getVariableText(
-                      ruText: 'Введите промокод',
-                      enText: 'Enter a promo code',
-                    ),
+    return PopScope<Object?>(
+      canPop: (!_isSubmitting && success == null) || _allowSuccessPop,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && success != null) {
+          _finishSuccess();
+        }
+      },
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          padding: MediaQuery.viewInsetsOf(context),
+          child: Container(
+            decoration: ExpatlioDesign.sheetDecoration(),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                BottomSheetHeader(
+                  title: success != null
+                      ? FFLocalizations.of(context).getVariableText(
+                          ruText: 'Промокод активирован',
+                          enText: 'Promo code redeemed',
+                        )
+                      : FFLocalizations.of(context).getVariableText(
+                          ruText: 'Введите промокод',
+                          enText: 'Enter a promo code',
+                        ),
+                ),
+                const SizedBox(height: ExpatlioDesign.space16),
+                Padding(
+                  padding: const EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.space24,
+                    ExpatlioDesign.space0,
+                    ExpatlioDesign.space24,
+                    ExpatlioDesign.space24,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: success != null
+                        ? _buildSuccess(theme, success)
+                        : _buildForm(theme),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: ExpatlioDesign.space16),
-            Padding(
-              padding: const EdgeInsetsDirectional.fromSTEB(
-                ExpatlioDesign.space24,
-                ExpatlioDesign.space0,
-                ExpatlioDesign.space24,
-                ExpatlioDesign.space24,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: success != null
-                    ? _buildSuccess(theme, success)
-                    : _buildForm(theme),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -227,6 +309,16 @@ class _PromoRedeemWidgetState extends State<PromoRedeemWidget> {
             elevation: 0,
           ),
         ),
+        const SizedBox(height: ExpatlioDesign.space8),
+        TextButton(
+          onPressed: _isSubmitting ? null : () => Navigator.pop(context, false),
+          child: Text(
+            FFLocalizations.of(context).getVariableText(
+              ruText: 'Отмена',
+              enText: 'Cancel',
+            ),
+          ),
+        ),
       ];
 
   List<Widget> _buildSuccess(FlutterFlowTheme theme, _SuccessInfo info) => [
@@ -247,7 +339,7 @@ class _PromoRedeemWidgetState extends State<PromoRedeemWidget> {
         ),
         const SizedBox(height: ExpatlioDesign.space24),
         FFButtonWidget(
-          onPressed: () => Navigator.pop(context),
+          onPressed: _finishSuccess,
           text: FFLocalizations.of(context).getVariableText(
             ruText: 'Готово',
             enText: 'Done',

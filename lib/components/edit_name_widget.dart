@@ -53,7 +53,10 @@ class _EditNameWidgetState extends State<EditNameWidget> {
     if (_model.nameTextController.text == '') {
       await actions.showTopNotification(
         context,
-        'Пожалуйста, представьтесь',
+        FFLocalizations.of(context).getVariableText(
+          ruText: 'Пожалуйста, представьтесь',
+          enText: 'Please enter your name',
+        ),
         '',
         true,
       );
@@ -62,7 +65,10 @@ class _EditNameWidgetState extends State<EditNameWidget> {
     if (!functions.isValidName(_model.nameTextController.text)) {
       await actions.showTopNotification(
         context,
-        'Неверное имя',
+        FFLocalizations.of(context).getVariableText(
+          ruText: 'Неверное имя',
+          enText: 'Invalid name',
+        ),
         '',
         true,
       );
@@ -77,7 +83,10 @@ class _EditNameWidgetState extends State<EditNameWidget> {
       );
       await actions.showTopNotification(
         context,
-        'Имя изменено',
+        FFLocalizations.of(context).getVariableText(
+          ruText: 'Имя изменено',
+          enText: 'Name updated',
+        ),
         '',
         false,
       );

@@ -90,6 +90,36 @@ class EventHistoryWidget extends StatefulWidget {
     );
   }
 
+  static void seedCreatedEvent({
+    required String ownerUid,
+    required EventHistoryItem item,
+    required DateTime generatedAt,
+  }) {
+    final normalizedOwnerUid = ownerUid.trim();
+    if (normalizedOwnerUid.isEmpty || !item.isOrganizer) {
+      return;
+    }
+    final cached = _cachedHistory(normalizedOwnerUid);
+    if (cached == null) {
+      return;
+    }
+    final items = <EventHistoryItem>[
+      item,
+      ...cached.items.where((existing) => existing.eventId != item.eventId),
+    ]..sort(_compareEventHistoryItems);
+    _cacheHistory(
+      normalizedOwnerUid,
+      EventHistoryResult(
+        items: List<EventHistoryItem>.unmodifiable(
+          items.take(cached.limit),
+        ),
+        limit: cached.limit,
+        generatedAt: generatedAt,
+      ),
+      expectedGeneration: _sessionCacheGeneration,
+    );
+  }
+
   @visibleForTesting
   static void debugClearSessionCache() {
     _sessionCacheGeneration += 1;
@@ -105,6 +135,22 @@ class EventHistoryWidget extends StatefulWidget {
 
   @override
   State<EventHistoryWidget> createState() => _EventHistoryWidgetState();
+}
+
+int _compareEventHistoryItems(EventHistoryItem left, EventHistoryItem right) {
+  final leftUpcoming =
+      left.timelineStatus == EventHistoryTimelineStatus.upcoming;
+  final rightUpcoming =
+      right.timelineStatus == EventHistoryTimelineStatus.upcoming;
+  if (leftUpcoming != rightUpcoming) {
+    return leftUpcoming ? -1 : 1;
+  }
+  final startsAtComparison = leftUpcoming
+      ? left.startsAt.compareTo(right.startsAt)
+      : right.startsAt.compareTo(left.startsAt);
+  return startsAtComparison != 0
+      ? startsAtComparison
+      : left.eventId.compareTo(right.eventId);
 }
 
 class _EventHistoryWidgetState extends State<EventHistoryWidget> {

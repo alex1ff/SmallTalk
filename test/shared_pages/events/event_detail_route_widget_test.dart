@@ -52,6 +52,7 @@ Widget _buildTestApp({
 Widget _buildDetailRouteTestApp({
   required String eventId,
   required EventDetailSnapshotStream snapshotStream,
+  EventDetailPublicPreview? initialPreview,
   EventDetailSnapshotFlagReader? snapshotIsFromCache,
   EventDetailSnapshotFlagReader? snapshotHasPendingWrites,
   EventsAnalyticsTracker? analyticsTracker,
@@ -60,6 +61,7 @@ Widget _buildDetailRouteTestApp({
 }) {
   Widget route = EventDetailRouteWidget(
     eventId: eventId,
+    initialPreview: initialPreview,
     snapshotStream: snapshotStream,
     snapshotIsFromCache: snapshotIsFromCache,
     snapshotHasPendingWrites: snapshotHasPendingWrites,
@@ -138,6 +140,16 @@ void main() {
     UxSessionCacheLifecycle.updateAuthenticatedUser(null);
     currentUser = null;
     currentUserDocument = null;
+  });
+
+  test('public preview description preserves a complete emoji grapheme', () {
+    final prefix = List<String>.filled(159, 'a').join();
+    const familyEmoji = '👨‍👩‍👧‍👦';
+
+    expect(
+      eventDetailPublicPreviewDescription('$prefix${familyEmoji}tail'),
+      '$prefix$familyEmoji…',
+    );
   });
 
   testWidgets('route stores confirmed detail for the current session user',
@@ -269,6 +281,8 @@ void main() {
     await tester.pump();
 
     expect(find.byKey(eventDetailRouteLoadingKey), findsOneWidget);
+    expect(find.byKey(eventDetailTopBarKey), findsOneWidget);
+    expect(find.byKey(eventDetailBackButtonKey), findsOneWidget);
     expect(
       find.byKey(eventDetailRouteRefreshingIndicatorKey),
       findsNothing,
@@ -276,6 +290,99 @@ void main() {
 
     await tester.pumpWidget(const SizedBox.shrink());
     await controller.close();
+  });
+
+  testWidgets(
+    'list preview is visible immediately and protected until detail resolves',
+    (tester) async {
+      final controller =
+          StreamController<DocumentSnapshot>.broadcast(sync: true);
+      final initialPreview = EventDetailPublicPreview(
+        eventId: 'event-1',
+        title: 'Immediate conversation club',
+        description: 'Public description',
+        languageCode: 'en',
+        languageNameEn: 'English',
+        languageNameRu: 'Английский',
+        levelMin: 'B1',
+        levelMax: 'C1',
+        startsAt: DateTime.utc(2099, 6, 18, 15),
+        timeZoneId: 'Europe/Moscow',
+        organizerDisplayName: 'Elena',
+        publicLocationLabel: 'New York, US',
+        participantsCount: 2,
+        capacity: 10,
+      );
+
+      await tester.pumpWidget(
+        _buildDetailRouteTestApp(
+          eventId: 'event-1',
+          initialPreview: initialPreview,
+          snapshotStream: (_) => controller.stream,
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Immediate conversation club'), findsOneWidget);
+      expect(find.text('Public description'), findsOneWidget);
+      expect(find.text('New York, US'), findsOneWidget);
+      expect(find.byKey(eventDetailRouteLoadingKey), findsNothing);
+      expect(find.text('Cafe on Arbat'), findsNothing);
+      expect(find.byKey(eventDetailChatCtaKey), findsNothing);
+      final pendingPrimary =
+          tester.getSemantics(find.byKey(eventDetailPrimaryCtaKey));
+      expect(pendingPrimary.flagsCollection.isEnabled, isFalse);
+
+      controller.add(
+        _FakeEventDocumentSnapshot(
+          reference: EventsRecord.collection.doc('event-1'),
+          data: _eventData(title: 'Confirmed conversation club'),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Confirmed conversation club'), findsOneWidget);
+      expect(find.text('Immediate conversation club'), findsNothing);
+      expect(find.text('Cafe on Arbat'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await controller.close();
+    },
+  );
+
+  testWidgets('detail failure keeps a matching public preview visible',
+      (tester) async {
+    final preview = EventDetailPublicPreview(
+      eventId: 'event-1',
+      title: 'Cached public event',
+      description: 'Public description',
+      languageCode: 'en',
+      levelMin: 'A2',
+      levelMax: 'B1',
+      startsAt: DateTime.utc(2099, 6, 18, 15),
+      timeZoneId: 'UTC',
+      organizerDisplayName: 'Elena',
+    );
+
+    await tester.pumpWidget(
+      _buildDetailRouteTestApp(
+        eventId: 'event-1',
+        initialPreview: preview,
+        snapshotStream: (_) => Stream<DocumentSnapshot>.error(
+          StateError('offline'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cached public event'), findsOneWidget);
+    expect(find.byKey(eventDetailRouteLoadingKey), findsNothing);
+    expect(find.byKey(eventDetailRouteErrorKey), findsNothing);
+    expect(
+      find.byKey(eventDetailRouteRefreshErrorIndicatorKey),
+      findsOneWidget,
+    );
   });
 
   testWidgets('cached missing detail waits for server confirmation',

@@ -51,9 +51,63 @@ const ValueKey<String> eventDetailReportDismissButtonKey =
     ValueKey<String>('event_detail_report_dismiss_button');
 const ValueKey<String> eventDetailReportSubmitButtonKey =
     ValueKey<String>('event_detail_report_submit_button');
+const String eventDetailPublicPreviewExtraKey = 'eventDetailPublicPreview';
+const int eventDetailPublicPreviewDescriptionMaxLength = 160;
+
+EventDetailPublicPreview? eventDetailPublicPreviewFromParam(Object? value) =>
+    value is EventDetailPublicPreview ? value : null;
+
+String eventDetailPublicPreviewDescription(String value) {
+  final text = value.trim();
+  final characters = text.characters;
+  if (characters.length <= eventDetailPublicPreviewDescriptionMaxLength) {
+    return text;
+  }
+  return '${characters.take(eventDetailPublicPreviewDescriptionMaxLength).toString().trim()}…';
+}
 
 ValueKey<String> eventDetailReportReasonKey(String reasonCode) =>
     ValueKey<String>('event_detail_report_reason_$reasonCode');
+
+/// Public event fields already visible in the list.
+///
+/// This is display-only seed data. It must never be treated as confirmed
+/// membership, subscription access, or permission to reveal private fields.
+class EventDetailPublicPreview {
+  const EventDetailPublicPreview({
+    required this.eventId,
+    required this.title,
+    required this.description,
+    required this.languageCode,
+    required this.levelMin,
+    required this.levelMax,
+    required this.startsAt,
+    required this.timeZoneId,
+    required this.organizerDisplayName,
+    this.publicLocationLabel = '',
+    this.languageNameEn,
+    this.languageNameRu,
+    this.organizerPhotoUrl,
+    this.participantsCount,
+    this.capacity,
+  });
+
+  final String eventId;
+  final String title;
+  final String description;
+  final String languageCode;
+  final String? languageNameEn;
+  final String? languageNameRu;
+  final String levelMin;
+  final String levelMax;
+  final DateTime startsAt;
+  final String timeZoneId;
+  final String organizerDisplayName;
+  final String publicLocationLabel;
+  final String? organizerPhotoUrl;
+  final int? participantsCount;
+  final int? capacity;
+}
 
 typedef EventChatThreadOpener = Future<void> Function(
   BuildContext context, {
@@ -221,6 +275,7 @@ class EventDetailRouteWidget extends StatefulWidget {
   const EventDetailRouteWidget({
     super.key,
     required this.eventId,
+    this.initialPreview,
     this.snapshotStream,
     this.snapshotIsFromCache,
     this.snapshotHasPendingWrites,
@@ -237,6 +292,7 @@ class EventDetailRouteWidget extends StatefulWidget {
   });
 
   final String eventId;
+  final EventDetailPublicPreview? initialPreview;
   final EventDetailSnapshotStream? snapshotStream;
   final EventDetailSnapshotFlagReader? snapshotIsFromCache;
   final EventDetailSnapshotFlagReader? snapshotHasPendingWrites;
@@ -349,6 +405,50 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       UxSessionCacheLifecycle.sessionUserIdOrFallback(
         currentUser?.uid ?? currentUserUid,
       );
+
+  EventDetailPublicPreview? get _matchingInitialPreview {
+    final preview = widget.initialPreview;
+    if (preview == null) {
+      return null;
+    }
+    try {
+      return normalizeEventDetailId(preview.eventId) ==
+              _eventStreamDataKey.eventId
+          ? preview
+          : null;
+    } on ArgumentError {
+      return null;
+    }
+  }
+
+  Widget _buildInitialPublicPreview(
+    EventDetailPublicPreview preview, {
+    required bool hasRefreshError,
+  }) {
+    final content = EventDetailWidget(
+      eventId: _eventStreamDataKey.eventId,
+      levelMin: preview.levelMin,
+      levelMax: preview.levelMax,
+      languageCode: preview.languageCode,
+      languageNameEn: preview.languageNameEn,
+      languageNameRu: preview.languageNameRu,
+      title: preview.title,
+      description: preview.description,
+      organizerDisplayName: preview.organizerDisplayName,
+      organizerPhotoUrl: preview.organizerPhotoUrl,
+      startsAt: preview.startsAt,
+      timeZoneId: preview.timeZoneId,
+      locationName: preview.publicLocationLabel,
+      participants: const <EventDetailParticipantViewModel>[],
+      participantsCount: preview.participantsCount,
+      capacity: preview.capacity,
+      joinCtaState: EventDetailJoinCtaState.join,
+    );
+    return _EventDetailRefreshErrorOverlay(
+      isVisible: hasRefreshError,
+      child: content,
+    );
+  }
 
   void _configureEventStream({required String sessionCacheUserId}) {
     _eventStreamDataKey = _eventDetailRouteDataKey(
@@ -843,6 +943,15 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       stream: _eventStream,
       initialEvent: _eventInitialData,
       builder: (context, summary) {
+        final initialPreview = _matchingInitialPreview;
+        if (!summary.hasResolvedResult && initialPreview != null) {
+          _currentDetailEventId = null;
+          _clearNestedEventStreams();
+          return _buildInitialPublicPreview(
+            initialPreview,
+            hasRefreshError: summary.hasError,
+          );
+        }
         if (summary.hasError && !summary.hasResolvedResult) {
           _currentDetailEventId = null;
           return const _EventDetailRouteStateScaffold(
@@ -974,8 +1083,8 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
                 event.organizerId.trim() != currentUserUid.trim();
             final hasFullEventAccess = widget.snapshotStream != null ||
                 isPaidPremiumSubscription(currentUserDocument) ||
-                    canManage ||
-                    isActiveParticipant;
+                canManage ||
+                isActiveParticipant;
 
             if (!hasFullEventAccess) {
               final previewDescription = event.description.length > 160
@@ -2128,45 +2237,58 @@ class _EventDetailRouteStateScaffold extends StatelessWidget {
     return Scaffold(
       backgroundColor: ExpatlioDesign.background,
       body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsetsDirectional.all(ExpatlioDesign.space24),
-            child: Column(
-              key: stateKey,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (showProgress) ...[
-                  const SizedBox.square(
-                    dimension: 28,
-                    child: CircularProgressIndicator(strokeWidth: 2.8),
-                  ),
-                  const SizedBox(height: ExpatlioDesign.space20),
-                ],
-                Text(
-                  FFLocalizations.of(context).getVariableText(
-                    ruText: titleRu,
-                    enText: titleEn,
-                  ),
-                  textAlign: TextAlign.center,
-                  style: ExpatlioDesign.pageHeaderTitleStyle(context),
-                ),
-                const SizedBox(height: ExpatlioDesign.space8),
-                Text(
-                  FFLocalizations.of(context).getVariableText(
-                    ruText: messageRu,
-                    enText: messageEn,
-                  ),
-                  textAlign: TextAlign.center,
-                  style: ExpatlioDesign.textStyle(
-                    context,
-                    color: ExpatlioDesign.muted,
-                    size: 15,
-                    weight: FontWeight.w500,
-                  ),
-                ),
-              ],
+        child: Column(
+          children: [
+            const EventDetailTopBar(
+              onSharePressed: null,
+              showReportAction: false,
+              onReportPressed: null,
             ),
-          ),
+            Expanded(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsetsDirectional.all(
+                    ExpatlioDesign.space24,
+                  ),
+                  child: Column(
+                    key: stateKey,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (showProgress) ...[
+                        const SizedBox.square(
+                          dimension: 28,
+                          child: CircularProgressIndicator(strokeWidth: 2.8),
+                        ),
+                        const SizedBox(height: ExpatlioDesign.space20),
+                      ],
+                      Text(
+                        FFLocalizations.of(context).getVariableText(
+                          ruText: titleRu,
+                          enText: titleEn,
+                        ),
+                        textAlign: TextAlign.center,
+                        style: ExpatlioDesign.pageHeaderTitleStyle(context),
+                      ),
+                      const SizedBox(height: ExpatlioDesign.space8),
+                      Text(
+                        FFLocalizations.of(context).getVariableText(
+                          ruText: messageRu,
+                          enText: messageEn,
+                        ),
+                        textAlign: TextAlign.center,
+                        style: ExpatlioDesign.textStyle(
+                          context,
+                          color: ExpatlioDesign.muted,
+                          size: 15,
+                          weight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

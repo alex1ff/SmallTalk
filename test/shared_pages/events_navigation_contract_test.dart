@@ -670,12 +670,40 @@ void main() {
     expect(find.byKey(eventDetailRouteLoadingKey), findsOneWidget);
     expect(find.byType(NavBarWidget), findsNothing);
   });
+
+  testWidgets('event detail route ignores malformed extra container',
+      (tester) async {
+    final router = await _pumpEventsRouter(
+      tester,
+      '/events/event-123',
+      extra: 'not-a-map',
+    );
+
+    expect(router.getCurrentLocation(), '/events/event-123');
+    expect(find.byType(EventDetailRouteWidget), findsOneWidget);
+    expect(find.byKey(eventDetailRouteLoadingKey), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('event detail route ignores malformed preview value',
+      (tester) async {
+    final router = await _pumpEventsRouter(
+      tester,
+      '/events/event-123',
+      extra: <String, dynamic>{
+        eventDetailPublicPreviewExtraKey: 'not-a-preview',
+      },
+    );
+
+    expect(router.getCurrentLocation(), '/events/event-123');
+    expect(find.byType(EventDetailRouteWidget), findsOneWidget);
+    expect(find.byKey(eventDetailRouteLoadingKey), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
 
-Future<GoRouter> _pumpEventsRouter(
-  WidgetTester tester,
-  String location,
-) async {
+Future<GoRouter> _pumpEventsRouter(WidgetTester tester, String location,
+    {Object? extra}) async {
   final notifier = AppStateNotifier.instance;
   notifier.initialUser = null;
   notifier.clearRedirectLocation();
@@ -687,7 +715,7 @@ Future<GoRouter> _pumpEventsRouter(
   notifier.stopShowingSplashImage();
 
   final router = createRouter(notifier);
-  router.go(location);
+  router.go(location, extra: extra);
 
   await tester.pumpWidget(_routerTestApp(router));
   await tester.pump();

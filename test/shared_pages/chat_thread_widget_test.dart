@@ -193,6 +193,53 @@ void main() {
     },
   );
 
+  testWidgets('known partner preview keeps header stable until live profile',
+      (tester) async {
+    final sources = _ChatThreadSources();
+    final profiles = StreamController<UserPublicProfilesRecord?>();
+    addTearDown(sources.close);
+    addTearDown(profiles.close);
+    final conversation = _conversationFixture(
+      'preview-header-chat',
+      partnerDisplayName: null,
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: ChatThreadWidget(
+          conversationRef: conversation.reference,
+          initialConversation: conversation,
+          initialPartnerPreview: const ChatPartnerPreview(
+            userId: 'user-b',
+            displayName: 'Known partner',
+            photoUrl: '',
+            photoUrlIsAuthoritative: true,
+          ),
+          debugConversationStream: sources.watchConversation,
+          debugMessagesStream: sources.watchMessages,
+          debugPublicProfileStream: (_) => profiles.stream,
+          debugAuthenticatedOwnerUidStream: Stream.value('user-a'),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Known partner'), findsOneWidget);
+    expect(find.text('Собеседник'), findsNothing);
+
+    profiles.add(_publicProfile('user-c', displayName: 'Wrong partner'));
+    await tester.pump();
+
+    expect(find.text('Known partner'), findsOneWidget);
+    expect(find.text('Wrong partner'), findsNothing);
+
+    profiles.add(_publicProfile('user-b', displayName: 'Current partner'));
+    await tester.pump();
+
+    expect(find.text('Current partner'), findsOneWidget);
+    expect(find.text('Known partner'), findsNothing);
+  });
+
   testWidgets(
       'message viewport keeps offset through error retry and pagination',
       (tester) async {
@@ -1871,7 +1918,10 @@ ChatThreadMessagesLoadState _messagesState(
   );
 }
 
-ConversationsRecord _conversationFixture(String id) {
+ConversationsRecord _conversationFixture(
+  String id, {
+  String? partnerDisplayName = 'Partner',
+}) {
   final currentUserRef = UsersRecord.collection.doc('user-a');
   final partnerRef = UsersRecord.collection.doc('user-b');
   final timestamp = DateTime.utc(2026, 7, 14, 10);
@@ -1880,9 +1930,10 @@ ConversationsRecord _conversationFixture(String id) {
       'pairId': id,
       'participantIds': const <String>['user-a', 'user-b'],
       'participantRefs': <DocumentReference>[currentUserRef, partnerRef],
-      'participantInfoByUserId': <String, dynamic>{
-        'user-b': <String, dynamic>{'displayName': 'Partner'},
-      },
+      if (partnerDisplayName != null)
+        'participantInfoByUserId': <String, dynamic>{
+          'user-b': <String, dynamic>{'displayName': partnerDisplayName},
+        },
       'isUnlocked': true,
       'unlockedAt': timestamp,
       'createdAt': timestamp,
@@ -1915,6 +1966,19 @@ MessagesRecord _messageFixture({
     MessagesRecord.createDoc(conversationRef, id: messageId),
   );
 }
+
+UserPublicProfilesRecord _publicProfile(
+  String userId, {
+  required String displayName,
+}) =>
+    UserPublicProfilesRecord.getDocumentFromData(
+      <String, dynamic>{
+        'userId': userId,
+        'display_name': displayName,
+        'photo_url': '',
+      },
+      UserPublicProfilesRecord.collection.doc(userId),
+    );
 
 MessagesRecord _pendingMessageFixture({
   required DocumentReference conversationRef,

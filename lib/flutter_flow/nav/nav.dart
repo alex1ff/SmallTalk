@@ -341,6 +341,12 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
                 'eventId',
                 ParamType.String,
               ),
+              initialPreview: eventDetailPublicPreviewFromParam(
+                params.getParam(
+                  eventDetailPublicPreviewExtraKey,
+                  ParamType.CustomClass,
+                ),
+              ),
             ),
           ),
         ].map((r) => r.toRoute(appStateNotifier)),
@@ -483,15 +489,25 @@ extension GoRouterExtensions on GoRouter {
 }
 
 extension _GoRouterStateExtensions on GoRouterState {
-  Map<String, dynamic> get extraMap =>
-      extra != null ? extra as Map<String, dynamic> : {};
+  Map<String, dynamic> get extraMap {
+    final value = extra;
+    if (value is! Map) {
+      return const <String, dynamic>{};
+    }
+    return <String, dynamic>{
+      for (final entry in value.entries)
+        if (entry.key is String) entry.key as String: entry.value,
+    };
+  }
+
   Map<String, dynamic> get allParams => <String, dynamic>{}
     ..addAll(pathParameters)
     ..addAll(uri.queryParameters)
     ..addAll(extraMap);
-  TransitionInfo get transitionInfo => extraMap.containsKey(kTransitionInfoKey)
-      ? extraMap[kTransitionInfoKey] as TransitionInfo
-      : TransitionInfo.appDefault();
+  TransitionInfo get transitionInfo {
+    final value = extraMap[kTransitionInfoKey];
+    return value is TransitionInfo ? value : TransitionInfo.appDefault();
+  }
 }
 
 class FFParameters {

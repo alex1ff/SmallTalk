@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/services/partner_availability_notifications.dart';
@@ -21,17 +22,34 @@ void main() {
             (expires ?? now.add(const Duration(minutes: 2))).toIso8601String(),
       };
 
-  Future<BuildContext> mount(WidgetTester tester) async {
+  Future<BuildContext> mount(
+    WidgetTester tester, {
+    ValueNotifier<Locale>? locale,
+  }) async {
     late BuildContext context;
-    await tester.pumpWidget(MaterialApp(
-      locale: const Locale('en'),
-      supportedLocales: const [Locale('en')],
-      localizationsDelegates: const [FFLocalizationsDelegate()],
-      home: Scaffold(body: Builder(builder: (value) {
-        context = value;
-        return const Text('Dashboard');
-      })),
-    ));
+    final localeListenable = locale ?? ValueNotifier(const Locale('en'));
+    if (locale == null) addTearDown(localeListenable.dispose);
+    await tester.pumpWidget(
+      ValueListenableBuilder<Locale>(
+        valueListenable: localeListenable,
+        builder: (_, currentLocale, __) => MaterialApp(
+          locale: currentLocale,
+          supportedLocales: const [Locale('ru'), Locale('en')],
+          localizationsDelegates: const [
+            FFLocalizationsDelegate(),
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            FallbackMaterialLocalizationDelegate(),
+            FallbackCupertinoLocalizationDelegate(),
+          ],
+          home: Scaffold(body: Builder(builder: (value) {
+            context = value;
+            return const Text('Dashboard');
+          })),
+        ),
+      ),
+    );
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     return context;
   }
@@ -109,7 +127,9 @@ void main() {
 
   testWidgets('foreground invitation received before auth is shown after auth',
       (tester) async {
-    final context = await mount(tester);
+    final locale = ValueNotifier(const Locale('ru'));
+    addTearDown(locale.dispose);
+    final context = await mount(tester, locale: locale);
     var connections = 0;
     final handler = PartnerAvailabilityNotifications(
       contextReader: () => context,
@@ -119,10 +139,16 @@ void main() {
       service: PassiveSearchService(
           invoke: (_, __) => throw StateError('must wait for a tap')),
     );
-    handler.handleForeground(payload(), body: 'Masha is waiting');
+    handler.handleForeground({
+      ...payload(),
+      'bodyRu': 'Маша ждёт собеседника',
+      'bodyEn': 'Masha is waiting',
+    });
     await tester.pump();
     expect(find.text('Masha is waiting'), findsNothing);
 
+    locale.value = const Locale('en');
+    await tester.pump();
     handler.setUser('user');
     await tester.pump();
     expect(find.text('Masha is waiting'), findsOneWidget);

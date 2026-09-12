@@ -5,6 +5,7 @@ const {createSafeConsole} = require("./safe_log");
 const safeLog = createSafeConsole({source: "conversation_unlock_events"});
 const {
   buildConversationParticipantMap,
+  buildConversationParticipantInfoByUserId,
   buildConversationSeed,
   buildUnlockEventPayload,
   ensureConversationCallEventForSession,
@@ -194,6 +195,7 @@ async function processPendingUnlockEvent(eventRef, sessionId) {
           buildConversationSeed({
             participants,
             sessionRef,
+            sessionData,
           }),
         );
       } else {
@@ -202,6 +204,11 @@ async function processPendingUnlockEvent(eventRef, sessionId) {
           participantMap: buildConversationParticipantMap(
             participants.participantIds,
           ),
+          participantInfoByUserId: buildConversationParticipantInfoByUserId({
+            participants,
+            sessionData,
+            existingInfoByUserId: conversationData.participantInfoByUserId,
+          }),
           updatedAt: FieldValue.serverTimestamp(),
         };
 

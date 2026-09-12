@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -11,9 +12,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:small_talk/backend/backend.dart';
 import 'package:small_talk/backend/schema/enums/enums.dart';
+import 'package:small_talk/components/support_contact_menu.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/services/ux_session_cache_lifecycle.dart';
 import 'package:small_talk/shared_pages/profile/profile_widget.dart';
+
+const _profileTestBottomNavKey = ValueKey<String>('profile_test_bottom_nav');
 
 void main() {
   setUpAll(() async {
@@ -70,7 +74,7 @@ void main() {
     expect(_text(tester, profileWordsValueKey), '—');
     expect(_text(tester, profileCallsValueKey), '7');
     expect(_text(tester, profileMinutesValueKey), '—');
-    expect(find.byKey(profileProgressLoadingKey), findsOneWidget);
+    expect(find.byKey(profileProgressLoadingKey), findsNothing);
     expect(harness.sources.words, hasLength(1));
     expect(harness.sources.stats, hasLength(1));
   });
@@ -178,7 +182,7 @@ void main() {
     expect(_text(tester, profileWordsValueKey), '1');
     expect(_text(tester, profileCallsValueKey), '9');
     expect(_text(tester, profileMinutesValueKey), '21');
-    expect(find.byKey(profileProgressLoadingKey), findsOneWidget);
+    expect(find.byKey(profileProgressLoadingKey), findsNothing);
   });
 
   testWidgets('logout clears retained profile content', (tester) async {
@@ -343,7 +347,7 @@ void main() {
     await tester.tap(find.byKey(profileProgressRetryKey));
     await tester.pump();
     expect(harness.sources.stats, hasLength(2));
-    expect(find.byKey(profileProgressLoadingKey), findsOneWidget);
+    expect(find.byKey(profileProgressLoadingKey), findsNothing);
     _expectSameRects(tester, initialGeometry);
   });
 
@@ -381,7 +385,7 @@ void main() {
     expect(harness.sources.stats, hasLength(2));
     expect(_text(tester, profileWordsValueKey), '1');
     expect(_text(tester, profileCallsValueKey), '9');
-    expect(find.byKey(profileProgressLoadingKey), findsOneWidget);
+    expect(find.byKey(profileProgressLoadingKey), findsNothing);
   });
 
   testWidgets('cold secondary error retries and ignores the old generation',
@@ -479,7 +483,7 @@ void main() {
 
     await tester.tap(find.byKey(profileProgressRetryKey));
     await tester.pump();
-    expect(find.byKey(profileProgressLoadingKey), findsOneWidget);
+    expect(find.byKey(profileProgressLoadingKey), findsNothing);
     _expectSameRects(tester, initialGeometry);
     expect(tester.takeException(), isNull);
   });
@@ -722,6 +726,181 @@ void main() {
     expect(find.byKey(profileEmailStatusSlotKey), findsNothing);
     expect(find.byKey(profileEmailActionButtonKey), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('account ID copy feedback uses the current application locale',
+      (tester) async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (_) async => null);
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+    final harness = _ProfileHarness(
+      userId: 'alice',
+      user: _user('alice', name: 'Alice', totalCalls: 7),
+      locale: const Locale('ru'),
+    );
+    addTearDown(harness.close);
+
+    await tester.pumpWidget(harness.buildApp());
+    await tester.pump();
+
+    harness.locale = const Locale('en');
+    await tester.pumpWidget(harness.buildApp());
+    await tester.pump();
+
+    final accountId = find.textContaining('Account ID:');
+    await tester.ensureVisible(accountId);
+    await tester.tap(find.byKey(profileAccountIdCopyKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+
+    expect(find.text('Account ID copied'), findsOneWidget);
+    expect(find.text('ID аккаунта скопирован'), findsNothing);
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pump(const Duration(milliseconds: 600));
+  });
+
+  testWidgets('support menu respects nav area, focus, placement and dismissal',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final harness = _ProfileHarness(
+      userId: 'alice',
+      user: _user('alice', name: 'Alice', totalCalls: 7),
+      locale: const Locale('en'),
+      textScaler: const TextScaler.linear(2),
+      includeBottomNav: true,
+    );
+    addTearDown(harness.close);
+
+    await tester.pumpWidget(harness.buildApp());
+    await tester.pump();
+    await Scrollable.ensureVisible(
+      tester.element(find.byKey(profileSupportMenuAnchorKey)),
+      alignment: 0.78,
+    );
+    await tester.pumpAndSettle();
+
+    final anchorRect = tester.getRect(find.byKey(profileSupportMenuAnchorKey));
+    await tester.tap(find.byKey(profileSupportMenuAnchorKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(supportContactMenuKey), findsOneWidget);
+    expect(find.text('support@expatlio.com'), findsOneWidget);
+    expect(find.text('@expatlio_support'), findsOneWidget);
+    final menuRect = tester.getRect(find.byKey(supportContactMenuKey));
+    final navRect = tester.getRect(find.byKey(_profileTestBottomNavKey));
+    expect(menuRect.left, greaterThanOrEqualTo(0));
+    expect(menuRect.right, lessThanOrEqualTo(390));
+    expect(menuRect.top, greaterThanOrEqualTo(0));
+    expect(menuRect.bottom, lessThanOrEqualTo(navRect.top - 16));
+    expect(
+      menuRect.bottom,
+      lessThanOrEqualTo(anchorRect.top),
+      reason: 'menu=$menuRect anchor=$anchorRect',
+    );
+    final emailInkWell = tester.widget<InkWell>(
+      find
+          .ancestor(of: find.text('Email'), matching: find.byType(InkWell))
+          .first,
+    );
+    expect(emailInkWell.focusNode?.hasFocus, isTrue);
+    final menuScrollable = tester.state<ScrollableState>(
+      find
+          .descendant(
+            of: find.byKey(supportContactMenuKey),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    expect(menuScrollable.position.maxScrollExtent, greaterThan(0));
+    await Scrollable.ensureVisible(
+      tester.element(find.text('@expatlio_support')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(supportContactMenuKey), findsOneWidget);
+    expect(find.byKey(profileSupportMenuAnchorKey), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(supportContactMenuKey), findsNothing);
+    expect(
+      find.byType(ProfileWidget, skipOffstage: false),
+      findsOneWidget,
+      reason: 'closing the popup must not remove the profile route',
+    );
+    expect(
+      find.byKey(profileSupportMenuAnchorKey, skipOffstage: false),
+      findsOneWidget,
+    );
+    final anchorInkWell = tester.widget<InkWell>(
+      find
+          .ancestor(
+            of: find.byKey(profileSupportMenuAnchorKey, skipOffstage: false),
+            matching: find.byType(InkWell),
+          )
+          .first,
+    );
+    expect(anchorInkWell.focusNode?.hasFocus, isTrue);
+
+    await tester.tap(find.byKey(profileSupportMenuAnchorKey));
+    await tester.pumpAndSettle();
+    expect(find.byKey(supportContactMenuKey), findsOneWidget);
+
+    await tester.sendEventToBinding(
+      const PointerScrollEvent(
+        position: Offset(30, 500),
+        scrollDelta: Offset(0, 80),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(supportContactMenuKey), findsNothing);
+
+    await tester.tap(find.byKey(profileSupportMenuAnchorKey));
+    await tester.pumpAndSettle();
+    final repeatedTapAnchorRect =
+        tester.getRect(find.byKey(profileSupportMenuAnchorKey));
+    await tester.tapAt(repeatedTapAnchorRect.center);
+    await tester.pumpAndSettle();
+    expect(find.byKey(supportContactMenuKey), findsNothing);
+
+    await Scrollable.ensureVisible(
+      tester.element(find.byKey(profileSupportMenuAnchorKey)),
+      alignment: 0.18,
+    );
+    await tester.pumpAndSettle();
+    final upperAnchorRect =
+        tester.getRect(find.byKey(profileSupportMenuAnchorKey));
+    await tester.tap(find.byKey(profileSupportMenuAnchorKey));
+    await tester.pumpAndSettle();
+    final lowerMenuRect = tester.getRect(find.byKey(supportContactMenuKey));
+    expect(lowerMenuRect.top, greaterThanOrEqualTo(upperAnchorRect.bottom));
+
+    await tester.tapAt(const Offset(20, 400));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(supportContactMenuKey), findsNothing);
+
+    await tester.tap(find.byKey(profileSupportMenuAnchorKey));
+    await tester.pumpAndSettle();
+    final profileContext = tester.element(find.byType(ProfileWidget));
+    unawaited(
+      Navigator.of(profileContext).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => const Scaffold(body: Text('Next route')),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Next route'), findsOneWidget);
+    expect(find.byKey(supportContactMenuKey), findsNothing);
   });
 
   testWidgets('avatar shell stays stable through real image stream transitions',
@@ -1252,6 +1431,7 @@ class _ProfileHarness {
     this.locale = const Locale('ru'),
     this.nowProvider,
     this.avatarCacheManager,
+    this.includeBottomNav = false,
   });
 
   String userId;
@@ -1260,9 +1440,10 @@ class _ProfileHarness {
   bool emailVerified = false;
   final bool exposeEmailStatus;
   final TextScaler textScaler;
-  final Locale locale;
+  Locale locale;
   final DateTime Function()? nowProvider;
   final BaseCacheManager? avatarCacheManager;
+  final bool includeBottomNav;
   Future<void> Function()? onSendEmailVerification;
   final _ProfileTestSources sources = _ProfileTestSources();
 
@@ -1291,17 +1472,32 @@ class _ProfileHarness {
         data: MediaQuery.of(context).copyWith(textScaler: textScaler),
         child: child!,
       ),
-      home: ProfileWidget(
-        userIdProvider: getUserId,
-        userDocumentProvider: getUser,
-        loggedInProvider: getLoggedIn,
-        emailVerifiedProvider: exposeEmailStatus ? getEmailVerified : null,
-        emailVerificationSender:
-            exposeEmailStatus ? sendEmailVerification : null,
-        nowProvider: nowProvider,
-        avatarCacheManager: avatarCacheManager,
-        wordsStreamFactory: sources.wordsFactory,
-        statsStreamFactory: sources.statsFactory,
+      home: Builder(
+        builder: (context) {
+          final profile = ProfileWidget(
+            userIdProvider: getUserId,
+            userDocumentProvider: getUser,
+            loggedInProvider: getLoggedIn,
+            emailVerifiedProvider: exposeEmailStatus ? getEmailVerified : null,
+            emailVerificationSender:
+                exposeEmailStatus ? sendEmailVerification : null,
+            nowProvider: nowProvider,
+            avatarCacheManager: avatarCacheManager,
+            wordsStreamFactory: sources.wordsFactory,
+            statsStreamFactory: sources.statsFactory,
+          );
+          if (!includeBottomNav) {
+            return profile;
+          }
+          return Scaffold(
+            extendBody: true,
+            body: profile,
+            bottomNavigationBar: const SizedBox(
+              key: _profileTestBottomNavKey,
+              height: 115,
+            ),
+          );
+        },
       ),
     );
   }

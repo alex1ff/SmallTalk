@@ -46,7 +46,12 @@ export '/shared_pages/my_calls/my_calls_widget.dart' show MyCallsWidget;
 export '/shared_pages/events/event_list_widget.dart' show EventListWidget;
 export '/shared_pages/events/event_detail_widget.dart' show EventDetailWidget;
 export '/shared_pages/events/event_detail_route_widget.dart'
-    show EventDetailRouteWidget;
+    show
+        EventDetailPublicPreview,
+        EventDetailRouteWidget,
+        eventDetailPublicPreviewDescription,
+        eventDetailPublicPreviewExtraKey,
+        eventDetailPublicPreviewFromParam;
 export '/shared_pages/events/event_history_widget.dart' show EventHistoryWidget;
 export '/shared_pages/events/event_create_widget.dart'
     show EventCreateWidget, EventFormMode;

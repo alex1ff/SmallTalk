@@ -349,9 +349,93 @@ function buildConversationParticipantMap(participantIds = []) {
   }, {});
 }
 
+function normalizeConversationParticipantText(value, maxLength) {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  if (!normalized || Array.from(normalized).length > maxLength) return null;
+  return normalized;
+}
+
+function buildConversationParticipantInfoByUserId({
+  participants,
+  sessionData = {},
+  existingInfoByUserId = {},
+  preferIncoming = false,
+}) {
+  const rawInfos = sessionData.participantInfos;
+  const sessionInfos = rawInfos && typeof rawInfos === "object" ? rawInfos : {};
+  const existingInfos = existingInfoByUserId &&
+      typeof existingInfoByUserId === "object" ?
+    existingInfoByUserId : {};
+  const result = {};
+
+  for (const uid of participants.participantIds || []) {
+    const existing = existingInfos[uid] &&
+        typeof existingInfos[uid] === "object" ?
+      existingInfos[uid] : {};
+    const existingHasPhoto = Object.prototype.hasOwnProperty.call(
+      existing,
+      "photoUrl",
+    );
+    let incoming = sessionInfos[uid] &&
+        typeof sessionInfos[uid] === "object" ?
+      sessionInfos[uid] : null;
+    let incomingPhotoIsAuthoritative = incoming !== null &&
+      Object.prototype.hasOwnProperty.call(incoming, "photoUrl");
+
+    if (!incoming) {
+      if (uid === participants.studentId && sessionData.studentInfo) {
+        incoming = sessionData.studentInfo;
+      } else if (uid === participants.tutorId && sessionData.tutorInfo) {
+        incoming = sessionData.tutorInfo;
+      }
+      incomingPhotoIsAuthoritative = false;
+    }
+
+    const existingDisplayName = normalizeConversationParticipantText(
+      existing.displayName,
+      70,
+    );
+    const incomingDisplayName = normalizeConversationParticipantText(
+      incoming?.displayName ?? incoming?.name,
+      70,
+    );
+    const existingPhotoUrl = normalizeConversationParticipantText(
+      existing.photoUrl,
+      2048,
+    );
+    const incomingPhotoValue = incomingPhotoIsAuthoritative ?
+      incoming.photoUrl :
+      (incoming?.photoUrl ?? incoming?.photo);
+    const incomingPhotoUrl = normalizeConversationParticipantText(
+      incomingPhotoValue,
+      2048,
+    );
+    const displayName = preferIncoming ?
+      (incomingDisplayName || existingDisplayName) :
+      (existingDisplayName || incomingDisplayName);
+    const photoUrl = preferIncoming && incomingPhotoIsAuthoritative ?
+      incomingPhotoUrl :
+      (existingHasPhoto ? existingPhotoUrl :
+        (incomingPhotoIsAuthoritative ? incomingPhotoUrl :
+          (incomingPhotoUrl || existingPhotoUrl)));
+
+    if (displayName || photoUrl || incomingPhotoIsAuthoritative ||
+        existingHasPhoto) {
+      result[uid] = {
+        displayName: displayName || null,
+        photoUrl: photoUrl || null,
+      };
+    }
+  }
+
+  return result;
+}
+
 function buildConversationSeed({
   participants,
   sessionRef,
+  sessionData = {},
 }) {
   const now = FieldValue.serverTimestamp();
   return {
@@ -359,6 +443,10 @@ function buildConversationSeed({
     participantIds: participants.participantIds,
     participantRefs: participants.participantRefs,
     participantMap: buildConversationParticipantMap(participants.participantIds),
+    participantInfoByUserId: buildConversationParticipantInfoByUserId({
+      participants,
+      sessionData,
+    }),
     isUnlocked: true,
     unlockedAt: now,
     unlockedBySessionRef: sessionRef,
@@ -511,6 +599,7 @@ async function ensureConversationCallEventForSession({
         buildConversationSeed({
           participants: eligibility,
           sessionRef,
+          sessionData,
         }),
       );
     } else if (conversationData.isUnlocked !== true) {
@@ -532,6 +621,11 @@ async function ensureConversationCallEventForSession({
         participantMap: buildConversationParticipantMap(
           eligibility.participantIds,
         ),
+        participantInfoByUserId: buildConversationParticipantInfoByUserId({
+          participants: eligibility,
+          sessionData,
+          existingInfoByUserId: conversationData.participantInfoByUserId,
+        }),
       },
       { merge: true },
     );
@@ -766,6 +860,7 @@ module.exports = {
   buildCallEventMessagePayload,
   buildCallEventPreviewText,
   buildConversationParticipantMap,
+  buildConversationParticipantInfoByUserId,
   buildConversationSummaryUpdate,
   conversationMatchesUnlockParticipants,
   buildUnlockEventPayload,

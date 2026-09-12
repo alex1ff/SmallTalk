@@ -12,6 +12,7 @@ import 'package:small_talk/components/ux_error_state.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/services/event_group_chat_repository.dart';
 import 'package:small_talk/services/new_account_inbox_bootstrap.dart';
+import 'package:small_talk/services/user_public_profile_preload_repository.dart';
 import 'package:small_talk/services/ux_session_cache_lifecycle.dart';
 import 'package:small_talk/students_pages/favorite/favorite_chat_source_state.dart';
 import 'package:small_talk/students_pages/favorite/favorite_widget.dart';
@@ -121,6 +122,7 @@ class _FavoriteSources {
 
   FavoriteWidget widget({
     FavoriteUserProfileLoader? profileLoader,
+    UserPublicProfileBatchLoader? profileBatchLoader,
     FavoriteConversationUnreadCountSource? conversationUnreadCountSource,
     FavoriteEventLoader? eventLoader,
     FavoriteLatestEventChatMessageSource? latestMessageSource,
@@ -142,7 +144,9 @@ class _FavoriteSources {
             : null,
         debugInboxChatsWatcher: inboxChatsWatcher,
         debugLatestEventChatMessageSource: latestMessageSource,
-        debugUserProfileLoader: profileLoader ?? (_) async => null,
+        debugUserProfileLoader: profileLoader ??
+            (profileBatchLoader == null ? (_) async => null : null),
+        debugUserProfilesBatchLoader: profileBatchLoader,
         debugEventLoader: eventLoader,
         debugAuthenticatedUidReader: () => authenticatedUid,
         debugHiddenChatWriter: hiddenChatWriter,
@@ -199,6 +203,7 @@ ConversationsRecord _conversation({
   required String partnerUid,
   DateTime? lastMessageAt,
   String? lastMessageSenderId,
+  Map<String, dynamic>? participantInfoByUserId,
 }) =>
     ConversationsRecord.getDocumentFromData(
       <String, dynamic>{
@@ -215,6 +220,8 @@ ConversationsRecord _conversation({
         'lastMessageType': kConversationMessageTypeText,
         'lastMessageText': 'Hello',
         'lastMessageSenderId': lastMessageSenderId ?? ownerUid,
+        if (participantInfoByUserId != null)
+          'participantInfoByUserId': participantInfoByUserId,
       },
       ConversationsRecord.collection.doc(id),
     );
@@ -286,6 +293,7 @@ Future<void> _mount(
   _FavoriteSources sources, {
   Locale locale = const Locale('ru'),
   FavoriteUserProfileLoader? profileLoader,
+  UserPublicProfileBatchLoader? profileBatchLoader,
   FavoriteConversationUnreadCountSource? conversationUnreadCountSource,
   FavoriteEventLoader? eventLoader,
   FavoriteLatestEventChatMessageSource? latestMessageSource,
@@ -308,6 +316,7 @@ Future<void> _mount(
     _testApp(
       sources.widget(
         profileLoader: profileLoader,
+        profileBatchLoader: profileBatchLoader,
         conversationUnreadCountSource: conversationUnreadCountSource,
         eventLoader: eventLoader,
         latestMessageSource: latestMessageSource,
@@ -3272,6 +3281,62 @@ void main() {
         findsNothing);
   });
 
+  testWidgets(
+      'same conversation path never reuses the previous partner profile',
+      (tester) async {
+    final sources = _FavoriteSources();
+    final profileLoads = <String, Completer<UserPublicProfilesRecord?>>{};
+    final conversationB = _conversation(
+      id: 'partner-boundary',
+      ownerUid: 'user-a',
+      partnerUid: 'partner-b',
+    );
+    await _mount(
+      tester,
+      sources,
+      profileLoader: (reference) => profileLoads
+          .putIfAbsent(
+            reference.id,
+            () => Completer<UserPublicProfilesRecord?>(),
+          )
+          .future,
+    );
+    await _emitAuthoritativeRequiredSources(
+      tester,
+      sources,
+      friends: const <DocumentReference>[],
+      conversations: <ConversationsRecord>[conversationB],
+    );
+    profileLoads['partner-b']!.complete(
+      _profile('partner-b', displayName: 'Partner B'),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Partner B'), findsOneWidget);
+
+    final conversationC = _conversation(
+      id: 'partner-boundary',
+      ownerUid: 'user-a',
+      partnerUid: 'partner-c',
+      participantInfoByUserId: <String, dynamic>{
+        'partner-c': <String, dynamic>{
+          'displayName': 'Partner C snapshot',
+          'photoUrl': null,
+        },
+      },
+    );
+    await _emitConversations(
+      tester,
+      sources,
+      'user-a',
+      <ConversationsRecord>[conversationC],
+    );
+
+    expect(find.text('Partner B'), findsNothing);
+    expect(find.text('Partner C snapshot'), findsOneWidget);
+    expect(profileLoads['partner-c'], isNotNull);
+  });
+
   testWidgets('two event async rows keep title and preview with identity',
       (tester) async {
     final sources = _FavoriteSources();
@@ -3680,6 +3745,91 @@ void main() {
     await tester.pump();
     expect(find.text('Profile friend'), findsOneWidget);
     expect(tester.getSize(row).height, favoriteChatRowHeight());
+  });
+
+  testWidgets('conversation snapshot prevents fallback before profile arrives',
+      (tester) async {
+    final profileCompleter = Completer<List<UserPublicProfilesRecord>>();
+    final requestedBatches = <List<String>>[];
+    final sources = _FavoriteSources();
+    final conversation = _conversation(
+      id: 'snapshot-first-frame',
+      ownerUid: 'user-a',
+      partnerUid: 'friend-snapshot',
+      participantInfoByUserId: <String, dynamic>{
+        'friend-snapshot': <String, dynamic>{
+          'displayName': 'Known partner',
+          'photoUrl': null,
+        },
+      },
+    );
+    await _mount(
+      tester,
+      sources,
+      profileBatchLoader: (userIds) {
+        requestedBatches.add(List<String>.of(userIds));
+        return profileCompleter.future;
+      },
+    );
+    await _emitAuthoritativeRequiredSources(
+      tester,
+      sources,
+      friends: const <DocumentReference>[],
+      conversations: <ConversationsRecord>[conversation],
+    );
+
+    expect(find.text('Known partner'), findsOneWidget);
+    expect(find.text('Собеседник'), findsNothing);
+    expect(requestedBatches, <List<String>>[
+      <String>['friend-snapshot'],
+    ]);
+
+    profileCompleter.complete(<UserPublicProfilesRecord>[
+      _profile('friend-snapshot', displayName: 'Current partner'),
+    ]);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Current partner'), findsOneWidget);
+    expect(find.text('Known partner'), findsNothing);
+  });
+
+  testWidgets('failed profile batch settles without a rebuild retry loop',
+      (tester) async {
+    var batchCalls = 0;
+    final sources = _FavoriteSources();
+    final conversation = _conversation(
+      id: 'failed-profile-batch',
+      ownerUid: 'user-a',
+      partnerUid: 'friend-offline',
+      participantInfoByUserId: <String, dynamic>{
+        'friend-offline': <String, dynamic>{
+          'displayName': 'Offline partner',
+          'photoUrl': null,
+        },
+      },
+    );
+    await _mount(
+      tester,
+      sources,
+      profileBatchLoader: (_) async {
+        batchCalls += 1;
+        throw StateError('offline');
+      },
+    );
+    await _emitAuthoritativeRequiredSources(
+      tester,
+      sources,
+      friends: const <DocumentReference>[],
+      conversations: <ConversationsRecord>[conversation],
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(batchCalls, 1);
+    expect(find.text('Offline partner'), findsOneWidget);
+    expect(find.text('Собеседник'), findsNothing);
   });
 
   testWidgets('actual conversation row keeps height on profile error',

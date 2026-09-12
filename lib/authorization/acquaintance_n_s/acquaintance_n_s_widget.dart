@@ -214,6 +214,13 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
     );
   }
 
+  String _localized({required String ruText, required String enText}) {
+    return FFLocalizations.of(context).getVariableText(
+      ruText: ruText,
+      enText: enText,
+    );
+  }
+
   Future<void> _hydrateAccreditationStateFromVerificationRequest() async {
     try {
       Map<String, dynamic>? snapshotData;
@@ -335,6 +342,7 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
       final validationMessage = validateNativeSpeakerOnboardingPage(
         page: page,
         draft: _draft,
+        languageCode: FFLocalizations.of(context).languageCode,
       );
       if (validationMessage != null) {
         return validationMessage;
@@ -695,7 +703,12 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
     final remainingSlots =
         _kMaxQualificationEvidenceFiles - currentAttachedFilesCount;
     if (remainingSlots <= 0) {
-      await _showValidationError('Можно прикрепить не больше 5 файлов');
+      await _showValidationError(
+        _localized(
+          ruText: 'Можно прикрепить не больше 5 файлов',
+          enText: 'You can attach up to 5 files',
+        ),
+      );
       return;
     }
 
@@ -719,7 +732,10 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
       );
       if (selectedFiles == null || selectedFiles.isEmpty) {
         await _showValidationError(
-          'Файлы не выбраны или превышают 10 МБ',
+          _localized(
+            ruText: 'Файлы не выбраны или превышают 10 МБ',
+            enText: 'No files were selected or they exceed 10 MB',
+          ),
         );
         return;
       }
@@ -959,7 +975,12 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
           : const <NativeSpeakerEvidenceFile>[];
       if (shouldUploadQualificationFiles &&
           qualificationEvidenceFiles == null) {
-        await _showValidationError('Не удалось загрузить файлы подтверждения');
+        await _showValidationError(
+          _localized(
+            ruText: 'Не удалось загрузить файлы подтверждения',
+            enText: 'Could not upload supporting files',
+          ),
+        );
         return null;
       }
       final resolvedQualificationEvidenceFiles =
@@ -981,7 +1002,12 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
         await _deleteQualificationEvidenceFiles(
           newlyUploadedQualificationEvidenceFiles,
         );
-        await _showValidationError('Не удалось сохранить фото профиля');
+        await _showValidationError(
+          _localized(
+            ruText: 'Не удалось сохранить фото профиля',
+            enText: 'Could not save your profile photo',
+          ),
+        );
         return null;
       }
 
@@ -1027,14 +1053,24 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
         await _deleteQualificationEvidenceFiles(
           newlyUploadedQualificationEvidenceFiles,
         );
-        await _showValidationError('Не удалось отправить заявку на проверку');
+        await _showValidationError(
+          _localized(
+            ruText: 'Не удалось отправить заявку на проверку',
+            enText: 'Could not submit your application for review',
+          ),
+        );
         return null;
       }
       if (verificationRequestStatus == TeacherAccreditationStatus.rejected) {
         await _deleteQualificationEvidenceFiles(
           newlyUploadedQualificationEvidenceFiles,
         );
-        await _showValidationError('Заявка на проверку была отклонена');
+        await _showValidationError(
+          _localized(
+            ruText: 'Заявка на проверку была отклонена',
+            enText: 'Your application was rejected',
+          ),
+        );
         return null;
       }
       shouldPreserveUploadedAssetsOnFailure =
@@ -1089,8 +1125,16 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
       safeDebugLog('AcquaintanceNSWidget: failed to save profile: $error');
       await _showValidationError(
         verificationRequestWriteFailed
-            ? 'Не удалось отправить заявку на проверку. Попробуйте позже.'
-            : 'Не удалось сохранить профиль',
+            ? _localized(
+                ruText:
+                    'Не удалось отправить заявку на проверку. Попробуйте позже.',
+                enText:
+                    'Could not submit your application for review. Try again later.',
+              )
+            : _localized(
+                ruText: 'Не удалось сохранить профиль',
+                enText: 'Could not save your profile',
+              ),
       );
       return null;
     } finally {

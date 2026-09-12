@@ -54,7 +54,10 @@ class _EditTargetWidgetState extends State<EditTargetWidget> {
     if (_model.purpose.isEmpty) {
       await actions.showTopNotification(
         context,
-        'Выберите минимум одну цель',
+        FFLocalizations.of(context).getVariableText(
+          ruText: 'Выберите минимум одну цель',
+          enText: 'Select at least one goal',
+        ),
         '',
         true,
       );

@@ -129,7 +129,10 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
     if (!functions.isValidEmail(email)) {
       await actions.showTopNotification(
         context,
-        'Неверный e-mail',
+        FFLocalizations.of(context).getVariableText(
+          ruText: 'Неверный e-mail',
+          enText: 'Invalid email address',
+        ),
         '',
         true,
       );
@@ -209,7 +212,10 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
         clearPendingSocialAuthContext();
         await actions.showTopNotification(
           context,
-          'Не удалось определить аккаунт',
+          FFLocalizations.of(context).getVariableText(
+            ruText: 'Не удалось определить аккаунт',
+            enText: 'Could not identify your account',
+          ),
           '',
           true,
         );
@@ -228,7 +234,10 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
         clearPendingSocialAuthContext();
         await actions.showTopNotification(
           context,
-          'Не удалось загрузить профиль',
+          FFLocalizations.of(context).getVariableText(
+            ruText: 'Не удалось загрузить профиль',
+            enText: 'Could not load your profile',
+          ),
           '',
           true,
         );
@@ -273,7 +282,10 @@ class _RegistrationWidgetState extends State<RegistrationWidget> {
       if (mounted) {
         await actions.showTopNotification(
           context,
-          'Не удалось завершить регистрацию',
+          FFLocalizations.of(context).getVariableText(
+            ruText: 'Не удалось завершить регистрацию',
+            enText: 'Could not complete registration',
+          ),
           '',
           true,
         );

@@ -22,10 +22,6 @@ void main() {
       expect(source, contains('conversationPartnerIsFriend'));
       expect(
         source,
-        contains('UserPublicProfilesRecord.maybeGetDocumentOnce'),
-      );
-      expect(
-        source,
         contains('FutureBuilder<UserPublicProfilesRecord?>'),
       );
       expect(source, contains('_userProfileCacheByUid'));

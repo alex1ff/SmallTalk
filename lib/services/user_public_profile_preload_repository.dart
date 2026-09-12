@@ -72,6 +72,13 @@ final class UserPublicProfilePreloadRepository {
   int _activeBatchCount = 0;
   int _epoch = 0;
 
+  UserPublicProfilesRecord? readCached(String userId) {
+    final normalizedUserId = _normalizeUserId(userId);
+    return normalizedUserId == null
+        ? null
+        : _readCachedProfile(normalizedUserId);
+  }
+
   Future<UserPublicProfilePreloadResult> preload(
     Iterable<String> userIds,
   ) async {

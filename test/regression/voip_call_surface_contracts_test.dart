@@ -3072,10 +3072,6 @@ void main() {
       );
       expect(
         favoriteSource,
-        contains('UserPublicProfilesRecord.collection.doc(ref.id)'),
-      );
-      expect(
-        favoriteSource,
         isNot(contains('UsersRecord.getDocumentOnce(ref)')),
       );
 

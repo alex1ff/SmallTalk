@@ -19,7 +19,9 @@ import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/flutter_flow/nav/nav.dart';
 import 'package:small_talk/shared_pages/events/event_create_widget.dart';
 import 'package:small_talk/shared_pages/events/event_detail_widget.dart';
+import 'package:small_talk/shared_pages/events/event_detail_route_widget.dart';
 import 'package:small_talk/shared_pages/events/event_group_chat_widget.dart';
+import 'package:small_talk/shared_pages/events/event_history_widget.dart';
 import 'package:small_talk/shared_pages/events/event_list_widget.dart';
 import 'package:small_talk/shared_pages/design/expatlio_design.dart';
 import 'package:small_talk/services/event_actions_repository.dart';
@@ -420,6 +422,28 @@ void main() {
           .clipBehavior,
       Clip.none,
     );
+    final verticalClip = tester.widget<ClipRect>(
+      find.byKey(eventListVerticalViewportClipKey),
+    );
+    final scrollViewport = tester.getRect(find.byKey(eventListScrollViewKey));
+    expect(verticalClip.clipBehavior, Clip.hardEdge);
+    expect(
+      verticalClip.clipper!.getClip(scrollViewport.size),
+      Rect.fromLTRB(
+        -_testEventListHorizontalPadding,
+        0,
+        scrollViewport.width + _testEventListHorizontalPadding,
+        scrollViewport.height,
+      ),
+    );
+    expect(scrollViewport.top,
+        greaterThan(tester.getRect(find.text('События')).bottom));
+    expect(
+      scrollViewport.top,
+      greaterThanOrEqualTo(
+        tester.getRect(find.byKey(eventListCreateButtonKey)).bottom,
+      ),
+    );
     expect(
       tester.getRect(_dateFilterFinder(EventListDateFilter.today)).left,
       expectedLeadingEdge,
@@ -503,6 +527,57 @@ void main() {
       <String, String>{'levelFilter': 'C1'},
       <String, String>{'levelFilter': 'none'},
     ]);
+  });
+
+  testWidgets('restores event filters and scroll position after remount',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    currentUser = _TestAuthUser('event-view-state-user');
+    final cards = List<EventListCardViewModel>.generate(
+      12,
+      (index) => _eventCardFixture(
+        eventId: 'event-view-state-$index',
+        title: 'Event view state $index',
+      ),
+    );
+
+    Widget buildList() => _buildTestApp(
+          home: EventListWidget(
+            initialSelectedCity: _selectedCityFixture(),
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            eventCardsOverride: cards,
+          ),
+        );
+
+    await tester.pumpWidget(buildList());
+    await tester.pumpAndSettle();
+    await tester.tap(_dateFilterFinder(EventListDateFilter.today));
+    await tester.tap(_levelFilterFinder('B1'));
+    await tester.pumpAndSettle();
+    await tester.drag(
+      find.byKey(eventListScrollViewKey),
+      const Offset(0, -650),
+    );
+    await tester.pumpAndSettle();
+    final previousOffset = _eventListScrollPosition(tester).pixels;
+    expect(previousOffset, greaterThan(100));
+
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(buildList());
+    await tester.pumpAndSettle();
+
+    final restoredPosition = _eventListScrollPosition(tester);
+    expect(restoredPosition.pixels, closeTo(previousOffset, 1));
+    restoredPosition.jumpTo(0);
+    await tester.pumpAndSettle();
+    expect(_isDateFilterSelected(tester, EventListDateFilter.today), isTrue);
+    expect(_isLevelFilterSelected(tester, 'B1'), isTrue);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('shows a city selector placeholder below the header',
@@ -593,7 +668,7 @@ void main() {
     }
   });
 
-  testWidgets('shows selected city display name without identity',
+  testWidgets('shows active city display name without internal identity',
       (tester) async {
     await tester.pumpWidget(
       _buildTestApp(
@@ -618,11 +693,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(eventListCitySelectorKey), findsNothing);
-    expect(find.text('Москва · Россия'), findsNothing);
+    expect(find.byKey(eventListActiveCitySelectorKey), findsOneWidget);
+    expect(find.text('Москва · Россия'), findsOneWidget);
     expect(find.textContaining('RU:moscow'), findsNothing);
   });
 
-  testWidgets('shows event card layout shell after city is selected',
+  testWidgets('does not show a placeholder card after city is selected',
       (tester) async {
     await tester.pumpWidget(
       _buildTestApp(
@@ -647,15 +723,15 @@ void main() {
     await tester.pumpAndSettle();
 
     final card = find.byKey(eventListCardShellKey);
-    expect(card, findsOneWidget);
-    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
+    expect(card, findsNothing);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
     expect(find.byKey(eventListRefreshingIndicatorKey), findsNothing);
     expect(find.byType(UxRefreshingIndicatorPill), findsNothing);
-    expect(find.byKey(eventListCardHeaderKey), findsOneWidget);
-    expect(find.byKey(eventListCardBodyKey), findsOneWidget);
-    expect(find.byKey(eventListCardMetaKey), findsOneWidget);
-    expect(find.byKey(eventListCardFooterKey), findsOneWidget);
-    expect(find.byKey(eventListCardActionsKey), findsOneWidget);
+    expect(find.byKey(eventListCardHeaderKey), findsNothing);
+    expect(find.byKey(eventListCardBodyKey), findsNothing);
+    expect(find.byKey(eventListCardMetaKey), findsNothing);
+    expect(find.byKey(eventListCardFooterKey), findsNothing);
+    expect(find.byKey(eventListCardActionsKey), findsNothing);
     expect(find.byKey(eventListCardChatCtaKey), findsNothing);
     expect(find.text('Чат'), findsNothing);
     expect(find.byKey(eventListCitySelectorKey), findsNothing);
@@ -686,7 +762,7 @@ void main() {
     );
   });
 
-  testWidgets('shows explicit loading state after city is selected',
+  testWidgets('keeps the list area clean while the first load is pending',
       (tester) async {
     await tester.pumpWidget(
       _buildTestApp(
@@ -701,19 +777,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
     expect(find.byKey(eventListRefreshingIndicatorKey), findsNothing);
     expect(find.byType(UxRefreshingIndicatorPill), findsNothing);
-    expect(find.byKey(eventListCardShellKey), findsOneWidget);
-    expect(find.byKey(eventListCardActionsKey), findsOneWidget);
+    expect(find.byKey(eventListCardShellKey), findsNothing);
+    expect(find.byKey(eventListCardActionsKey), findsNothing);
     expect(find.byKey(eventListCardChatCtaKey), findsNothing);
-
-    final loadingSemantics = tester.widget<Semantics>(
-      find.byKey(eventListLoadingStateKey),
-    );
-    expect(loadingSemantics.properties.label, 'Загружаем события');
-    expect(loadingSemantics.properties.liveRegion, isTrue);
-    expect(loadingSemantics.container, isTrue);
   });
 
   testWidgets('loads event cards from repository when city is resolved',
@@ -951,7 +1020,7 @@ void main() {
     expect(find.text('First page event 0'), findsNothing);
     expect(find.text('First page event 7'), findsOneWidget);
     expect(find.byKey(eventListCardShellKey), findsWidgets);
-    expect(find.byKey(eventListPaginationLoadingKey), findsOneWidget);
+    expect(find.byKey(eventListPaginationLoadingKey), findsNothing);
     expect(find.byKey(eventListEmptyStateKey), findsNothing);
 
     await tester.drag(
@@ -969,13 +1038,8 @@ void main() {
     expect(find.text('First page event 0'), findsNothing);
     expect(find.text('First page event 7'), findsOneWidget);
     expect(find.byKey(eventListCardShellKey), findsWidgets);
-    expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
-    expect(find.text('Больше событий нет'), findsOneWidget);
-    final noMoreSemantics = tester.widget<Semantics>(
-      find.byKey(eventListNoMoreItemsKey),
-    );
-    expect(noMoreSemantics.properties.label, 'Больше событий нет');
-    expect(noMoreSemantics.properties.liveRegion, isTrue);
+    expect(find.byKey(eventListNoMoreItemsKey), findsNothing);
+    expect(find.text('Больше событий нет'), findsNothing);
 
     _eventListScrollPosition(tester).jumpTo(0);
     await tester.pump();
@@ -992,23 +1056,15 @@ void main() {
   });
 
   testWidgets(
-      'undersized first page loads the empty second page without scroll',
+      'undersized server page finishes without a second request or footer',
       (tester) async {
     tester.view.physicalSize = const Size(390, 1600);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     final marker = _FakeQueryDocumentSnapshot('undersized-cursor');
-    final secondPage = Completer<FFFirestorePage<EventsRecord>>();
     final receivedMarkers = <DocumentSnapshot?>[];
     var calls = 0;
-    addTearDown(() {
-      if (!secondPage.isCompleted) {
-        secondPage.complete(
-          FFFirestorePage<EventsRecord>(const [], null, null),
-        );
-      }
-    });
     currentUserDocument = _userFixture(
       uid: 'pagination-undersized-user',
       data: {
@@ -1036,46 +1092,35 @@ void main() {
           }) {
             calls += 1;
             receivedMarkers.add(nextPageMarker);
-            if (calls == 1) {
-              return Future.value(
-                FFFirestorePage<EventsRecord>(
-                  [
-                    _eventsRecordFixture(
-                      'undersized-first-event',
-                      title: 'Undersized first event',
-                      startsAt: DateTime.utc(2035, 6, 14, 15),
-                    ),
-                  ],
-                  null,
-                  marker,
-                ),
-              );
+            if (calls > 1) {
+              throw StateError('undersized page must end pagination');
             }
-            return secondPage.future;
+            return Future.value(
+              EventListFirestorePage(
+                [
+                  _eventsRecordFixture(
+                    'undersized-first-event',
+                    title: 'Undersized first event',
+                    startsAt: DateTime.utc(2035, 6, 14, 15),
+                  ),
+                ],
+                null,
+                marker,
+                hasMore: false,
+              ),
+            );
           },
         ),
       ),
     );
-    for (var pump = 0; pump < 10 && calls < 2; pump += 1) {
-      await tester.pump();
-    }
-    await tester.pump();
-
-    expect(calls, 2);
-    expect(receivedMarkers, <DocumentSnapshot?>[null, marker]);
-    expect(find.text('Undersized first event'), findsOneWidget);
-    expect(find.byKey(eventListPaginationLoadingKey), findsOneWidget);
-    expect(find.byKey(eventListEmptyStateKey), findsNothing);
-
-    secondPage.complete(
-      FFFirestorePage<EventsRecord>(const [], null, null),
-    );
     await tester.pumpAndSettle();
 
+    expect(calls, 1);
+    expect(receivedMarkers, <DocumentSnapshot?>[null]);
     expect(find.text('Undersized first event'), findsOneWidget);
     expect(find.byKey(eventListPaginationLoadingKey), findsNothing);
-    expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
     expect(find.byKey(eventListEmptyStateKey), findsNothing);
+    expect(find.byKey(eventListNoMoreItemsKey), findsNothing);
   });
 
   testWidgets('duplicate-only page advances to the next cursor',
@@ -1165,7 +1210,7 @@ void main() {
       <DocumentSnapshot?>[null, firstMarker, secondMarker],
     );
     expect(find.text('Duplicate first event'), findsOneWidget);
-    expect(find.byKey(eventListPaginationLoadingKey), findsOneWidget);
+    expect(find.byKey(eventListPaginationLoadingKey), findsNothing);
     expect(find.byKey(eventListEmptyStateKey), findsNothing);
 
     thirdPage.complete(
@@ -1179,7 +1224,7 @@ void main() {
 
     expect(calls, 3);
     expect(find.text('Duplicate first event'), findsOneWidget);
-    expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
+    expect(find.byKey(eventListNoMoreItemsKey), findsNothing);
     expect(find.byKey(eventListEmptyStateKey), findsNothing);
   });
 
@@ -1265,7 +1310,7 @@ void main() {
     expect(receivedMarkerIds, <String?>[null, marker.id]);
     expect(calls, 2);
     expect(find.text('Cached pagination event'), findsOneWidget);
-    expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
+    expect(find.byKey(eventListNoMoreItemsKey), findsNothing);
     expect(find.byKey(eventListEmptyStateKey), findsNothing);
 
     await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
@@ -1276,7 +1321,7 @@ void main() {
     expect(receivedMarkerIds, <String?>[null, marker.id]);
     expect(calls, 2);
     expect(find.text('Cached pagination event'), findsOneWidget);
-    expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
+    expect(find.byKey(eventListNoMoreItemsKey), findsNothing);
     expect(find.byKey(eventListEmptyStateKey), findsNothing);
     expect(find.byKey(eventListLoadingStateKey), findsNothing);
   });
@@ -1431,18 +1476,18 @@ void main() {
 
     expect(calls, 2);
     expect(find.text('Late enrichment event'), findsOneWidget);
-    expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
+    expect(find.byKey(eventListNoMoreItemsKey), findsNothing);
     expect(find.byKey(eventListEmptyStateKey), findsNothing);
 
     participant.complete(null);
     await tester.pumpAndSettle();
 
     expect(find.text('Late enrichment event'), findsOneWidget);
-    expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
+    expect(find.byKey(eventListNoMoreItemsKey), findsNothing);
     expect(find.byKey(eventListEmptyStateKey), findsNothing);
   });
 
-  testWidgets('ready cache stays atomic while appended enrichment is pending',
+  testWidgets('base cache reopens while appended enrichment is pending',
       (tester) async {
     const userId = 'pagination-overlap-cache-user';
     const appendedEventId = 'pagination-overlap-appended';
@@ -1454,6 +1499,8 @@ void main() {
     final reopenedBase = Completer<FFFirestorePage<EventsRecord>>();
     final receivedMarkerIds = <String?>[];
     var calls = 0;
+    var firstMembershipLoads = 0;
+    var appendedMembershipLoads = 0;
     addTearDown(() {
       if (!appendedParticipant.isCompleted) {
         appendedParticipant.complete(null);
@@ -1536,8 +1583,10 @@ void main() {
     final EventListCurrentUserParticipantLoader participantLoader =
         (eventRef, _) {
       if (eventRef.id == appendedEventId) {
+        appendedMembershipLoads += 1;
         return appendedParticipant.future;
       }
+      firstMembershipLoads += 1;
       return Future<EventParticipantsRecord?>.value();
     };
     final EventListActiveParticipantsLoader activeParticipantsLoader =
@@ -1594,9 +1643,11 @@ void main() {
       secondMarker.id,
     ]);
     expect(calls, 3);
+    expect(firstMembershipLoads, 8);
+    expect(appendedMembershipLoads, 1);
     expect(find.text('Overlap first event 0'), findsNothing);
     expect(find.text('Overlap appended event'), findsOneWidget);
-    expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
+    expect(find.byKey(eventListNoMoreItemsKey), findsNothing);
     expect(find.byKey(eventListEmptyStateKey), findsNothing);
 
     await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
@@ -1611,11 +1662,12 @@ void main() {
       null,
       firstMarker.id,
       secondMarker.id,
-      null,
     ]);
-    expect(calls, 4);
-    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
-    expect(find.text('Overlap appended event'), findsNothing);
+    expect(calls, 3);
+    expect(firstMembershipLoads, 16);
+    expect(appendedMembershipLoads, 1);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+    expect(find.byKey(eventListCardShellKey), findsWidgets);
 
     appendedParticipant.complete(null);
     reopenedBase.complete(
@@ -1626,7 +1678,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('failed appended enrichment keeps the whole session uncached',
+  testWidgets('failed appended enrichment keeps the base session cached',
       (tester) async {
     tester.view.physicalSize = const Size(390, 1600);
     tester.view.devicePixelRatio = 1;
@@ -1755,7 +1807,7 @@ void main() {
     expect(calls, 2);
     expect(find.text('Failed enrichment first event'), findsOneWidget);
     expect(find.text('Failed enrichment appended event'), findsOneWidget);
-    expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
+    expect(find.byKey(eventListNoMoreItemsKey), findsNothing);
 
     firstParticipant.complete(null);
     await tester.pumpAndSettle();
@@ -1768,10 +1820,10 @@ void main() {
     }
     await tester.pump();
 
-    expect(receivedMarkerIds, <String?>[null, marker.id, null]);
-    expect(calls, 3);
-    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
-    expect(find.text('Failed enrichment appended event'), findsNothing);
+    expect(receivedMarkerIds, <String?>[null, marker.id]);
+    expect(calls, 2);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+    expect(find.text('Failed enrichment appended event'), findsOneWidget);
 
     reopenedBase.complete(
       FFFirestorePage<EventsRecord>(const [], null, null),
@@ -1781,7 +1833,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('initial active-participant failure keeps the session uncached',
+  testWidgets('initial active-participant failure keeps the base card cached',
       (tester) async {
     const userId = 'pagination-initial-active-failure-user';
     const eventId = 'pagination-initial-active-failure-event';
@@ -1878,9 +1930,9 @@ void main() {
     }
     await tester.pump();
 
-    expect(calls, 2);
-    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
-    expect(find.text('Initial active failure event'), findsNothing);
+    expect(calls, 1);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+    expect(find.text('Initial active failure event'), findsOneWidget);
 
     reopenedBase.complete(
       FFFirestorePage<EventsRecord>(const [], null, null),
@@ -2021,7 +2073,7 @@ void main() {
     expect(calls, 2);
     expect(find.text('Appended active failure first event'), findsOneWidget);
     expect(find.text('Appended active failure second event'), findsOneWidget);
-    expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
+    expect(find.byKey(eventListNoMoreItemsKey), findsNothing);
 
     firstParticipant.complete(null);
     await tester.pumpAndSettle();
@@ -2034,10 +2086,10 @@ void main() {
     }
     await tester.pump();
 
-    expect(receivedMarkerIds, <String?>[null, marker.id, null]);
-    expect(calls, 3);
-    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
-    expect(find.text('Appended active failure second event'), findsNothing);
+    expect(receivedMarkerIds, <String?>[null, marker.id]);
+    expect(calls, 2);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+    expect(find.text('Appended active failure second event'), findsOneWidget);
 
     reopenedBase.complete(
       FFFirestorePage<EventsRecord>(const [], null, null),
@@ -2189,7 +2241,7 @@ void main() {
     expect(profileLoads, greaterThan(0));
     expect(find.text('Appended profile failure first event'), findsOneWidget);
     expect(find.text('Appended profile failure second event'), findsOneWidget);
-    expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
+    expect(find.byKey(eventListNoMoreItemsKey), findsNothing);
 
     firstParticipant.complete(null);
     await tester.pumpAndSettle();
@@ -2203,11 +2255,11 @@ void main() {
     }
     await tester.pump();
 
-    expect(receivedMarkerIds, <String?>[null, marker.id, null]);
-    expect(calls, 3);
-    expect(profileLoads, profileLoadsAfterLatePageOne);
-    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
-    expect(find.text('Appended profile failure second event'), findsNothing);
+    expect(receivedMarkerIds, <String?>[null, marker.id]);
+    expect(calls, 2);
+    expect(profileLoads, greaterThan(profileLoadsAfterLatePageOne));
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+    expect(find.text('Appended profile failure second event'), findsOneWidget);
 
     reopenedBase.complete(
       FFFirestorePage<EventsRecord>(const [], null, null),
@@ -2310,7 +2362,7 @@ void main() {
     expect(receivedMarkerIds, <String?>[null, marker.id]);
     expect(find.text('Successful enrichment first event'), findsOneWidget);
     expect(find.text('Successful enrichment appended event'), findsOneWidget);
-    expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
+    expect(find.byKey(eventListNoMoreItemsKey), findsNothing);
 
     await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
     await tester.pumpAndSettle();
@@ -2321,7 +2373,7 @@ void main() {
     expect(receivedMarkerIds, <String?>[null, marker.id]);
     expect(find.text('Successful enrichment first event'), findsOneWidget);
     expect(find.text('Successful enrichment appended event'), findsOneWidget);
-    expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
+    expect(find.byKey(eventListNoMoreItemsKey), findsNothing);
     expect(find.byKey(eventListLoadingStateKey), findsNothing);
   });
 
@@ -2409,7 +2461,7 @@ void main() {
     expect(receivedMarkers, <DocumentSnapshot?>[null, marker, marker]);
     expect(find.text('Retry page event 7'), findsOneWidget);
     expect(find.byKey(eventListPaginationErrorKey), findsNothing);
-    expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
+    expect(find.byKey(eventListNoMoreItemsKey), findsNothing);
     expect(find.byKey(eventListEmptyStateKey), findsNothing);
   });
 
@@ -2489,7 +2541,7 @@ void main() {
     expect(calls, 2);
     expect(find.text('Append page event 0'), findsNothing);
     expect(find.text('Appended event'), findsOneWidget);
-    expect(find.byKey(eventListNoMoreItemsKey), findsOneWidget);
+    expect(find.byKey(eventListNoMoreItemsKey), findsNothing);
     expect(find.byKey(eventListEmptyStateKey), findsNothing);
 
     _eventListScrollPosition(tester).jumpTo(0);
@@ -2581,7 +2633,7 @@ void main() {
     );
     await tester.pump();
     expect(calls, 2);
-    expect(find.byKey(eventListPaginationLoadingKey), findsOneWidget);
+    expect(find.byKey(eventListPaginationLoadingKey), findsNothing);
 
     await tester.drag(
       find.byKey(eventListScrollViewKey),
@@ -2616,7 +2668,7 @@ void main() {
     expect(find.byKey(eventListEmptyStateKey), findsNothing);
   });
 
-  testWidgets('keeps loaded event cards visible when refresh fails',
+  testWidgets('does not show unfiltered cards when a filtered load fails',
       (tester) async {
     var calls = 0;
     currentUserDocument = _userFixture(
@@ -2681,8 +2733,7 @@ void main() {
     expect(find.byKey(eventListLoadingStateKey), findsNothing);
     expect(find.byKey(eventListRefreshingIndicatorKey), findsNothing);
     expect(find.byType(UxRefreshingIndicatorPill), findsNothing);
-    expect(find.text('Loaded before refresh'), findsOneWidget);
-    expect(_eventCardGeometry(tester), beforeRefreshGeometry);
+    expect(find.text('Loaded before refresh'), findsNothing);
 
     await tester.tap(find.byKey(eventListErrorRetryButtonKey));
     await tester.pumpAndSettle();
@@ -2694,7 +2745,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('keeps loaded event cards visible while refresh is pending',
+  testWidgets('does not show unfiltered cards while a filtered load is pending',
       (tester) async {
     var calls = 0;
     final refreshCompleter = Completer<FFFirestorePage<EventsRecord>>();
@@ -2765,11 +2816,10 @@ void main() {
     await tester.pump();
 
     expect(calls, 2);
-    expect(find.byKey(eventListRefreshingIndicatorKey), findsOneWidget);
-    expect(find.byType(UxRefreshingIndicatorPill), findsOneWidget);
+    expect(find.byKey(eventListRefreshingIndicatorKey), findsNothing);
+    expect(find.byType(UxRefreshingIndicatorPill), findsNothing);
     expect(find.byKey(eventListLoadingStateKey), findsNothing);
-    expect(find.text('Loaded before pending'), findsOneWidget);
-    expect(_eventCardGeometry(tester), beforeRefreshGeometry);
+    expect(find.text('Loaded before pending'), findsNothing);
 
     refreshCompleter.complete(FFFirestorePage<EventsRecord>(
       [
@@ -2792,7 +2842,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('keeps loaded event cards visible while level filter is pending',
+  testWidgets('does not show unfiltered cards while level filter is pending',
       (tester) async {
     var calls = 0;
     final levelCompleter = Completer<FFFirestorePage<EventsRecord>>();
@@ -2865,11 +2915,10 @@ void main() {
     await tester.pump();
 
     expect(calls, 2);
-    expect(find.byKey(eventListRefreshingIndicatorKey), findsOneWidget);
-    expect(find.byType(UxRefreshingIndicatorPill), findsOneWidget);
+    expect(find.byKey(eventListRefreshingIndicatorKey), findsNothing);
+    expect(find.byType(UxRefreshingIndicatorPill), findsNothing);
     expect(find.byKey(eventListLoadingStateKey), findsNothing);
-    expect(find.text('Loaded before level pending'), findsOneWidget);
-    expect(_eventCardGeometry(tester), beforeRefreshGeometry);
+    expect(find.text('Loaded before level pending'), findsNothing);
 
     levelCompleter.complete(FFFirestorePage<EventsRecord>(
       [
@@ -2946,7 +2995,7 @@ void main() {
     await tester.pump();
 
     expect(calls, 1);
-    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
     expect(find.byKey(eventListRefreshingIndicatorKey), findsNothing);
     expect(find.byKey(eventListEmptyStateKey), findsNothing);
 
@@ -2965,14 +3014,10 @@ void main() {
 
     expect(calls, 2);
     expect(find.byKey(eventListEmptyStateKey), findsNothing);
-    expect(find.byKey(eventListRefreshingEmptyShellKey), findsOneWidget);
-    expect(find.byKey(eventListRefreshingIndicatorKey), findsOneWidget);
-    expect(find.byType(UxRefreshingIndicatorPill), findsOneWidget);
+    expect(find.byKey(eventListRefreshingEmptyShellKey), findsNothing);
+    expect(find.byKey(eventListRefreshingIndicatorKey), findsNothing);
+    expect(find.byType(UxRefreshingIndicatorPill), findsNothing);
     expect(find.byKey(eventListLoadingStateKey), findsNothing);
-    expect(
-      tester.getSize(find.byKey(eventListRefreshingEmptyShellKey)),
-      confirmedEmptySize,
-    );
 
     filteredCompleter.complete(
       FFFirestorePage<EventsRecord>(const [], null, null),
@@ -3043,24 +3088,16 @@ void main() {
 
     expect(calls, 2);
     expect(find.byKey(eventListEmptyStateKey), findsOneWidget);
-    final confirmedEmptySize = tester.getSize(
-      find.byKey(eventListEmptyStateKey),
-    );
-
     nowUtc = DateTime.utc(2035, 6, 15, 9);
     await tester.pumpWidget(buildList());
     await tester.pump();
 
     expect(calls, 3);
-    expect(find.byKey(eventListEmptyStateKey), findsOneWidget);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
     expect(find.byKey(eventListRefreshingEmptyShellKey), findsNothing);
-    expect(find.byKey(eventListRefreshingIndicatorKey), findsOneWidget);
-    expect(find.byType(UxRefreshingIndicatorPill), findsOneWidget);
+    expect(find.byKey(eventListRefreshingIndicatorKey), findsNothing);
+    expect(find.byType(UxRefreshingIndicatorPill), findsNothing);
     expect(find.byKey(eventListLoadingStateKey), findsNothing);
-    expect(
-      tester.getSize(find.byKey(eventListEmptyStateKey)),
-      confirmedEmptySize,
-    );
 
     refreshCompleter.complete(
       FFFirestorePage<EventsRecord>(const [], null, null),
@@ -3130,8 +3167,9 @@ void main() {
 
     expect(calls, 2);
     expect(find.byKey(eventListEmptyStateKey), findsNothing);
-    expect(find.byKey(eventListRefreshingEmptyShellKey), findsOneWidget);
-    expect(find.byKey(eventListRefreshingIndicatorKey), findsOneWidget);
+    expect(find.byKey(eventListRefreshingEmptyShellKey), findsNothing);
+    expect(find.byKey(eventListRefreshingIndicatorKey), findsNothing);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
 
     levelCompleter.complete(
       FFFirestorePage<EventsRecord>(const [], null, null),
@@ -3150,8 +3188,9 @@ void main() {
 
     expect(calls, 3);
     expect(find.byKey(eventListEmptyStateKey), findsNothing);
-    expect(find.byKey(eventListRefreshingEmptyShellKey), findsOneWidget);
-    expect(find.byKey(eventListRefreshingIndicatorKey), findsOneWidget);
+    expect(find.byKey(eventListRefreshingEmptyShellKey), findsNothing);
+    expect(find.byKey(eventListRefreshingIndicatorKey), findsNothing);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
 
     cityCompleter.complete(
       FFFirestorePage<EventsRecord>(const [], null, null),
@@ -3232,7 +3271,7 @@ void main() {
     await tester.pump();
 
     expect(calls, 2);
-    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
     expect(find.byKey(eventListEmptyStateKey), findsNothing);
     expect(find.byKey(eventListRefreshingEmptyShellKey), findsNothing);
     expect(find.byKey(eventListRefreshingIndicatorKey), findsNothing);
@@ -3287,7 +3326,9 @@ void main() {
 
     expect(calls, 2);
     expect(find.byKey(eventListErrorStateKey), findsOneWidget);
-    expect(find.byKey(eventListEmptyStateKey), findsOneWidget);
+    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+    expect(find.byKey(eventListEmptyMyEventsButtonKey), findsNothing);
+    expect(find.byKey(eventListEmptyResetFiltersButtonKey), findsNothing);
     expect(find.byKey(eventListLoadingStateKey), findsNothing);
   });
 
@@ -3372,9 +3413,10 @@ void main() {
     expect(find.text('Real loaded event 1'), findsNothing);
   });
 
-  testWidgets('reuses cached event cards when page is reopened',
+  testWidgets('reopens cache with a newly confirmed matching event',
       (tester) async {
     var calls = 0;
+    currentUser = _TestAuthUser('profile-city-cache-user');
     currentUserDocument = _userFixture(
       uid: 'profile-city-cache-user',
       data: {
@@ -3432,10 +3474,30 @@ void main() {
 
     await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
     await tester.pumpAndSettle();
+    EventListCacheInvalidation.seedCreatedEvent(
+      EventListCreatedEventSeed(
+        eventId: 'newly-created-event',
+        ownerUserId: 'profile-city-cache-user',
+        countryCode: 'US',
+        cityKey: 'new_york',
+        title: 'Newly created event',
+        description: 'Fresh event preview',
+        languageCode: 'en',
+        languageNameEn: 'English',
+        languageNameRu: 'Английский',
+        levelMin: 'B1',
+        levelMax: 'C1',
+        startsAt: DateTime.utc(2035, 6, 14, 16),
+        timeZoneId: 'America/New_York',
+        organizerDisplayName: 'Owner',
+        capacity: 10,
+      ),
+    );
     await tester.pumpWidget(buildList());
 
     expect(calls, 1);
     expect(find.text('Cached loaded event'), findsOneWidget);
+    expect(find.text('Newly created event'), findsOneWidget);
     expect(find.byKey(eventListLoadingStateKey), findsNothing);
   });
 
@@ -3693,7 +3755,7 @@ void main() {
 
     expect(calls, 2);
     expect(find.text('Присоединиться'), findsNothing);
-    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
 
     secondPageCompleter.complete(eventPage());
     await tester.pumpAndSettle();
@@ -3986,7 +4048,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('reloads a confirmed-empty cache entry after its ttl',
+  testWidgets('shows retained empty cache while refreshing after freshness ttl',
       (tester) async {
     var calls = 0;
     var nowUtc = DateTime.utc(2035, 6, 14, 9);
@@ -4056,8 +4118,8 @@ void main() {
     await tester.pump();
 
     expect(calls, 2);
-    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
-    expect(find.byKey(eventListEmptyStateKey), findsNothing);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+    expect(find.byKey(eventListEmptyStateKey), findsOneWidget);
 
     refreshCompleter.complete(
       FFFirestorePage<EventsRecord>(
@@ -4076,6 +4138,364 @@ void main() {
 
     expect(find.byKey(eventListLoadingStateKey), findsNothing);
     expect(find.text('Fresh event after empty cache ttl'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('shows retained event cards during a stale background refresh',
+      (tester) async {
+    var calls = 0;
+    var nowUtc = DateTime.utc(2035, 6, 14, 9);
+    final refreshCompleter = Completer<FFFirestorePage<EventsRecord>>();
+    addTearDown(() {
+      if (!refreshCompleter.isCompleted) {
+        refreshCompleter.complete(
+          FFFirestorePage<EventsRecord>(const [], null, null),
+        );
+      }
+    });
+    currentUser = _TestAuthUser('event-stale-refresh-user');
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) {
+      calls += 1;
+      if (calls == 1) {
+        return Future.value(
+          FFFirestorePage<EventsRecord>(
+            [
+              _eventsRecordFixture(
+                'event-before-stale-refresh',
+                title: 'Event before stale refresh',
+                startsAt: DateTime.utc(2035, 6, 14, 15),
+              ),
+            ],
+            null,
+            null,
+          ),
+        );
+      }
+      return refreshCompleter.future;
+    };
+    Widget buildList() => _buildTestApp(
+          home: EventListWidget(
+            initialSelectedCity: _selectedCityFixture(),
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            nowUtcProvider: () => nowUtc,
+            eventPageLoader: pageLoader,
+          ),
+        );
+
+    await tester.pumpWidget(buildList());
+    await tester.pumpAndSettle();
+    expect(find.text('Event before stale refresh'), findsOneWidget);
+
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    await tester.pumpAndSettle();
+    nowUtc = nowUtc.add(const Duration(minutes: 4, seconds: 59));
+    await tester.pumpWidget(buildList());
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+    expect(find.text('Event before stale refresh'), findsOneWidget);
+
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    await tester.pumpAndSettle();
+    nowUtc = nowUtc.add(const Duration(seconds: 1));
+    await tester.pumpWidget(buildList());
+    await tester.pump();
+
+    expect(calls, 2);
+    expect(find.text('Event before stale refresh'), findsOneWidget);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+
+    refreshCompleter.complete(
+      FFFirestorePage<EventsRecord>(
+        [
+          _eventsRecordFixture(
+            'event-after-stale-refresh',
+            title: 'Event after stale refresh',
+            startsAt: DateTime.utc(2035, 6, 14, 16),
+          ),
+        ],
+        null,
+        null,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Event before stale refresh'), findsNothing);
+    expect(find.text('Event after stale refresh'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'late stale refresh cannot overwrite a confirmed created-event seed',
+      (tester) async {
+    var calls = 0;
+    var nowUtc = DateTime.utc(2035, 6, 14, 9);
+    final staleRefresh = Completer<FFFirestorePage<EventsRecord>>();
+    final nextRefresh = Completer<FFFirestorePage<EventsRecord>>();
+    addTearDown(() {
+      if (!staleRefresh.isCompleted) {
+        staleRefresh.complete(
+          FFFirestorePage<EventsRecord>(const [], null, null),
+        );
+      }
+      if (!nextRefresh.isCompleted) {
+        nextRefresh.complete(
+          FFFirestorePage<EventsRecord>(const [], null, null),
+        );
+      }
+    });
+    currentUser = _TestAuthUser('created-event-refresh-owner');
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) {
+      calls += 1;
+      if (calls == 1) {
+        return Future.value(
+          FFFirestorePage<EventsRecord>(
+            [
+              _eventsRecordFixture(
+                'event-before-create',
+                title: 'Event before create',
+                startsAt: DateTime.utc(2035, 6, 14, 15),
+              ),
+            ],
+            null,
+            null,
+          ),
+        );
+      }
+      return calls == 2 ? staleRefresh.future : nextRefresh.future;
+    };
+    Widget buildList() => _buildTestApp(
+          home: EventListWidget(
+            initialSelectedCity: _selectedCityFixture(),
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            nowUtcProvider: () => nowUtc,
+            eventPageLoader: pageLoader,
+          ),
+        );
+
+    await tester.pumpWidget(buildList());
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    nowUtc = nowUtc.add(const Duration(minutes: 5));
+    await tester.pumpWidget(buildList());
+    await tester.pump();
+    expect(calls, 2);
+
+    EventListCacheInvalidation.seedCreatedEvent(
+      EventListCreatedEventSeed(
+        eventId: 'confirmed-created-event',
+        ownerUserId: 'created-event-refresh-owner',
+        countryCode: 'US',
+        cityKey: 'new_york',
+        title: 'Confirmed created event',
+        description: 'Created preview',
+        languageCode: 'en',
+        levelMin: 'B1',
+        levelMax: 'C1',
+        startsAt: DateTime.utc(2035, 6, 14, 17),
+        timeZoneId: 'America/New_York',
+        organizerDisplayName: 'Owner',
+        capacity: 10,
+      ),
+    );
+    staleRefresh.complete(
+      FFFirestorePage<EventsRecord>(
+        [
+          _eventsRecordFixture(
+            'late-stale-event',
+            title: 'Late stale event',
+            startsAt: DateTime.utc(2035, 6, 14, 16),
+          ),
+        ],
+        null,
+        null,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    await tester.pumpWidget(buildList());
+    await tester.pump();
+
+    expect(calls, 3);
+    expect(find.text('Confirmed created event'), findsOneWidget);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
+  });
+
+  testWidgets('reused base load filters events against the remount clock',
+      (tester) async {
+    var nowUtc = DateTime.utc(2035, 6, 14, 9);
+    var pageLoads = 0;
+    final pageCompleter = Completer<FFFirestorePage<EventsRecord>>();
+    addTearDown(() {
+      if (!pageCompleter.isCompleted) {
+        pageCompleter.complete(
+          FFFirestorePage<EventsRecord>(const [], null, null),
+        );
+      }
+    });
+    currentUser = _TestAuthUser('event-reused-load-clock-user');
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) {
+      pageLoads += 1;
+      return pageCompleter.future;
+    };
+    Widget buildList() => _buildTestApp(
+          home: EventListWidget(
+            initialSelectedCity: _selectedCityFixture(),
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            nowUtcProvider: () => nowUtc,
+            eventPageLoader: pageLoader,
+          ),
+        );
+
+    await tester.pumpWidget(buildList());
+    await tester.pump();
+    expect(pageLoads, 1);
+
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    nowUtc = DateTime.utc(2035, 6, 14, 10);
+    await tester.pumpWidget(buildList());
+    await tester.pump();
+    expect(pageLoads, 1);
+
+    pageCompleter.complete(
+      FFFirestorePage<EventsRecord>(
+        [
+          _eventsRecordFixture(
+            'event-expired-during-shared-load',
+            title: 'Expired during shared load',
+            startsAt: DateTime.utc(2035, 6, 14, 9, 30),
+          ),
+          _eventsRecordFixture(
+            'event-valid-during-shared-load',
+            title: 'Valid during shared load',
+            startsAt: DateTime.utc(2035, 6, 14, 11),
+          ),
+        ],
+        null,
+        null,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Expired during shared load'), findsNothing);
+    expect(find.text('Valid during shared load'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('clock rollback starts a wider base request while one is pending',
+      (tester) async {
+    var nowUtc = DateTime.utc(2035, 6, 14, 10);
+    var pageLoads = 0;
+    final laterWindow = Completer<FFFirestorePage<EventsRecord>>();
+    final widerWindow = Completer<FFFirestorePage<EventsRecord>>();
+    addTearDown(() {
+      if (!laterWindow.isCompleted) {
+        laterWindow
+            .complete(FFFirestorePage<EventsRecord>(const [], null, null));
+      }
+      if (!widerWindow.isCompleted) {
+        widerWindow
+            .complete(FFFirestorePage<EventsRecord>(const [], null, null));
+      }
+    });
+    currentUser = _TestAuthUser('event-pending-clock-rollback-user');
+    final EventListPageLoader pageLoader = (
+      collection,
+      recordBuilder, {
+      queryBuilder,
+      nextPageMarker,
+      required pageSize,
+      required isStream,
+    }) {
+      pageLoads += 1;
+      return pageLoads == 1 ? laterWindow.future : widerWindow.future;
+    };
+    Widget buildList() => _buildTestApp(
+          home: EventListWidget(
+            initialSelectedCity: _selectedCityFixture(),
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            nowUtcProvider: () => nowUtc,
+            eventPageLoader: pageLoader,
+          ),
+        );
+
+    await tester.pumpWidget(buildList());
+    await tester.pump();
+    expect(pageLoads, 1);
+
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    nowUtc = DateTime.utc(2035, 6, 14, 9);
+    await tester.pumpWidget(buildList());
+    await tester.pump();
+    expect(pageLoads, 2);
+
+    widerWindow.complete(
+      FFFirestorePage<EventsRecord>(
+        [
+          _eventsRecordFixture(
+            'event-found-by-wider-window',
+            title: 'Found by wider window',
+            startsAt: DateTime.utc(2035, 6, 14, 9, 30),
+          ),
+        ],
+        null,
+        null,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Found by wider window'), findsOneWidget);
+
+    laterWindow.complete(
+      FFFirestorePage<EventsRecord>(
+        [
+          _eventsRecordFixture(
+            'event-from-late-narrow-response',
+            title: 'Late narrow response',
+            startsAt: DateTime.utc(2035, 6, 14, 11),
+          ),
+        ],
+        null,
+        null,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Found by wider window'), findsOneWidget);
+    expect(find.text('Late narrow response'), findsNothing);
+
+    await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(buildList());
+    await tester.pumpAndSettle();
+
+    expect(pageLoads, 2);
+    expect(find.text('Found by wider window'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -4133,7 +4553,7 @@ void main() {
     expect(find.text('Event after cache invalidation'), findsOneWidget);
   });
 
-  testWidgets('does not negative-cache an empty page with a next cursor',
+  testWidgets('continues a cached incomplete page from its next cursor',
       (tester) async {
     final marker = _FakeQueryDocumentSnapshot('empty-first-page-cursor');
     final pendingNextPage = Completer<FFFirestorePage<EventsRecord>>();
@@ -4182,8 +4602,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.pumpWidget(buildList());
 
-    expect(receivedMarkers, <DocumentSnapshot?>[null, marker, null]);
-    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
+    expect(receivedMarkers, <DocumentSnapshot?>[null, marker, marker]);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
   });
 
   testWidgets('does not negative-cache raw events that produce no cards',
@@ -4299,7 +4719,7 @@ void main() {
     expect(find.byKey(eventListCardShellKey), findsNothing);
   });
 
-  testWidgets('refreshing state keeps provided event cards visible',
+  testWidgets('background refresh keeps provided cards without an indicator',
       (tester) async {
     await tester.pumpWidget(
       _buildTestApp(
@@ -4314,16 +4734,11 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.byKey(eventListRefreshingIndicatorKey), findsOneWidget);
-    expect(find.byType(UxRefreshingIndicatorPill), findsOneWidget);
+    expect(find.byKey(eventListRefreshingIndicatorKey), findsNothing);
+    expect(find.byType(UxRefreshingIndicatorPill), findsNothing);
     expect(find.byKey(eventListLoadingStateKey), findsNothing);
     expect(find.byKey(eventListCardShellKey), findsOneWidget);
     expect(find.text('Реальное событие'), findsOneWidget);
-
-    final refreshOverlay = tester.widget<UxRefreshingIndicatorOverlay>(
-      find.byKey(eventListRefreshingIndicatorKey),
-    );
-    expect(refreshOverlay.semanticsLabel, 'Обновляем события');
   });
 
   testWidgets('shows error state with retry after city is selected',
@@ -4399,7 +4814,8 @@ void main() {
     expect(find.byKey(eventListCardShellKey), findsNothing);
   });
 
-  testWidgets('loading state takes priority over error state', (tester) async {
+  testWidgets('pending first load stays clean ahead of an old error',
+      (tester) async {
     await tester.pumpWidget(
       _buildTestApp(
         home: EventListWidget(
@@ -4414,7 +4830,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
     expect(find.byKey(eventListErrorStateKey), findsNothing);
     expect(find.byKey(eventListEmptyStateKey), findsNothing);
   });
@@ -4470,6 +4886,7 @@ void main() {
 
   testWidgets('shows empty state when selected city has no event cards',
       (tester) async {
+    final analyticsTracker = _RecordingEventsAnalyticsTracker();
     await tester.pumpWidget(
       _buildTestApp(
         home: EventListWidget(
@@ -4477,6 +4894,7 @@ void main() {
           languageCatalogOverride: _languageCatalog,
           initialSelectedCity: _selectedCityFixture(),
           eventCardsOverride: const [],
+          analyticsTracker: analyticsTracker,
         ),
       ),
     );
@@ -4488,6 +4906,24 @@ void main() {
     expect(find.text('Здесь пока пусто'), findsOneWidget);
     expect(find.text('Выберите другой день, уровень или локацию.'),
         findsOneWidget);
+    expect(find.byKey(eventListEmptyMyEventsButtonKey), findsOneWidget);
+    expect(find.byKey(eventListEmptyResetFiltersButtonKey), findsNothing);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('event_date_filter_today')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(_levelFilterFinder('A1'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(eventListEmptyResetFiltersButtonKey), findsOneWidget);
+
+    await tester.tap(find.byKey(eventListEmptyResetFiltersButtonKey));
+    await tester.pumpAndSettle();
+    expect(find.byKey(eventListEmptyResetFiltersButtonKey), findsNothing);
+    expect(analyticsTracker.payloadsFor('level_filter_selected'), [
+      <String, String>{'levelFilter': 'A1'},
+      <String, String>{'levelFilter': 'none'},
+    ]);
 
     final emptySemantics = tester.widget<Semantics>(
       find.byKey(eventListEmptyStateKey),
@@ -4498,6 +4934,75 @@ void main() {
     );
     expect(emptySemantics.properties.liveRegion, isTrue);
     expect(emptySemantics.container, isTrue);
+  });
+
+  testWidgets('empty actions fit scaled RU and EN content', (tester) async {
+    tester.view.physicalSize = const Size(320, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    for (final locale in const [Locale('ru'), Locale('en')]) {
+      await tester.pumpWidget(
+        _buildTestApp(
+          locale: locale,
+          home: MediaQuery(
+            data: const MediaQueryData(
+              size: Size(320, 700),
+              devicePixelRatio: 1,
+              textScaler: TextScaler.linear(2),
+            ),
+            child: EventListWidget(
+              key: ValueKey(locale.languageCode),
+              cityCatalogOverride: _catalog,
+              languageCatalogOverride: _languageCatalog,
+              initialSelectedCity: _selectedCityFixture(),
+              eventCardsOverride: const [],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(eventListEmptyStateKey), findsOneWidget);
+      expect(find.byKey(eventListEmptyMyEventsButtonKey), findsOneWidget);
+      final exception = tester.takeException();
+      expect(exception == null ? null : exception.toStringDeep(), isNull);
+    }
+  });
+
+  testWidgets('empty My events action opens the owner event history',
+      (tester) async {
+    final router = GoRouter(
+      initialLocation: EventListWidget.routePath,
+      routes: [
+        GoRoute(
+          name: EventListWidget.routeName,
+          path: EventListWidget.routePath,
+          builder: (context, state) => EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: _selectedCityFixture(),
+            eventCardsOverride: const [],
+          ),
+        ),
+        GoRoute(
+          name: EventHistoryWidget.routeName,
+          path: EventHistoryWidget.routePath,
+          builder: (context, state) => const Scaffold(
+            body: Text('Owner event history'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildRouterTestApp(router));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(eventListEmptyMyEventsButtonKey));
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), EventHistoryWidget.routePath);
+    expect(find.text('Owner event history'), findsOneWidget);
   });
 
   testWidgets('does not show empty state before city is selected',
@@ -4517,7 +5022,7 @@ void main() {
     expect(find.byKey(eventListCardShellKey), findsNothing);
   });
 
-  testWidgets('loading state takes priority over empty event cards',
+  testWidgets('pending first load stays clean instead of showing empty state',
       (tester) async {
     await tester.pumpWidget(
       _buildTestApp(
@@ -4532,9 +5037,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(eventListLoadingStateKey), findsOneWidget);
+    expect(find.byKey(eventListLoadingStateKey), findsNothing);
     expect(find.byKey(eventListEmptyStateKey), findsNothing);
-    expect(find.byKey(eventListCardShellKey), findsOneWidget);
+    expect(find.byKey(eventListCardShellKey), findsNothing);
   });
 
   testWidgets('hides loading state when event cards are available',
@@ -5935,7 +6440,7 @@ void main() {
         <String>{'organizer-user', 'profile-participant'},
       ]);
       expect(membershipCompleter.isCompleted, isFalse);
-      expect(find.text('Проверяем участие'), findsOneWidget);
+      expect(find.text('Подробнее'), findsOneWidget);
 
       final eventRef = EventsRecord.collection.doc('profile-preload-event');
       membershipCompleter.complete(
@@ -6621,7 +7126,7 @@ void main() {
   );
 
   testWidgets(
-    'reopens a cached hydrated prefix and requests only the next scroll window',
+    'reopens base cache and revalidates profiles in bounded windows',
     (tester) async {
       tester.view.physicalSize = const Size(320, 900);
       tester.view.devicePixelRatio = 1;
@@ -6723,7 +7228,16 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(pageLoads, 1);
-      expect(profileRequests, hasLength(1));
+      expect(profileRequests, [
+        <String>{
+          'cached-prefix-user-0',
+          'cached-prefix-user-1',
+        },
+        <String>{
+          'cached-prefix-user-0',
+          'cached-prefix-user-1',
+        },
+      ]);
 
       final position = _eventListScrollPosition(tester);
       final viewport = position.viewportDimension;
@@ -6738,13 +7252,14 @@ void main() {
           'cached-prefix-user-1',
         },
         <String>{
+          'cached-prefix-user-0',
+          'cached-prefix-user-1',
+        },
+        <String>{
           'cached-prefix-user-2',
           'cached-prefix-user-3',
         },
       ]);
-      final requestedUserIds =
-          profileRequests.expand((request) => request).toList(growable: false);
-      expect(requestedUserIds.toSet(), hasLength(requestedUserIds.length));
       expect(tester.takeException(), isNull);
     },
   );
@@ -7069,8 +7584,7 @@ void main() {
     },
   );
 
-  testWidgets(
-      'late profile completion after disposal cannot seed the remount cache',
+  testWidgets('base cards survive disposal while late profile data is ignored',
       (tester) async {
     currentUser = _TestAuthUser('disposed-profile-viewer');
     currentUserDocument = _userFixture(
@@ -7183,7 +7697,7 @@ void main() {
     await tester.pump();
     await tester.pumpAndSettle();
 
-    expect(pageLoads, 2);
+    expect(pageLoads, 1);
     expect(profileLoads, 2);
     expect(
       find.descendant(
@@ -7258,7 +7772,7 @@ void main() {
 
   for (final failureMode in <String>['missing', 'failed', 'throw']) {
     testWidgets(
-      '$failureMode public profile result is not card-cached and retries on remount',
+      '$failureMode public profile result keeps base cache and retries profiles',
       (tester) async {
         currentUser = _TestAuthUser('$failureMode-profile-viewer');
         currentUserDocument = _userFixture(
@@ -7420,7 +7934,7 @@ void main() {
         await tester.pump();
         await tester.pumpAndSettle();
 
-        expect(pageLoads, 2);
+        expect(pageLoads, 1);
         expect(profileLoads, 2);
         expect(profileRequests, [
           <String>{'profile-one', 'profile-two'},
@@ -7567,12 +8081,12 @@ void main() {
 
       expect(membershipLookups, 1);
       expect(find.text('Pending membership event'), findsOneWidget);
-      expect(find.text('Проверяем участие'), findsOneWidget);
+      expect(find.text('Подробнее'), findsOneWidget);
       expect(find.text('Присоединиться'), findsNothing);
       final pendingPrimarySemantics =
           tester.getSemantics(find.byKey(eventListCardPrimaryCtaKey));
       expect(pendingPrimarySemantics.flagsCollection.isButton, isTrue);
-      expect(pendingPrimarySemantics.flagsCollection.isEnabled, isFalse);
+      expect(pendingPrimarySemantics.flagsCollection.isEnabled, isTrue);
       final pendingChatSemantics =
           tester.getSemantics(find.byKey(eventListCardChatCtaKey));
       expect(pendingChatSemantics.flagsCollection.isButton, isTrue);
@@ -7587,8 +8101,6 @@ void main() {
       expect(pendingChatInkWell.onTap, isNull);
       final beforeGeometry = _eventCardGeometry(tester);
 
-      await tester.tap(find.byKey(eventListCardPrimaryCtaKey));
-      await tester.pump();
       await tester.tap(find.byKey(eventListCardChatCtaKey));
       await tester.pump();
 
@@ -7608,7 +8120,7 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      expect(find.text('Проверяем участие'), findsNothing);
+      expect(find.text('Подробнее'), findsNothing);
       expect(find.text('Покинуть'), findsOneWidget);
       final joinedChatSemantics =
           tester.getSemantics(find.byKey(eventListCardChatCtaKey));
@@ -7690,15 +8202,15 @@ void main() {
 
       expect(pageLoads, 1);
       expect(membershipLookups, 1);
-      expect(find.text('Проверяем участие'), findsOneWidget);
+      expect(find.text('Подробнее'), findsOneWidget);
       final beforeGeometry = _eventCardGeometry(tester);
 
       membershipCompleter.completeError(StateError('membership failed'));
       await tester.pump();
       await tester.pump();
 
-      expect(find.text('Проверяем участие'), findsNothing);
-      expect(find.text('Статус недоступен'), findsOneWidget);
+      expect(find.text('Подробнее'), findsOneWidget);
+      expect(find.text('Статус недоступен'), findsNothing);
       expect(find.text('Присоединиться'), findsNothing);
       final chatSemantics =
           tester.getSemantics(find.byKey(eventListCardChatCtaKey));
@@ -7716,7 +8228,7 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      expect(pageLoads, 2);
+      expect(pageLoads, 1);
       expect(membershipLookups, 2);
       expect(find.text('Статус недоступен'), findsNothing);
       expect(find.text('Присоединиться'), findsOneWidget);
@@ -7724,7 +8236,7 @@ void main() {
     },
   );
 
-  testWidgets('discards stale A-B-A participant enrichment and cache writes',
+  testWidgets('reuses pending A enrichment across an A-B-A transition',
       (tester) async {
     final staleCompleter = Completer<List<EventParticipantsRecord>>();
     addTearDown(() {
@@ -7810,14 +8322,14 @@ void main() {
     await tester.tap(_dateFilterFinder(EventListDateFilter.tomorrow));
     await tester.pumpAndSettle();
 
-    expect(pageLoads, 3);
-    expect(participantLoads, 3);
+    expect(pageLoads, 2);
+    expect(participantLoads, 2);
     expect(
       find.descendant(
         of: find.byKey(eventListParticipantAvatarStackKey),
         matching: find.text('F'),
       ),
-      findsOneWidget,
+      findsNothing,
     );
 
     final eventRef = EventsRecord.collection.doc('participant-race-event');
@@ -7835,16 +8347,9 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(eventListParticipantAvatarStackKey),
-        matching: find.text('F'),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(
-        of: find.byKey(eventListParticipantAvatarStackKey),
         matching: find.text('S'),
       ),
-      findsNothing,
+      findsOneWidget,
     );
 
     await tester.pumpWidget(_buildTestApp(home: const SizedBox.shrink()));
@@ -7853,7 +8358,7 @@ void main() {
     await tester.pump();
     await tester.pumpAndSettle();
 
-    expect(pageLoads, 3);
+    expect(pageLoads, 2);
     expect(participantLoads, 3);
     expect(
       find.descendant(
@@ -7987,7 +8492,7 @@ void main() {
     await tester.tap(_dateFilterFinder(EventListDateFilter.tomorrow));
     await tester.pumpAndSettle();
 
-    expect(pageLoads, 3);
+    expect(pageLoads, 2);
     expect(profileLoads, 3);
     expect(
       find.descendant(
@@ -8031,8 +8536,8 @@ void main() {
     await tester.pump();
     await tester.pumpAndSettle();
 
-    expect(pageLoads, 3);
-    expect(profileLoads, 3);
+    expect(pageLoads, 2);
+    expect(profileLoads, 4);
     expect(
       find.descendant(
         of: _participantAvatarFinder(0),
@@ -8045,7 +8550,7 @@ void main() {
 
   for (final lateOldOutcome in <String>['success', 'missing']) {
     testWidgets(
-      'late old $lateOldOutcome from a parallel list cannot replace the newer shared cache',
+      'parallel base request ignores late $lateOldOutcome profile on remount',
       (tester) async {
         currentUser = _TestAuthUser('parallel-profile-viewer');
         currentUserDocument = _userFixture(
@@ -8150,7 +8655,7 @@ void main() {
         await tester.pump();
         await tester.pump();
 
-        expect(pageLoads, 2);
+        expect(pageLoads, 1);
         expect(profileLoads, 2);
 
         newerProfilesCompleter.complete(
@@ -8191,12 +8696,12 @@ void main() {
         await tester.pump();
         await tester.pumpAndSettle();
 
-        expect(pageLoads, 2);
-        expect(profileLoads, 2);
+        expect(pageLoads, 1);
+        expect(profileLoads, 3);
         expect(
           find.descendant(
             of: _participantAvatarFinder(0),
-            matching: find.text('N'),
+            matching: find.text('U'),
           ),
           findsOneWidget,
         );
@@ -8210,7 +8715,7 @@ void main() {
         expect(
           find.descendant(
             of: _participantAvatarFinder(0),
-            matching: find.text('U'),
+            matching: find.text('N'),
           ),
           findsNothing,
         );
@@ -12021,6 +12526,18 @@ void main() {
 
   testWidgets('opens event detail when an event card is tapped',
       (tester) async {
+    EventDetailPublicPreview? receivedPreview;
+    final longDescription = List<String>.filled(180, 'x').join();
+    currentUserDocument = _userFixture(
+      uid: 'profile-preview-user',
+      data: {
+        'profileCity': _profileCityFixture(
+          countryCode: 'US',
+          cityKey: 'new_york',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
     final router = GoRouter(
       initialLocation: EventListWidget.routePath,
       routes: [
@@ -12030,19 +12547,28 @@ void main() {
           builder: (context, state) => EventListWidget(
             cityCatalogOverride: _catalog,
             languageCatalogOverride: _languageCatalog,
-            initialSelectedCity: _selectedCityFixture(),
             eventCardsOverride: [
-              _eventCardFixture(eventId: 'event-123'),
+              _eventCardFixture(
+                eventId: 'event-123',
+                countryCode: 'US',
+                cityKey: 'new_york',
+                description: longDescription,
+              ),
             ],
           ),
         ),
         GoRoute(
           name: EventDetailWidget.routeName,
           path: EventDetailWidget.routePath,
-          builder: (context, state) => EventDetailWidget(
-            eventId: state.pathParameters['eventId']!,
-            title: 'Detail page',
-          ),
+          builder: (context, state) {
+            final extra = state.extra as Map<String, dynamic>?;
+            receivedPreview = extra?[eventDetailPublicPreviewExtraKey]
+                as EventDetailPublicPreview?;
+            return EventDetailWidget(
+              eventId: state.pathParameters['eventId']!,
+              title: receivedPreview?.title,
+            );
+          },
         ),
       ],
     );
@@ -12055,7 +12581,55 @@ void main() {
 
     expect(router.getCurrentLocation(), '/events/event-123');
     expect(find.byType(EventDetailWidget), findsOneWidget);
-    expect(find.text('Detail page'), findsOneWidget);
+    expect(receivedPreview?.eventId, 'event-123');
+    expect(receivedPreview?.title, 'Разговорный клуб: кофе и английский');
+    expect(
+        receivedPreview?.description, '${longDescription.substring(0, 160)}…');
+    expect(receivedPreview?.publicLocationLabel, 'Нью-Йорк, United States');
+    expect(receivedPreview?.participantsCount, isNull);
+  });
+
+  testWidgets('unknown membership Details opens the public event preview',
+      (tester) async {
+    final router = GoRouter(
+      initialLocation: EventListWidget.routePath,
+      routes: [
+        GoRoute(
+          name: EventListWidget.routeName,
+          path: EventListWidget.routePath,
+          builder: (context, state) => EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: _selectedCityFixture(),
+            eventCardsOverride: [
+              _eventCardFixture(
+                eventId: 'pending-event-123',
+                membershipState: EventListMembershipState.pending,
+              ),
+            ],
+          ),
+        ),
+        GoRoute(
+          name: EventDetailWidget.routeName,
+          path: EventDetailWidget.routePath,
+          builder: (context, state) => EventDetailWidget(
+            eventId: state.pathParameters['eventId']!,
+            title: 'Pending detail page',
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(_buildRouterTestApp(router));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Подробнее'), findsOneWidget);
+    await tester.tap(find.byKey(eventListCardPrimaryCtaKey));
+    await tester.pumpAndSettle();
+
+    expect(router.getCurrentLocation(), '/events/pending-event-123');
+    expect(find.byType(EventDetailWidget), findsOneWidget);
+    expect(find.text('Pending detail page'), findsOneWidget);
   });
 
   testWidgets('opens event chat from participant card CTA', (tester) async {
@@ -12262,7 +12836,7 @@ void main() {
     expect(find.byKey(eventListCardActionsKey), findsOneWidget);
   });
 
-  testWidgets('shows resolved profile city as the default selector value',
+  testWidgets('keeps the resolved profile location visible and changeable',
       (tester) async {
     currentUserDocument = _userFixture(
       uid: 'profile-city-user',
@@ -12284,6 +12858,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(eventListCitySelectorKey), findsNothing);
+    expect(find.byKey(eventListActiveCitySelectorKey), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(eventListActiveCitySelectorKey),
+        matching: find.text('New York, US'),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Москва · Россия'), findsNothing);
     expect(find.textContaining('Stored city'), findsNothing);
     expect(find.textContaining('Stored context'), findsNothing);
@@ -12532,7 +13114,7 @@ void main() {
     expect(find.text('Выберите локацию, чтобы увидеть события.'), findsNothing);
     expect(find.byKey(const ValueKey<String>('event_city_chip_ID_bali')),
         findsNothing);
-    expect(find.byKey(eventListCardShellKey), findsOneWidget);
+    expect(find.byKey(eventListCardShellKey), findsNothing);
     expect(currentUserDocument!.hasProfileCity(), isFalse);
   });
 
@@ -12684,7 +13266,7 @@ void main() {
     expect(find.byKey(eventListCitySelectorKey), findsNothing);
     expect(find.byKey(eventManualCitySearchFieldKey), findsNothing);
     expect(find.text('Выберите локацию, чтобы увидеть события.'), findsNothing);
-    expect(find.byKey(eventListCardShellKey), findsOneWidget);
+    expect(find.byKey(eventListCardShellKey), findsNothing);
     expect(currentUserDocument!.hasProfileCity(), isFalse);
   });
 
@@ -12757,10 +13339,6 @@ void main() {
       return _eventCardGeometry(tester);
     }
 
-    final loading = await pumpCard(
-      stateKey: 'loading-card',
-      isLoading: true,
-    );
     await pumpCard(
       stateKey: 'sparse-card',
       card: _eventCardFixture(
@@ -12817,14 +13395,11 @@ void main() {
     );
     _expectEventCardActionLabelsFit(tester);
 
-    expect(loading.shellSize.width, 286);
     expect(maximal.shellSize.width, 286);
     expect(sparseShellSize.width, 286);
     expect(sparseShellSize.height, lessThan(280));
-    expect(sparseShellSize.height, lessThan(loading.shellSize.height));
     expect(maximal.shellSize.height, greaterThan(sparseShellSize.height));
     expect(maximal.shellSize.height, lessThan(420));
-    expect(loading.actions.top, greaterThan(loading.footer!.bottom));
     expect(maximal.actions.top, greaterThan(maximal.footer!.bottom));
   });
 
@@ -12890,12 +13465,6 @@ void main() {
     ]) {
       final suffix =
           '${configuration.locale.languageCode}-${configuration.textScale}';
-      final loading = await pumpCard(
-        stateKey: 'scaled-loading-$suffix',
-        locale: configuration.locale,
-        textScale: configuration.textScale,
-        isLoading: true,
-      );
       final sparse = await pumpCard(
         stateKey: 'scaled-sparse-$suffix',
         locale: configuration.locale,
@@ -12933,7 +13502,6 @@ void main() {
       );
       _expectEventCardActionLabelsFit(tester);
 
-      expectBoundedGeometry(loading);
       expectBoundedGeometry(sparse);
       expectBoundedGeometry(maximal);
       expect(maximal.shellSize.height, greaterThan(sparse.shellSize.height));
@@ -13134,7 +13702,7 @@ void main() {
     expect(find.byKey(eventManualCitySearchFieldKey), findsNothing);
   });
 
-  testWidgets('opens event create as a pushed screen from the header',
+  testWidgets('keeps header fixed and opens event create after list scroll',
       (tester) async {
     final router = GoRouter(
       initialLocation: EventListWidget.routePath,
@@ -13142,8 +13710,18 @@ void main() {
         GoRoute(
           name: EventListWidget.routeName,
           path: EventListWidget.routePath,
-          builder: (context, state) =>
-              const EventListWidget(cityCatalogOverride: _catalog),
+          builder: (context, state) => EventListWidget(
+            cityCatalogOverride: _catalog,
+            languageCatalogOverride: _languageCatalog,
+            initialSelectedCity: _selectedCityFixture(),
+            eventCardsOverride: List<EventListCardViewModel>.generate(
+              6,
+              (index) => _eventCardFixture(
+                eventId: 'scroll-event-$index',
+                title: 'Scrollable event $index',
+              ),
+            ),
+          ),
         ),
         GoRoute(
           name: EventCreateWidget.routeName,
@@ -13155,6 +13733,20 @@ void main() {
 
     await tester.pumpWidget(_buildRouterTestApp(router));
     await tester.pumpAndSettle();
+
+    final titleRectBefore = tester.getRect(find.text('События'));
+    final createRectBefore =
+        tester.getRect(find.byKey(eventListCreateButtonKey));
+
+    await tester.drag(
+      find.byKey(eventListScrollViewKey),
+      const Offset(0, -500),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.getRect(find.text('События')), titleRectBefore);
+    expect(
+        tester.getRect(find.byKey(eventListCreateButtonKey)), createRectBefore);
 
     await tester.tap(find.byKey(eventListCreateButtonKey));
     await tester.pumpAndSettle();

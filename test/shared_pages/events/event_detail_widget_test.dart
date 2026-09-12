@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
@@ -245,13 +246,21 @@ void main() {
         if (showChat) {
           final chatSlotRect =
               tester.getRect(find.byKey(eventDetailChatCtaSlotKey));
-          expect(chatSlotRect.width, 78);
+          expect(chatSlotRect.width, greaterThanOrEqualTo(78));
           expect(chatSlotRect.right, fullWidthPrimaryRect.right);
           expect(
             primaryRect.width,
-            fullWidthPrimaryRect.width - 78 - ExpatlioDesign.space12,
+            fullWidthPrimaryRect.width -
+                chatSlotRect.width -
+                ExpatlioDesign.space12,
           );
           expect(find.byKey(eventDetailChatCtaKey), findsOneWidget);
+          expect(
+            tester
+                .renderObject<RenderParagraph>(find.text('Чат'))
+                .didExceedMaxLines,
+            isFalse,
+          );
         } else {
           expect(primaryRect, fullWidthPrimaryRect);
           expect(find.byKey(eventDetailChatCtaSlotKey), findsNothing);
@@ -1109,6 +1118,7 @@ void main() {
         MediaQuery(
           data: const MediaQueryData(textScaler: TextScaler.linear(3)),
           child: _buildTestApp(
+            locale: const Locale('en'),
             home: EventDetailWidget(
               eventId: 'event-123',
               joinCtaState: joined
@@ -1149,6 +1159,38 @@ void main() {
     expect(
         chatSlotRect.top - expandedPrimaryRect.bottom, ExpatlioDesign.space12);
     expect(find.byKey(eventDetailChatCtaKey), findsOneWidget);
+    expect(find.text('Chat'), findsOneWidget);
+    expect(
+      tester.renderObject<RenderParagraph>(find.text('Chat')).didExceedMaxLines,
+      isFalse,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('optimistic chat layout reserves spinner width before row choice',
+      (tester) async {
+    tester.view.physicalSize = const Size(340, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventDetailWidget(
+          eventId: 'event-123',
+          joinCtaState: EventDetailJoinCtaState.optimisticLeft,
+          onPrimaryCtaPressed: () {},
+          onChatPressed: () {},
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final primaryRect = tester.getRect(find.byKey(eventDetailPrimaryCtaKey));
+    final chatRect = tester.getRect(find.byKey(eventDetailChatCtaSlotKey));
+    expect(chatRect.top, greaterThan(primaryRect.bottom));
+    expect(find.text('Присоединиться'), findsOneWidget);
+    expect(find.text('Чат'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
