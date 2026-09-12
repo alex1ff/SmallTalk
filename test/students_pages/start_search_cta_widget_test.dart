@@ -1264,7 +1264,7 @@ void main() {
   });
 
   testWidgets(
-      'student dashboard requires subscription even when gift minutes exist',
+      'student dashboard allows search when gift minutes exist',
       (tester) async {
     setActiveStudent(
       'student-start-search-gift-access-test',
@@ -1272,9 +1272,15 @@ void main() {
       hasGiftAccess: true,
     );
 
-    await tester.pumpWidget(
-      _buildDashboardTestApp(const StudentsDashboardWidget()),
-    );
+    final startPayloads = <Map<String, dynamic>>[];
+    await tester.pumpWidget(_buildDashboardTestApp(
+      StudentsDashboardWidget(
+        startSearchRequest: (payload) async {
+          startPayloads.add(Map<String, dynamic>.from(payload));
+          return <String, dynamic>{'requestId': 'gift-search'};
+        },
+      ),
+    ));
     await tester.pump();
 
     await tester.tap(
@@ -1286,11 +1292,11 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.byType(NoBalanceWidget), findsOneWidget);
-    expect(find.text('Нет активной подписки'), findsOneWidget);
-    expect(find.text('Ищем собеседника'), findsNothing);
-    expect(find.text('Остановить поиск'), findsNothing);
-    expect(_checkPermissionStatusCallCount, 0);
+    expect(find.byType(NoBalanceWidget), findsNothing);
+    expect(startPayloads, hasLength(1));
+    expect(find.text('Ищем собеседника'), findsOneWidget);
+    expect(find.text('Остановить поиск'), findsOneWidget);
+    expect(_checkPermissionStatusCallCount, greaterThan(0));
 
     await tester.pumpWidget(const SizedBox.shrink());
   });

@@ -64,6 +64,20 @@ test("trial access requires eligible state inside the 30-minute window", () => {
   assert.equal(expired.reason, "trial_window_expired");
 });
 
+test("active gift minutes grant call access without a subscription", () => {
+  const decision = buildTrialCallAccessDecision({
+    userData: {
+      giftMinutes: {
+        minutes: 10,
+        expiresAt: timestamp(now + 60 * 60 * 1000),
+      },
+    },
+    nowMillis: now,
+  });
+  assert.equal(decision.allowed, true);
+  assert.equal(decision.mode, "gift");
+});
+
 test("reservation is atomic and idempotently uses the session id", () => {
   const transaction = fakeTransaction();
   const ref = {path: "users/u/trialAccess/current"};

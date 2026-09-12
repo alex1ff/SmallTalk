@@ -8069,22 +8069,17 @@ if (!hasFirestoreEmulator) {
     await assertNoSearchRequestForUser(uid);
   });
 
-  test("startSearch callable rejects gift-only access without writes", async () => {
+  test("startSearch callable allows gift-only access", async () => {
     const uid = uniqueId("student-gift-only");
     await seedStudent(uid, {subscription: null});
-    const beforeUser = (await userRef(uid).get()).data();
-
-    await assert.rejects(
-      () => wrappedStartSearch({appState: "foreground", }, authContext(uid)),
-      (error) =>
-        error.code === "failed-precondition" &&
-        error.message === "Active subscription is required" &&
-        error.details?.reason === "no_subscription",
+    const response = await wrappedStartSearch(
+        {appState: "foreground"},
+        authContext(uid),
     );
 
-    await assertNoSearchRequestForUser(uid);
-    assert.deepEqual((await userRef(uid).get()).data(), beforeUser);
-    assert.equal((await trialAccessRef(uid).get()).exists, false);
+    assert.equal(response.reused, false);
+    assert.ok(response.requestId);
+    assert.equal((await searchRequestRef(uid).get()).data().status, "active");
   });
 
   test("startSearch callable preserves trial cooldown error details", async () => {

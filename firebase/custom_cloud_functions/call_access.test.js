@@ -86,8 +86,8 @@ test("student call access matches start search entitlement semantics", () => {
       userRole: "student",
       userData: {giftMinutes: activeGift()},
       nowMillis: fixedNowMillis,
-    }).reason,
-    "no_subscription",
+    }).mode,
+    "gift",
   );
   assert.equal(
     buildStudentCallAccessDecision({

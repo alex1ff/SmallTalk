@@ -1,11 +1,13 @@
 // Server-owned trial call access policy.
 //
 // A RevenueCat introductory subscription is active while its period type is
-// TRIAL, but that must not be treated as full Premium. This module keeps the
-// distinction in one place for every call entry point.
+// TRIAL, but that must not be treated as full Premium. Gift minutes are a
+// separate, server-owned call-access mode. This module keeps the distinction
+// in one place for every call entry point.
 
 const crypto = require("node:crypto");
 const admin = require("firebase-admin");
+const {hasUsableGiftMinutes} = require("./gift_minutes_shared");
 
 const TRIAL_PRODUCT_ID = "expatlio_trial_1_Month";
 const PROMOTIONAL_PRODUCT_ID = "revenuecat_promotional";
@@ -88,6 +90,16 @@ function buildTrialCallAccessDecision({
     return {
       allowed: true,
       mode: "premium",
+      reason: "ready",
+      trialCallId: null,
+      retryAfterMillis: null,
+    };
+  }
+
+  if (hasUsableGiftMinutes(userData, nowMillis)) {
+    return {
+      allowed: true,
+      mode: "gift",
       reason: "ready",
       trialCallId: null,
       retryAfterMillis: null,

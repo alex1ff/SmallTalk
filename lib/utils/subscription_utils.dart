@@ -161,12 +161,14 @@ DateTime? giftMinutesExpiresAt(UsersRecord? user, {DateTime? now}) {
   return user!.giftMinutes!.expiresAt;
 }
 
-/// True if the user has an active subscription and may enter the call flow.
+/// True if the user has an active subscription or usable gift minutes and may
+/// enter the call flow.
 /// Trial eligibility (one call, 30-minute window) is checked server-side from
 /// `users/{uid}/trialAccess/current`; the client cannot infer that state from
 /// the RevenueCat subscription alone.
 bool canStartCall(UsersRecord? user, {DateTime? now}) =>
-    hasActiveSubscription(user, now: now);
+    hasActiveSubscription(user, now: now) ||
+    hasUsableGiftMinutes(user, now: now);
 
 /// Format a remaining-minutes count for UI. Drops trailing zeros so
 /// "10.0" → "10" but "7.5" stays "7.5".

@@ -3,7 +3,7 @@
 // Replaces the legacy "first minute free" mechanic. New users get 10
 // minutes that expire 24h after registration. Promo codes top up the
 // same bucket. Subscriptions remain the primary access mechanism;
-// gift minutes only matter when there's no active subscription.
+// Gift minutes grant short-lived call access when no paid subscription exists.
 //
 // Storage: users/{uid}.giftMinutes = {
 //   minutes: number,          // remaining minutes

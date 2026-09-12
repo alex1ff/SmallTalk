@@ -11,6 +11,7 @@
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 
+import '/auth/firebase_auth/auth_util.dart';
 import '/components/bottom_sheet_header.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
@@ -31,7 +32,13 @@ Future<bool?> showPromoRedeemSheet({
     isScrollControlled: true,
     isDismissible: false,
     enableDrag: false,
-    backgroundColor: Colors.transparent,
+    backgroundColor: ExpatlioDesign.background,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(
+        top: Radius.circular(ExpatlioDesign.sheetRadius),
+      ),
+    ),
+    clipBehavior: Clip.antiAlias,
     builder: (_) => PromoRedeemWidget(redeemOverride: redeemOverride),
   );
 }
@@ -100,6 +107,12 @@ class _PromoRedeemWidgetState extends State<PromoRedeemWidget> {
       final expiresAt = expiresAtMs != null
           ? DateTime.fromMillisecondsSinceEpoch(expiresAtMs)
           : null;
+
+      if (widget.redeemOverride == null && currentUserUid.trim().isNotEmpty) {
+        await ensureCanonicalCurrentUserDocument(
+          preferredUid: currentUserUid,
+        );
+      }
 
       if (!mounted) return;
       setState(() {
@@ -272,7 +285,7 @@ class _PromoRedeemWidgetState extends State<PromoRedeemWidget> {
                   context,
                   hintText: 'PROMO2026',
                   enabled: !_isSubmitting,
-                ).copyWith(errorText: _errorMessage),
+                ),
                 style: ExpatlioDesign.formTextStyle(
                   context,
                   enabled: !_isSubmitting,
@@ -280,6 +293,27 @@ class _PromoRedeemWidgetState extends State<PromoRedeemWidget> {
                   letterSpacing: 1.5,
                   fontWeight: FontWeight.w600,
                 ),
+              ),
+              AnimatedSize(
+                duration: const Duration(milliseconds: 160),
+                alignment: AlignmentDirectional.topStart,
+                child: _errorMessage == null
+                    ? const SizedBox.shrink()
+                    : Padding(
+                        padding: const EdgeInsetsDirectional.only(
+                          start: ExpatlioDesign.space16,
+                          top: ExpatlioDesign.space8,
+                          end: ExpatlioDesign.space16,
+                        ),
+                        child: Text(
+                          _errorMessage!,
+                          style: theme.bodySmall.override(
+                            fontFamily: theme.bodySmallFamily,
+                            color: ExpatlioDesign.danger,
+                            letterSpacing: 0,
+                          ),
+                        ),
+                      ),
               ),
             ],
           ),

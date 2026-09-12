@@ -9,7 +9,7 @@ public callable response. This is a prerequisite, not completion of P1-03.
 ## Evidence
 
 - Baseline with Firestore: 77/103 pass; 26 failures are initially hidden behind
-  gift-only fixtures, although access now requires a subscription.
+  gift-only fixtures. Gift minutes now provide a separate call-access mode.
 - Paid fixtures expose 18 failures, mostly cross-test candidate contamination.
 - A process-specific demo project and between-test cleanup reduce this to six.
 - Four background delivery scenarios fail with `db.collection` on undefined:
@@ -20,9 +20,9 @@ public callable response. This is a prerequisite, not completion of P1-03.
 
 ## Minimal design
 
-1. Paid positive fixtures, explicit gift-only denial, preserved `subscription:
-   null` and trial overrides. Assert denied starts do not create search/trial
-   records or modify the user.
+1. Paid positive fixtures, gift-only positive access, preserved `subscription:
+   null` no-access cases and trial overrides. Assert denied starts do not create
+   search/trial records or modify the user.
 2. A fixed `demo-smalltalk-search-<pid>` namespace, guarded loopback emulator
    endpoint, awaited cleanup between tests and at exit. Never clear a namespace
    selected from a production environment variable. Keep within-test races.
