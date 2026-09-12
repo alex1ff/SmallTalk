@@ -166,6 +166,42 @@ void main() {
       expect(canUseNativeSpeakerShell(legacyNativeSpeaker), isFalse);
     });
 
+    test('shows profile balance for approved or pending teacher track', () {
+      final approvedUser = UsersRecord.getDocumentFromData(
+        {
+          'role': 'native_speaker',
+          'teacherAccreditationStatus': 'approved',
+        },
+        UsersRecord.collection.doc('approved-profile-balance-test'),
+      );
+      final pendingUser = UsersRecord.getDocumentFromData(
+        {
+          'role': 'native_speaker',
+          'teacherAccreditationStatus': 'pending',
+        },
+        UsersRecord.collection.doc('pending-profile-balance-test'),
+      );
+      final rejectedUser = UsersRecord.getDocumentFromData(
+        {
+          'role': 'native_speaker',
+          'teacherAccreditationStatus': 'rejected',
+        },
+        UsersRecord.collection.doc('rejected-profile-balance-test'),
+      );
+      final studentUser = UsersRecord.getDocumentFromData(
+        {
+          'role': 'student',
+          'teacherAccreditationStatus': 'approved',
+        },
+        UsersRecord.collection.doc('student-profile-balance-test'),
+      );
+
+      expect(shouldShowTeacherProfileBalance(approvedUser), isTrue);
+      expect(shouldShowTeacherProfileBalance(pendingUser), isTrue);
+      expect(shouldShowTeacherProfileBalance(rejectedUser), isFalse);
+      expect(shouldShowTeacherProfileBalance(studentUser), isFalse);
+    });
+
     test(
         'restores native speaker track from approved, explicit pending, or request status',
         () {

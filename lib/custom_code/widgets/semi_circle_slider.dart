@@ -1,12 +1,5 @@
 // Automatic FlutterFlow imports
-import '/backend/backend.dart';
-import '/backend/schema/structs/index.dart';
 import '/backend/schema/enums/enums.dart';
-import '/flutter_flow/flutter_flow_theme.dart';
-import '/flutter_flow/flutter_flow_util.dart';
-import 'index.dart'; // Imports other custom widgets
-import '/custom_code/actions/index.dart'; // Imports custom actions
-import '/flutter_flow/custom_functions.dart'; // Imports custom functions
 import 'package:flutter/material.dart';
 // Begin custom widget code
 // DO NOT REMOVE OR MODIFY THE CODE ABOVE!
@@ -38,7 +31,6 @@ class _SemiCircleSliderState extends State<SemiCircleSlider> {
 
   static const double sweepPercent = 0.63;
   static const double strokeWidth = 30.0;
-  static const double thumbRadius = 11.0; // Размер 22 (диаметр)
   static const snapPoints = [0.0, 33.33, 66.66, 100.0];
 
   @override
@@ -284,7 +276,6 @@ class _SliderPainter extends CustomPainter {
 
     // Активная дорожка с градиентом
     if (currentAngle > 0.01) {
-      final progress = currentAngle / sweepAngle;
       final gradientStart = radiansToCoordinates(center, startAngle, radius);
       final gradientEnd =
           radiansToCoordinates(center, startAngle + currentAngle, radius);

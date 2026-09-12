@@ -1,6 +1,8 @@
 import '/backend/schema/enums/enums.dart';
 import '/backend/schema/structs/index.dart';
 import '/backend/schema/users_record.dart';
+import '/authorization/shared/onboarding_selection_utils.dart';
+import '/services/supported_location_catalog.dart';
 import '/flutter_flow/custom_functions.dart' as functions;
 import '/flutter_flow/uploaded_file.dart';
 
@@ -438,6 +440,7 @@ Map<String, dynamic> buildNativeSpeakerOnboardingUpdateData({
   bool switchToNativeSpeakerRole = false,
   TeacherAccreditationStatus? teacherAccreditationStatus,
 }) {
+  final location = resolveSupportedCountryStruct(payload.country);
   final shouldMirrorPendingTeacherStatus =
       teacherAccreditationStatus == TeacherAccreditationStatus.pending;
 
@@ -447,6 +450,16 @@ Map<String, dynamic> buildNativeSpeakerOnboardingUpdateData({
     role: switchToNativeSpeakerRole || shouldMirrorPendingTeacherStatus
         ? UserRole.native_speaker
         : null,
+    availabilityToday:
+        switchToNativeSpeakerRole || shouldMirrorPendingTeacherStatus
+            ? createAvailabilityTodayStruct(
+                enabled: false,
+                fieldValues: const {
+                  'intervals': [],
+                },
+                clearUnsetFields: false,
+              )
+            : null,
     teacherAccreditationStatus: shouldMirrorPendingTeacherStatus
         ? TeacherAccreditationStatus.pending
         : null,
@@ -467,6 +480,7 @@ Map<String, dynamic> buildNativeSpeakerOnboardingUpdateData({
             clearUnsetFields: false,
           )
         : null,
+    profileCity: location?.toProfileCityStruct(serverTimestamp: true),
     nativeLanguageNS: payload.nativeLanguage != null
         ? updateLanguageStruct(
             payload.nativeLanguage,
@@ -479,15 +493,21 @@ Map<String, dynamic> buildNativeSpeakerOnboardingUpdateData({
 String? validateNativeSpeakerOnboardingPage({
   required NativeSpeakerOnboardingPage page,
   required NativeSpeakerOnboardingDraft draft,
+  String languageCode = 'ru',
 }) {
+  final isRussian = languageCode.toLowerCase().startsWith('ru');
   switch (page) {
     case NativeSpeakerOnboardingPage.name:
       if (draft.displayName.trim().isEmpty) {
-        return 'Пожалуйста, представьтесь';
+        return isRussian
+            ? 'Пожалуйста, представьтесь'
+            : 'Please enter your name';
       }
       return functions.isValidName(draft.displayName.trim())
           ? null
-          : 'Неверное имя';
+          : isRussian
+              ? 'Неверное имя'
+              : 'Invalid name';
     case NativeSpeakerOnboardingPage.languageInstruction:
     case NativeSpeakerOnboardingPage.nativeLanguage:
       return hasNativeSpeakerLanguageSelection(
@@ -496,27 +516,39 @@ String? validateNativeSpeakerOnboardingPage({
             : draft.nativeLanguage,
       )
           ? null
-          : 'Выберите язык из списка';
+          : isRussian
+              ? 'Выберите язык из списка'
+              : 'Select a language from the list';
     case NativeSpeakerOnboardingPage.country:
       return hasNativeSpeakerCountrySelection(draft.country)
           ? null
-          : 'Выберите страну из списка';
+          : isRussian
+              ? 'Выберите локацию из списка'
+              : 'Select a location from the list';
     case NativeSpeakerOnboardingPage.aboutMe:
       return draft.aboutMe.trim().isNotEmpty
           ? null
-          : 'Напишите хотя бы пару слов';
+          : isRussian
+              ? 'Напишите хотя бы пару слов'
+              : 'Write at least a few words';
     case NativeSpeakerOnboardingPage.accreditation:
       if (draft.teachingExperience?.trim().isNotEmpty != true) {
-        return 'Выберите опыт преподавания';
+        return isRussian
+            ? 'Выберите опыт преподавания'
+            : 'Select your teaching experience';
       }
       if (draft.qualificationProofs.isEmpty) {
-        return 'Выберите подтверждение квалификации';
+        return isRussian
+            ? 'Выберите подтверждение квалификации'
+            : 'Select proof of qualification';
       }
       if (shouldRequireNativeSpeakerQualificationFiles(
             draft.qualificationProofs,
           ) &&
           !hasNativeSpeakerQualificationEvidenceFiles(draft)) {
-        return 'Добавьте файлы подтверждения';
+        return isRussian
+            ? 'Добавьте файлы подтверждения'
+            : 'Add supporting files';
       }
       return null;
     case NativeSpeakerOnboardingPage.photo:
@@ -525,35 +557,20 @@ String? validateNativeSpeakerOnboardingPage({
         existingPhotoUrl: draft.existingPhotoUrl,
       )
           ? null
-          : 'Загрузите фото профиля';
+          : isRussian
+              ? 'Загрузите фото профиля'
+              : 'Upload a profile photo';
     case NativeSpeakerOnboardingPage.gender:
       return null;
   }
 }
 
 bool hasNativeSpeakerLanguageSelection(LanguageStruct? language) {
-  if (language == null) {
-    return false;
-  }
-
-  return language.code.trim().isNotEmpty ||
-      language.nameEn.trim().isNotEmpty ||
-      language.nameRu.trim().isNotEmpty ||
-      language.model.trim().isNotEmpty ||
-      language.ss.trim().isNotEmpty ||
-      language.alternateCodes.isNotEmpty;
+  return hasOnboardingLanguageSelection(language);
 }
 
 bool hasNativeSpeakerCountrySelection(CountryStruct? country) {
-  if (country == null) {
-    return false;
-  }
-
-  return country.code.trim().isNotEmpty ||
-      country.nameEn.trim().isNotEmpty ||
-      country.nameRu.trim().isNotEmpty ||
-      country.flag.trim().isNotEmpty ||
-      country.languages.trim().isNotEmpty;
+  return hasOnboardingCountrySelection(country);
 }
 
 bool hasNativeSpeakerAccreditationAnswers(NativeSpeakerOnboardingDraft draft) {
@@ -794,36 +811,11 @@ String _nativeSpeakerEvidenceFileNameFromStoragePath(String storagePath) {
 }
 
 LanguageStruct? cloneNativeSpeakerLanguageSelection(LanguageStruct? language) {
-  if (!hasNativeSpeakerLanguageSelection(language)) {
-    return null;
-  }
-
-  return LanguageStruct(
-    code: language!.hasCode() ? language.code : null,
-    alternateCodes:
-        language.hasAlternateCodes() ? language.alternateCodes.toList() : null,
-    nameEn: language.hasNameEn() ? language.nameEn : null,
-    nameRu: language.hasNameRu() ? language.nameRu : null,
-    model: language.hasModel() ? language.model : null,
-    isPopular: language.hasIsPopular() ? language.isPopular : null,
-    ss: language.hasSs() ? language.ss : null,
-  );
+  return cloneOnboardingLanguageSelection(language);
 }
 
 CountryStruct? cloneNativeSpeakerCountrySelection(CountryStruct? country) {
-  if (!hasNativeSpeakerCountrySelection(country)) {
-    return null;
-  }
-
-  return CountryStruct(
-    code: country!.hasCode() ? country.code : null,
-    nameEn: country.hasNameEn() ? country.nameEn : null,
-    nameRu: country.hasNameRu() ? country.nameRu : null,
-    flag: country.hasFlag() ? country.flag : null,
-    languages: country.hasLanguages() ? country.languages : null,
-    isPopular: country.hasIsPopular() ? country.isPopular : null,
-    index: country.hasIndex() ? country.index : null,
-  );
+  return cloneOnboardingCountrySelection(country);
 }
 
 List<NativeSpeakerOnboardingPage> buildVisibleNativeSpeakerPages({

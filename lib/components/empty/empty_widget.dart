@@ -1,5 +1,6 @@
-import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/components/ux_empty_state.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
 import 'empty_model.dart';
 export 'empty_model.dart';
@@ -8,9 +9,13 @@ class EmptyWidget extends StatefulWidget {
   const EmptyWidget({
     super.key,
     required this.txt,
+    this.shrinkWrap = false,
+    this.topPadding = ExpatlioDesign.space64,
   });
 
   final String? txt;
+  final bool shrinkWrap;
+  final double topPadding;
 
   @override
   State<EmptyWidget> createState() => _EmptyWidgetState();
@@ -40,52 +45,17 @@ class _EmptyWidgetState extends State<EmptyWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(),
-      child: Padding(
-        padding: EdgeInsetsDirectional.fromSTEB(24.0, 60.0, 24.0, 0.0),
-        child: Column(
-          mainAxisSize: MainAxisSize.max,
-          children: [
-            Image.asset(
-              'assets/images/Group_1171275321.png',
-              width: 120.0,
-              fit: BoxFit.cover,
-            ),
-            Padding(
-              padding: EdgeInsetsDirectional.fromSTEB(0.0, 16.0, 0.0, 0.0),
-              child: Text(
-                  FFLocalizations.of(context).getVariableText(
-                  ruText: 'Здесь пока пусто',
-                  enText: 'Nothing here yet',
-                ),
-                textAlign: TextAlign.center,
-                style: FlutterFlowTheme.of(context).bodyMedium.override(
-                      fontFamily: 'Cool',
-                      fontSize: 20.0,
-                      letterSpacing: 0.0,
-                    ),
-              ),
-            ),
-            Padding(
-              padding: EdgeInsetsDirectional.fromSTEB(0.0, 6.0, 0.0, 0.0),
-              child: Text(
-                valueOrDefault<String>(
-                  widget.txt,
-                  '-',
-                ),
-                textAlign: TextAlign.center,
-                style: FlutterFlowTheme.of(context).bodyMedium.override(
-                      fontFamily: 'sf pro display',
-                      color: FlutterFlowTheme.of(context).secondaryText,
-                      fontSize: 15.0,
-                      letterSpacing: 0.0,
-                    ),
-              ),
-            ),
-          ],
-        ),
+    return UxEmptyState(
+      title: FFLocalizations.of(context).getVariableText(
+        ruText: 'Здесь пока пусто',
+        enText: 'Nothing here yet',
       ),
+      message: valueOrDefault<String>(
+        widget.txt,
+        '-',
+      ),
+      shrinkWrap: widget.shrinkWrap,
+      topPadding: widget.topPadding,
     );
   }
 }

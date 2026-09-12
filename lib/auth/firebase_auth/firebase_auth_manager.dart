@@ -8,6 +8,7 @@ import '../../flutter_flow/flutter_flow_util.dart';
 
 import '/backend/backend.dart';
 import '/custom_code/actions/index.dart' as actions;
+import '/services/new_account_inbox_bootstrap.dart';
 import 'anonymous_auth.dart';
 import 'apple_auth.dart';
 import 'email_auth.dart';
@@ -327,7 +328,12 @@ class FirebaseAuthManager extends AuthManager
     try {
       final userCredential = await signInFunc();
       if (userCredential?.user != null) {
-        await maybeCreateUser(userCredential!.user!);
+        final accountWasCreated = await maybeCreateUser(userCredential!.user!);
+        if (accountWasCreated) {
+          NewAccountInboxBootstrap.markAccountCreated(
+            userCredential.user!.uid,
+          );
+        }
       }
       return userCredential == null
           ? null

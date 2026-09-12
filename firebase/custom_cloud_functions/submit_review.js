@@ -1,5 +1,7 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "submit_review"});
 const {
   buildStoredMatchProfile,
   getAssignedResponderId,
@@ -530,13 +532,11 @@ exports.submitReview = functions.https.onCall(async (data, context) => {
       throw error;
     }
 
-    console.error("❌ submitReview failed:", {
+    safeLog.error("submit_review_failed", {
       userId,
-      requestedSessionId: requestedSessionId || null,
-      requestedSessionPath: requestedSessionPath || null,
-      resolvedSessionId: resolvedSessionRef?.id || null,
+      sessionId: resolvedSessionRef?.id || requestedSessionId,
       toUserId: requestedToUserId || null,
-      message: error?.message,
+      error,
     });
     throw new functions.https.HttpsError(
       "internal",

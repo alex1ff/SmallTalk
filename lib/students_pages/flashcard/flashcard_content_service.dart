@@ -56,16 +56,66 @@ class FlashcardContentService {
     return synonyms;
   }
 
+  static Future<String?> fetchEnglishSourceTranscription({
+    required String sourceWord,
+  }) async {
+    final normalizedSourceWord = sourceWord.trim();
+    if (normalizedSourceWord.isEmpty) {
+      return null;
+    }
+
+    final response = await YandexCall.call(
+      text: normalizedSourceWord,
+      lang: 'en-ru',
+    );
+    final jsonBody = response.jsonBody;
+    if (!response.succeeded || jsonBody is! Map) {
+      return null;
+    }
+
+    final entries =
+        YyStruct.maybeFromMap(jsonBody)?.def.toList() ?? const <EntryStruct>[];
+    for (final entry in entries) {
+      final transcription = entry.ts.trim();
+      if (transcription.isEmpty) {
+        continue;
+      }
+
+      if (entry.text.trim().toLowerCase() ==
+          normalizedSourceWord.toLowerCase()) {
+        return transcription;
+      }
+    }
+
+    for (final entry in entries) {
+      final transcription = entry.ts.trim();
+      if (transcription.isNotEmpty) {
+        return transcription;
+      }
+    }
+
+    return null;
+  }
+
   static Future<List<EntryStruct>> enrichWordWithSourceSynonyms({
     required DocumentReference wordRef,
     required List<EntryStruct> entries,
     required String sourceLanguageCode,
   }) async {
-    if (entries.isEmpty || !flashcardLanguageMatches(sourceLanguageCode, 'en')) {
-      return entries;
-    }
+    return enrichWordWithSourceMetadata(
+      wordRef: wordRef,
+      entries: entries,
+      sourceLanguageCode: sourceLanguageCode,
+    );
+  }
 
-    if (entries.first.hasSyn()) {
+  static Future<List<EntryStruct>> enrichWordWithSourceMetadata({
+    required DocumentReference wordRef,
+    required List<EntryStruct> entries,
+    required String sourceLanguageCode,
+  }) async {
+    if (entries.isEmpty ||
+        !flashcardLanguageMatches(sourceLanguageCode, 'en')) {
       return entries;
     }
 
@@ -74,11 +124,37 @@ class FlashcardContentService {
       return entries;
     }
 
-    final synonyms = await fetchEnglishSourceSynonyms(
-      sourceWord: sourceWord,
-    );
-    final updatedEntries = _entriesWithSourceSynonyms(
+    final needsTranscription = entries.first.ts.trim().isEmpty;
+    final needsSynonyms = entries.first.syn.isEmpty;
+    if (!needsTranscription && !needsSynonyms) {
+      return entries;
+    }
+
+    String? transcription;
+    var synonyms = const <SynonymStruct>[];
+
+    await Future.wait([
+      if (needsTranscription)
+        Future(() async {
+          transcription = await fetchEnglishSourceTranscription(
+            sourceWord: sourceWord,
+          );
+        }),
+      if (needsSynonyms)
+        Future(() async {
+          synonyms = await fetchEnglishSourceSynonyms(
+            sourceWord: sourceWord,
+          );
+        }),
+    ]);
+
+    if ((transcription?.trim().isEmpty ?? true) && synonyms.isEmpty) {
+      return entries;
+    }
+
+    final updatedEntries = _entriesWithSourceMetadata(
       entries: entries,
+      sourceTranscription: transcription,
       sourceSynonyms: synonyms,
     );
 
@@ -94,8 +170,9 @@ class FlashcardContentService {
     return updatedEntries;
   }
 
-  static List<EntryStruct> _entriesWithSourceSynonyms({
+  static List<EntryStruct> _entriesWithSourceMetadata({
     required List<EntryStruct> entries,
+    required String? sourceTranscription,
     required List<SynonymStruct> sourceSynonyms,
   }) {
     if (entries.isEmpty) {
@@ -116,13 +193,17 @@ class FlashcardContentService {
               entries: [entry],
               sourceSynonyms: sourceSynonyms,
             ).first.syn;
+      final resolvedTranscription =
+          sourceTranscription?.trim().isNotEmpty ?? false
+              ? sourceTranscription!.trim()
+              : entry.ts;
 
       updatedEntries.add(
         EntryStruct(
           text: entry.text,
           pos: entry.pos,
-          ts: entry.ts,
-          syn: resolvedSynonyms,
+          ts: resolvedTranscription,
+          syn: resolvedSynonyms.isEmpty ? entry.syn : resolvedSynonyms,
           tr: entry.tr,
         ),
       );

@@ -1,7 +1,17 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:rxdart/rxdart.dart';
 
 import '../base_auth_user_provider.dart';
+import '/services/ux_session_cache_lifecycle.dart';
+// ─── SUBSCRIPTION REWORK ───────────────────────────────────────────────
+// RevenueCat needs the Firebase uid as its App User ID. We hook the
+// auth stream so login/logout in RC happens transparently whenever
+// Firebase Auth state flips.
+import '/services/subscription_service.dart';
+// ──────────────────────────────────────────────────────────────────────
 
 export '../base_auth_user_provider.dart';
 
@@ -58,12 +68,51 @@ class SmallTalkFirebaseUser extends BaseAuthUser {
       SmallTalkFirebaseUser(user);
 }
 
-Stream<BaseAuthUser> smallTalkFirebaseUserStream() => FirebaseAuth.instance
-        .authStateChanges()
-        .startWith(FirebaseAuth.instance.currentUser)
-        .map<BaseAuthUser>(
+@visibleForTesting
+Stream<T> withUxSessionCacheLifecycle<T>(
+  Stream<T> authStateStream,
+  String? Function(T authState) userIdOf,
+) =>
+    authStateStream.doOnData(
+      (authState) =>
+          UxSessionCacheLifecycle.updateAuthenticatedUser(userIdOf(authState)),
+    );
+
+Stream<BaseAuthUser> smallTalkFirebaseUserStream() =>
+    withUxSessionCacheLifecycle<User?>(
+      FirebaseAuth.instance
+          .authStateChanges()
+          .startWith(FirebaseAuth.instance.currentUser),
+      (user) => user?.uid,
+    ).map<BaseAuthUser>(
       (user) {
         currentUser = SmallTalkFirebaseUser(user);
+        // ─── SUBSCRIPTION REWORK ───────────────────────────────────────
+        // Mirror auth state into RevenueCat. Fire-and-forget so this map
+        // stays synchronous and the stream emits without delay. The
+        // service guards re-entry and logs its own errors.
+        if (user != null && user.uid.isNotEmpty) {
+          unawaited(
+            SubscriptionService.instance.logInUser(user.uid).catchError(
+              (Object error, StackTrace stackTrace) {
+                debugPrint(
+                  '⚠️ RevenueCat auth login sync failed: $error\n$stackTrace',
+                );
+              },
+            ),
+          );
+        } else {
+          unawaited(
+            SubscriptionService.instance.logOutUser().catchError(
+              (Object error, StackTrace stackTrace) {
+                debugPrint(
+                  '⚠️ RevenueCat auth logout sync failed: $error\n$stackTrace',
+                );
+              },
+            ),
+          );
+        }
+        // ──────────────────────────────────────────────────────────────
         return currentUser!;
       },
     ).distinct(

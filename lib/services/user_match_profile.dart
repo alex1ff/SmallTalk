@@ -1,5 +1,21 @@
 import '/backend/schema/enums/enums.dart';
 import '/backend/schema/users_record.dart';
+import 'supported_location_catalog.dart';
+
+const partnerLevelRanks = <Level, int>{
+  Level.Beginner: 0,
+  Level.Basic: 1,
+  Level.Intermediate: 2,
+  Level.Fluent: 3,
+};
+
+List<Level> partnerLevelsAtOrAbove(Level minimumLevel) {
+  final minimumRank = partnerLevelRanks[minimumLevel]!;
+  return partnerLevelRanks.entries
+      .where((entry) => entry.value >= minimumRank)
+      .map((entry) => entry.key)
+      .toList(growable: false);
+}
 
 enum TeacherTrackProfileAction {
   apply,
@@ -86,12 +102,7 @@ String? resolveUserActiveConversationLanguage(UsersRecord? user) {
 }
 
 String? resolveUserMatchCountryCode(UsersRecord? user) {
-  final legacyCountry = _trimmedValue(user?.countryNS.code);
-  if (legacyCountry != null) {
-    return legacyCountry;
-  }
-
-  return _trimmedValue(_storedMatchProfile(user)['country']);
+  return resolveSupportedProfileCity(user?.profileCity)?.countryCode;
 }
 
 Level? resolveUserMatchLevel(UsersRecord? user) {
@@ -152,6 +163,11 @@ bool shouldMirrorPendingTeacherStatusOnRestore(
 bool canUseNativeSpeakerShell(UsersRecord? user) =>
     user?.role == UserRole.native_speaker &&
     (isUserApprovedTeacher(user) || hasPendingTeacherVerification(user));
+
+// Profile balance is a teacher-track state. Money-moving screens stay
+// approved-only through canAccessTeacherSurfaces.
+bool shouldShowTeacherProfileBalance(UsersRecord? user) =>
+    canUseNativeSpeakerShell(user);
 
 bool canAccessTeacherSurfaces(UsersRecord? user) =>
     user?.role == UserRole.native_speaker && isUserApprovedTeacher(user);

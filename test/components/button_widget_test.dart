@@ -1,11 +1,15 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:small_talk/components/button/button_widget.dart';
+import 'package:small_talk/components/wrapper.dart';
+import 'package:small_talk/shared_pages/design/expatlio_design.dart';
 
 const _footerIgnoreKey = ValueKey<String>('call_summary_footer_ignore');
 const _footerOpacityKey = ValueKey<String>('call_summary_footer_opacity');
+const _geometryButtonKey = ValueKey<String>('button_widget_geometry');
 
 class _CallSummaryFooterHarness extends StatefulWidget {
   const _CallSummaryFooterHarness({
@@ -72,12 +76,17 @@ class _CallSummaryFooterHarnessState extends State<_CallSummaryFooterHarness> {
                       offset: isComposerActive
                           ? const Offset(0.0, 0.24)
                           : Offset.zero,
-                      child: ButtonWidget(
-                        text: 'Done',
-                        keyboardAwarePadding: false,
+                      child: Wrapper(
                         padding: const EdgeInsetsDirectional.fromSTEB(
-                            6.0, 0.0, 6.0, 35.0),
-                        action: widget.onTap,
+                          6.0,
+                          0.0,
+                          6.0,
+                          35.0,
+                        ),
+                        child: ButtonWidget(
+                          text: 'Done',
+                          action: widget.onTap,
+                        ),
                       ),
                     ),
                   ),
@@ -108,39 +117,75 @@ void main() {
     );
   }
 
-  testWidgets(
-      'spinner mode shows loading UI in the white circle and blocks repeat taps',
+  testWidgets('spinner mode shows loading UI and blocks repeat taps',
       (tester) async {
+    final semantics = tester.ensureSemantics();
     final completer = Completer<void>();
     var tapCount = 0;
 
     await tester.pumpWidget(
       buildHarness(
-        ButtonWidget(
-          text: 'Submit',
-          loadingText: 'Sending...',
-          busyStyle: ButtonBusyStyle.spinner,
-          keyboardAwarePadding: false,
-          padding: EdgeInsets.zero,
-          action: () async {
-            tapCount++;
-            await completer.future;
-          },
+        Center(
+          child: SizedBox(
+            width: 280.0,
+            child: ButtonWidget(
+              key: _geometryButtonKey,
+              text: 'Submit',
+              loadingText: 'Sending...',
+              busyStyle: ButtonBusyStyle.spinner,
+              action: () async {
+                tapCount++;
+                await completer.future;
+              },
+            ),
+          ),
         ),
       ),
     );
+
+    final initialButtonRect = tester.getRect(find.byKey(_geometryButtonKey));
+    final initialLabelCenter = tester.getCenter(find.text('Submit'));
+    expect(
+      initialButtonRect.size,
+      const Size(280.0, ExpatlioDesign.buttonHeight),
+    );
+    expect(initialLabelCenter.dy, closeTo(initialButtonRect.center.dy, 0.01));
 
     await tester.tap(find.byType(ButtonWidget));
     await tester.pump();
 
     expect(tapCount, 1);
     expect(find.text('Sending...'), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('button_widget_spinner')),
+        findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    final busySemantics = tester.getSemantics(find.byType(ButtonWidget));
+    expect(busySemantics.label, 'Sending...');
+    expect(busySemantics.flagsCollection.isButton, isTrue);
+    expect(busySemantics.flagsCollection.isEnabled, isFalse);
+    expect(busySemantics.flagsCollection.isLiveRegion, isTrue);
     expect(
-      find.descendant(
-        of: find.byKey(const ValueKey<String>('button_widget_circle')),
-        matching: find.byType(CircularProgressIndicator),
+      busySemantics.getSemanticsData().hasAction(SemanticsAction.tap),
+      isFalse,
+    );
+    expect(tester.getRect(find.byKey(_geometryButtonKey)), initialButtonRect);
+    expect(
+      tester.getSize(
+        find.byKey(const ValueKey<String>('button_widget_spinner')),
       ),
-      findsOneWidget,
+      const Size.square(20.0),
+    );
+    expect(
+      tester
+          .getCenter(find.byKey(
+            const ValueKey<String>('button_widget_spinner'),
+          ))
+          .dy,
+      closeTo(initialButtonRect.center.dy, 0.01),
+    );
+    expect(
+      tester.getCenter(find.text('Sending...')).dy,
+      closeTo(initialButtonRect.center.dy, 0.01),
     );
 
     await tester.tap(find.byType(ButtonWidget));
@@ -152,6 +197,74 @@ void main() {
 
     expect(find.text('Submit'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(tester.getRect(find.byKey(_geometryButtonKey)), initialButtonRect);
+    expect(
+      tester.getCenter(find.text('Submit')).dy,
+      closeTo(initialLabelCenter.dy, 0.01),
+    );
+    final readySemantics = tester.getSemantics(find.byType(ButtonWidget));
+    expect(readySemantics.label, 'Submit');
+    expect(readySemantics.flagsCollection.isEnabled, isTrue);
+    expect(
+      readySemantics.getSemanticsData().hasAction(SemanticsAction.tap),
+      isTrue,
+    );
+
+    await tester.pumpWidget(
+      buildHarness(
+        const Center(
+          child: SizedBox(
+            width: 280.0,
+            child: ButtonWidget(
+              key: _geometryButtonKey,
+              text: 'Submit',
+              enabled: false,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.getRect(find.byKey(_geometryButtonKey)), initialButtonRect);
+    expect(
+      tester.getCenter(find.text('Submit')).dy,
+      closeTo(initialLabelCenter.dy, 0.01),
+    );
+    semantics.dispose();
+  });
+
+  testWidgets('external busy state disables tap semantics and shows progress',
+      (tester) async {
+    final semantics = tester.ensureSemantics();
+    var tapCount = 0;
+
+    await tester.pumpWidget(
+      buildHarness(
+        ButtonWidget(
+          text: 'Continue',
+          loadingText: 'Working...',
+          busyStyle: ButtonBusyStyle.spinner,
+          busy: true,
+          action: () async => tapCount++,
+        ),
+      ),
+    );
+
+    final node = tester.getSemantics(find.byType(ButtonWidget));
+    expect(node.label, 'Working...');
+    expect(node.flagsCollection.isEnabled, isFalse);
+    expect(node.flagsCollection.isLiveRegion, isTrue);
+    expect(
+      node.getSemanticsData().hasAction(SemanticsAction.tap),
+      isFalse,
+    );
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    await tester.tap(find.byType(ButtonWidget), warnIfMissed: false);
+    await tester.pump();
+    expect(tapCount, 0);
+    semantics.dispose();
   });
 
   testWidgets('debounceOnly mode blocks repeat taps without showing spinner',
@@ -164,8 +277,6 @@ void main() {
         ButtonWidget(
           text: 'Next',
           busyStyle: ButtonBusyStyle.debounceOnly,
-          keyboardAwarePadding: false,
-          padding: EdgeInsets.zero,
           action: () async {
             tapCount++;
             await completer.future;
@@ -194,13 +305,15 @@ void main() {
   });
 
   testWidgets(
-      'keyboard-aware padding reacts to MediaQuery viewInsets immediately',
+      'keyboard-aware wrapper padding reacts to MediaQuery viewInsets immediately',
       (tester) async {
     await tester.pumpWidget(
       buildHarness(
-        ButtonWidget(
-          text: 'Continue',
-          action: () async {},
+        Wrapper.keyboardAware(
+          child: ButtonWidget(
+            text: 'Continue',
+            action: () async {},
+          ),
         ),
       ),
     );
@@ -209,14 +322,16 @@ void main() {
         tester.widget<AnimatedPadding>(find.byType(AnimatedPadding).first);
     expect(
       animatedPadding.padding.resolve(TextDirection.ltr).bottom,
-      35.0,
+      ExpatlioDesign.space32,
     );
 
     await tester.pumpWidget(
       buildHarness(
-        ButtonWidget(
-          text: 'Continue',
-          action: () async {},
+        Wrapper.keyboardAware(
+          child: ButtonWidget(
+            text: 'Continue',
+            action: () async {},
+          ),
         ),
         bottomInset: 280.0,
       ),
@@ -226,7 +341,7 @@ void main() {
         tester.widget<AnimatedPadding>(find.byType(AnimatedPadding).first);
     expect(
       animatedPadding.padding.resolve(TextDirection.ltr).bottom,
-      6.0,
+      ExpatlioDesign.space8,
     );
   });
 

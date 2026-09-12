@@ -1,246 +1,20 @@
 {
-  "startedAt": "2026-04-17T12:55:25.067Z",
+  "startedAt": "2026-09-08T20:16:27.600Z",
   "projectId": "demo-smalltalk",
   "emulators": {
     "firestore": "127.0.0.1:8080",
-    "storage": "127.0.0.1:9199"
+    "functions": "127.0.0.1:5001"
   },
   "checks": {
-    "rules": {
-      "pass": true,
-      "checks": [
-        {
-          "label": "Firestore unauth read users denied",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore cross-user profile update denied",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore cross-user transaction read denied",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore pending teacher withdrawal create denied",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore approved teacher withdrawal create allowed",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore self profile update allowed",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore self user create without protected teacher status allowed",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore self user create with teacher status denied",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore self teacher status update denied",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore self teacher pending status update allowed",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore self legacy teacher verification update denied",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore self matchProfile teacher approval update denied",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore admin teacher status update allowed",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore self teacher verification request create pending allowed",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore self teacher verification request update pending allowed",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore self teacher verification request review fields denied",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore self teacher verification request approve denied",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore self teacher verification request create approved denied",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore cross-user teacher verification request read denied",
-          "status": "pass"
-        },
-        {
-          "label": "Firestore admin teacher verification request approve allowed",
-          "status": "pass"
-        },
-        {
-          "label": "Storage cross-user write denied",
-          "status": "pass"
-        },
-        {
-          "label": "Storage unauth write denied",
-          "status": "pass"
-        },
-        {
-          "label": "Storage self write allowed",
-          "status": "pass"
-        },
-        {
-          "label": "Session client create denied even with participantIds",
-          "status": "pass"
-        },
-        {
-          "label": "Session create without participantIds denied",
-          "status": "pass"
-        },
-        {
-          "label": "Session create with extra participantIds denied",
-          "status": "pass"
-        },
-        {
-          "label": "Session participantIds read allowed",
-          "status": "pass"
-        },
-        {
-          "label": "Session legacy participant read still allowed",
-          "status": "pass"
-        },
-        {
-          "label": "Session non-participant read denied",
-          "status": "pass"
-        },
-        {
-          "label": "Session requester navigation update allowed",
-          "status": "pass"
-        },
-        {
-          "label": "Session responder navigation update allowed via participantIds",
-          "status": "pass"
-        },
-        {
-          "label": "Session participantIds tamper denied",
-          "status": "pass"
-        },
-        {
-          "label": "Session non-navigation update denied for participant",
-          "status": "pass"
-        },
-        {
-          "label": "Caption read allowed via participantIds session membership",
-          "status": "pass"
-        },
-        {
-          "label": "Caption write denied for non-participant",
-          "status": "pass"
-        },
-        {
-          "label": "Caption peer legacy write allowed for participant writer",
-          "status": "pass"
-        },
-        {
-          "label": "Chat unauth conversation read denied",
-          "status": "pass"
-        },
-        {
-          "label": "Chat participant conversation read allowed",
-          "status": "pass"
-        },
-        {
-          "label": "Chat missing conversation get returns not found for signed-in user",
-          "status": "pass"
-        },
-        {
-          "label": "Chat conversations collection query denied",
-          "status": "pass"
-        },
-        {
-          "label": "Chat conversations collection scan denied",
-          "status": "pass"
-        },
-        {
-          "label": "Chat conversations query for another participant denied",
-          "status": "pass"
-        },
-        {
-          "label": "Chat non-participant conversation read denied",
-          "status": "pass"
-        },
-        {
-          "label": "Chat client conversation create denied",
-          "status": "pass"
-        },
-        {
-          "label": "Chat unlock event access denied to clients",
-          "status": "pass"
-        },
-        {
-          "label": "Chat unlocked messages read allowed for participant",
-          "status": "pass"
-        },
-        {
-          "label": "Chat unlocked messages read denied for non-participant",
-          "status": "pass"
-        },
-        {
-          "label": "Chat locked messages read denied before unlock",
-          "status": "pass"
-        },
-        {
-          "label": "Chat locked messages create denied before unlock",
-          "status": "pass"
-        },
-        {
-          "label": "Chat participant message create allowed after unlock",
-          "status": "pass"
-        },
-        {
-          "label": "Chat message create denied for wrong senderRef",
-          "status": "pass"
-        },
-        {
-          "label": "Chat message create denied for extra fields",
-          "status": "pass"
-        },
-        {
-          "label": "Chat participant read marker update allowed on own key only",
-          "status": "pass"
-        },
-        {
-          "label": "Chat read marker update denied for another participant key",
-          "status": "pass"
-        },
-        {
-          "label": "Chat read marker update denied for non-read fields",
-          "status": "pass"
-        }
-      ],
-      "failures": []
-    },
     "endSessionConcurrency": {
       "pass": true,
-      "sessionId": "audit_session_1776430532711",
+      "sessionId": "audit_session_1788898587635",
       "invocation": [
         {
           "caller": "student",
           "status": "fulfilled",
           "responseStatus": "already_ended",
-          "message": "Session was already ended"
+          "message": "Session was already terminal"
         },
         {
           "caller": "tutor",
@@ -250,12 +24,12 @@
         }
       ],
       "transactionCounts": {
-        "total": 2,
-        "call_charge": 1,
+        "total": 1,
+        "call_charge": 0,
         "earning": 1
       },
       "studentBalanceMinutesBefore": 50,
-      "studentBalanceMinutesAfter": 41,
+      "studentBalanceMinutesAfter": 50,
       "sessionStatusAfter": "ended",
       "unlockEventCreated": true,
       "failure": null
@@ -267,18 +41,18 @@
         "eligibleProcessed": {
           "pass": true,
           "manualFallbackUsed": false,
-          "sessionId": "unlock_session_1776430537961",
-          "pairId": "unlock_student_1776430537961_unlock_tutor_1776430537961",
+          "sessionId": "unlock_session_1788898592970",
+          "pairId": "unlock_student_1788898592970_unlock_tutor_1788898592970",
           "eventStatus": "processed",
           "eventReason": "processed_unlocked",
-          "conversationPath": "conversations/unlock_student_1776430537961_unlock_tutor_1776430537961",
+          "conversationPath": "conversations/unlock_student_1788898592970_unlock_tutor_1788898592970",
           "failure": null
         },
         "existingConversationReuse": {
           "pass": true,
           "manualFallbackUsed": false,
-          "sessionId": "reuse_session_1776430537961",
-          "pairId": "reuse_student_1776430537961_reuse_tutor_1776430537961",
+          "sessionId": "reuse_session_1788898592970",
+          "pairId": "reuse_student_1788898592970_reuse_tutor_1788898592970",
           "eventStatus": "processed",
           "eventReason": "processed_existing_conversation",
           "unlockRefPreserved": true,
@@ -287,8 +61,8 @@
         "ignoredIneligible": {
           "pass": true,
           "manualFallbackUsed": false,
-          "sessionId": "ignored_session_1776430537961",
-          "pairId": "ignored_student_1776430537961_ignored_tutor_1776430537961",
+          "sessionId": "ignored_session_1788898592970",
+          "pairId": "ignored_student_1788898592970_ignored_tutor_1788898592970",
           "eventStatus": "ignored",
           "eventReason": "ignored_not_connected",
           "conversationCreated": false,
@@ -297,8 +71,8 @@
         "missingSessionFailed": {
           "pass": true,
           "manualFallbackUsed": false,
-          "sessionId": "missing_session_1776430537961",
-          "pairId": "missing_student_1776430537961_missing_tutor_1776430537961",
+          "sessionId": "missing_session_1788898592970",
+          "pairId": "missing_student_1788898592970_missing_tutor_1788898592970",
           "eventStatus": "failed",
           "eventReason": "failed_exception",
           "conversationCreated": false,
@@ -310,38 +84,21 @@
     "createVideoSessionMatrix": {
       "pass": true,
       "failure": null,
-      "scenario": "student and native_speaker requesters can build all-to-all candidate pools",
+      "scenario": "student search requests build the active all-to-all candidate pool",
       "scenarios": {
-        "nativeSpeakerRequester": {
-          "pass": true,
-          "failure": null,
-          "scenario": "native_speaker requester can build all-to-all candidate pool",
-          "responseStatus": "searching",
-          "sessionId": "WhnG9gkJrYIEq1beeCmM",
-          "participantIds": [
-            "audit_matrix_native_requester_requester_1776430542828"
-          ],
-          "candidateIds": [
-            "audit_matrix_native_requester_speaker_1776430542828",
-            "audit_matrix_native_requester_student_1776430542828"
-          ],
-          "candidateRoleCounts": {
-            "native_speaker": 1,
-            "student": 1
-          }
-        },
         "studentRequester": {
           "pass": true,
           "failure": null,
           "scenario": "student requester can build all-to-all candidate pool",
           "responseStatus": "searching",
-          "sessionId": "1YRdXUJt6gkUmXW183Cg",
+          "sessionId": "84nlYAiwrtDXpgUM9JQo",
           "participantIds": [
-            "audit_matrix_student_requester_requester_1776430542828"
+            "audit_matrix_student_requester_requester_1788898596434",
+            "audit_matrix_student_requester_speaker_1788898596434"
           ],
           "candidateIds": [
-            "audit_matrix_student_requester_speaker_1776430542828",
-            "audit_matrix_student_requester_student_1776430542828"
+            "audit_matrix_student_requester_speaker_1788898596434",
+            "audit_matrix_student_requester_student_1788898596434"
           ],
           "candidateRoleCounts": {
             "native_speaker": 1,
@@ -353,12 +110,13 @@
           "failure": null,
           "scenario": "student requester can match an explicit student-student pair",
           "responseStatus": "searching",
-          "sessionId": "g6trwgm3xjtbjoNWnrSj",
+          "sessionId": "MQ18iRdmwrEqIUewhA3l",
           "participantIds": [
-            "audit_matrix_student_student_pair_requester_1776430542828"
+            "audit_matrix_student_student_pair_requester_1788898596434",
+            "audit_matrix_student_student_pair_student_1788898596434"
           ],
           "candidateIds": [
-            "audit_matrix_student_student_pair_student_1776430542828"
+            "audit_matrix_student_student_pair_student_1788898596434"
           ],
           "candidateRoleCounts": {
             "student": 1
@@ -369,106 +127,31 @@
           "failure": null,
           "scenario": "student requester can match an explicit student-native_speaker pair",
           "responseStatus": "searching",
-          "sessionId": "3rq23fBTrkqKQzKlAu5D",
+          "sessionId": "Il1nZxVFJjnj9hfsLEjQ",
           "participantIds": [
-            "audit_matrix_student_native_pair_requester_1776430542828"
+            "audit_matrix_student_native_pair_requester_1788898596434",
+            "audit_matrix_student_native_pair_speaker_1788898596434"
           ],
           "candidateIds": [
-            "audit_matrix_student_native_pair_speaker_1776430542828"
+            "audit_matrix_student_native_pair_speaker_1788898596434"
           ],
           "candidateRoleCounts": {
             "native_speaker": 1
           }
-        },
-        "nativeSpeakerNativeSpeakerPair": {
-          "pass": true,
-          "failure": null,
-          "scenario": "native_speaker requester can match an explicit native_speaker-native_speaker pair",
-          "responseStatus": "searching",
-          "sessionId": "7GG7pTWpBze2tTZnLpEV",
-          "participantIds": [
-            "audit_matrix_native_native_pair_requester_1776430542828"
-          ],
-          "candidateIds": [
-            "audit_matrix_native_native_pair_speaker_1776430542828"
-          ],
-          "candidateRoleCounts": {
-            "native_speaker": 1
-          }
-        }
-      }
-    },
-    "sameDayRepeatPrevention": {
-      "pass": true,
-      "failure": null,
-      "scenarios": {
-        "completedConnectedExcluded": {
-          "pass": true,
-          "sessionId": "repeat_completed_session_1776430543640",
-          "historyCreated": true,
-          "directStatus": "no_tutors_available",
-          "poolExcludedCompletedCandidate": true,
-          "poolIncludesFreshCandidate": true,
-          "failure": null
-        },
-        "neverConnectedDoesNotCount": {
-          "pass": true,
-          "sessionId": "repeat_never_session_1776430543640",
-          "historyCreated": false,
-          "directStatus": "searching",
-          "failure": null
-        },
-        "cancelledDoesNotCount": {
-          "pass": true,
-          "sessionId": "repeat_cancelled_session_1776430543640",
-          "historyCreated": false,
-          "directStatus": "searching",
-          "failure": null
-        },
-        "testerBypass": {
-          "pass": true,
-          "directStatus": "searching",
-          "failure": null
         }
       }
     },
     "partnerLevelFilter": {
       "pass": true,
       "failure": null,
-      "scenario": "preferred partner level filters pool and direct calls",
-      "poolSessionId": "hY59C1eDMs4LZn8Q2aq2",
+      "scenario": "preferred partner level filters the discovery pool",
+      "poolSessionId": "2msJt6yNNyi3Gz8d3rzf",
       "poolCandidateIds": [
-        "level_fluent_1776430544616"
+        "level_fluent_1788898596749"
       ],
-      "directMismatchStatus": "no_tutors_available",
-      "directMatchStatus": "searching",
-      "directMatchSessionId": "onTPTR8DQ6i7Swgw82ew",
       "matchContextFilters": {
         "preferredCountry": null,
         "preferredPartnerLevel": "Fluent"
-      },
-      "directMatchContextFilters": {
-        "preferredCountry": null,
-        "preferredPartnerLevel": "Fluent"
-      }
-    },
-    "teacherBoostRanking": {
-      "pass": true,
-      "failure": null,
-      "scenario": "approved teacher boost ranks Fluent approved teachers first",
-      "sessionId": "TvN1o3qUt9iVX8sBCMZr",
-      "candidateIds": [
-        "teacher_boost_approved_1776430544820",
-        "level_fluent_1776430544616",
-        "teacher_boost_student_1776430544820"
-      ],
-      "ranking": {
-        "friendPriorityApplied": false,
-        "locationApplied": false,
-        "levelApplied": true,
-        "teacherBoostApplied": true,
-        "internalRankingScore": 0,
-        "legacyPriorityUsedAsTiebreaker": true
       }
     },
     "teacherVerificationRequestFlow": {
@@ -479,21 +162,22 @@
         "approvedRequest": {
           "pass": true,
           "manualFallbackUsed": false,
-          "userId": "audit_teacher_request_approved_1776430545023",
+          "userId": "audit_teacher_request_approved_1788898596830",
           "userStatus": "approved",
           "verifNS": true,
           "matchProfile": {
             "country": "US",
             "role": "native_speaker",
+            "city": null,
+            "level": null,
+            "ratingCount": 0,
+            "version": "v1",
             "supportedLanguages": [
               "en"
             ],
             "legacyPriorityScore": 0,
-            "level": null,
             "activeLanguage": "en",
             "activeLanguageSource": "profile",
-            "ratingCount": 0,
-            "version": "v1",
             "ratingAverage": 0,
             "approvedTeacher": true,
             "teacherAccreditationStatus": "approved"
@@ -503,21 +187,22 @@
         "rejectedRequestClearsLegacy": {
           "pass": true,
           "manualFallbackUsed": false,
-          "userId": "audit_teacher_request_rejected_1776430545023",
+          "userId": "audit_teacher_request_rejected_1788898596830",
           "userStatus": "rejected",
           "verifNS": false,
           "matchProfile": {
             "country": null,
             "role": "native_speaker",
+            "city": null,
+            "level": null,
+            "ratingCount": 0,
+            "version": "v1",
             "supportedLanguages": [
               "en"
             ],
             "legacyPriorityScore": 0,
-            "level": null,
             "activeLanguage": "en",
             "activeLanguageSource": "profile",
-            "ratingCount": 0,
-            "version": "v1",
             "ratingAverage": 0,
             "approvedTeacher": false,
             "teacherAccreditationStatus": "rejected"
@@ -534,16 +219,17 @@
         "studentProfile": {
           "pass": true,
           "manualFallbackUsed": false,
-          "userId": "audit_match_student_1776430545871",
+          "userId": "audit_match_student_1788898600219",
           "matchProfile": {
             "country": "BR",
             "role": "student",
-            "legacyPriorityScore": 0,
+            "city": null,
             "level": "Intermediate",
+            "version": "v1",
+            "legacyPriorityScore": 0,
             "approvedTeacher": false,
             "activeLanguageSource": "profile",
             "teacherAccreditationStatus": null,
-            "version": "v1",
             "supportedLanguages": [
               "es"
             ],
@@ -556,21 +242,22 @@
         "nativeSpeakerProfile": {
           "pass": true,
           "manualFallbackUsed": false,
-          "userId": "audit_match_native_1776430545871",
+          "userId": "audit_match_native_1788898600219",
           "matchProfile": {
             "country": "US",
             "role": "native_speaker",
+            "city": null,
+            "level": null,
+            "ratingCount": 11,
+            "version": "v1",
             "supportedLanguages": [
               "en"
             ],
             "legacyPriorityScore": 0,
-            "level": null,
             "activeLanguage": "en",
             "approvedTeacher": true,
             "activeLanguageSource": "profile",
             "teacherAccreditationStatus": "approved",
-            "ratingCount": 11,
-            "version": "v1",
             "ratingAverage": 4.7
           },
           "failure": null
@@ -578,21 +265,22 @@
         "rejectedTeacherProfile": {
           "pass": true,
           "manualFallbackUsed": false,
-          "userId": "audit_match_rejected_teacher_1776430545871",
+          "userId": "audit_match_rejected_teacher_1788898600219",
           "matchProfile": {
             "country": null,
             "role": "native_speaker",
+            "city": null,
+            "level": null,
+            "ratingCount": 0,
+            "version": "v1",
             "supportedLanguages": [
               "en"
             ],
             "legacyPriorityScore": 0,
-            "level": null,
             "activeLanguage": "en",
             "approvedTeacher": false,
             "activeLanguageSource": "profile",
             "teacherAccreditationStatus": "rejected",
-            "ratingCount": 0,
-            "version": "v1",
             "ratingAverage": 0
           },
           "failure": null
@@ -600,7 +288,7 @@
         "storedOnlyProfile": {
           "pass": true,
           "manualFallbackUsed": false,
-          "userId": "audit_match_stored_only_1776430545871",
+          "userId": "audit_match_stored_only_1788898600219",
           "matchProfile": {
             "version": "v1",
             "role": "native_speaker",
@@ -615,6 +303,7 @@
             "teacherAccreditationStatus": "approved",
             "approvedTeacher": true,
             "legacyPriorityScore": 7,
+            "city": null,
             "ratingCount": 0
           },
           "failure": null
@@ -627,17 +316,23 @@
       "concurrency": 5,
       "successCount": 20,
       "errorCount": 0,
-      "p50_ms": 65,
-      "p95_ms": 85,
-      "max_ms": 98,
-      "avg_ms": 67.9,
-      "logLines": 80,
+      "p50_ms": 235,
+      "p95_ms": 7544,
+      "max_ms": 9250,
+      "avg_ms": 2633.3,
+      "logLines": 0,
       "errorLines": 0,
       "responseStatuses": {
-        "no_tutors_available": 20
+        "searching": 20
       },
       "failure": null
+    },
+    "callLifecycleEmulator": {
+      "pass": true,
+      "exitCode": 0,
+      "signal": null,
+      "output": "TAP version 13\n# (node:57624) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.\n# (Use `node --trace-deprecation ...` to show where the warning was created)\n# Subtest: concurrent trial reservations allow exactly one caller\nok 1 - concurrent trial reservations allow exactly one caller\n  ---\n  duration_ms: 2991.862667\n  type: 'test'\n  ...\n# Subtest: pair lock keeps both trial reservations unchanged when responder fails\nok 2 - pair lock keeps both trial reservations unchanged when responder fails\n  ---\n  duration_ms: 80.918125\n  type: 'test'\n  ...\n# Subtest: technical failure before connection retries, qualified call consumes once\nok 3 - technical failure before connection retries, qualified call consumes once\n  ---\n  duration_ms: 71.275834\n  type: 'test'\n  ...\n# Subtest: two trial participants reconcile independently and idempotently\nok 4 - two trial participants reconcile independently and idempotently\n  ---\n  duration_ms: 111.894333\n  type: 'test'\n  ...\n# {\"source\":\"end_session\",\"event\":\"end_started\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"userHash\":\"f27311abfda3a385\",\"sessionHash\":\"bfdc41ed6409d9e6ce3377489e2b97e5df96c6ac2bd84e83d1b68baf33513234\",\"reasonCode\":\"user_ended\",\"source\":\"end_session\",\"event\":\"end_attempt\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"bfdc41ed6409d9e6ce3377489e2b97e5df96c6ac2bd84e83d1b68baf33513234\",\"status\":\"active\",\"source\":\"end_session\",\"event\":\"session_loaded\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"bfdc41ed6409d9e6ce3377489e2b97e5df96c6ac2bd84e83d1b68baf33513234\",\"status\":\"completed\",\"durationSeconds\":0,\"result\":\"no_payout\",\"source\":\"end_session\",\"event\":\"session_billing_completed\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"bfdc41ed6409d9e6ce3377489e2b97e5df96c6ac2bd84e83d1b68baf33513234\",\"source\":\"end_session\",\"event\":\"end_transaction_completed\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"bfdc41ed6409d9e6ce3377489e2b97e5df96c6ac2bd84e83d1b68baf33513234\",\"reasonCode\":\"unknown\",\"source\":\"end_session\",\"event\":\"chat_unlock_not_eligible\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"bfdc41ed6409d9e6ce3377489e2b97e5df96c6ac2bd84e83d1b68baf33513234\",\"source\":\"end_session\",\"event\":\"background_billing_started\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"bfdc41ed6409d9e6ce3377489e2b97e5df96c6ac2bd84e83d1b68baf33513234\",\"source\":\"end_session\",\"event\":\"session_notifications_cancel_started\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"bfdc41ed6409d9e6ce3377489e2b97e5df96c6ac2bd84e83d1b68baf33513234\",\"source\":\"end_session\",\"event\":\"end_completed\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# Subtest: Daily-wins then mark loser preserves first marker and consumes trials\nok 5 - Daily-wins then mark loser preserves first marker and consumes trials\n  ---\n  duration_ms: 205.630541\n  type: 'test'\n  ...\n# {\"source\":\"end_session\",\"event\":\"end_started\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"userHash\":\"a90e96f2e688fdc0\",\"sessionHash\":\"0e1384d88b42081f8d180830ae9345096e5acad21d949a9bd9bcfe040732f285\",\"reasonCode\":\"user_ended\",\"source\":\"end_session\",\"event\":\"end_attempt\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"0e1384d88b42081f8d180830ae9345096e5acad21d949a9bd9bcfe040732f285\",\"status\":\"active\",\"source\":\"end_session\",\"event\":\"session_loaded\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"0e1384d88b42081f8d180830ae9345096e5acad21d949a9bd9bcfe040732f285\",\"status\":\"completed\",\"durationSeconds\":0,\"result\":\"no_payout\",\"source\":\"end_session\",\"event\":\"session_billing_completed\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"0e1384d88b42081f8d180830ae9345096e5acad21d949a9bd9bcfe040732f285\",\"source\":\"end_session\",\"event\":\"end_transaction_completed\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"0e1384d88b42081f8d180830ae9345096e5acad21d949a9bd9bcfe040732f285\",\"reasonCode\":\"unknown\",\"source\":\"end_session\",\"event\":\"chat_unlock_not_eligible\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"0e1384d88b42081f8d180830ae9345096e5acad21d949a9bd9bcfe040732f285\",\"source\":\"end_session\",\"event\":\"background_billing_started\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"0e1384d88b42081f8d180830ae9345096e5acad21d949a9bd9bcfe040732f285\",\"source\":\"end_session\",\"event\":\"session_notifications_cancel_started\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"0e1384d88b42081f8d180830ae9345096e5acad21d949a9bd9bcfe040732f285\",\"source\":\"end_session\",\"event\":\"end_completed\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# Subtest: mark-wins then Daily loser preserves first marker and consumes trials\nok 6 - mark-wins then Daily loser preserves first marker and consumes trials\n  ---\n  duration_ms: 172.941375\n  type: 'test'\n  ...\n# {\"source\":\"cancel_call\",\"event\":\"cancel_started\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"studentHash\":\"afe76b77f92c089e\",\"sessionHash\":\"5c9facb8b2ed78f21459ceabecea20ef36f1f90d41bc9a49e070653a0b5026f8\",\"source\":\"cancel_call\",\"event\":\"cancel_attempt\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"5c9facb8b2ed78f21459ceabecea20ef36f1f90d41bc9a49e070653a0b5026f8\",\"source\":\"cancel_call\",\"event\":\"cancel_transaction_started\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"5c9facb8b2ed78f21459ceabecea20ef36f1f90d41bc9a49e070653a0b5026f8\",\"status\":\"connecting\",\"studentHash\":\"afe76b77f92c089e\",\"source\":\"cancel_call\",\"event\":\"session_loaded\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"5c9facb8b2ed78f21459ceabecea20ef36f1f90d41bc9a49e070653a0b5026f8\",\"source\":\"cancel_call\",\"event\":\"session_notifications_cancel_started\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"5c9facb8b2ed78f21459ceabecea20ef36f1f90d41bc9a49e070653a0b5026f8\",\"source\":\"cancel_call\",\"event\":\"session_notifications_empty\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"sessionHash\":\"5c9facb8b2ed78f21459ceabecea20ef36f1f90d41bc9a49e070653a0b5026f8\",\"source\":\"cancel_call\",\"event\":\"cancel_completed\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# Subtest: cancel owner returns both pre-connect trial participants to retry\nok 7 - cancel owner returns both pre-connect trial participants to retry\n  ---\n  duration_ms: 65.893042\n  type: 'test'\n  ...\n# {\"sessionHash\":\"2c4eef2007e7cfd99d2e089c912598fd2512413b57af255b9cf918de0c56022c\",\"source\":\"cleanup_expired_sessions\",\"event\":\"cleanup_pending_session_expiring\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# {\"counts\":{\"found\":1,\"cleaned\":1},\"operation\":\"cleanup_sessions_completed\",\"source\":\"call_lifecycle\",\"event\":\"call_lifecycle_event\",\"severity\":\"INFO\",\"message\":\"backend_event\"}\n# Subtest: expiry owner reconciles a no-responder trial session\nok 8 - expiry owner reconciles a no-responder trial session\n  ---\n  duration_ms: 70.49225\n  type: 'test'\n  ...\n# Subtest: Daily owner ignores stale trial ids and preserves existing evidence\nok 9 - Daily owner ignores stale trial ids and preserves existing evidence\n  ---\n  duration_ms: 60.673\n  type: 'test'\n  ...\n1..9\n# tests 9\n# suites 0\n# pass 9\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 4476.193833"
     }
   },
-  "finishedAt": "2026-04-17T12:55:47.245Z"
+  "finishedAt": "2026-09-08T20:16:57.356Z"
 }

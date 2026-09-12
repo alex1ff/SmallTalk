@@ -4,9 +4,22 @@ const {
   buildAcceptedSessionPolicyState,
   buildInitialSessionPolicyState,
   buildUniversalSessionPolicy,
+  getAcceptedSessionCredentialParticipantIds,
+  getAssignedResponderId,
+  getCredentialDeadlineMillis,
+  getCredentialTtlSeconds,
+  getSessionExpiryTtlSeconds,
+  getRequesterId,
   getSessionParticipantIds,
   getSessionPolicyEffectiveLimitSeconds,
   getSessionPolicyExpiresAt,
+  isAcceptedSessionCredentialParticipant,
+  isCredentialSessionJoinable,
+  isCredentialSessionStatus,
+  isVideoSessionStatus,
+  VIDEO_SESSION_CREDENTIAL_STATUSES,
+  VIDEO_SESSION_STATUS,
+  VIDEO_SESSION_TERMINAL_STATUSES,
 } = require("./video_sessions_shared");
 
 test("buildUniversalSessionPolicy returns the V2 default session contract", () => {
@@ -133,5 +146,333 @@ test("getSessionParticipantIds includes accepted responder fallback", () => {
       },
     }),
     ["requester-a", "responder-b"],
+  );
+});
+
+test("getSessionParticipantIds skips empty legacy requester fields", () => {
+  assert.deepEqual(
+    getSessionParticipantIds({
+      studentId: "   ",
+      requesterId: "requester-a",
+      responderId: "responder-b",
+    }),
+    ["requester-a", "responder-b"],
+  );
+});
+
+test("getRequesterId prefers neutral requester before stale legacy student", () => {
+  assert.equal(
+    getRequesterId({
+      studentId: "legacy-student",
+      requesterId: "neutral-requester",
+    }),
+    "neutral-requester",
+  );
+  assert.equal(
+    getRequesterId({
+      studentId: "legacy-student",
+      matchContext: {requesterId: "context-requester"},
+    }),
+    "context-requester",
+  );
+  assert.equal(getRequesterId({studentId: "legacy-student"}), "legacy-student");
+});
+
+test("getAssignedResponderId supports student responder assignments", () => {
+  assert.equal(
+    getAssignedResponderId({currentResponderId: "student-b"}),
+    "student-b",
+  );
+  assert.equal(
+    getAssignedResponderId({
+      currentResponderId: "student-b",
+      currentTutorId: "teacher-a",
+    }),
+    "student-b",
+  );
+  assert.equal(
+    getAssignedResponderId({
+      responderId: "student-neutral",
+      currentTutorId: "teacher-a",
+    }),
+    "student-neutral",
+  );
+  assert.equal(
+    getAssignedResponderId({currentTutorId: "teacher-a"}),
+    "teacher-a",
+  );
+  assert.equal(
+    getAssignedResponderId({tutorId: "teacher-b"}),
+    "teacher-b",
+  );
+  assert.equal(
+    getAssignedResponderId({
+      tutorId: "teacher-b",
+      currentResponderId: "neutral-student",
+    }),
+    "neutral-student",
+  );
+  assert.equal(
+    getAssignedResponderId({
+      matchContext: {acceptedResponderId: "student-c"},
+      currentResponderId: "stale-student",
+    }),
+    "student-c",
+  );
+  assert.equal(
+    getAssignedResponderId({
+      tutorId: "   ",
+      responderId: "student-b",
+      currentTutorId: "teacher-a",
+    }),
+    "student-b",
+  );
+  assert.equal(
+    getAssignedResponderId({
+      tutorId: "   ",
+      matchContext: {acceptedResponderId: "student-c"},
+      currentResponderId: "stale-student",
+    }),
+    "student-c",
+  );
+});
+
+test("credential participants exclude assigned-but-unaccepted current tutor", () => {
+  const searchingSession = {
+    status: "searching",
+    studentId: "student-a",
+    currentTutorId: "candidate-b",
+    participantIds: ["student-a"],
+  };
+
+  assert.deepEqual(
+    getAcceptedSessionCredentialParticipantIds(searchingSession),
+    ["student-a"],
+  );
+  assert.equal(
+    isAcceptedSessionCredentialParticipant(searchingSession, "candidate-b"),
+    false,
+  );
+  assert.equal(
+    isAcceptedSessionCredentialParticipant(searchingSession, "student-a"),
+    true,
+  );
+});
+
+test("credential session status is limited to joinable live sessions", () => {
+  assert.deepEqual(VIDEO_SESSION_CREDENTIAL_STATUSES, [
+    VIDEO_SESSION_STATUS.CONNECTING,
+    VIDEO_SESSION_STATUS.ACTIVE,
+    "connected",
+  ]);
+  assert.equal(isCredentialSessionStatus(VIDEO_SESSION_STATUS.ACTIVE), true);
+  assert.equal(
+    isCredentialSessionStatus(VIDEO_SESSION_STATUS.CONNECTING),
+    true,
+  );
+  assert.equal(isCredentialSessionStatus("connected"), true);
+  assert.equal(
+    isCredentialSessionStatus(VIDEO_SESSION_STATUS.SEARCHING),
+    false,
+  );
+  assert.equal(
+    isCredentialSessionStatus(VIDEO_SESSION_STATUS.PENDING_CONFIRMATION),
+    false,
+  );
+  assert.equal(isCredentialSessionStatus(VIDEO_SESSION_STATUS.ENDED), false);
+  assert.equal(
+    isCredentialSessionStatus(VIDEO_SESSION_STATUS.CANCELLED),
+    false,
+  );
+  assert.equal(isCredentialSessionStatus(VIDEO_SESSION_STATUS.EXPIRED), false);
+});
+
+test("video session status contract includes only product lifecycle states", () => {
+  assert.deepEqual(VIDEO_SESSION_TERMINAL_STATUSES, [
+    VIDEO_SESSION_STATUS.CANCELLED,
+    VIDEO_SESSION_STATUS.EXPIRED,
+    VIDEO_SESSION_STATUS.ENDED,
+  ]);
+  for (const status of Object.values(VIDEO_SESSION_STATUS)) {
+    assert.equal(isVideoSessionStatus(status), true);
+  }
+  assert.equal(isVideoSessionStatus("no_tutors_available"), false);
+  assert.equal(isVideoSessionStatus("connected"), false);
+});
+
+test("credential session joinability requires an unexpired live session", () => {
+  const nowMillis = Date.parse("2026-05-25T10:00:00Z");
+  const futureExpiry = {
+    toMillis: () => Date.parse("2026-05-25T10:05:00Z"),
+  };
+  const pastExpiry = {
+    toMillis: () => Date.parse("2026-05-25T09:59:59Z"),
+  };
+  const futureJoinDeadline = {
+    toMillis: () => Date.parse("2026-05-25T10:00:01Z"),
+  };
+  const pastJoinDeadline = {
+    toMillis: () => Date.parse("2026-05-25T10:00:00Z"),
+  };
+
+  assert.equal(
+    isCredentialSessionJoinable(
+      {status: "active", expiresAt: futureExpiry},
+      nowMillis,
+    ),
+    true,
+  );
+  assert.equal(
+    isCredentialSessionJoinable(
+      {status: "active", expiresAt: pastExpiry},
+      nowMillis,
+    ),
+    false,
+  );
+  assert.equal(
+    isCredentialSessionJoinable(
+      {status: "active"},
+      nowMillis,
+    ),
+    false,
+  );
+  assert.equal(
+    isCredentialSessionJoinable(
+      {status: "searching", expiresAt: futureExpiry},
+      nowMillis,
+    ),
+    false,
+  );
+  assert.equal(
+    isCredentialSessionJoinable(
+      {
+        status: "connecting",
+        expiresAt: futureExpiry,
+        joinDeadlineAt: futureJoinDeadline,
+      },
+      nowMillis,
+    ),
+    true,
+  );
+  assert.equal(
+    isCredentialSessionJoinable(
+      {
+        status: "connecting",
+        expiresAt: futureExpiry,
+        joinDeadlineAt: pastJoinDeadline,
+      },
+      nowMillis,
+    ),
+    false,
+  );
+  assert.equal(
+    isCredentialSessionJoinable(
+      {
+        status: "connecting",
+        expiresAt: futureExpiry,
+        joinDeadlineAt: {toMillis: () => nowMillis},
+      },
+      nowMillis,
+    ),
+    false,
+  );
+  assert.equal(
+    isCredentialSessionJoinable(
+      {
+        status: "active",
+        expiresAt: futureExpiry,
+        joinDeadlineAt: pastJoinDeadline,
+      },
+      nowMillis,
+    ),
+    true,
+  );
+  assert.equal(
+    isCredentialSessionJoinable(
+      {status: "connecting", expiresAt: futureExpiry},
+      nowMillis,
+    ),
+    false,
+  );
+});
+
+test("credential TTL is capped by remaining session time", () => {
+  const nowMillis = Date.parse("2026-05-25T10:00:00Z");
+  const expiresInFiveMinutes = {
+    toMillis: () => Date.parse("2026-05-25T10:05:00Z"),
+  };
+  const expiresInTwoHours = {
+    toMillis: () => Date.parse("2026-05-25T12:00:00Z"),
+  };
+  const joinDeadlineInThirtySeconds = {
+    toMillis: () => Date.parse("2026-05-25T10:00:30Z"),
+  };
+
+  assert.equal(
+    getCredentialTtlSeconds(
+      {expiresAt: expiresInFiveMinutes},
+      60 * 60,
+      nowMillis,
+    ),
+    5 * 60,
+  );
+  assert.equal(
+    getCredentialTtlSeconds(
+      {expiresAt: expiresInTwoHours},
+      60 * 60,
+      nowMillis,
+    ),
+    60 * 60,
+  );
+  assert.equal(
+    getCredentialTtlSeconds(
+      {expiresAt: {toMillis: () => nowMillis + 500}},
+      60 * 60,
+      nowMillis,
+    ),
+    0,
+  );
+  assert.equal(
+    getCredentialDeadlineMillis({
+      status: "connecting",
+      expiresAt: expiresInFiveMinutes,
+      joinDeadlineAt: joinDeadlineInThirtySeconds,
+    }),
+    joinDeadlineInThirtySeconds.toMillis(),
+  );
+  assert.equal(
+    getCredentialTtlSeconds(
+      {
+        status: "connecting",
+        expiresAt: expiresInFiveMinutes,
+        joinDeadlineAt: joinDeadlineInThirtySeconds,
+      },
+      60 * 60,
+      nowMillis,
+    ),
+    30,
+  );
+  assert.equal(
+    getSessionExpiryTtlSeconds(
+      {
+        status: "connecting",
+        expiresAt: expiresInFiveMinutes,
+        joinDeadlineAt: joinDeadlineInThirtySeconds,
+      },
+      60 * 60,
+      nowMillis,
+    ),
+    5 * 60,
+  );
+  assert.equal(
+    getCredentialTtlSeconds(
+      {
+        status: "connecting",
+        expiresAt: expiresInFiveMinutes,
+      },
+      60 * 60,
+      nowMillis,
+    ),
+    0,
   );
 });

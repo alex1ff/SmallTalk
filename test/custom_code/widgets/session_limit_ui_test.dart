@@ -9,6 +9,75 @@ void main() {
     'extensionApproved': false,
   };
 
+  group('server-aligned session clock', () {
+    test('corrects a device clock that is four minutes ahead', () {
+      final serverNow = DateTime.utc(2026, 7, 18, 10, 0, 0);
+      final expiresAt = serverNow.add(const Duration(minutes: 5));
+      final deviceRequestStartedAt = serverNow.add(const Duration(minutes: 4));
+      final offset = resolveServerClockOffset(
+        serverNowMillis: serverNow.millisecondsSinceEpoch,
+        requestStartedAt: deviceRequestStartedAt,
+        roundTripDuration: Duration.zero,
+      );
+
+      expect(offset, const Duration(minutes: -4));
+      expect(
+        resolveServerAlignedNow(
+          offset,
+          deviceNow: deviceRequestStartedAt,
+        ),
+        serverNow,
+      );
+      expect(
+        shouldShowSessionLimitWarning(
+          expiresAt: expiresAt,
+          warnedForExpiresAt: null,
+          now: resolveServerAlignedNow(
+            offset,
+            deviceNow: deviceRequestStartedAt,
+          ),
+        ),
+        isFalse,
+      );
+      expect(
+        shouldShowSessionLimitWarning(
+          expiresAt: expiresAt,
+          warnedForExpiresAt: null,
+          now: resolveServerAlignedNow(
+            offset,
+            deviceNow: deviceRequestStartedAt.add(const Duration(minutes: 4)),
+          ),
+        ),
+        isTrue,
+      );
+    });
+
+    test('uses the request midpoint to account for network latency', () {
+      final requestStartedAt = DateTime.utc(2026, 7, 18, 10, 0, 0);
+      final serverNow = requestStartedAt.add(const Duration(seconds: 1));
+
+      expect(
+        resolveServerClockOffset(
+          serverNowMillis: serverNow.millisecondsSinceEpoch.toString(),
+          requestStartedAt: requestStartedAt,
+          roundTripDuration: const Duration(seconds: 2),
+        ),
+        Duration.zero,
+      );
+    });
+
+    test('rejects malformed server time', () {
+      expect(
+        resolveServerClockOffset(
+          serverNowMillis: 'bad',
+          requestStartedAt: DateTime.utc(2026, 7, 18),
+          roundTripDuration: Duration.zero,
+        ),
+        isNull,
+      );
+    });
+  });
+
   group('resolveSessionLimitRemainingSeconds', () {
     test('returns zero without expiry', () {
       expect(resolveSessionLimitRemainingSeconds(null), 0);
@@ -32,6 +101,383 @@ void main() {
         resolveSessionLimitRemainingSeconds(expiresAt, now: now),
         0,
       );
+    });
+  });
+
+  group('formatCallTimerDuration', () {
+    test('formats the initial limit and clamps negative values', () {
+      expect(formatCallTimerDuration(300), '5:00');
+      expect(formatCallTimerDuration(296), '4:56');
+      expect(formatCallTimerDuration(-1), '0:00');
+    });
+  });
+
+  group('call duration timer gate', () {
+    test('requires active server status and both Daily participants', () {
+      expect(
+        shouldRunCallDurationTimer(
+          sessionStatus: 'active',
+          isDailyConnected: true,
+          hasRemoteParticipant: true,
+          hasServerConnectedAt: true,
+        ),
+        isTrue,
+      );
+      for (final status in <String?>[
+        null,
+        'searching',
+        'pending_confirmation',
+        'connecting',
+        'ended',
+        'cancelled',
+        'expired',
+      ]) {
+        expect(
+          shouldRunCallDurationTimer(
+            sessionStatus: status,
+            isDailyConnected: true,
+            hasRemoteParticipant: true,
+            hasServerConnectedAt: true,
+          ),
+          isFalse,
+        );
+      }
+      expect(
+        shouldRunCallDurationTimer(
+          sessionStatus: 'active',
+          isDailyConnected: false,
+          hasRemoteParticipant: true,
+          hasServerConnectedAt: true,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldRunCallDurationTimer(
+          sessionStatus: 'active',
+          isDailyConnected: true,
+          hasRemoteParticipant: false,
+          hasServerConnectedAt: true,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldRunCallDurationTimer(
+          sessionStatus: 'active',
+          isDailyConnected: true,
+          hasRemoteParticipant: true,
+          hasServerConnectedAt: false,
+        ),
+        isFalse,
+      );
+    });
+
+    test('derives duration from the trusted server connection timestamp', () {
+      final connectedAt = DateTime.utc(2026, 8, 30, 12);
+      expect(
+        resolveAuthoritativeCallDurationSeconds(
+          serverConnectedAt: connectedAt,
+          serverAlignedNow: connectedAt.add(const Duration(seconds: 73)),
+        ),
+        73,
+      );
+      expect(
+        resolveAuthoritativeCallDurationSeconds(
+          serverConnectedAt: null,
+          serverAlignedNow: connectedAt,
+        ),
+        0,
+      );
+      expect(
+        resolveAuthoritativeCallDurationSeconds(
+          serverConnectedAt: connectedAt,
+          serverAlignedNow: connectedAt.subtract(const Duration(seconds: 1)),
+        ),
+        0,
+      );
+    });
+  });
+
+  group('resolveSessionLimitNow', () {
+    test('ignores server clock offset until the session becomes active', () {
+      final deviceNow = DateTime.utc(2026, 8, 24, 10);
+      final staleConnectingExpiry = deviceNow.add(
+        const Duration(minutes: 4, seconds: 10),
+      );
+      final activeExpiry = deviceNow.add(const Duration(minutes: 5));
+      const policy = <String, dynamic>{'effectiveLimitSeconds': 300};
+
+      final connectingNow = resolveSessionLimitNow(
+        sessionStatus: 'connecting',
+        serverClockOffset: Duration.zero,
+        expiresAt: staleConnectingExpiry,
+        sessionPolicy: policy,
+        elapsedSeconds: 0,
+        deviceNow: deviceNow,
+      );
+      final activeNow = resolveSessionLimitNow(
+        sessionStatus: 'active',
+        serverClockOffset: Duration.zero,
+        expiresAt: activeExpiry,
+        sessionPolicy: policy,
+        elapsedSeconds: 0,
+        deviceNow: deviceNow,
+      );
+
+      expect(
+        resolveSessionLimitRemainingSeconds(
+          staleConnectingExpiry,
+          now: connectingNow,
+        ),
+        300,
+      );
+      expect(
+        resolveSessionLimitRemainingSeconds(activeExpiry, now: activeNow),
+        300,
+      );
+      expect(
+        resolveSessionLimitRemainingSeconds(
+          activeExpiry,
+          now: resolveSessionLimitNow(
+            sessionStatus: 'active',
+            serverClockOffset: Duration.zero,
+            expiresAt: activeExpiry,
+            sessionPolicy: policy,
+            elapsedSeconds: 1,
+            deviceNow: deviceNow.add(const Duration(seconds: 1)),
+          ),
+        ),
+        299,
+      );
+    });
+
+    test('active rejoin uses expiry before and after server clock sync', () {
+      final serverNow = DateTime.utc(2026, 8, 24, 10);
+      final deviceNow = serverNow.subtract(const Duration(seconds: 30));
+      final expiresAt = serverNow.add(const Duration(minutes: 2));
+      const policy = <String, dynamic>{'effectiveLimitSeconds': 300};
+
+      final beforeSync = resolveSessionLimitNow(
+        sessionStatus: 'active',
+        serverClockOffset: null,
+        expiresAt: expiresAt,
+        sessionPolicy: policy,
+        elapsedSeconds: 0,
+        deviceNow: deviceNow,
+      );
+      final afterSync = resolveSessionLimitNow(
+        sessionStatus: 'active',
+        serverClockOffset: const Duration(seconds: 30),
+        expiresAt: expiresAt,
+        sessionPolicy: policy,
+        elapsedSeconds: 0,
+        deviceNow: deviceNow,
+      );
+
+      expect(beforeSync, deviceNow);
+      expect(
+        resolveSessionLimitDisplaySeconds(
+          expiresAt: expiresAt,
+          sessionPolicy: policy,
+          elapsedSeconds: 0,
+          useProvisionalCountdown: false,
+          now: beforeSync,
+        ),
+        150,
+      );
+      expect(
+        resolveSessionLimitDisplaySeconds(
+          expiresAt: expiresAt,
+          sessionPolicy: policy,
+          elapsedSeconds: 0,
+          useProvisionalCountdown: false,
+          now: afterSync,
+        ),
+        120,
+      );
+    });
+  });
+
+  group('resolveSessionLimitDisplaySeconds', () {
+    test('keeps provisional and authoritative countdown monotonic', () {
+      final deviceNow = DateTime.utc(2026, 8, 24, 10);
+      const policy = <String, dynamic>{'effectiveLimitSeconds': 300};
+
+      expect(
+        resolveSessionLimitDisplaySeconds(
+          expiresAt: null,
+          sessionPolicy: null,
+          elapsedSeconds: 0,
+          useProvisionalCountdown: true,
+          now: deviceNow,
+        ),
+        300,
+      );
+      expect(
+        resolveSessionLimitDisplaySeconds(
+          expiresAt: null,
+          sessionPolicy: null,
+          elapsedSeconds: 1,
+          useProvisionalCountdown: true,
+          now: deviceNow.add(const Duration(seconds: 1)),
+        ),
+        299,
+      );
+      expect(
+        resolveSessionLimitDisplaySeconds(
+          expiresAt: deviceNow.add(const Duration(minutes: 5)),
+          sessionPolicy: policy,
+          elapsedSeconds: 1,
+          useProvisionalCountdown: false,
+          now: deviceNow,
+        ),
+        299,
+      );
+    });
+
+    test('allows time to grow only when the approved limit grows', () {
+      final now = DateTime.utc(2026, 8, 24, 10);
+
+      final beforeExtension = resolveSessionLimitDisplaySeconds(
+        expiresAt: now.add(const Duration(minutes: 2)),
+        sessionPolicy: const <String, dynamic>{
+          'effectiveLimitSeconds': 300,
+        },
+        elapsedSeconds: 180,
+        useProvisionalCountdown: false,
+        now: now,
+      );
+      final afterExtension = resolveSessionLimitDisplaySeconds(
+        expiresAt: now.add(const Duration(minutes: 7)),
+        sessionPolicy: const <String, dynamic>{
+          'effectiveLimitSeconds': 600,
+          'extensionApproved': true,
+        },
+        elapsedSeconds: 180,
+        useProvisionalCountdown: false,
+        now: now,
+      );
+
+      expect(beforeExtension, 120);
+      expect(afterExtension, 420);
+    });
+  });
+
+  group('resolveSessionPolicyEffectiveLimitSeconds', () {
+    test('reads the server policy and falls back for malformed values', () {
+      expect(
+        resolveSessionPolicyEffectiveLimitSeconds(
+          const <String, dynamic>{'effectiveLimitSeconds': 600},
+        ),
+        600,
+      );
+      expect(
+        resolveSessionPolicyEffectiveLimitSeconds(
+          const <String, dynamic>{'effectiveLimitSeconds': 'bad'},
+        ),
+        300,
+      );
+    });
+  });
+
+  group('shouldUseSessionLimitCountdown', () {
+    test('ignores searching session expiry before accept becomes active', () {
+      final now = DateTime.utc(2026, 4, 14, 12, 0, 0);
+
+      expect(
+        shouldUseSessionLimitCountdown(
+          sessionStatus: 'searching',
+          expiresAt: now.add(const Duration(seconds: 30)),
+          sessionPolicy: sessionPolicy,
+        ),
+        isFalse,
+      );
+    });
+
+    test('uses countdown for connecting and active calls with policy', () {
+      final now = DateTime.utc(2026, 4, 14, 12, 0, 0);
+
+      expect(
+        shouldUseSessionLimitCountdown(
+          sessionStatus: 'active',
+          expiresAt: now.add(const Duration(minutes: 5)),
+          sessionPolicy: sessionPolicy,
+        ),
+        isTrue,
+      );
+      expect(
+        shouldUseSessionLimitCountdown(
+          sessionStatus: 'connecting',
+          expiresAt: now.add(const Duration(minutes: 5)),
+          sessionPolicy: sessionPolicy,
+        ),
+        isTrue,
+      );
+      expect(
+        shouldUseSessionLimitCountdown(
+          sessionStatus: 'searching',
+          expiresAt: now.add(const Duration(minutes: 5)),
+          sessionPolicy: sessionPolicy,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldUseSessionLimitCountdown(
+          sessionStatus: 'ended',
+          expiresAt: now.add(const Duration(minutes: 5)),
+          sessionPolicy: sessionPolicy,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldUseSessionLimitCountdown(
+          sessionStatus: 'active',
+          expiresAt: now.add(const Duration(minutes: 5)),
+          sessionPolicy: const <String, dynamic>{},
+        ),
+        isFalse,
+      );
+    });
+  });
+
+  group('shouldUseProvisionalSessionLimitCountdown', () {
+    test('covers null and stale searching snapshots until policy is ready', () {
+      for (final status in const <String?>[null, 'searching']) {
+        expect(
+          shouldUseProvisionalSessionLimitCountdown(
+            hasJoinCredentials: true,
+            hasAuthoritativeCountdown: false,
+            sessionStatus: status,
+          ),
+          isTrue,
+        );
+      }
+      expect(
+        shouldUseProvisionalSessionLimitCountdown(
+          hasJoinCredentials: true,
+          hasAuthoritativeCountdown: true,
+          sessionStatus: 'connecting',
+        ),
+        isFalse,
+      );
+    });
+
+    test('does not mask authoritative or legacy final states', () {
+      for (final status in const <String>[
+        'active',
+        'connected',
+        'ended',
+        'cancelled',
+        'expired',
+      ]) {
+        expect(
+          shouldUseProvisionalSessionLimitCountdown(
+            hasJoinCredentials: true,
+            hasAuthoritativeCountdown: false,
+            sessionStatus: status,
+          ),
+          isFalse,
+        );
+      }
     });
   });
 

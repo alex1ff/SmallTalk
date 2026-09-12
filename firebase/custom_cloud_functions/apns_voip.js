@@ -83,6 +83,9 @@ async function sendApnsVoip({
   payload,
   pushType = "voip",
   priority = "10",
+  expiration = null,
+  collapseId = "",
+  signal = null,
 }) {
   const token = normalizeDeviceToken(deviceToken);
   if (!token) {
@@ -100,8 +103,45 @@ async function sendApnsVoip({
   return new Promise((resolve, reject) => {
     let responseData = "";
     let statusCode = 0;
+    let settled = false;
+    let request = null;
 
-    const request = client.request({
+    const readAbortError = () => {
+      if (signal?.reason instanceof Error) {
+        return signal.reason;
+      }
+      return new Error("APNs request aborted");
+    };
+    const cleanup = () => {
+      signal?.removeEventListener?.("abort", abortRequest);
+    };
+    const settle = (callback, value) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      client.close();
+      callback(value);
+    };
+    const abortRequest = () => {
+      const abortError = readAbortError();
+      request?.destroy?.(abortError);
+      client.destroy?.(abortError);
+      settle(reject, abortError);
+    };
+
+    client.on("error", (error) => {
+      settle(reject, error);
+    });
+
+    if (signal?.aborted) {
+      abortRequest();
+      return;
+    }
+    signal?.addEventListener?.("abort", abortRequest, {once: true});
+
+    const headers = {
       ":method": "POST",
       ":path": `/3/device/${token}`,
       authorization: `bearer ${jwt}`,
@@ -109,7 +149,18 @@ async function sendApnsVoip({
       "apns-push-type": pushType,
       "apns-priority": priority,
       "content-type": "application/json",
-    });
+    };
+    const normalizedExpiration = Number(expiration);
+    if (Number.isInteger(normalizedExpiration) && normalizedExpiration >= 0) {
+      headers["apns-expiration"] = String(normalizedExpiration);
+    }
+    const normalizedCollapseId = typeof collapseId === "string" ?
+      collapseId.trim().slice(0, 64) :
+      "";
+    if (normalizedCollapseId) {
+      headers["apns-collapse-id"] = normalizedCollapseId;
+    }
+    request = client.request(headers);
 
     request.setEncoding("utf8");
 
@@ -122,17 +173,15 @@ async function sendApnsVoip({
     });
 
     request.on("end", () => {
-      client.close();
       if (statusCode >= 200 && statusCode < 300) {
-        resolve({ statusCode, responseData });
+        settle(resolve, { statusCode, responseData });
         return;
       }
-      reject(new Error(`APNs error ${statusCode}: ${responseData}`));
+      settle(reject, new Error(`APNs error ${statusCode}: ${responseData}`));
     });
 
     request.on("error", (error) => {
-      client.close();
-      reject(error);
+      settle(reject, error);
     });
 
     request.end(JSON.stringify(payload || {}));

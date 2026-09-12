@@ -12,7 +12,7 @@ class PayCopyModel extends FlutterFlowModel<PayCopyWidget> {
 
   int replenishment = 0;
 
-  String tarif = '20 Small Talk';
+  String tarif = '20 Expatlio';
 
   DocumentReference? selectedCard;
   bool shouldAutoSelectFirstCard = true;

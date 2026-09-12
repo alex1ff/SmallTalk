@@ -1,0 +1,198 @@
+{
+  "schemaVersion": 1,
+  "metadata": {
+    "commit": "5d785a8d1bfe34724901b0a773869e9473417881",
+    "dirtyState": "dirty",
+    "flutterVersion": "3.35.3",
+    "dartVersion": "3.9.2",
+    "buildMode": "profile",
+    "deviceModel": "Headless Chrome 145.0.7632.160 on MacBookPro18,3 / Apple M1 Pro / 16 GB",
+    "osVersion": "macOS 26.5.2 (25F84)",
+    "deviceKind": "browser",
+    "refreshRateHz": "not_applicable",
+    "scenarioVersion": "web-onboarding-startup-v1",
+    "collectionMethod": "Playwright CLI 0.1.19; collector sha256 eca5ab067e79ddea4e92349cbffdf399502dca18243b54b5a5f975a0d1c41d11; one batch of 10 fresh 390x844@1x contexts; service workers blocked; HTTP cache disabled",
+    "network": "127.0.0.1 local HTTP server; CDP latency 0; throughput unlimited",
+    "authState": "signed out; onboarding",
+    "cacheState": "cold; fresh context; service workers blocked; HTTP cache disabled",
+    "sourceFingerprint": "14a7ba6b85b3c1b6a8ce8f65ba56ef599e9f9039f7ecca68177c2bade4819a4b",
+    "buildFingerprint": "0442536dc639a0dd095f47204c39f26e6916cbf082c5b0a5cf35a8ce17a8f2de",
+    "rawEvidence": "audit/performance_baselines/web-profile-2026-09-07.collector.json",
+    "rawEvidenceSha256": "139a0b53e05527ec4d73871f8faa79d83127997c02a709e8dbddece6cfe437d0",
+    "buildManifest": "audit/performance_baselines/web-profile-2026-09-07.manifest.json",
+    "diagnosticSummary": "audit/performance_baselines/web-profile-2026-09-07.raw.json"
+  },
+  "metrics": {
+    "cold_start_flutter_surface_ready_ms": {
+      "status": "measured",
+      "unit": "ms",
+      "direction": "lower_is_better",
+      "measurementType": "runtime",
+      "samples": [
+        823,
+        1269,
+        1233,
+        1256,
+        1232,
+        1291,
+        1161,
+        1155,
+        1267,
+        1168
+      ]
+    },
+    "cold_start_first_interactive_ms": {
+      "status": "measured",
+      "unit": "ms",
+      "direction": "lower_is_better",
+      "measurementType": "runtime",
+      "samples": [
+        1891,
+        1646,
+        1564,
+        1651,
+        1794,
+        1596,
+        1556,
+        1541,
+        1571,
+        1571
+      ]
+    },
+    "cold_start_network_transfer_mib": {
+      "status": "measured",
+      "unit": "MiB",
+      "direction": "lower_is_better",
+      "measurementType": "runtime",
+      "samples": [
+        22.610539,
+        22.375463,
+        22.610539,
+        22.651546,
+        22.610539,
+        22.610539,
+        22.375463,
+        22.375463,
+        22.65154,
+        22.375463
+      ],
+      "budget": {
+        "maxRegressionPercent": 10
+      }
+    },
+    "cold_start_resource_count": {
+      "status": "measured",
+      "unit": "count",
+      "direction": "lower_is_better",
+      "measurementType": "runtime",
+      "samples": [
+        37,
+        36,
+        37,
+        37,
+        37,
+        37,
+        36,
+        36,
+        37,
+        36
+      ],
+      "budget": {
+        "maxRegressionPercent": 10
+      }
+    },
+    "cold_start_used_js_heap_mib": {
+      "status": "measured",
+      "unit": "MiB",
+      "direction": "lower_is_better",
+      "measurementType": "runtime",
+      "samples": [
+        88.393207,
+        86.84847,
+        90.85002,
+        88.743786,
+        93.024158,
+        92.808649,
+        88.993555,
+        89.209993,
+        92.736371,
+        88.945158
+      ]
+    },
+    "main_dart_js_mib": {
+      "status": "measured",
+      "unit": "MiB",
+      "direction": "lower_is_better",
+      "measurementType": "static",
+      "samples": [
+        19.390489
+      ],
+      "budget": {
+        "maxRegressionPercent": 10
+      }
+    },
+    "warm_start_first_interactive_ms": {
+      "status": "not_collected",
+      "unit": "ms",
+      "direction": "lower_is_better",
+      "samples": [],
+      "reason": "headless browser reload diagnostics had alternating cache behavior; mobile warm-start measurement is deferred to task 02"
+    },
+    "protected_page_first_interactive_ms": {
+      "status": "not_collected",
+      "unit": "ms",
+      "direction": "lower_is_better",
+      "samples": [],
+      "reason": "main, profile, paywall and Events require a declared authenticated test account and representative backend data; deferred to task 02"
+    },
+    "filter_response_ms": {
+      "status": "not_collected",
+      "unit": "ms",
+      "direction": "lower_is_better",
+      "samples": [],
+      "reason": "requires authenticated representative backend data; do not infer latency from unauthenticated redirects"
+    },
+    "frame_jank_percent": {
+      "status": "not_collected",
+      "unit": "percent",
+      "direction": "lower_is_better",
+      "samples": [],
+      "reason": "requires Flutter profile frame timing on the target mobile refresh rate; requestAnimationFrame cadence is not an equivalent measurement"
+    },
+    "peak_memory_mb": {
+      "status": "not_collected",
+      "unit": "MB",
+      "direction": "lower_is_better",
+      "samples": [],
+      "reason": "performance.memory is a browser-process diagnostic, not mobile peak memory; physical-device measurement is deferred to task 02"
+    },
+    "call_technical_join_ms": {
+      "status": "not_collected",
+      "unit": "ms",
+      "direction": "lower_is_better",
+      "samples": [],
+      "reason": "requires two physical devices and stage timestamps for accept, credentials, Daily join and first media; deferred to task 02"
+    },
+    "call_join_success_percent": {
+      "status": "not_collected",
+      "unit": "percent",
+      "direction": "higher_is_better",
+      "samples": [],
+      "reason": "requires repeated physical-device call smoke; deferred to task 02"
+    },
+    "fifteen_minute_call_memory_growth_mb": {
+      "status": "not_collected",
+      "unit": "MB",
+      "direction": "lower_is_better",
+      "samples": [],
+      "reason": "requires a 15-minute physical-device call; deferred to task 02"
+    },
+    "firestore_reads_per_filter_scenario": {
+      "status": "not_collected",
+      "unit": "count",
+      "direction": "lower_is_better",
+      "samples": [],
+      "reason": "requires authenticated representative data and measured backend operations; widget count is not used as a proxy"
+    }
+  }
+}

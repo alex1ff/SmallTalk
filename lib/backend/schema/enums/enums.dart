@@ -15,10 +15,12 @@ enum NotificationType {
 
 enum CallStatus {
   searching,
+  pending_confirmation,
   connecting,
   active,
-  ended,
   cancelled,
+  expired,
+  ended,
   no_tutors_available,
 }
 
@@ -56,6 +58,24 @@ enum TypeTransactions {
   earning,
   withdrawal,
   promocode,
+  // ─── SUBSCRIPTION REWORK ─ preserve through FlutterFlow regenerate ───
+  // Written by the revenueCatWebhook Cloud Function in response to
+  // RevenueCat lifecycle events. The enum value name matches the string
+  // stored in Firestore — keep them in sync with revenue_cat_webhook.js
+  // → transactionTypeForEvent.
+  subscription_purchase,
+  subscription_renewal,
+  subscription_cancellation,
+  subscription_expiration,
+  subscription_billing_issue,
+  subscription_paused,
+  subscription_transfer,
+  subscription_other,
+  // Written by registration / social_auth flows (app-level fallback trial)
+  // and by grant_promo_entitlement.js (admin grants).
+  trial_grant,
+  promotional_grant,
+  // ─────────────────────────────────────────────────────────────────────
 }
 
 extension FFEnumExtensions<T extends Enum> on T {

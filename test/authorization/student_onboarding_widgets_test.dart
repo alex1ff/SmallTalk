@@ -8,19 +8,20 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:small_talk/authorization/acquaintance_s_t_u_d_e_n_t/widgets/student_onboarding_bottom_bar.dart';
+import 'package:small_talk/components/student_onboarding_bottom_bar.dart';
 import 'package:small_talk/authorization/acquaintance_s_t_u_d_e_n_t/acquaintance_s_t_u_d_e_n_t_widget.dart';
-import 'package:small_talk/authorization/acquaintance_s_t_u_d_e_n_t/widgets/student_onboarding_country_step.dart';
-import 'package:small_talk/authorization/acquaintance_s_t_u_d_e_n_t/widgets/student_onboarding_gender_step.dart';
-import 'package:small_talk/authorization/acquaintance_s_t_u_d_e_n_t/widgets/student_onboarding_language_step.dart';
-import 'package:small_talk/authorization/acquaintance_s_t_u_d_e_n_t/widgets/student_onboarding_level_step.dart';
-import 'package:small_talk/authorization/acquaintance_s_t_u_d_e_n_t/widgets/student_onboarding_name_step.dart';
-import 'package:small_talk/authorization/components/country/country_widget.dart';
-import 'package:small_talk/authorization/components/country_card/country_card_widget.dart';
-import 'package:small_talk/authorization/components/lang/lang_widget.dart';
-import 'package:small_talk/authorization/components/language_card/language_card_widget.dart';
+import 'package:small_talk/components/student_onboarding_country_step.dart';
+import 'package:small_talk/components/student_onboarding_gender_step.dart';
+import 'package:small_talk/components/student_onboarding_language_step.dart';
+import 'package:small_talk/components/student_onboarding_level_step.dart';
+import 'package:small_talk/components/student_onboarding_name_step.dart';
+import 'package:small_talk/components/country_widget.dart';
+import 'package:small_talk/components/country_card_widget.dart';
+import 'package:small_talk/components/lang_widget.dart';
+import 'package:small_talk/components/language_card_widget.dart';
 import 'package:small_talk/backend/schema/enums/enums.dart';
 import 'package:small_talk/backend/schema/structs/index.dart';
+import 'package:small_talk/components/button/button_widget.dart';
 import 'package:small_talk/flutter_flow/flutter_flow_util.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/flutter_flow/custom_functions.dart' as functions;
@@ -171,7 +172,11 @@ void main() {
                 onChanged: (_) async {},
               ),
               StudentOnboardingCountryStep(
-                selectedCountry: CountryStruct(code: 'US', nameRu: 'США'),
+                selectedCountry: CountryStruct(
+                  code: 'US',
+                  cityKey: 'new_york',
+                  nameRu: 'New York, US',
+                ),
                 onChanged: (_) async {},
               ),
               StudentOnboardingLevelStep(
@@ -213,9 +218,11 @@ void main() {
     expect(find.byType(StudentOnboardingBottomBar), findsNothing);
   });
 
-  testWidgets(
-      'coordinator renders a single bottom progress badge and hides back on the first page',
+  testWidgets('coordinator renders one-page form without slide navigation',
       (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390.0, 1100.0));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
     final appState = await _buildTestAppState(
       languages: _languagesCatalog(),
     );
@@ -231,31 +238,103 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    final bottomBar = find.byType(StudentOnboardingBottomBar);
-
+    expect(
+      find.byKey(const ValueKey<String>('student_onboarding_single_form')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('student_onboarding_step_name')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('student_onboarding_step_gender')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('student_onboarding_step_language')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('student_onboarding_step_country')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('student_onboarding_step_level')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('student_onboarding_gender_selector')),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const ValueKey<String>('student_onboarding_progress_badge')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: bottomBar, matching: find.text('1/5')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('student_onboarding_back_button')),
-      findsOneWidget,
-    );
-    expect(
-      find
-          .byKey(const ValueKey<String>('student_onboarding_back_button'))
-          .hitTestable(),
       findsNothing,
     );
-    expect(bottomBar, findsOneWidget);
+    expect(find.byType(StudentOnboardingBottomBar), findsNothing);
+    expect(find.byType(PageView), findsNothing);
     expect(
       find.byKey(const ValueKey<String>('student_onboarding_header')),
       findsNothing,
     );
+    expect(find.text('Язык изучения'), findsOneWidget);
+    expect(find.text('Ваша локация'), findsOneWidget);
+    expect(find.text('Английский'), findsOneWidget);
+    expect(
+      tester
+          .widget<ButtonWidget>(
+            find.byKey(
+              const ValueKey<String>('student_onboarding_finish_button'),
+            ),
+          )
+          .enabled,
+      isFalse,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('student_onboarding_language_picker')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(BottomSheet), findsNothing);
+    expect(find.text('Английский'), findsWidgets);
+    await tester.tap(find.text('Английский').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Английский'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('student_onboarding_country_picker')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(BottomSheet), findsNothing);
+    expect(find.text('Bali, Indonesia'), findsOneWidget);
+    await tester.tap(find.text('Bali, Indonesia'));
+    await tester.pumpAndSettle();
+    expect(find.text('Bali, Indonesia'), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('student_onboarding_name_field')),
+      'Alice',
+    );
+    await tester.pump();
+    expect(
+      tester
+          .widget<ButtonWidget>(
+            find.byKey(
+              const ValueKey<String>('student_onboarding_finish_button'),
+            ),
+          )
+          .enabled,
+      isTrue,
+    );
+
+    await tester.ensureVisible(
+      find.byKey(const ValueKey<String>('student_onboarding_level_picker')),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('student_onboarding_level_picker')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(BottomSheet), findsNothing);
+    expect(find.text('A1 — Beginner'), findsOneWidget);
   });
 
   testWidgets('language step shows only English and Russian for new choices',
@@ -442,18 +521,22 @@ void main() {
     expect(find.text('Русский'), findsNothing);
   });
 
-  testWidgets('country widget search surfaces non-popular countries',
+  testWidgets('location widget shows only the four supported locations',
       (tester) async {
     final appState = await _buildTestAppState(
       languages: _languagesCatalog(),
     );
-    final searchableCountry = functions.countriesList().firstWhere(
-        (country) => !country.isPopular && country.nameRu.isNotEmpty);
-    final searchQuery = searchableCountry.nameRu.substring(
-      0,
-      searchableCountry.nameRu.length >= 4
-          ? 4
-          : searchableCountry.nameRu.length,
+
+    expect(
+      functions.countriesList().map((country) => country.nameRu).toList(),
+      equals(
+        const [
+          'New York, US',
+          'Bali, Indonesia',
+          'Dubai, UAE',
+          'Phuket, Thailand',
+        ],
+      ),
     );
 
     await tester.pumpWidget(
@@ -469,13 +552,11 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text(searchableCountry.nameRu), findsNothing);
-
-    await tester.enterText(find.byType(TextFormField), searchQuery);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 1));
-
-    expect(find.text(searchableCountry.nameRu), findsOneWidget);
+    expect(find.text('New York, US'), findsOneWidget);
+    expect(find.text('Bali, Indonesia'), findsOneWidget);
+    expect(find.text('Dubai, UAE'), findsOneWidget);
+    expect(find.text('Phuket, Thailand'), findsOneWidget);
+    expect(find.byType(TextFormField), findsNothing);
   });
 
   testWidgets('bottom bar adapts width and hides progress on the last page',
@@ -646,16 +727,16 @@ void main() {
         matching: find.byType(Material),
       ),
     );
-    final backIcon = tester.widget<Icon>(
+    final backText = tester.widget<Text>(
       find.descendant(
         of: find
             .byKey(const ValueKey<String>('student_onboarding_back_button')),
-        matching: find.byIcon(FFIcons.karrowLeft),
+        matching: find.text('Назад'),
       ),
     );
 
     expect(backMaterial.color, const Color(0xFF2E2E2E));
-    expect(backIcon.color, Colors.white);
+    expect(backText.style?.color, Colors.white);
     expect(find.text('2/5'), findsOneWidget);
   });
 
@@ -677,8 +758,16 @@ void main() {
               callbackAction: (_) async {},
             ),
             CountryCardWidget(
-              lang: CountryStruct(code: 'US', nameRu: 'США'),
-              currentSelected: CountryStruct(code: 'US', nameRu: 'США'),
+              lang: CountryStruct(
+                code: 'US',
+                cityKey: 'new_york',
+                nameRu: 'New York, US',
+              ),
+              currentSelected: CountryStruct(
+                code: 'US',
+                cityKey: 'new_york',
+                nameRu: 'New York, US',
+              ),
               callbackAction: (_) async {},
             ),
           ],

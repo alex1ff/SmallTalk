@@ -1,0 +1,112 @@
+import '/backend/backend.dart';
+import 'supported_location_catalog.dart';
+import 'event_city_catalog.dart';
+
+enum EventCityResolutionStatus {
+  resolved,
+  missingProfileCity,
+  staleCatalogVersion,
+  invalidIdentity,
+  unknownCatalogCity,
+  inconsistentUserLocation,
+}
+
+class EventCityResolutionResult {
+  const EventCityResolutionResult._({
+    required this.status,
+    this.city,
+  });
+
+  final EventCityResolutionStatus status;
+  final EventCity? city;
+
+  bool get hasResolvedCity =>
+      status == EventCityResolutionStatus.resolved && city != null;
+}
+
+EventCityResolutionResult resolveSelectedEventCityFromUserProfile({
+  required UsersRecord? user,
+  required EventCityCatalog catalog,
+}) {
+  final profileResult = resolveSelectedEventCityFromProfileCity(
+    profileCity:
+        user != null && user.hasProfileCity() ? user.profileCity : null,
+    catalog: catalog,
+  );
+  if (!profileResult.hasResolvedCity) {
+    return profileResult;
+  }
+  final countryLocation = resolveSupportedCountryStruct(
+    user != null && user.hasCountryNS() ? user.countryNS : null,
+  );
+  final profileLocation = resolveSupportedProfileCity(user?.profileCity);
+  if (countryLocation == null ||
+      profileLocation == null ||
+      countryLocation.identity != profileLocation.identity) {
+    return const EventCityResolutionResult._(
+      status: EventCityResolutionStatus.inconsistentUserLocation,
+    );
+  }
+  return profileResult;
+}
+
+String? resolveEventCityCountryCodeHintFromUserProfile({
+  required UsersRecord? user,
+}) {
+  return resolveEventCityCountryCodeHintFromCountry(
+    country: user != null && user.hasCountryNS() ? user.countryNS : null,
+  );
+}
+
+String? resolveEventCityCountryCodeHintFromCountry({
+  required CountryStruct? country,
+}) {
+  if (country == null || !country.hasCode()) {
+    return null;
+  }
+  return normalizeEventCountryCode(country.code);
+}
+
+EventCityResolutionResult resolveSelectedEventCityFromProfileCity({
+  required ProfileCityStruct? profileCity,
+  required EventCityCatalog catalog,
+}) {
+  if (profileCity == null ||
+      !profileCity.hasCountryCode() ||
+      !profileCity.hasCityKey() ||
+      profileCity.countryCode.trim().isEmpty ||
+      profileCity.cityKey.trim().isEmpty) {
+    return const EventCityResolutionResult._(
+      status: EventCityResolutionStatus.missingProfileCity,
+    );
+  }
+
+  if (!profileCity.hasCatalogVersion() ||
+      profileCity.catalogVersion.trim() != catalog.catalogVersion) {
+    return const EventCityResolutionResult._(
+      status: EventCityResolutionStatus.staleCatalogVersion,
+    );
+  }
+
+  final identity = normalizeEventCityIdentity(
+    profileCity.countryCode,
+    profileCity.cityKey,
+  );
+  if (identity == null) {
+    return const EventCityResolutionResult._(
+      status: EventCityResolutionStatus.invalidIdentity,
+    );
+  }
+
+  final city = catalog.resolveSupported(identity.countryCode, identity.cityKey);
+  if (city == null) {
+    return const EventCityResolutionResult._(
+      status: EventCityResolutionStatus.unknownCatalogCity,
+    );
+  }
+
+  return EventCityResolutionResult._(
+    status: EventCityResolutionStatus.resolved,
+    city: city,
+  );
+}

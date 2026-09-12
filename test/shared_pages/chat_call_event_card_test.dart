@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter/material.dart';
@@ -5,7 +7,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
-import 'package:small_talk/shared_pages/chat_thread/chat_call_event_card.dart';
+import 'package:small_talk/components/chat_call_event_card.dart';
 
 Widget _buildTestApp(Widget child) {
   return MaterialApp(
@@ -55,11 +57,22 @@ void main() {
 
     expect(find.text('Видео-звонок'), findsOneWidget);
     expect(find.text('Сегодня, 18:30 • 12 мин'), findsOneWidget);
-    expect(find.byIcon(Icons.videocam_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.phone_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.chevron_right_rounded), findsNothing);
 
     await tester.tap(find.byType(ChatCallEventCard));
     await tester.pump();
 
     expect(tapped, isTrue);
+  });
+
+  test('chat call event card does not expose icon color overrides', () {
+    final source =
+        File('lib/components/chat_call_event_card.dart').readAsStringSync();
+
+    expect(source, contains('ChatCallEventTone'));
+    expect(source, isNot(contains('iconColor')));
+    expect(source, contains('boxShadow'));
+    expect(source, isNot(contains('ExpatlioDesign.cardShadow')));
   });
 }

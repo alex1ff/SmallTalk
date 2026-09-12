@@ -9,8 +9,12 @@ node_modules/
 build/
 android/build/
 ios/Flutter/ephemeral/
+.playwright-cli/
+output/
 
 # Firebase local artifacts
+.firebase/
+firebase/.firebase/
 firestore-debug.log
 firebase-debug.log
 firebase/*.log
@@ -18,3 +22,39 @@ firebase/*-debug.log
 firebase/**/firebase-debug.log
 firebase/**/node_modules/
 firebase/functions/.npm-cache/
+
+# Local agent/tool artifacts
+.adal/
+.agents/
+.augment/
+.claude/
+.codebuddy/
+.commandcode/
+.continue/
+.cortex/
+.crush/
+.factory/
+.goose/
+.iflow/
+.junie/
+.kilocode/
+.kiro/
+.kode/
+.mcpjam/
+.mux/
+.neovate/
+.openhands/
+.pi/
+.pochi/
+.qoder/
+.qwen/
+.roo/
+.trae/
+.vibe/
+.windsurf/
+.zencoder/
+.codex-ref-*.png
+CLAUDE.md
+screenlog.*
+skills/
+skills-lock.json

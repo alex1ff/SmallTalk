@@ -1,0 +1,25 @@
+{
+  "canonical": {
+    "codebase": "custom_cloud_functions",
+    "source": "custom_cloud_functions",
+    "index": "custom_cloud_functions/index.js"
+  },
+  "configured": [
+    {
+      "codebase": "custom_cloud_functions",
+      "source": "custom_cloud_functions",
+      "status": "canonical",
+      "production": "active"
+    }
+  ],
+  "retired": [
+    {
+      "codebase": "functions",
+      "source": "functions",
+      "status": "retired",
+      "production": "deleted",
+      "knownExports": ["onUserDeleted"],
+      "reason": "The only export was a deployed no-op auth deletion trigger. The canonical cleanupUserCallIntegrationsOnDelete trigger remains active."
+    }
+  ]
+}

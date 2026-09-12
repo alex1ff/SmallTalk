@@ -1,6 +1,9 @@
 import '/backend/schema/enums/enums.dart';
 import '/backend/schema/structs/index.dart';
 import '/backend/schema/users_record.dart';
+import '/authorization/shared/onboarding_selection_utils.dart';
+import '/services/supported_location_catalog.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 const Object _studentOnboardingNoChange = Object();
 const List<String> allowedStudentLearningLanguageCodes = <String>['en', 'ru'];
@@ -190,7 +193,8 @@ Map<String, dynamic> buildStudentOnboardingUpdateData({
 }) {
   final learningLanguage = cloneLanguageSelection(payload.learningLanguage);
   final country = cloneCountrySelection(payload.country);
-  return createUsersRecordData(
+  final location = resolveSupportedCountryStruct(country);
+  final updateData = createUsersRecordData(
     displayName: payload.displayName,
     gender: payload.gender,
     level: payload.level,
@@ -208,7 +212,10 @@ Map<String, dynamic> buildStudentOnboardingUpdateData({
             clearUnsetFields: false,
           )
         : null,
+    profileCity: location?.toProfileCityStruct(serverTimestamp: true),
   );
+  updateData['availabilityToday'] = FieldValue.delete();
+  return updateData;
 }
 
 Map<String, dynamic> buildStudentProfileUpdateData({
@@ -247,23 +254,33 @@ bool hasCompletedStudentOnboardingContract({
 String? validateStudentOnboardingPage({
   required StudentOnboardingPage page,
   required StudentOnboardingDraft draft,
+  String languageCode = 'ru',
 }) {
+  final isRussian = languageCode.toLowerCase().startsWith('ru');
   switch (page) {
     case StudentOnboardingPage.name:
       if (draft.displayName.trim().isEmpty) {
-        return 'Пожалуйста, представьтесь';
+        return isRussian
+            ? 'Пожалуйста, представьтесь'
+            : 'Please enter your name';
       }
       return _studentNameRegex.hasMatch(draft.displayName.trim())
           ? null
-          : 'Неверное имя';
+          : isRussian
+              ? 'Неверное имя'
+              : 'Invalid name';
     case StudentOnboardingPage.learningLanguage:
       return hasLanguageSelection(draft.learningLanguage)
           ? null
-          : 'Выберите язык из списка';
+          : isRussian
+              ? 'Выберите язык из списка'
+              : 'Select a language from the list';
     case StudentOnboardingPage.country:
       return hasCountrySelection(draft.country)
           ? null
-          : 'Выберите страну из списка';
+          : isRussian
+              ? 'Выберите локацию из списка'
+              : 'Select a location from the list';
     case StudentOnboardingPage.gender:
     case StudentOnboardingPage.level:
       return null;
@@ -271,61 +288,19 @@ String? validateStudentOnboardingPage({
 }
 
 bool hasLanguageSelection(LanguageStruct? language) {
-  if (language == null) {
-    return false;
-  }
-
-  return language.code.trim().isNotEmpty ||
-      language.nameEn.trim().isNotEmpty ||
-      language.nameRu.trim().isNotEmpty ||
-      language.model.trim().isNotEmpty ||
-      language.ss.trim().isNotEmpty ||
-      language.alternateCodes.isNotEmpty;
+  return hasOnboardingLanguageSelection(language);
 }
 
 bool hasCountrySelection(CountryStruct? country) {
-  if (country == null) {
-    return false;
-  }
-
-  return country.code.trim().isNotEmpty ||
-      country.nameEn.trim().isNotEmpty ||
-      country.nameRu.trim().isNotEmpty ||
-      country.flag.trim().isNotEmpty ||
-      country.languages.trim().isNotEmpty;
+  return hasOnboardingCountrySelection(country);
 }
 
 LanguageStruct? cloneLanguageSelection(LanguageStruct? language) {
-  if (!hasLanguageSelection(language)) {
-    return null;
-  }
-
-  return LanguageStruct(
-    code: language!.hasCode() ? language.code : null,
-    alternateCodes:
-        language.hasAlternateCodes() ? language.alternateCodes.toList() : null,
-    nameEn: language.hasNameEn() ? language.nameEn : null,
-    nameRu: language.hasNameRu() ? language.nameRu : null,
-    model: language.hasModel() ? language.model : null,
-    isPopular: language.hasIsPopular() ? language.isPopular : null,
-    ss: language.hasSs() ? language.ss : null,
-  );
+  return cloneOnboardingLanguageSelection(language);
 }
 
 CountryStruct? cloneCountrySelection(CountryStruct? country) {
-  if (!hasCountrySelection(country)) {
-    return null;
-  }
-
-  return CountryStruct(
-    code: country!.hasCode() ? country.code : null,
-    nameEn: country.hasNameEn() ? country.nameEn : null,
-    nameRu: country.hasNameRu() ? country.nameRu : null,
-    flag: country.hasFlag() ? country.flag : null,
-    languages: country.hasLanguages() ? country.languages : null,
-    isPopular: country.hasIsPopular() ? country.isPopular : null,
-    index: country.hasIndex() ? country.index : null,
-  );
+  return cloneOnboardingCountrySelection(country);
 }
 
 List<LanguageStruct> filterAllowedLearningLanguages({

@@ -1,26 +1,29 @@
+import 'dart:math' as math;
+
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
 import '/backend/firebase_storage/storage.dart';
 import '/backend/schema/enums/enums.dart';
+import '/components/native_speaker_grouped_page_scaffold.dart';
+import '/components/onboarding_dropdown_field.dart';
+import '/components/onboarding_form_section.dart';
+import '/components/onboarding_gender_chips.dart';
+import '/components/profile_dropdown_menu_item.dart';
+import '/components/teacher_accreditation_form.dart';
+import '/components/teacher_photo_picker.dart';
 import '/custom_code/actions/index.dart' as actions;
-import '/flutter_flow/flutter_flow_theme.dart';
+import '/flutter_flow/custom_functions.dart' as functions;
 import '/flutter_flow/flutter_flow_util.dart';
+import '/services/safe_debug_log.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import '/flutter_flow/permissions_util.dart';
 import '/flutter_flow/upload_data.dart';
 import '/index.dart';
 import '/services/teacher_verification_request_service.dart';
 import '/services/user_match_profile.dart';
 import 'native_speaker_onboarding_logic.dart';
-import 'widgets/native_speaker_onboarding_about_me_step.dart';
-import 'widgets/native_speaker_onboarding_accreditation_step.dart';
-import 'widgets/native_speaker_onboarding_country_step.dart';
-import 'widgets/native_speaker_onboarding_language_instruction_step.dart';
-import 'widgets/native_speaker_onboarding_name_step.dart';
-import 'widgets/native_speaker_onboarding_native_language_step.dart';
-import 'widgets/native_speaker_onboarding_photo_step.dart';
-import '/authorization/acquaintance_s_t_u_d_e_n_t/widgets/student_onboarding_bottom_bar.dart';
-import '/authorization/acquaintance_s_t_u_d_e_n_t/widgets/student_onboarding_gender_step.dart';
-import '/authorization/components/lang/lang_model.dart';
+import '/components/student_onboarding_bottom_bar.dart';
+import '/components/lang_model.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -40,6 +43,18 @@ class _NativeSpeakerUploadedPhoto {
   final String url;
   final String? storagePath;
 }
+
+enum _NativeSpeakerGroupedPage {
+  profile,
+  teaching,
+  verification,
+}
+
+const _nativeSpeakerGroupedPages = <_NativeSpeakerGroupedPage>[
+  _NativeSpeakerGroupedPage.profile,
+  _NativeSpeakerGroupedPage.teaching,
+  _NativeSpeakerGroupedPage.verification,
+];
 
 class AcquaintanceNSWidget extends StatefulWidget {
   const AcquaintanceNSWidget({
@@ -92,10 +107,12 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
   bool _didEditQualificationProofs = false;
   int _currentPageIndex = 0;
   String _existingPhotoUrl = '';
+  bool _isTeachingLanguageMenuOpen = false;
+  bool _isNativeLanguageMenuOpen = false;
+  bool _isCountryMenuOpen = false;
   final Set<String> _removedQualificationEvidenceStoragePaths = <String>{};
 
   late final NativeSpeakerOnboardingEntrySource _entrySource;
-  late final List<NativeSpeakerOnboardingPage> _visiblePages;
   late final int _effectiveInitialPage;
 
   bool get _hasSocialPrefillProvider =>
@@ -117,8 +134,8 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
   bool get _shouldShowPhotoStep =>
       !(_canUseSocialPrefill && _existingPhotoUrl.trim().isNotEmpty);
 
-  NativeSpeakerOnboardingPage get _currentPage =>
-      NativeSpeakerOnboardingPage.values[_currentPageIndex];
+  _NativeSpeakerGroupedPage get _currentGroupedPage =>
+      _nativeSpeakerGroupedPages[_currentPageIndex];
 
   NativeSpeakerOnboardingDraft get _draft => buildNativeSpeakerOnboardingDraft(
         displayName: _model.nameTextController?.text,
@@ -136,23 +153,15 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
         existingPhotoUrl: _existingPhotoUrl,
       );
 
-  int get _displayedTotalSteps =>
-      nativeSpeakerDisplayedTotalSteps(visiblePages: _visiblePages);
+  int get _displayedTotalSteps => _nativeSpeakerGroupedPages.length;
 
-  bool get _isLastPage => isNativeSpeakerLastVisiblePage(
-        currentRawIndex: _currentPageIndex,
-        visiblePages: _visiblePages,
-      );
+  bool get _isLastPage =>
+      _currentPageIndex == _nativeSpeakerGroupedPages.length - 1;
 
-  bool get _isAtFirstVisiblePage => isFirstVisibleNativeSpeakerPage(
-        currentRawIndex: _currentPageIndex,
-        visiblePages: _visiblePages,
-      );
+  bool get _isAtFirstVisiblePage => _currentPageIndex == 0;
 
-  int? get _previousVisiblePage => previousVisibleNativeSpeakerPage(
-        currentRawIndex: _currentPageIndex,
-        visiblePages: _visiblePages,
-      );
+  int? get _previousVisiblePage =>
+      _currentPageIndex > 0 ? _currentPageIndex - 1 : null;
 
   bool get _canExitOnSystemBack =>
       _entrySource == NativeSpeakerOnboardingEntrySource.profile &&
@@ -202,6 +211,13 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
       message,
       '',
       true,
+    );
+  }
+
+  String _localized({required String ruText, required String enText}) {
+    return FFLocalizations.of(context).getVariableText(
+      ruText: ruText,
+      enText: enText,
     );
   }
 
@@ -259,7 +275,7 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
         }
       }
     } catch (error) {
-      debugPrint(
+      safeDebugLog(
         'AcquaintanceNSWidget: failed to hydrate accreditation answers: $error',
       );
     }
@@ -268,6 +284,81 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
   void _closeKeyboard() {
     FocusScope.of(context).unfocus();
     FocusManager.instance.primaryFocus?.unfocus();
+  }
+
+  int _resolveGroupedInitialPage(int requestedRawIndex) {
+    if (_entrySource == NativeSpeakerOnboardingEntrySource.profile) {
+      return _NativeSpeakerGroupedPage.profile.index;
+    }
+
+    final clampedRawIndex = requestedRawIndex
+        .clamp(
+          0,
+          NativeSpeakerOnboardingPage.values.length - 1,
+        )
+        .toInt();
+    final requestedPage = NativeSpeakerOnboardingPage.values[clampedRawIndex];
+    switch (requestedPage) {
+      case NativeSpeakerOnboardingPage.name:
+      case NativeSpeakerOnboardingPage.gender:
+      case NativeSpeakerOnboardingPage.photo:
+        return _NativeSpeakerGroupedPage.profile.index;
+      case NativeSpeakerOnboardingPage.languageInstruction:
+      case NativeSpeakerOnboardingPage.nativeLanguage:
+      case NativeSpeakerOnboardingPage.country:
+      case NativeSpeakerOnboardingPage.aboutMe:
+        return _NativeSpeakerGroupedPage.teaching.index;
+      case NativeSpeakerOnboardingPage.accreditation:
+        return _NativeSpeakerGroupedPage.verification.index;
+    }
+  }
+
+  List<NativeSpeakerOnboardingPage> _validationPagesForGroupedPage(
+    _NativeSpeakerGroupedPage page,
+  ) {
+    switch (page) {
+      case _NativeSpeakerGroupedPage.profile:
+        return <NativeSpeakerOnboardingPage>[
+          NativeSpeakerOnboardingPage.name,
+          NativeSpeakerOnboardingPage.gender,
+          NativeSpeakerOnboardingPage.photo,
+        ];
+      case _NativeSpeakerGroupedPage.teaching:
+        return <NativeSpeakerOnboardingPage>[
+          NativeSpeakerOnboardingPage.languageInstruction,
+          NativeSpeakerOnboardingPage.nativeLanguage,
+          NativeSpeakerOnboardingPage.country,
+          NativeSpeakerOnboardingPage.aboutMe,
+        ];
+      case _NativeSpeakerGroupedPage.verification:
+        return <NativeSpeakerOnboardingPage>[
+          NativeSpeakerOnboardingPage.accreditation,
+        ];
+    }
+  }
+
+  String? _validatePages(Iterable<NativeSpeakerOnboardingPage> pages) {
+    for (final page in pages) {
+      final validationMessage = validateNativeSpeakerOnboardingPage(
+        page: page,
+        draft: _draft,
+        languageCode: FFLocalizations.of(context).languageCode,
+      );
+      if (validationMessage != null) {
+        return validationMessage;
+      }
+    }
+    return null;
+  }
+
+  String? _validateCurrentGroupedPage() {
+    return _validatePages(
+      _validationPagesForGroupedPage(_currentGroupedPage),
+    );
+  }
+
+  String? _validateCompleteDraft() {
+    return _validatePages(NativeSpeakerOnboardingPage.values);
   }
 
   Future<void> _animateToVisiblePage(int? targetPage) async {
@@ -293,21 +384,14 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
   }
 
   Future<void> _goToNextPage() async {
+    final nextPage = _currentPageIndex + 1;
     await _animateToVisiblePage(
-      nextVisibleNativeSpeakerPage(
-        currentRawIndex: _currentPageIndex,
-        visiblePages: _visiblePages,
-      ),
+      nextPage < _nativeSpeakerGroupedPages.length ? nextPage : null,
     );
   }
 
   Future<void> _goToPreviousPage() async {
-    await _animateToVisiblePage(
-      previousVisibleNativeSpeakerPage(
-        currentRawIndex: _currentPageIndex,
-        visiblePages: _visiblePages,
-      ),
-    );
+    await _animateToVisiblePage(_previousVisiblePage);
   }
 
   Future<void> _handleSystemBack() async {
@@ -324,6 +408,226 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
     if (_canExitOnSystemBack) {
       await Navigator.of(context).maybePop();
     }
+  }
+
+  Future<void> _openTeachingLanguagePicker(BuildContext anchorContext) async {
+    _closeKeyboard();
+    safeSetState(() => _isTeachingLanguageMenuOpen = true);
+    final selectedLanguage = _languageInstructionNotifier.value;
+    final selected = await _showOnboardingOptionsMenu<LanguageStruct>(
+      anchorContext,
+      options: _languageOptions(selectedLanguage)
+          .map(
+            (language) => _OnboardingMenuOption<LanguageStruct>(
+              value: language,
+              label: _languageTitle(context, language),
+              selected: language == selectedLanguage,
+            ),
+          )
+          .toList(growable: false),
+    );
+    if (mounted) {
+      safeSetState(() => _isTeachingLanguageMenuOpen = false);
+    }
+
+    if (!mounted || selected == null) {
+      return;
+    }
+
+    _languageInstructionNotifier.value =
+        cloneNativeSpeakerLanguageSelection(selected);
+  }
+
+  Future<void> _openNativeLanguagePicker(BuildContext anchorContext) async {
+    _closeKeyboard();
+    safeSetState(() => _isNativeLanguageMenuOpen = true);
+    final selectedLanguage = _nativeLanguageNotifier.value;
+    final selected = await _showOnboardingOptionsMenu<LanguageStruct>(
+      anchorContext,
+      options: _languageOptions(selectedLanguage)
+          .map(
+            (language) => _OnboardingMenuOption<LanguageStruct>(
+              value: language,
+              label: _languageTitle(context, language),
+              selected: language == selectedLanguage,
+            ),
+          )
+          .toList(growable: false),
+    );
+    if (mounted) {
+      safeSetState(() => _isNativeLanguageMenuOpen = false);
+    }
+
+    if (!mounted || selected == null) {
+      return;
+    }
+
+    _nativeLanguageNotifier.value =
+        cloneNativeSpeakerLanguageSelection(selected);
+  }
+
+  Future<void> _openCountryPicker(BuildContext anchorContext) async {
+    _closeKeyboard();
+    safeSetState(() => _isCountryMenuOpen = true);
+    final selectedCountry = _countryNotifier.value;
+    final selected = await _showOnboardingOptionsMenu<CountryStruct>(
+      anchorContext,
+      options: _countryOptions()
+          .map(
+            (country) => _OnboardingMenuOption<CountryStruct>(
+              value: country,
+              label: _countryTitle(context, country),
+              selected: country == selectedCountry,
+            ),
+          )
+          .toList(growable: false),
+    );
+    if (mounted) {
+      safeSetState(() => _isCountryMenuOpen = false);
+    }
+
+    if (!mounted || selected == null) {
+      return;
+    }
+
+    _countryNotifier.value = cloneNativeSpeakerCountrySelection(selected);
+  }
+
+  Future<T?> _showOnboardingOptionsMenu<T>(
+    BuildContext anchorContext, {
+    required List<_OnboardingMenuOption<T>> options,
+  }) {
+    final anchorBox = anchorContext.findRenderObject() as RenderBox?;
+    final overlayBox =
+        Overlay.of(anchorContext).context.findRenderObject() as RenderBox?;
+
+    if (anchorBox == null || overlayBox == null || !anchorBox.attached) {
+      return Future<T?>.value(null);
+    }
+
+    const viewportMargin = 16.0;
+    const minMenuWidth = 206.0;
+    const preferredMenuWidth = 280.0;
+    final anchorOffset =
+        anchorBox.localToGlobal(Offset.zero, ancestor: overlayBox);
+    final availableMenuWidth =
+        math.max(0.0, overlayBox.size.width - (viewportMargin * 2));
+    final menuWidth = math.max(
+      math.min(minMenuWidth, availableMenuWidth),
+      math.min(preferredMenuWidth, availableMenuWidth),
+    );
+    final maxMenuLeft = math.max(
+      viewportMargin,
+      overlayBox.size.width - menuWidth - viewportMargin,
+    );
+    final menuLeft = (anchorOffset.dx + anchorBox.size.width - menuWidth)
+        .clamp(viewportMargin, maxMenuLeft)
+        .toDouble();
+    final anchorRect = Rect.fromLTWH(
+      menuLeft,
+      anchorOffset.dy + anchorBox.size.height + 8.0,
+      menuWidth,
+      0.0,
+    );
+
+    return showMenu<T>(
+      context: anchorContext,
+      position:
+          RelativeRect.fromRect(anchorRect, Offset.zero & overlayBox.size),
+      color: ExpatlioDesign.card,
+      elevation: 8.0,
+      shadowColor: const Color(0x12000000),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
+        side: const BorderSide(color: ExpatlioDesign.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      popUpAnimationStyle: AnimationStyle.noAnimation,
+      constraints: BoxConstraints(
+        minWidth: menuWidth,
+        maxWidth: menuWidth,
+        maxHeight: 320.0,
+      ),
+      items: [
+        for (final option in options)
+          PopupMenuItem<T>(
+            value: option.value,
+            height: 42.0,
+            padding: EdgeInsets.zero,
+            child: ProfileDropdownMenuItem(
+              label: option.label,
+              selected: option.selected,
+            ),
+          ),
+      ],
+    );
+  }
+
+  List<LanguageStruct> _languageOptions(LanguageStruct? selectedLanguage) {
+    final options = FFAppState().languagesList.toList(growable: true);
+    if (options.isEmpty) {
+      options.addAll(
+        [
+          LanguageStruct(
+            code: 'en',
+            nameEn: 'English',
+            nameRu: 'Английский',
+          ),
+          LanguageStruct(
+            code: 'ru',
+            nameEn: 'Russian',
+            nameRu: 'Русский',
+          ),
+        ],
+      );
+    }
+
+    if (selectedLanguage != null &&
+        !options.any((language) => language == selectedLanguage)) {
+      options.insert(0, selectedLanguage);
+    }
+
+    return options;
+  }
+
+  List<CountryStruct> _countryOptions() {
+    final countries = functions.countriesList().toList(growable: true)
+      ..sort((left, right) => left.index.compareTo(right.index));
+    return countries;
+  }
+
+  String _languageTitle(BuildContext context, LanguageStruct? language) {
+    if (language == null) {
+      return FFLocalizations.of(context).getVariableText(
+        ruText: 'Выберите язык',
+        enText: 'Select language',
+      );
+    }
+
+    return valueOrDefault<String>(
+      FFLocalizations.of(context).getVariableText(
+        ruText: language.nameRu,
+        enText: language.nameEn,
+      ),
+      language.code.toUpperCase(),
+    );
+  }
+
+  String _countryTitle(BuildContext context, CountryStruct? country) {
+    if (country == null) {
+      return FFLocalizations.of(context).getVariableText(
+        ruText: 'Выберите локацию',
+        enText: 'Select location',
+      );
+    }
+
+    return valueOrDefault<String>(
+      FFLocalizations.of(context).getVariableText(
+        ruText: country.nameRu,
+        enText: country.nameEn,
+      ),
+      country.code.toUpperCase(),
+    );
   }
 
   Future<void> _pickPhoto() async {
@@ -399,7 +703,12 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
     final remainingSlots =
         _kMaxQualificationEvidenceFiles - currentAttachedFilesCount;
     if (remainingSlots <= 0) {
-      await _showValidationError('Можно прикрепить не больше 5 файлов');
+      await _showValidationError(
+        _localized(
+          ruText: 'Можно прикрепить не больше 5 файлов',
+          enText: 'You can attach up to 5 files',
+        ),
+      );
       return;
     }
 
@@ -423,7 +732,10 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
       );
       if (selectedFiles == null || selectedFiles.isEmpty) {
         await _showValidationError(
-          'Файлы не выбраны или превышают 10 МБ',
+          _localized(
+            ruText: 'Файлы не выбраны или превышают 10 МБ',
+            enText: 'No files were selected or they exceed 10 MB',
+          ),
         );
         return;
       }
@@ -562,7 +874,7 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
         try {
           await deleteStorageObject(storagePath);
         } catch (error) {
-          debugPrint(
+          safeDebugLog(
             'AcquaintanceNSWidget: failed to delete evidence file '
             '$storagePath: $error',
           );
@@ -580,7 +892,7 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
     try {
       await deleteStorageObject(normalizedPath);
     } catch (error) {
-      debugPrint(
+      safeDebugLog(
         'AcquaintanceNSWidget: failed to delete uploaded profile photo '
         '$normalizedPath: $error',
       );
@@ -663,7 +975,12 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
           : const <NativeSpeakerEvidenceFile>[];
       if (shouldUploadQualificationFiles &&
           qualificationEvidenceFiles == null) {
-        await _showValidationError('Не удалось загрузить файлы подтверждения');
+        await _showValidationError(
+          _localized(
+            ruText: 'Не удалось загрузить файлы подтверждения',
+            enText: 'Could not upload supporting files',
+          ),
+        );
         return null;
       }
       final resolvedQualificationEvidenceFiles =
@@ -685,7 +1002,12 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
         await _deleteQualificationEvidenceFiles(
           newlyUploadedQualificationEvidenceFiles,
         );
-        await _showValidationError('Не удалось сохранить фото профиля');
+        await _showValidationError(
+          _localized(
+            ruText: 'Не удалось сохранить фото профиля',
+            enText: 'Could not save your profile photo',
+          ),
+        );
         return null;
       }
 
@@ -712,7 +1034,7 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
           accreditation: payload.accreditation,
         );
       } catch (error) {
-        debugPrint(
+        safeDebugLog(
           'AcquaintanceNSWidget: teacher verification request write failed: '
           '$error',
         );
@@ -720,7 +1042,7 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
           verificationRequestWriteFailed = true;
           shouldPreserveUploadedAssetsOnFailure =
               isTeacherVerificationRequestAmbiguousWriteError(error);
-          debugPrint(
+          safeDebugLog(
             'AcquaintanceNSWidget: teacher verification request failed at the '
             'request write phase.',
           );
@@ -731,14 +1053,24 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
         await _deleteQualificationEvidenceFiles(
           newlyUploadedQualificationEvidenceFiles,
         );
-        await _showValidationError('Не удалось отправить заявку на проверку');
+        await _showValidationError(
+          _localized(
+            ruText: 'Не удалось отправить заявку на проверку',
+            enText: 'Could not submit your application for review',
+          ),
+        );
         return null;
       }
       if (verificationRequestStatus == TeacherAccreditationStatus.rejected) {
         await _deleteQualificationEvidenceFiles(
           newlyUploadedQualificationEvidenceFiles,
         );
-        await _showValidationError('Заявка на проверку была отклонена');
+        await _showValidationError(
+          _localized(
+            ruText: 'Заявка на проверку была отклонена',
+            enText: 'Your application was rejected',
+          ),
+        );
         return null;
       }
       shouldPreserveUploadedAssetsOnFailure =
@@ -757,7 +1089,8 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
           ),
         );
       } catch (error) {
-        debugPrint('AcquaintanceNSWidget: user profile update failed: $error');
+        safeDebugLog(
+            'AcquaintanceNSWidget: user profile update failed: $error');
         rethrow;
       }
 
@@ -789,11 +1122,19 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
           newlyUploadedQualificationEvidenceFiles,
         );
       }
-      debugPrint('AcquaintanceNSWidget: failed to save profile: $error');
+      safeDebugLog('AcquaintanceNSWidget: failed to save profile: $error');
       await _showValidationError(
         verificationRequestWriteFailed
-            ? 'Не удалось отправить заявку на проверку. Попробуйте позже.'
-            : 'Не удалось сохранить профиль',
+            ? _localized(
+                ruText:
+                    'Не удалось отправить заявку на проверку. Попробуйте позже.',
+                enText:
+                    'Could not submit your application for review. Try again later.',
+              )
+            : _localized(
+                ruText: 'Не удалось сохранить профиль',
+                enText: 'Could not save your profile',
+              ),
       );
       return null;
     } finally {
@@ -814,16 +1155,19 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
     }
 
     _closeKeyboard();
-    final validationMessage = validateNativeSpeakerOnboardingPage(
-      page: _currentPage,
-      draft: _draft,
-    );
+    final validationMessage = _validateCurrentGroupedPage();
     if (validationMessage != null) {
       await _showValidationError(validationMessage);
       return;
     }
 
     if (_isLastPage) {
+      final completeValidationMessage = _validateCompleteDraft();
+      if (completeValidationMessage != null) {
+        await _showValidationError(completeValidationMessage);
+        return;
+      }
+
       final savedStatus = await _saveNativeSpeakerProfile();
       if (!mounted || savedStatus == null) {
         return;
@@ -841,7 +1185,7 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
                   refreshedUser.isTeacherAccreditationApproved ||
                   shouldOpenNativeSpeakerDashboard;
         } catch (error) {
-          debugPrint(
+          safeDebugLog(
             'AcquaintanceNSWidget: failed to refresh post-save user state: '
             '$error',
           );
@@ -871,105 +1215,263 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
     );
 
     return <Widget>[
-      _shouldShowNameStep
-          ? NativeSpeakerOnboardingNameStep(
-              controller: _model.nameTextController!,
-              focusNode: _model.nameFocusNode!,
-              onSubmitted: _handleAdvance,
-            )
-          : const SizedBox.shrink(),
-      ValueListenableBuilder<LanguageStruct?>(
-        valueListenable: _languageInstructionNotifier,
-        builder: (context, selectedLanguage, _) =>
-            NativeSpeakerOnboardingLanguageInstructionStep(
-          selectedLanguage: selectedLanguage,
-          onChanged: (lang) async {
-            _languageInstructionNotifier.value =
-                cloneNativeSpeakerLanguageSelection(lang);
-          },
+      NativeSpeakerGroupedPageScaffold(
+        key: const ValueKey<String>('native_speaker_onboarding_group_profile'),
+        title: FFLocalizations.of(context).getVariableText(
+          ruText: 'Профиль учителя',
+          enText: 'Teacher profile',
+        ),
+        subtitle: FFLocalizations.of(context).getVariableText(
+          ruText: 'Основная информация для заявки.',
+          enText: 'Basic information for your application.',
+        ),
+        child: Container(
+          decoration: ExpatlioDesign.formGroupDecoration(),
+          padding: ExpatlioDesign.formGroupPadding,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (_shouldShowNameStep) ...[
+                OnboardingFormSection(
+                  key: const ValueKey<String>('student_onboarding_step_name'),
+                  title: FFLocalizations.of(context).getVariableText(
+                    ruText: 'Ваше имя',
+                    enText: 'Your name',
+                  ),
+                  child: TextFormField(
+                    key:
+                        const ValueKey<String>('student_onboarding_name_field'),
+                    controller: _model.nameTextController,
+                    focusNode: _model.nameFocusNode,
+                    autofocus: false,
+                    textCapitalization: TextCapitalization.words,
+                    textInputAction: TextInputAction.next,
+                    onFieldSubmitted: (_) async => _handleAdvance(),
+                    decoration: ExpatlioDesign.formFieldDecoration(
+                      context,
+                      hintText: FFLocalizations.of(context).getVariableText(
+                        ruText: 'Как вас зовут?',
+                        enText: 'What is your name?',
+                      ),
+                    ),
+                    style: ExpatlioDesign.formTextStyle(context),
+                    cursorColor: ExpatlioDesign.primary,
+                  ),
+                ),
+                const SizedBox(height: ExpatlioDesign.sectionSpacing),
+              ],
+              ValueListenableBuilder<bool>(
+                valueListenable: _genderMaleNotifier,
+                builder: (context, genderMale, _) => OnboardingFormSection(
+                  key: const ValueKey<String>(
+                    'student_onboarding_step_gender',
+                  ),
+                  title: FFLocalizations.of(context).getVariableText(
+                    ruText: 'Пол',
+                    enText: 'Gender',
+                  ),
+                  child: OnboardingGenderChips(
+                    genderMale: genderMale,
+                    onChanged: (nextValue) {
+                      if (_genderMaleNotifier.value == nextValue) {
+                        return;
+                      }
+                      _genderMaleNotifier.value = nextValue;
+                    },
+                  ),
+                ),
+              ),
+              if (_shouldShowPhotoStep) ...[
+                const SizedBox(height: ExpatlioDesign.sectionSpacing),
+                OnboardingFormSection(
+                  key: const ValueKey<String>(
+                    'native_speaker_onboarding_step_photo',
+                  ),
+                  title: FFLocalizations.of(context).getVariableText(
+                    ruText: 'Фото профиля',
+                    enText: 'Profile photo',
+                  ),
+                  child: TeacherPhotoPicker(
+                    localPhoto: _model.avatar,
+                    existingPhotoUrl: _existingPhotoUrl,
+                    enabled: !_isSubmitting && !_model.isPickingAvatar,
+                    onPickPhoto: _pickPhoto,
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
-      ValueListenableBuilder<LanguageStruct?>(
-        valueListenable: _nativeLanguageNotifier,
-        builder: (context, selectedLanguage, _) =>
-            NativeSpeakerOnboardingNativeLanguageStep(
-          selectedLanguage: selectedLanguage,
-          onChanged: (lang) async {
-            _nativeLanguageNotifier.value =
-                cloneNativeSpeakerLanguageSelection(lang);
-          },
+      NativeSpeakerGroupedPageScaffold(
+        key: const ValueKey<String>('native_speaker_onboarding_group_teaching'),
+        title: FFLocalizations.of(context).getVariableText(
+          ruText: 'О преподавании',
+          enText: 'Teaching details',
         ),
-      ),
-      ValueListenableBuilder<bool>(
-        valueListenable: _genderMaleNotifier,
-        builder: (context, genderMale, _) => StudentOnboardingGenderStep(
-          genderMale: genderMale,
-          onChanged: (nextValue) {
-            if (_genderMaleNotifier.value == nextValue) {
-              return;
-            }
-            _genderMaleNotifier.value = nextValue;
-          },
+        subtitle: FFLocalizations.of(context).getVariableText(
+          ruText: 'Расскажите, чему учите и где вы находитесь.',
+          enText: 'Tell us what you teach and where you are based.',
         ),
-      ),
-      ValueListenableBuilder<CountryStruct?>(
-        valueListenable: _countryNotifier,
-        builder: (context, selectedCountry, _) =>
-            NativeSpeakerOnboardingCountryStep(
-          selectedCountry: selectedCountry,
-          onChanged: (country) async {
-            _countryNotifier.value =
-                cloneNativeSpeakerCountrySelection(country);
-          },
+        child: Container(
+          decoration: ExpatlioDesign.formGroupDecoration(),
+          padding: ExpatlioDesign.formGroupPadding,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ValueListenableBuilder<LanguageStruct?>(
+                valueListenable: _languageInstructionNotifier,
+                builder: (context, selectedLanguage, _) =>
+                    OnboardingFormSection(
+                  key: const ValueKey<String>(
+                    'native_speaker_onboarding_step_language_instruction',
+                  ),
+                  title: FFLocalizations.of(context).getVariableText(
+                    ruText: 'Язык преподавания',
+                    enText: 'Teaching language',
+                  ),
+                  child: OnboardingDropdownField(
+                    key: const ValueKey<String>(
+                      'native_speaker_onboarding_language_instruction_picker',
+                    ),
+                    value: _languageTitle(context, selectedLanguage),
+                    placeholder: selectedLanguage == null,
+                    icon: Icons.language_rounded,
+                    menuOpen: _isTeachingLanguageMenuOpen,
+                    onTap: _openTeachingLanguagePicker,
+                  ),
+                ),
+              ),
+              const SizedBox(height: ExpatlioDesign.sectionSpacing),
+              ValueListenableBuilder<LanguageStruct?>(
+                valueListenable: _nativeLanguageNotifier,
+                builder: (context, selectedLanguage, _) =>
+                    OnboardingFormSection(
+                  key: const ValueKey<String>(
+                    'native_speaker_onboarding_step_native_language',
+                  ),
+                  title: FFLocalizations.of(context).getVariableText(
+                    ruText: 'Родной язык',
+                    enText: 'Native language',
+                  ),
+                  child: OnboardingDropdownField(
+                    key: const ValueKey<String>(
+                      'native_speaker_onboarding_native_language_picker',
+                    ),
+                    value: _languageTitle(context, selectedLanguage),
+                    placeholder: selectedLanguage == null,
+                    icon: Icons.record_voice_over_outlined,
+                    menuOpen: _isNativeLanguageMenuOpen,
+                    onTap: _openNativeLanguagePicker,
+                  ),
+                ),
+              ),
+              const SizedBox(height: ExpatlioDesign.sectionSpacing),
+              ValueListenableBuilder<CountryStruct?>(
+                valueListenable: _countryNotifier,
+                builder: (context, selectedCountry, _) => OnboardingFormSection(
+                  key: const ValueKey<String>(
+                    'native_speaker_onboarding_step_country',
+                  ),
+                  title: FFLocalizations.of(context).getVariableText(
+                    ruText: 'Локация',
+                    enText: 'Location',
+                  ),
+                  child: OnboardingDropdownField(
+                    key: const ValueKey<String>(
+                      'native_speaker_onboarding_country_picker',
+                    ),
+                    value: _countryTitle(context, selectedCountry),
+                    placeholder: selectedCountry == null,
+                    icon: Icons.location_on_outlined,
+                    menuOpen: _isCountryMenuOpen,
+                    onTap: _openCountryPicker,
+                  ),
+                ),
+              ),
+              const SizedBox(height: ExpatlioDesign.sectionSpacing),
+              OnboardingFormSection(
+                key: const ValueKey<String>(
+                  'native_speaker_onboarding_step_about_me',
+                ),
+                title: FFLocalizations.of(context).getVariableText(
+                  ruText: 'О себе',
+                  enText: 'About you',
+                ),
+                child: TextFormField(
+                  key: const ValueKey<String>(
+                    'native_speaker_onboarding_about_me_field',
+                  ),
+                  controller: _model.aboutMeTextController,
+                  focusNode: _model.aboutMeFocusNode,
+                  autofocus: false,
+                  minLines: 4,
+                  maxLines: 5,
+                  textCapitalization: TextCapitalization.sentences,
+                  textInputAction: TextInputAction.done,
+                  onFieldSubmitted: (_) async => _handleAdvance(),
+                  decoration: ExpatlioDesign.formFieldDecoration(
+                    context,
+                    hintText: FFLocalizations.of(context).getVariableText(
+                      ruText: 'Пара слов об опыте и формате занятий',
+                      enText: 'A few words about your experience and lessons',
+                    ),
+                    maxLines: 4,
+                  ),
+                  style: ExpatlioDesign.formTextStyle(context),
+                  cursorColor: ExpatlioDesign.primary,
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-      NativeSpeakerOnboardingAboutMeStep(
-        controller: _model.aboutMeTextController!,
-        focusNode: _model.aboutMeFocusNode!,
-        onSubmitted: _handleAdvance,
       ),
       AnimatedBuilder(
         animation: accreditationListenable,
-        builder: (context, _) => NativeSpeakerOnboardingAccreditationStep(
-          teachingExperience: _teachingExperienceNotifier.value,
-          qualificationProofs: _qualificationProofsNotifier.value,
-          localQualificationFiles: _model.qualificationProofFiles,
-          existingQualificationFiles: _qualificationEvidenceFilesNotifier.value,
-          isPickingFiles: _model.isPickingQualificationFiles,
-          isUploadingFiles:
-              _model.isUploadingQualificationFiles || _isSubmitting,
-          onTeachingExperienceChanged: (value) {
-            _didEditTeachingExperience = true;
-            if (_teachingExperienceNotifier.value == value) {
-              return;
-            }
-            _teachingExperienceNotifier.value = value;
-          },
-          onQualificationProofsChanged: (value) {
-            final normalizedProofs =
-                normalizeNativeSpeakerQualificationProofs(value);
-            _didEditQualificationProofs = true;
-            if (listEquals(
-                _qualificationProofsNotifier.value, normalizedProofs)) {
-              return;
-            }
-            _qualificationProofsNotifier.value = normalizedProofs;
-          },
-          onPickFiles: _pickQualificationProofFiles,
-          onRemoveLocalFile: _removeLocalQualificationProofFileAt,
-          onRemoveExistingFile: _removeExistingQualificationEvidenceFileAt,
+        builder: (context, _) => NativeSpeakerGroupedPageScaffold(
+          key: const ValueKey<String>(
+            'native_speaker_onboarding_group_verification',
+          ),
+          title: FFLocalizations.of(context).getVariableText(
+            ruText: 'Подтверждение',
+            enText: 'Verification',
+          ),
+          subtitle: FFLocalizations.of(context).getVariableText(
+            ruText: 'Администратор проверит заявку перед доступом к звонкам.',
+            enText: 'An admin will review this before you can receive calls.',
+          ),
+          child: TeacherAccreditationForm(
+            teachingExperience: _teachingExperienceNotifier.value,
+            qualificationProofs: _qualificationProofsNotifier.value,
+            localQualificationFiles: _model.qualificationProofFiles,
+            existingQualificationFiles:
+                _qualificationEvidenceFilesNotifier.value,
+            isPickingFiles: _model.isPickingQualificationFiles,
+            isUploadingFiles:
+                _model.isUploadingQualificationFiles || _isSubmitting,
+            onTeachingExperienceChanged: (value) {
+              _didEditTeachingExperience = true;
+              if (_teachingExperienceNotifier.value == value) {
+                return;
+              }
+              _teachingExperienceNotifier.value = value;
+            },
+            onQualificationProofsChanged: (value) {
+              final normalizedProofs =
+                  normalizeNativeSpeakerQualificationProofs(value);
+              _didEditQualificationProofs = true;
+              if (listEquals(
+                  _qualificationProofsNotifier.value, normalizedProofs)) {
+                return;
+              }
+              _qualificationProofsNotifier.value = normalizedProofs;
+            },
+            onPickFiles: _pickQualificationProofFiles,
+            onRemoveLocalFile: _removeLocalQualificationProofFileAt,
+            onRemoveExistingFile: _removeExistingQualificationEvidenceFileAt,
+          ),
         ),
       ),
-      _shouldShowPhotoStep
-          ? Builder(
-              builder: (context) => NativeSpeakerOnboardingPhotoStep(
-                localPhoto: _model.avatar,
-                existingPhotoUrl: _existingPhotoUrl,
-                enabled: !_isSubmitting && !_model.isPickingAvatar,
-                onPickPhoto: _pickPhoto,
-              ),
-            )
-          : const SizedBox.shrink(),
     ];
   }
 
@@ -999,25 +1501,14 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
     return ValueListenableBuilder<int>(
       valueListenable: _currentPageIndexNotifier,
       builder: (context, currentPageIndex, _) {
-        final previousPage = previousVisibleNativeSpeakerPage(
-          currentRawIndex: currentPageIndex,
-          visiblePages: _visiblePages,
-        );
-        final isAtFirstVisiblePage = isFirstVisibleNativeSpeakerPage(
-          currentRawIndex: currentPageIndex,
-          visiblePages: _visiblePages,
-        );
+        final previousPage = currentPageIndex > 0 ? currentPageIndex - 1 : null;
+        final isAtFirstVisiblePage = currentPageIndex == 0;
         final canGoBack = previousPage != null ||
             (_entrySource == NativeSpeakerOnboardingEntrySource.profile &&
                 isAtFirstVisiblePage);
-        final isLastPage = isNativeSpeakerLastVisiblePage(
-          currentRawIndex: currentPageIndex,
-          visiblePages: _visiblePages,
-        );
-        final displayedCurrentStep = nativeSpeakerDisplayedStep(
-          currentRawIndex: currentPageIndex,
-          visiblePages: _visiblePages,
-        );
+        final isLastPage =
+            currentPageIndex == _nativeSpeakerGroupedPages.length - 1;
+        final displayedCurrentStep = currentPageIndex + 1;
 
         return ValueListenableBuilder<bool>(
           valueListenable: _isPageTransitionInProgressNotifier,
@@ -1070,14 +1561,8 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
     _existingPhotoUrl = currentUserPhoto.trim();
 
     _hydrateNativeSpeakerStateFromProfile();
-    _visiblePages = buildVisibleNativeSpeakerPages(
-      showName: _shouldShowNameStep,
-      showPhoto: _shouldShowPhotoStep,
-    );
-    _effectiveInitialPage = resolveNativeSpeakerEntryInitialPage(
-      requestedRawIndex: valueOrDefault<int>(widget.index, 0),
-      visiblePages: _visiblePages,
-      entrySource: _entrySource,
+    _effectiveInitialPage = _resolveGroupedInitialPage(
+      valueOrDefault<int>(widget.index, 0),
     );
     _model.pageViewController ??=
         PageController(initialPage: _effectiveInitialPage);
@@ -1130,27 +1615,15 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
       onTap: _closeKeyboard,
       child: Scaffold(
         key: scaffoldKey,
-        backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+        backgroundColor: ExpatlioDesign.background,
         body: Stack(
           children: [
-            Padding(
-              padding: const EdgeInsetsDirectional.fromSTEB(
-                0.0,
-                55.0,
-                0.0,
-                0.0,
-              ),
-              child: Column(
-                children: [
-                  Expanded(
-                    child: PageView(
-                      physics: const NeverScrollableScrollPhysics(),
-                      controller: _model.pageViewController,
-                      onPageChanged: _setCurrentPageIndex,
-                      children: _buildStepPages(),
-                    ),
-                  ),
-                ],
+            SafeArea(
+              child: PageView(
+                physics: const NeverScrollableScrollPhysics(),
+                controller: _model.pageViewController,
+                onPageChanged: _setCurrentPageIndex,
+                children: _buildStepPages(),
               ),
             ),
             Align(
@@ -1162,7 +1635,7 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
                   gradient: LinearGradient(
                     colors: [
                       const Color(0x00F2F2F7),
-                      FlutterFlowTheme.of(context).secondaryBackground,
+                      ExpatlioDesign.background,
                     ],
                     stops: const [0.0, 1.0],
                     begin: const AlignmentDirectional(0.0, -1.0),
@@ -1195,4 +1668,16 @@ class _AcquaintanceNSWidgetState extends State<AcquaintanceNSWidget> {
       ),
     );
   }
+}
+
+class _OnboardingMenuOption<T> {
+  const _OnboardingMenuOption({
+    required this.value,
+    required this.label,
+    this.selected = false,
+  });
+
+  final T value;
+  final String label;
+  final bool selected;
 }

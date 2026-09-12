@@ -8,18 +8,18 @@
 
 ## Rollback Baseline
 - Current working widget: `lib/custom_code/widgets/minimal_daily_widget.dart`
-- Rollback snapshot: `lib/custom_code/widgets/minimal_daily_widget_snapshot_20260306.dart`
-- Older archive copy: `lib/custom_code/widgets/minimal_daily_widget_backup_20260124.dart`
+- Rollback snapshot: `audit/snapshots/minimal_daily_widget_snapshot_20260306.dart.txt`
+- Older archive copy: `audit/snapshots/minimal_daily_widget_backup_20260124.dart.txt`
 
 ### Manual Rollback Steps
 1. Confirm that the active implementation must be reverted to the pre-audit state.
-2. Replace `lib/custom_code/widgets/minimal_daily_widget.dart` with `lib/custom_code/widgets/minimal_daily_widget_snapshot_20260306.dart`.
+2. Restore the contents of `audit/snapshots/minimal_daily_widget_snapshot_20260306.dart.txt` into `lib/custom_code/widgets/minimal_daily_widget.dart` through a reviewed commit.
 3. Run the baseline checks from Stage 0 again.
 4. Record the rollback date, reason, and observed behavior after restore.
 
 ## Current Baseline Before Fixes
 - Date of baseline: `2026-03-06`
-- `flutter analyze`: passes at project level because `analysis_options.yaml` excludes `lib/custom_code/**`.
+- `flutter analyze`: covers the active custom widget and custom-functions source; archived snapshots are stored outside `lib/` as text.
 - `flutter analyze lib/custom_code/widgets/minimal_daily_widget.dart`: currently reports `25 issues`, including unused imports, dead code, and deprecated `withOpacity` usage.
 - `flutter test`: passes.
 - Android integration smoke run is blocked at build stage by `daily_flutter` NDK mismatch and requires `ndkVersion = "27.3.13750724"` in `android/app/build.gradle`.
@@ -122,9 +122,9 @@
    - `flutter analyze`
    - `flutter analyze lib/custom_code/widgets/minimal_daily_widget.dart`
    - `flutter test`
-3. Note that project-wide analyze excludes `lib/custom_code/**`.
+3. Confirm that project-wide analysis includes active files under `lib/custom_code/`.
 4. Record whether Android smoke verification is still blocked by the `daily_flutter` NDK requirement.
-5. Verify that `lib/custom_code/widgets/minimal_daily_widget_snapshot_20260306.dart` still matches the working widget baseline except for the snapshot header.
+5. Verify that `audit/snapshots/minimal_daily_widget_snapshot_20260306.dart.txt` still matches the intended rollback baseline except for the archive header.
 
 ### Expected Result
 - Baseline state is frozen and reproducible.

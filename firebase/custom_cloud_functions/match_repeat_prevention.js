@@ -7,13 +7,80 @@ const {
 
 const DAILY_COMPLETIONS_COLLECTION = "matchPairDailyCompletions";
 const MATCH_REPEAT_BYPASS_USER_IDS_ENV = "MATCH_REPEAT_BYPASS_USER_IDS";
+const MATCH_REPEAT_PREVENTION_ENABLED = false;
 const MAX_GET_ALL_CHUNK_SIZE = 300;
+const DEFAULT_REPEAT_BYPASS_USER_ID_PAIRS = [
+  [
+    "XkRxUdqHTiM1MNDTJG4zb0wooay2",
+    "CI0E2yJBw1P0TicAWVLhHhLX6Yl2",
+  ],
+];
+const DEFAULT_REPEAT_BYPASS_EMAIL_PAIRS = [
+  ["elena.alpatkina@gmail.com", "nsk.muratov@gmail.com"],
+  ["elena.alpatkina@gmail.com", "nak.muratov@gmail.com"],
+];
+const DEFAULT_REPEAT_BYPASS_USER_ID_PAIR_KEYS = new Set(
+  DEFAULT_REPEAT_BYPASS_USER_ID_PAIRS
+    .map(([leftUserId, rightUserId]) =>
+      buildUserIdPairKey(leftUserId, rightUserId))
+    .filter(Boolean),
+);
+const DEFAULT_REPEAT_BYPASS_EMAIL_PAIR_KEYS = new Set(
+  DEFAULT_REPEAT_BYPASS_EMAIL_PAIRS
+    .map(([leftEmail, rightEmail]) => buildEmailPairKey(leftEmail, rightEmail))
+    .filter(Boolean),
+);
 
 function normalizeUserId(value) {
   if (typeof value !== "string") {
     return "";
   }
   return value.trim();
+}
+
+function buildUserIdPairKey(leftUserId, rightUserId) {
+  const normalizedUserIds = [
+    normalizeUserId(leftUserId),
+    normalizeUserId(rightUserId),
+  ].filter(Boolean);
+
+  if (normalizedUserIds.length !== 2) {
+    return "";
+  }
+
+  return normalizedUserIds.sort().join("\n");
+}
+
+function normalizeEmail(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.trim().toLowerCase();
+}
+
+function buildEmailPairKey(leftEmail, rightEmail) {
+  const normalizedEmails = [
+    normalizeEmail(leftEmail),
+    normalizeEmail(rightEmail),
+  ].filter(Boolean);
+
+  if (normalizedEmails.length !== 2) {
+    return "";
+  }
+
+  return normalizedEmails.sort().join("\n");
+}
+
+function readUserEmailById(userEmailsById, userId) {
+  if (!userEmailsById || !userId) {
+    return "";
+  }
+
+  if (userEmailsById instanceof Map) {
+    return normalizeEmail(userEmailsById.get(userId));
+  }
+
+  return normalizeEmail(userEmailsById[userId]);
 }
 
 function getUtcDayKey(millis = Date.now()) {
@@ -43,6 +110,24 @@ function shouldBypassRepeatForPair(
 ) {
   return hasRepeatBypass(requesterId, bypassUserIds) ||
     hasRepeatBypass(candidateId, bypassUserIds);
+}
+
+function shouldBypassRepeatForUserIdPair(
+  requesterId,
+  candidateId,
+  bypassUserIdPairKeys = DEFAULT_REPEAT_BYPASS_USER_ID_PAIR_KEYS,
+) {
+  const pairKey = buildUserIdPairKey(requesterId, candidateId);
+  return pairKey ? bypassUserIdPairKeys.has(pairKey) : false;
+}
+
+function shouldBypassRepeatForEmailPair(
+  requesterEmail,
+  candidateEmail,
+  bypassEmailPairKeys = DEFAULT_REPEAT_BYPASS_EMAIL_PAIR_KEYS,
+) {
+  const pairKey = buildEmailPairKey(requesterEmail, candidateEmail);
+  return pairKey ? bypassEmailPairKeys.has(pairKey) : false;
 }
 
 function buildDailyPairCompletionId(pairId, dayKey) {
@@ -84,18 +169,40 @@ function buildSameDayRepeatLookupPlan(
   {
     dayKey = getUtcDayKey(),
     bypassUserIds = getRepeatBypassUserIds(),
+    bypassUserIdPairKeys = DEFAULT_REPEAT_BYPASS_USER_ID_PAIR_KEYS,
+    bypassEmailPairKeys = DEFAULT_REPEAT_BYPASS_EMAIL_PAIR_KEYS,
+    requesterEmail = "",
+    userEmailsById = {},
   } = {},
 ) {
   const normalizedRequesterId = normalizeUserId(requesterId);
+  const normalizedRequesterEmail =
+    normalizeEmail(requesterEmail) ||
+    readUserEmailById(userEmailsById, normalizedRequesterId);
   const uniqueCandidateIds = Array.from(
     new Set(candidateIds.map((value) => normalizeUserId(value)).filter(Boolean)),
   );
+
+  if (!MATCH_REPEAT_PREVENTION_ENABLED) {
+    return {
+      dayKey,
+      globalBypassApplied: true,
+      requesterBypassApplied: false,
+      testerBypassCandidateCount: 0,
+      userIdPairBypassCandidateCount: 0,
+      emailPairBypassCandidateCount: 0,
+      refs: [],
+      refCandidateIds: [],
+    };
+  }
 
   if (!normalizedRequesterId) {
     return {
       dayKey,
       requesterBypassApplied: false,
       testerBypassCandidateCount: 0,
+      userIdPairBypassCandidateCount: 0,
+      emailPairBypassCandidateCount: 0,
       refs: [],
       refCandidateIds: [],
     };
@@ -106,6 +213,8 @@ function buildSameDayRepeatLookupPlan(
       dayKey,
       requesterBypassApplied: true,
       testerBypassCandidateCount: uniqueCandidateIds.length,
+      userIdPairBypassCandidateCount: 0,
+      emailPairBypassCandidateCount: 0,
       refs: [],
       refCandidateIds: [],
     };
@@ -114,18 +223,42 @@ function buildSameDayRepeatLookupPlan(
   const refs = [];
   const refCandidateIds = [];
   let testerBypassCandidateCount = 0;
+  let userIdPairBypassCandidateCount = 0;
+  let emailPairBypassCandidateCount = 0;
 
   uniqueCandidateIds.forEach((candidateId) => {
+    const userIdBypassApplied = shouldBypassRepeatForPair(
+      normalizedRequesterId,
+      candidateId,
+      bypassUserIds,
+    );
+    const userIdPairBypassApplied = shouldBypassRepeatForUserIdPair(
+      normalizedRequesterId,
+      candidateId,
+      bypassUserIdPairKeys,
+    );
+    const emailPairBypassApplied = shouldBypassRepeatForEmailPair(
+      normalizedRequesterEmail,
+      readUserEmailById(userEmailsById, candidateId),
+      bypassEmailPairKeys,
+    );
+
     if (
       candidateId === normalizedRequesterId ||
-      shouldBypassRepeatForPair(
-        normalizedRequesterId,
-        candidateId,
-        bypassUserIds,
-      )
+      userIdBypassApplied ||
+      userIdPairBypassApplied ||
+      emailPairBypassApplied
     ) {
       if (candidateId !== normalizedRequesterId) {
-        testerBypassCandidateCount += 1;
+        if (userIdBypassApplied) {
+          testerBypassCandidateCount += 1;
+        }
+        if (userIdPairBypassApplied) {
+          userIdPairBypassCandidateCount += 1;
+        }
+        if (emailPairBypassApplied) {
+          emailPairBypassCandidateCount += 1;
+        }
       }
       return;
     }
@@ -144,6 +277,8 @@ function buildSameDayRepeatLookupPlan(
     dayKey,
     requesterBypassApplied: false,
     testerBypassCandidateCount,
+    userIdPairBypassCandidateCount,
+    emailPairBypassCandidateCount,
     refs,
     refCandidateIds,
   };
@@ -160,8 +295,11 @@ function buildRepeatResultFromSnapshots(plan, snapshots) {
   return {
     dayKey: plan.dayKey,
     excludedCandidateIds,
+    globalBypassApplied: Boolean(plan.globalBypassApplied),
     requesterBypassApplied: plan.requesterBypassApplied,
     testerBypassCandidateCount: plan.testerBypassCandidateCount,
+    userIdPairBypassCandidateCount: plan.userIdPairBypassCandidateCount,
+    emailPairBypassCandidateCount: plan.emailPairBypassCandidateCount,
   };
 }
 
@@ -227,9 +365,16 @@ function buildRepeatPreventionLogContext(repeatPreventionContext) {
 
   return {
     dayKey: repeatPreventionContext.dayKey,
+    globalBypassApplied: Boolean(
+      repeatPreventionContext.globalBypassApplied,
+    ),
     requesterBypassApplied: repeatPreventionContext.requesterBypassApplied,
     testerBypassCandidateCount:
       repeatPreventionContext.testerBypassCandidateCount,
+    userIdPairBypassCandidateCount:
+      repeatPreventionContext.userIdPairBypassCandidateCount,
+    emailPairBypassCandidateCount:
+      repeatPreventionContext.emailPairBypassCandidateCount,
   };
 }
 
@@ -291,5 +436,7 @@ module.exports = {
   getUtcDayKey,
   loadSameDayRepeatCandidateIds,
   loadSameDayRepeatCandidateIdsForTransaction,
+  shouldBypassRepeatForEmailPair,
+  shouldBypassRepeatForUserIdPair,
   shouldBypassRepeatForPair,
 };

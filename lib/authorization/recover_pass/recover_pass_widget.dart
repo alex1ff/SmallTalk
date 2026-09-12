@@ -1,20 +1,23 @@
-import '/auth/firebase_auth/auth_util.dart';
-import '/authorization/components/send/send_widget.dart';
+import '/components/send_widget.dart';
 import '/components/button/button_widget.dart';
-import '/flutter_flow/flutter_flow_icon_button.dart';
-import '/flutter_flow/flutter_flow_theme.dart';
-import '/flutter_flow/flutter_flow_util.dart';
 import '/custom_code/actions/index.dart' as actions;
 import '/flutter_flow/custom_functions.dart' as functions;
+import '/flutter_flow/flutter_flow_util.dart';
 import '/index.dart';
-import 'package:auto_size_text/auto_size_text.dart';
+import '/components/basic_page_header.dart';
+import '/shared_pages/design/expatlio_design.dart';
+import '/services/password_reset_service.dart';
 import 'package:flutter/material.dart';
-import 'package:webviewx_plus/webviewx_plus.dart';
 import 'recover_pass_model.dart';
 export 'recover_pass_model.dart';
 
 class RecoverPassWidget extends StatefulWidget {
-  const RecoverPassWidget({super.key});
+  const RecoverPassWidget({
+    super.key,
+    this.passwordResetInvoker,
+  });
+
+  final PasswordResetInvoker? passwordResetInvoker;
 
   static String routeName = 'Recover_pass';
   static String routePath = '/recoverPass';
@@ -25,6 +28,7 @@ class RecoverPassWidget extends StatefulWidget {
 
 class _RecoverPassWidgetState extends State<RecoverPassWidget> {
   late RecoverPassModel _model;
+  bool _isSubmitting = false;
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -44,8 +48,90 @@ class _RecoverPassWidgetState extends State<RecoverPassWidget> {
     super.dispose();
   }
 
+  Future<void> _submitPasswordReset() async {
+    if (_isSubmitting) {
+      return;
+    }
+    if (_model.emailTextController.text.isEmpty) {
+      await actions.showTopNotification(
+        context,
+        FFLocalizations.of(context).getText(
+          'rizvdi40' /* Почта не заполнена */,
+        ),
+        '',
+        true,
+      );
+      return;
+    }
+
+    if (!functions.isValidEmail(_model.emailTextController.text)) {
+      await actions.showTopNotification(
+        context,
+        FFLocalizations.of(context).getVariableText(
+          ruText: 'Неверный e-mail',
+          enText: 'Invalid email address',
+        ),
+        '',
+        true,
+      );
+      return;
+    }
+
+    _isSubmitting = true;
+    try {
+      await requestPasswordReset(
+        email: _model.emailTextController.text,
+        locale: FFLocalizations.of(context).languageCode,
+        invoker: widget.passwordResetInvoker,
+      );
+    } catch (_) {
+      if (mounted) {
+        await actions.showTopNotification(
+          context,
+          FFLocalizations.of(context).getVariableText(
+            ruText:
+                'Не удалось отправить запрос. Проверьте интернет и повторите.',
+            enText:
+                'Could not submit the request. Check your connection and try again.',
+          ),
+          '',
+          true,
+        );
+      }
+      return;
+    } finally {
+      _isSubmitting = false;
+    }
+
+    if (!mounted) return;
+
+    await showModalBottomSheet(
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      context: context,
+      builder: (context) {
+        return GestureDetector(
+          onTap: () {
+            FocusScope.of(context).unfocus();
+            FocusManager.instance.primaryFocus?.unfocus();
+          },
+          child: Padding(
+            padding: MediaQuery.viewInsetsOf(context),
+            child: SendWidget(),
+          ),
+        );
+      },
+    ).then((value) => safeSetState(() {}));
+  }
+
   @override
   Widget build(BuildContext context) {
+    final title = FFLocalizations.of(context)
+        .getText(
+          'hu56u2hq' /* Восстановить пароль */,
+        )
+        .replaceAll('\n', ' ');
+
     return GestureDetector(
       onTap: () {
         FocusScope.of(context).unfocus();
@@ -53,427 +139,178 @@ class _RecoverPassWidgetState extends State<RecoverPassWidget> {
       },
       child: Scaffold(
         key: scaffoldKey,
-        backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
-        body: Padding(
-          padding: EdgeInsetsDirectional.fromSTEB(0.0, 55.0, 0.0, 0.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
-                child: Container(
-                  width: double.infinity,
-                  height: 70.0,
-                  decoration: BoxDecoration(
-                    color: FlutterFlowTheme.of(context).primaryBackground,
-                    borderRadius: BorderRadius.circular(100.0),
-                  ),
-                  child: Align(
-                    alignment: AlignmentDirectional(-1.0, 0.0),
-                    child: Padding(
-                      padding: EdgeInsets.all(2.0),
-                      child: FlutterFlowIconButton(
-                        borderRadius: 50.0,
-                        buttonSize: 66.0,
-                        fillColor:
-                            FlutterFlowTheme.of(context).secondaryBackground,
-                        icon: Icon(
-                          FFIcons.kchevronLeft,
-                          color: FlutterFlowTheme.of(context).primaryText,
-                          size: 20.0,
-                        ),
-                        onPressed: () async {
-                          context.safePop();
-                        },
+        backgroundColor: ExpatlioDesign.background,
+        body: Column(
+          children: [
+            BasicPageHeader(title: title),
+            Expanded(
+              child: SingleChildScrollView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space16,
+                  ExpatlioDesign.space24,
+                  ExpatlioDesign.space16,
+                  ExpatlioDesign.space24,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      FFLocalizations.of(context).getText(
+                        '8ty2g5mk' /* Введите e-mail, указанный при регистрации */,
+                      ),
+                      textAlign: TextAlign.center,
+                      style: ExpatlioDesign.textStyle(
+                        context,
+                        color: ExpatlioDesign.muted,
+                        size: 15.0,
+                        weight: FontWeight.w400,
                       ),
                     ),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: EdgeInsets.all(6.0),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: FlutterFlowTheme.of(context).primaryBackground,
-                    borderRadius: BorderRadius.circular(20.0),
-                  ),
-                  child: Padding(
-                    padding: EdgeInsets.all(16.0),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.max,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        AutoSizeText(
-                          FFLocalizations.of(context).getText(
-                            'hu56u2hq' /* Восстановить 
-пароль */
-                            ,
-                          ),
-                          maxLines: 2,
-                          style:
-                              FlutterFlowTheme.of(context).bodyMedium.override(
-                                    fontFamily: 'Cool',
-                                    color: FlutterFlowTheme.of(context).primary,
-                                    fontSize: 55.0,
-                                    letterSpacing: 0.0,
-                                    fontWeight: FontWeight.normal,
-                                    lineHeight: 1.0,
-                                  ),
-                        ),
-                        Padding(
-                          padding: EdgeInsetsDirectional.fromSTEB(
-                              0.0, 12.0, 0.0, 0.0),
-                          child: AutoSizeText(
+                    const SizedBox(height: ExpatlioDesign.space20),
+                    Container(
+                      decoration: ExpatlioDesign.formGroupDecoration(),
+                      padding: ExpatlioDesign.formGroupPadding,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
                             FFLocalizations.of(context).getText(
-                              '8ty2g5mk' /* Введите e-mail, указанный при ... */,
+                              'w8edaady' /* E-mail */,
                             ),
-                            maxLines: 2,
-                            style: FlutterFlowTheme.of(context)
-                                .bodyMedium
-                                .override(
-                                  fontFamily: 'sf pro display',
-                                  color: FlutterFlowTheme.of(context)
-                                      .secondaryText,
-                                  fontSize: 15.0,
-                                  letterSpacing: 0.0,
-                                  fontWeight: FontWeight.normal,
+                            style: ExpatlioDesign.formLabelStyle(context),
+                          ),
+                          const SizedBox(height: ExpatlioDesign.space8),
+                          SizedBox(
+                            height: ExpatlioDesign.formFieldHeight,
+                            child: TextFormField(
+                              controller: _model.emailTextController,
+                              focusNode: _model.emailFocusNode,
+                              onFieldSubmitted: (_) async {
+                                await _submitPasswordReset();
+                              },
+                              autofocus: false,
+                              textInputAction: TextInputAction.done,
+                              textAlignVertical: TextAlignVertical.center,
+                              obscureText: false,
+                              decoration:
+                                  ExpatlioDesign.formFieldDecoration(context),
+                              style: ExpatlioDesign.formTextStyle(context),
+                              keyboardType: TextInputType.emailAddress,
+                              cursorColor: ExpatlioDesign.primary,
+                              enableInteractiveSelection: true,
+                              validator: _model.emailTextControllerValidator
+                                  .asValidator(context),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: ExpatlioDesign.space16),
+                    wrapWithModel(
+                      model: _model.buttonModel,
+                      updateCallback: () => safeSetState(() {}),
+                      child: ButtonWidget(
+                        text: FFLocalizations.of(context).getText(
+                          '4rn5krnl' /* Отправить */,
+                        ),
+                        loadingText:
+                            FFLocalizations.of(context).getVariableText(
+                          ruText: 'Отправляем...',
+                          enText: 'Sending...',
+                        ),
+                        busyStyle: ButtonBusyStyle.spinner,
+                        action: _submitPasswordReset,
+                      ),
+                    ),
+                    const SizedBox(height: ExpatlioDesign.space20),
+                    InkWell(
+                      borderRadius:
+                          BorderRadius.circular(ExpatlioDesign.radiusMedium),
+                      onTap: () async {
+                        context.pushNamed(PolicyWidget.routeName);
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: ExpatlioDesign.space8),
+                        child: RichText(
+                          textScaler: MediaQuery.of(context).textScaler,
+                          textAlign: TextAlign.center,
+                          text: TextSpan(
+                            children: [
+                              TextSpan(
+                                text: FFLocalizations.of(context).getText(
+                                  'bzzxmn6e' /* Нажимая кнопку "Отправить", вы соглашаетесь с */,
                                 ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
-                child: Container(
-                  width: double.infinity,
-                  height: 60.0,
-                  decoration: BoxDecoration(
-                    color: FlutterFlowTheme.of(context).primaryBackground,
-                    borderRadius: BorderRadius.circular(100.0),
-                  ),
-                  child: Padding(
-                    padding: EdgeInsets.all(2.0),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.max,
-                      children: [
-                        Container(
-                          width: 56.0,
-                          height: 56.0,
-                          decoration: BoxDecoration(
-                            color: FlutterFlowTheme.of(context)
-                                .secondaryBackground,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Align(
-                            alignment: AlignmentDirectional(0.0, 0.0),
-                            child: Icon(
-                              FFIcons.kmail01,
-                              color: FlutterFlowTheme.of(context).primaryText,
-                              size: 20.0,
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          child: Padding(
-                            padding: EdgeInsetsDirectional.fromSTEB(
-                                8.0, 0.0, 8.0, 0.0),
-                            child: Container(
-                              width: double.infinity,
-                              child: TextFormField(
-                                controller: _model.emailTextController,
-                                focusNode: _model.emailFocusNode,
-                                onFieldSubmitted: (_) async {
-                                  if (functions.isValidEmail(
-                                      _model.emailTextController.text)) {
-                                    if (_model
-                                        .emailTextController.text.isEmpty) {
-                                      await actions.showTopNotification(
-                                        context,
-                                        FFLocalizations.of(context).getText(
-                                          'rizvdi40' /* Почта не заполнена */,
-                                        ),
-                                        '',
-                                        true,
-                                      );
-                                      return;
-                                    }
-                                    await authManager.resetPassword(
-                                      email: _model.emailTextController.text,
-                                      context: context,
-                                    );
-                                    await showModalBottomSheet(
-                                      isScrollControlled: true,
-                                      backgroundColor: Colors.transparent,
-                                      context: context,
-                                      builder: (context) {
-                                        return WebViewAware(
-                                          child: GestureDetector(
-                                            onTap: () {
-                                              FocusScope.of(context).unfocus();
-                                              FocusManager.instance.primaryFocus
-                                                  ?.unfocus();
-                                            },
-                                            child: Padding(
-                                              padding: MediaQuery.viewInsetsOf(
-                                                  context),
-                                              child: SendWidget(),
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                    ).then((value) => safeSetState(() {}));
-                                  } else {
-                                    await actions.showTopNotification(
-                                      context,
-                                      'Неверный e-mail',
-                                      '',
-                                      true,
-                                    );
-                                    return;
-                                  }
-                                },
-                                autofocus: false,
-                                textInputAction: TextInputAction.next,
-                                obscureText: false,
-                                decoration: InputDecoration(
-                                  isDense: false,
-                                  labelText:
-                                      FFLocalizations.of(context).getText(
-                                    'w8edaady' /* E-mail */,
-                                  ),
-                                  labelStyle: FlutterFlowTheme.of(context)
-                                      .bodyMedium
-                                      .override(
-                                        fontFamily: 'sf pro display',
-                                        color: FlutterFlowTheme.of(context)
-                                            .secondaryText,
-                                        fontSize: 16.0,
-                                        letterSpacing: 0.0,
-                                      ),
-                                  enabledBorder: InputBorder.none,
-                                  focusedBorder: InputBorder.none,
-                                  errorBorder: InputBorder.none,
-                                  focusedErrorBorder: InputBorder.none,
-                                ),
-                                style: FlutterFlowTheme.of(context)
-                                    .bodyMedium
-                                    .override(
-                                      fontFamily: 'sf pro display',
-                                      fontSize: 16.0,
-                                      letterSpacing: 0.0,
-                                    ),
-                                keyboardType: TextInputType.emailAddress,
-                                cursorColor:
-                                    FlutterFlowTheme.of(context).primaryText,
-                                enableInteractiveSelection: true,
-                                validator: _model.emailTextControllerValidator
-                                    .asValidator(context),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(0.0, 35.0, 0.0, 0.0),
-                child: wrapWithModel(
-                  model: _model.buttonModel,
-                  updateCallback: () => safeSetState(() {}),
-                  child: ButtonWidget(
-                    text: FFLocalizations.of(context).getText(
-                      '4rn5krnl' /* Отправить */,
-                    ),
-                    loadingText: FFLocalizations.of(context).getVariableText(
-                      ruText: 'Отправляем...',
-                      enText: 'Sending...',
-                    ),
-                    busyStyle: ButtonBusyStyle.spinner,
-                    action: () async {
-                      if (functions
-                          .isValidEmail(_model.emailTextController.text)) {
-                        if (_model.emailTextController.text.isEmpty) {
-                          await actions.showTopNotification(
-                            context,
-                            FFLocalizations.of(context).getText(
-                              'rizvdi40' /* Почта не заполнена */,
-                            ),
-                            '',
-                            true,
-                          );
-                          return;
-                        }
-                        await authManager.resetPassword(
-                          email: _model.emailTextController.text,
-                          context: context,
-                        );
-                        await showModalBottomSheet(
-                          isScrollControlled: true,
-                          backgroundColor: Colors.transparent,
-                          context: context,
-                          builder: (context) {
-                            return WebViewAware(
-                              child: GestureDetector(
-                                onTap: () {
-                                  FocusScope.of(context).unfocus();
-                                  FocusManager.instance.primaryFocus?.unfocus();
-                                },
-                                child: Padding(
-                                  padding: MediaQuery.viewInsetsOf(context),
-                                  child: SendWidget(),
+                                style: ExpatlioDesign.textStyle(
+                                  context,
+                                  color: ExpatlioDesign.muted,
+                                  size: 13.0,
+                                  weight: FontWeight.w400,
                                 ),
                               ),
-                            );
-                          },
-                        ).then((value) => safeSetState(() {}));
-                      } else {
-                        await actions.showTopNotification(
-                          context,
-                          'Неверный e-mail',
-                          '',
-                          true,
-                        );
-                        return;
-                      }
-                    },
-                  ),
-                ),
-              ),
-              Expanded(
-                child: Padding(
-                  padding: EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 0.0, 35.0),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.max,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Padding(
-                        padding: EdgeInsetsDirectional.fromSTEB(
-                            24.0, 0.0, 24.0, 0.0),
-                        child: InkWell(
-                          splashColor: Colors.transparent,
-                          focusColor: Colors.transparent,
-                          hoverColor: Colors.transparent,
-                          highlightColor: Colors.transparent,
-                          onTap: () async {
-                            context.pushNamed(PolicyWidget.routeName);
-                          },
-                          child: RichText(
-                            textScaler: MediaQuery.of(context).textScaler,
-                            text: TextSpan(
-                              children: [
-                                TextSpan(
-                                  text: FFLocalizations.of(context).getText(
-                                    'bzzxmn6e' /* Нажимая кнопку "Отправить", вы... */,
-                                  ),
-                                  style: FlutterFlowTheme.of(context)
-                                      .bodyMedium
-                                      .override(
-                                        fontFamily: 'sf pro display',
-                                        color: FlutterFlowTheme.of(context)
-                                            .secondaryText,
-                                        fontSize: 14.0,
-                                        letterSpacing: 0.0,
-                                      ),
+                              TextSpan(
+                                text: FFLocalizations.of(context).getText(
+                                  'vgscvvlj' /* Политики конфиденциальности */,
                                 ),
-                                TextSpan(
-                                  text: FFLocalizations.of(context).getText(
-                                    'vgscvvlj' /* Политики конфиденциальности */,
-                                  ),
-                                  style: FlutterFlowTheme.of(context)
-                                      .bodyMedium
-                                      .override(
-                                        fontFamily: 'sf pro display',
-                                        color: FlutterFlowTheme.of(context)
-                                            .primaryText,
-                                        fontSize: 14.0,
-                                        letterSpacing: 0.0,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                )
-                              ],
-                              style: FlutterFlowTheme.of(context)
-                                  .bodyMedium
-                                  .override(
-                                    fontFamily: 'sf pro display',
-                                    color: FlutterFlowTheme.of(context)
-                                        .secondaryText,
-                                    letterSpacing: 0.0,
-                                  ),
-                            ),
-                            textAlign: TextAlign.center,
+                                style: ExpatlioDesign.textStyle(
+                                  context,
+                                  size: 13.0,
+                                  weight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                      Padding(
-                        padding:
-                            EdgeInsetsDirectional.fromSTEB(0.0, 50.0, 0.0, 0.0),
-                        child: InkWell(
-                          splashColor: Colors.transparent,
-                          focusColor: Colors.transparent,
-                          hoverColor: Colors.transparent,
-                          highlightColor: Colors.transparent,
-                          onTap: () async {
-                            context.safePop();
-                          },
-                          child: RichText(
-                            textScaler: MediaQuery.of(context).textScaler,
-                            text: TextSpan(
-                              children: [
-                                TextSpan(
-                                  text: FFLocalizations.of(context).getText(
-                                    '5judxscj' /* Вспомнили пароль?  */,
-                                  ),
-                                  style: FlutterFlowTheme.of(context)
-                                      .bodyMedium
-                                      .override(
-                                        fontFamily: 'sf pro display',
-                                        color: FlutterFlowTheme.of(context)
-                                            .secondaryText,
-                                        fontSize: 16.0,
-                                        letterSpacing: 0.0,
-                                      ),
+                    ),
+                    const SizedBox(height: ExpatlioDesign.space24),
+                    InkWell(
+                      borderRadius:
+                          BorderRadius.circular(ExpatlioDesign.radiusMedium),
+                      onTap: () async {
+                        context.safePop();
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.all(ExpatlioDesign.space8),
+                        child: RichText(
+                          textScaler: MediaQuery.of(context).textScaler,
+                          textAlign: TextAlign.center,
+                          text: TextSpan(
+                            children: [
+                              TextSpan(
+                                text: FFLocalizations.of(context).getText(
+                                  '5judxscj' /* Вспомнили пароль?  */,
                                 ),
-                                TextSpan(
-                                  text: FFLocalizations.of(context).getText(
-                                    '7r35sif1' /* Вернуться */,
-                                  ),
-                                  style: FlutterFlowTheme.of(context)
-                                      .bodyMedium
-                                      .override(
-                                        fontFamily: 'sf pro display',
-                                        color: FlutterFlowTheme.of(context)
-                                            .primary,
-                                        fontSize: 16.0,
-                                        letterSpacing: 0.0,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                )
-                              ],
-                              style: FlutterFlowTheme.of(context)
-                                  .bodyMedium
-                                  .override(
-                                    fontFamily: 'sf pro display',
-                                    color: FlutterFlowTheme.of(context)
-                                        .secondaryText,
-                                    fontSize: 16.0,
-                                    letterSpacing: 0.0,
-                                  ),
-                            ),
-                            textAlign: TextAlign.center,
+                                style: ExpatlioDesign.textStyle(
+                                  context,
+                                  color: ExpatlioDesign.muted,
+                                  size: 15.0,
+                                  weight: FontWeight.w400,
+                                ),
+                              ),
+                              TextSpan(
+                                text: FFLocalizations.of(context).getText(
+                                  '7r35sif1' /* Вернуться */,
+                                ),
+                                style: ExpatlioDesign.textStyle(
+                                  context,
+                                  color: ExpatlioDesign.primary,
+                                  size: 15.0,
+                                  weight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

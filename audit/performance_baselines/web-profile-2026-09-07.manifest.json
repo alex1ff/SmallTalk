@@ -1,0 +1,382 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-09-07T21:54:34.278Z",
+  "source": {
+    "commit": "5d785a8d1bfe34724901b0a773869e9473417881",
+    "dirtyState": "dirty",
+    "runtimeStatus": "",
+    "runtimeFingerprint": "14a7ba6b85b3c1b6a8ce8f65ba56ef599e9f9039f7ecca68177c2bade4819a4b"
+  },
+  "environment": {
+    "flutterVersion": "3.35.3",
+    "dartVersion": "3.9.2",
+    "buildMode": "profile",
+    "hostModel": "MacBookPro18,3 / Apple M1 Pro / 16 GB",
+    "osVersion": "macOS 26.5.2 (25F84)",
+    "deviceKind": "browser",
+    "refreshRateHz": "not_applicable"
+  },
+  "build": {
+    "fingerprint": "0442536dc639a0dd095f47204c39f26e6916cbf082c5b0a5cf35a8ce17a8f2de",
+    "files": {
+      "build/web/.last_build_id": {
+        "bytes": 32,
+        "sha256": "c53abe36a46a58d92f0fd2fa6e4316e8d1d03038672883cdd114d1fae3b2081c"
+      },
+      "build/web/assets/AssetManifest.bin": {
+        "bytes": 4626,
+        "sha256": "9ff7e1a7a3904dd025e3f8110869cfd63d68b41f38126ade197a3ff3ee7374c1"
+      },
+      "build/web/assets/AssetManifest.bin.json": {
+        "bytes": 6170,
+        "sha256": "d30ea81831d6f438e9b8fa37fb1449c7521c7979533f8f862e68a5a5b6f49433"
+      },
+      "build/web/assets/AssetManifest.json": {
+        "bytes": 4261,
+        "sha256": "c4adafc25da1172845412944dffae631b62997dc38a37516a49f337b20f6f4f5"
+      },
+      "build/web/assets/FontManifest.json": {
+        "bytes": 1432,
+        "sha256": "b21a93de78db124bb7332bcded5141b18d624dcfb5f933a48d607a60000ecab9"
+      },
+      "build/web/assets/NOTICES": {
+        "bytes": 1875051,
+        "sha256": "7af5bcd5de8eaed42337f422a9852dc47129f4dcdd469104ad44aac78dc622f0"
+      },
+      "build/web/assets/assets/fonts/SF-Pro-Display-Light.otf": {
+        "bytes": 318908,
+        "sha256": "a32100917fe2828bff593f5e946c2b97e53a0597b54b4c212484f7a214c53868"
+      },
+      "build/web/assets/assets/fonts/SF-Pro-Display-Medium.otf": {
+        "bytes": 335512,
+        "sha256": "cbfd17919856efcedabdd73781dad2984326928ae7c9635bef6227b1a7d71d21"
+      },
+      "build/web/assets/assets/fonts/SF-Pro-Display-Regular.otf": {
+        "bytes": 298944,
+        "sha256": "71a2162c852e87baa6440c983e406283391646778c8bc74e57b00613a3412f80"
+      },
+      "build/web/assets/assets/fonts/SF-Pro-Display-Semibold.otf": {
+        "bytes": 335964,
+        "sha256": "53a55ec7e0a90c0e1980b9d95e3cb93851b4e473b575693813a1b150066661ff"
+      },
+      "build/web/assets/assets/fonts/coolveticaRg_(1).ttf": {
+        "bytes": 189520,
+        "sha256": "d15c4b7dc3365b50b7b0843f1c0a020d44a6678b961c39fb0889b7c0cf3a3bcd"
+      },
+      "build/web/assets/assets/fonts/icomoon12.ttf": {
+        "bytes": 9692,
+        "sha256": "ec76fe12461b7989efb19d2cdc3e13c67bc44121e25d5bfde943ae5993088b33"
+      },
+      "build/web/assets/assets/fonts/icomoon1222.ttf": {
+        "bytes": 1312,
+        "sha256": "a433867e3bbbdd22ac4e10dfd431c652b8d3e816b08fa683fea57a1a6033544a"
+      },
+      "build/web/assets/assets/fonts/icomoonSmall3.ttf": {
+        "bytes": 11124,
+        "sha256": "c4bcd10714dc844dd971c37a02c1e9f4df40e9865560aad9399f21c17eedbf8f"
+      },
+      "build/web/assets/assets/images/33_.webp": {
+        "bytes": 24452,
+        "sha256": "1ea601f3494208191539af876e5215146bd94760f89d4d933330c897a0d827c4"
+      },
+      "build/web/assets/assets/images/33_2.webp": {
+        "bytes": 26124,
+        "sha256": "8747f9624676f0a41ec725f6fa21d0da68e39ce3259fc405239661b8f7cd3201"
+      },
+      "build/web/assets/assets/images/34kgr_.png": {
+        "bytes": 27978,
+        "sha256": "7e3ce94f3f7778a34a98c839abd895dd33b1d258131edca2ae51d745e60a19e3"
+      },
+      "build/web/assets/assets/images/Frame_22.png": {
+        "bytes": 3352,
+        "sha256": "80835778c1abc5821e30fe114e5ce5de6100fed90773a0bb9f9a54c256c8cd35"
+      },
+      "build/web/assets/assets/images/Group_1171275321.png": {
+        "bytes": 15537,
+        "sha256": "d1c9d5bd702fe2e8d7f12f9729a39b5362d1e968cbf8a3dc4afe717476afb828"
+      },
+      "build/web/assets/assets/images/Group_1171275327_1.png": {
+        "bytes": 8644,
+        "sha256": "7e53d580edd8798e5c455093dc099847f40ef5d5ef3125465e3ecffeb88ceb06"
+      },
+      "build/web/assets/assets/images/Group_1171275327_2.png": {
+        "bytes": 3300,
+        "sha256": "41a8ac755ed4580205941714747c3ecee47f4d934a018e12a00aa136b5c982b0"
+      },
+      "build/web/assets/assets/images/Group_21.png": {
+        "bytes": 12933,
+        "sha256": "15aa5b4635c1064c286aee6c3a4de86b380afc532169b589ff0bf9deff692e01"
+      },
+      "build/web/assets/assets/images/e1xjd_.png": {
+        "bytes": 55828,
+        "sha256": "cec6509fa2e99120e643961c3e774d293c1612d2534cf42803e2ad0eed40b3fc"
+      },
+      "build/web/assets/assets/images/favicon.png": {
+        "bytes": 917,
+        "sha256": "7ab2525f4b86b65d3e4c70358a17e5a1aaf6f437f99cbcc046dad73d59bb9015"
+      },
+      "build/web/assets/assets/images/g08g4_.png": {
+        "bytes": 40899,
+        "sha256": "3300283bc191b3f11affd3d5c57873539bc249ada5d2b86ed7926f6216e7b485"
+      },
+      "build/web/assets/assets/images/group_11712750962.webp": {
+        "bytes": 37446,
+        "sha256": "c7a2a4b0b50974c5c30db1946bc95715a9ef269bfc2de9a54edee6d6160b3868"
+      },
+      "build/web/assets/assets/images/group_11712753102.webp": {
+        "bytes": 26436,
+        "sha256": "b84d6953256dc896bac51a81f29ddcf0e6b60d0731ca8807c9df7ea0d5cd26fa"
+      },
+      "build/web/assets/assets/images/group_1171275311.webp": {
+        "bytes": 25188,
+        "sha256": "934cc7697010640cd30c44766ccd1179016104bb5c1a1430755fd309b4aa80cd"
+      },
+      "build/web/assets/assets/images/iom0u_.png": {
+        "bytes": 45966,
+        "sha256": "42219ff125840496550fa69a9d3bb59d80ac420a6945762b77a3b3051a8fd3a8"
+      },
+      "build/web/assets/assets/images/logo.png": {
+        "bytes": 195681,
+        "sha256": "2f85462db00b6763e17c2ee8bbf7737d99304bda36dd6732fb42dfebfab4be74"
+      },
+      "build/web/assets/assets/images/message-circle-01.svg": {
+        "bytes": 1851,
+        "sha256": "cf1eb64d58ba4244bde639e5acc14889250c3b620681af2158c6b3227005dafe"
+      },
+      "build/web/assets/assets/images/onboarding_free_small_talk.jpeg": {
+        "bytes": 117562,
+        "sha256": "a1e3711fea5332a4e222e10d41423c3fae54c02a9b857924189e4a3d6979ecd9"
+      },
+      "build/web/assets/assets/images/onboarding_start_search.jpeg": {
+        "bytes": 128497,
+        "sha256": "3c2e6df88c60766fc13ef88c85e3de0c41f21605511b4a13494994f420e45ac6"
+      },
+      "build/web/assets/assets/images/onboarding_translated_subtitles.jpeg": {
+        "bytes": 116147,
+        "sha256": "a8d1027182bf16db161d00c8b1392d68ec90d291a802aed5e5a00e954adc285c"
+      },
+      "build/web/assets/assets/images/orbiting_avatar_1.jpg": {
+        "bytes": 100629,
+        "sha256": "fbe32181988612df684f09b8dfae09d7ee9a6cbbc600c96e07c95450c60809eb"
+      },
+      "build/web/assets/assets/images/orbiting_avatar_2.jpg": {
+        "bytes": 93244,
+        "sha256": "f2cee9b399c14dec06cba7e0ebb322a05dbfb0190f2325a93626dc9ace51d011"
+      },
+      "build/web/assets/assets/images/orbiting_avatar_3.jpg": {
+        "bytes": 94267,
+        "sha256": "c148c3f4b429fabaf4a59909b5b5dd5f268b8db167dcb9328f4185444a57b87d"
+      },
+      "build/web/assets/assets/images/orbiting_avatar_4.jpg": {
+        "bytes": 111434,
+        "sha256": "48ba2863b35ab1c39be6a75d253a0e9b91b813b047d8571e3b8a08f650c3ba4d"
+      },
+      "build/web/assets/assets/images/orbiting_avatar_5.jpg": {
+        "bytes": 101503,
+        "sha256": "0c52a0faa330360afddc517c126b4aa1ed8a151777a55ffeaf70de032deeef61"
+      },
+      "build/web/assets/assets/images/orbiting_avatar_6.jpg": {
+        "bytes": 106331,
+        "sha256": "aa45a362df878bf08808524717d84480d9c21b04e5ccbd1655cadc1b8da641ed"
+      },
+      "build/web/assets/assets/images/sticker_32.png": {
+        "bytes": 160238,
+        "sha256": "463b53773f04896ac2c2d9f00ca366fbd125cadfc80f472f8a56d0046cd5a2f6"
+      },
+      "build/web/assets/assets/images/sticker_50.png": {
+        "bytes": 83363,
+        "sha256": "ec72a3800e89b1ecfcc24cb267bfffb513e3b6b51da49ad9d2fc16a6291d7273"
+      },
+      "build/web/assets/assets/images/sticker_51.png": {
+        "bytes": 77359,
+        "sha256": "9c37ce55f5f9dcde01f0096f9a1efc8ce13639cfa539fe5e3e9def2e8b26fefc"
+      },
+      "build/web/assets/assets/jsons/Confetti_Animation.json": {
+        "bytes": 173770,
+        "sha256": "af085bda44faf30972b2a7c98a5b9fb343bfe9765e52f4be09365d5fc854ed10"
+      },
+      "build/web/assets/assets/jsons/Material_Wave_Loading_Animation.json": {
+        "bytes": 6114,
+        "sha256": "427772ba1f82f4ada0cd733e3e54f851eeb97ce413f87e3b2c876f44d28acdec"
+      },
+      "build/web/assets/assets/jsons/World_Map_Pinging_Animation.json": {
+        "bytes": 405072,
+        "sha256": "58edba670b771d49d4e3ae47e7ae54e695577c0d6ad60367accee2b039bdaeff"
+      },
+      "build/web/assets/assets/jsons/events_city_catalog.json": {
+        "bytes": 6149,
+        "sha256": "aa641d44630839db9b47d6da2da838beefca931b85b71d3256c7dac35f0ee1b7"
+      },
+      "build/web/assets/assets/jsons/languages_catalog.json": {
+        "bytes": 11939,
+        "sha256": "5b41ca134f665fdf2950ebb00a6d3a90090511ca9e1aa09a10e7d67e6adc6db2"
+      },
+      "build/web/assets/assets/jsons/waiting_for_teacher_loading.json": {
+        "bytes": 12732,
+        "sha256": "c1f3673a7c3770798e97d29d6207b9b3e65735c9d45a54f96c4d02af5d847b3f"
+      },
+      "build/web/assets/fonts/MaterialIcons-Regular.otf": {
+        "bytes": 20404,
+        "sha256": "7a411b3d479dba91ca927943f29e80d7dbdf97e704e82a19500c8df93a59c715"
+      },
+      "build/web/assets/packages/cupertino_icons/assets/CupertinoIcons.ttf": {
+        "bytes": 4932,
+        "sha256": "0c8593bfe3bb06e0a91459665157db2cd664c8f8cb5766fca1257b595ecd06fc"
+      },
+      "build/web/assets/packages/flutter_sound_web/howler/howler.js": {
+        "bytes": 105784,
+        "sha256": "6198e656ba0c27506cbf9e5bc07360dabdee5f1105a2eaacd6bffaf70f18d70d"
+      },
+      "build/web/assets/packages/flutter_sound_web/src/flutter_sound.js": {
+        "bytes": 5392,
+        "sha256": "8ce290cb881dcd9e4445f6ebb1463a792ebca261fde2fd0cf7803aeb23f48192"
+      },
+      "build/web/assets/packages/flutter_sound_web/src/flutter_sound_player.js": {
+        "bytes": 17814,
+        "sha256": "4da0a20bec292eb4001b35db2f3741338cea6d2402289050547cda2b7b975f67"
+      },
+      "build/web/assets/packages/flutter_sound_web/src/flutter_sound_recorder.js": {
+        "bytes": 18327,
+        "sha256": "6d538babd30c0b9578c3502c71f658c21d1dfa1c8dcf16871e7c652002e91c7e"
+      },
+      "build/web/assets/packages/flutter_sound_web/src/flutter_sound_stream_processor.js": {
+        "bytes": 8421,
+        "sha256": "ab4422dad0804ddc26d73ff8a718264edd2c79748623ff140be872c48a63e8e3"
+      },
+      "build/web/assets/packages/font_awesome_flutter/lib/fonts/fa-brands-400.ttf": {
+        "bytes": 1068,
+        "sha256": "2b2ae22ae352248b517cd6ef5c048afae2dfbf54568d0f122bd7a58e00a05f27"
+      },
+      "build/web/assets/packages/font_awesome_flutter/lib/fonts/fa-regular-400.ttf": {
+        "bytes": 68004,
+        "sha256": "079413b7606191e1a393b467c6a467f3c2ee9bedd8ae7e980a93134758c5f51c"
+      },
+      "build/web/assets/packages/font_awesome_flutter/lib/fonts/fa-solid-900.ttf": {
+        "bytes": 419720,
+        "sha256": "f1ce0da12a01f7ec15ae69c4ed54999ea875bd236e62fef58ac4ddbcb39b367a"
+      },
+      "build/web/assets/shaders/ink_sparkle.frag": {
+        "bytes": 8867,
+        "sha256": "e01b61b394cf66a641bea87e3b4fe3787d372f636c8bc8a2a67438cdc29da6f6"
+      },
+      "build/web/canvaskit/canvaskit.js": {
+        "bytes": 86619,
+        "sha256": "8bf473e4b3d5d3f3a14f5e0081b68ccf7194b8a04919b579099c90a662848df0"
+      },
+      "build/web/canvaskit/canvaskit.js.symbols": {
+        "bytes": 1337304,
+        "sha256": "d318dbf9a3c3a781579fa20ec3beddcdf9355b0f5c4376d76cf5ad6fe58cc2ef"
+      },
+      "build/web/canvaskit/canvaskit.wasm": {
+        "bytes": 7052864,
+        "sha256": "20e2f59919d514cc194444ec3b38adafcc898ba38e3283a4e525ecfbd2514117"
+      },
+      "build/web/canvaskit/chromium/canvaskit.js": {
+        "bytes": 86256,
+        "sha256": "c4513441303e717ea14bf60814727bc994ce4381188e4b4c0b02a003885d1df7"
+      },
+      "build/web/canvaskit/chromium/canvaskit.js.symbols": {
+        "bytes": 1259162,
+        "sha256": "eceb9c53341eca8fd2449b10049ce5f98d7b1aa8cd60dd168657591f5daac448"
+      },
+      "build/web/canvaskit/chromium/canvaskit.wasm": {
+        "bytes": 5678018,
+        "sha256": "5e1f801de136a593d29c555b3c8dea235e761e59a1b370a1a4dba684cb80278a"
+      },
+      "build/web/canvaskit/skwasm.js": {
+        "bytes": 60281,
+        "sha256": "9fdb1272529878ad8f2f56b4e435251204f84b1497e8f45c0b380516b4c5df2c"
+      },
+      "build/web/canvaskit/skwasm.js.symbols": {
+        "bytes": 1441359,
+        "sha256": "830b39ff018fe796b9d0ea83478ca2f15ff2736914b9727a9b6929314522bc36"
+      },
+      "build/web/canvaskit/skwasm.wasm": {
+        "bytes": 3443467,
+        "sha256": "eab8f0df5027670550425a66f06bf537d99032a50b2a2fb176e3f82ef50cce3c"
+      },
+      "build/web/canvaskit/skwasm_heavy.js": {
+        "bytes": 60394,
+        "sha256": "811359f46a22b5c1aab6667d167e1fa479275a09cb6eba9cbfbb548f4462313f"
+      },
+      "build/web/canvaskit/skwasm_heavy.js.symbols": {
+        "bytes": 1560177,
+        "sha256": "1418b55dbb2fc3172e36aca16c32437912acc9d3ae3b270cbc4c9080000d8bfb"
+      },
+      "build/web/canvaskit/skwasm_heavy.wasm": {
+        "bytes": 4933843,
+        "sha256": "4c9edc9a9bd8817c12ac650bd24a3e5a21fb1b857758728e9819f62c5c013a22"
+      },
+      "build/web/favicon.png": {
+        "bytes": 319,
+        "sha256": "6eafd019d19ea0e992781eb31e0d47f2a963ee8f2f2127756d234245f9b3246e"
+      },
+      "build/web/flutter.js": {
+        "bytes": 9262,
+        "sha256": "e3081edda6d2ee9064d700a98f7ba8bb634aea05d735980272ff8d2179e48016"
+      },
+      "build/web/flutter_bootstrap.js": {
+        "bytes": 9811,
+        "sha256": "b0f540c310d0c81006bce5b9f4f31ac2333fd490e302e77f7097c5b29045886c"
+      },
+      "build/web/flutter_service_worker.js": {
+        "bytes": 12620,
+        "sha256": "b60ecb660dde2fd53569afb457833aabb2d850bb4cce908c74793d790ddda470"
+      },
+      "build/web/icons/Icon-192.png": {
+        "bytes": 6801,
+        "sha256": "de23b2fa4118f5b926e642fde0b46935ad85951e401c3628e4c8c5f27be98ce2"
+      },
+      "build/web/icons/Icon-512.png": {
+        "bytes": 32409,
+        "sha256": "b17e2b54134a7371b41f0169f8693e6828fef654d874ac4538687c109dfb0e98"
+      },
+      "build/web/icons/Icon-maskable-192.png": {
+        "bytes": 6801,
+        "sha256": "de23b2fa4118f5b926e642fde0b46935ad85951e401c3628e4c8c5f27be98ce2"
+      },
+      "build/web/icons/Icon-maskable-512.png": {
+        "bytes": 32409,
+        "sha256": "b17e2b54134a7371b41f0169f8693e6828fef654d874ac4538687c109dfb0e98"
+      },
+      "build/web/icons/app_launcher_icon.png": {
+        "bytes": 38019,
+        "sha256": "470d7ea793acfc0433423c587ead67a101a977740b3c4ac5d494291e6ce2f650"
+      },
+      "build/web/index.html": {
+        "bytes": 11808,
+        "sha256": "e20cc27ba66992e5fb1c25b5ba8aa87dd6c1c71459ed88d0f8cf26e6ee5d65dc"
+      },
+      "build/web/main.dart.js": {
+        "bytes": 20332401,
+        "sha256": "1b56ce6500d4e8c46fbe73f6a95f9c02b7b6e86f77eaede9084c5fc598bb1900"
+      },
+      "build/web/main.dart.js.map": {
+        "bytes": 8266407,
+        "sha256": "7a3bbf3032ef34e41d669da55ee3816ad51fba72ff7c3c811419dcdf34f8f213"
+      },
+      "build/web/manifest.json": {
+        "bytes": 912,
+        "sha256": "f241efcdc461006a37381edb8c07144fa5f7b271861ff29e814cf0d6e2c5a963"
+      },
+      "build/web/version.json": {
+        "bytes": 90,
+        "sha256": "6bd7ccbdfb6fa577ba80f5e6ca10f775870ff65d43af382ab2cf8486a1acfbb1"
+      }
+    }
+  },
+  "collectionContract": {
+    "scenarioVersion": "web-onboarding-startup-v1",
+    "playwrightCliVersion": "0.1.19",
+    "viewport": "390x844@1x",
+    "locale": "ru-RU",
+    "network": "127.0.0.1 local HTTP server; CDP latency 0; throughput unlimited",
+    "authState": "signed out; onboarding",
+    "cacheState": "cold; fresh context; service workers blocked; HTTP cache disabled",
+    "collectorSha256": "eca5ab067e79ddea4e92349cbffdf399502dca18243b54b5a5f975a0d1c41d11",
+    "collectorEvidenceSha256": "139a0b53e05527ec4d73871f8faa79d83127997c02a709e8dbddece6cfe437d0",
+    "collectorPath": "audit/scripts/collect_web_startup.playwright.js"
+  },
+  "runNonce": "bb66703c-0d95-44ed-9474-87589c10f397",
+  "runId": "a48041499d6fbacd2c5963fc41138c55d2847dc72c79532017c17c4aaafbc5dd"
+}

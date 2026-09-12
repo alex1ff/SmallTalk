@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:small_talk/components/pair_review_content.dart';
 import 'package:small_talk/flutter_flow/internationalization.dart';
 import 'package:small_talk/shared_pages/review_flow/review_submission_helper.dart';
 
@@ -112,7 +113,8 @@ void main() {
   });
 
   group('session review participant resolution', () {
-    test('prefers participantIds plus generalized requester/responder fields', () {
+    test('prefers participantIds plus generalized requester/responder fields',
+        () {
       final resolution = resolveSessionReviewParticipant(
         sessionData: {
           'participantIds': ['user-a'],
@@ -127,6 +129,94 @@ void main() {
       expect(resolution.isParticipant, isTrue);
       expect(resolution.isRequester, isTrue);
       expect(resolution.isResponder, isFalse);
+      expect(resolution.counterpartUserId, 'user-b');
+    });
+
+    test('resolves neutral responder fields without legacy tutor mirrors', () {
+      final resolution = resolveSessionReviewParticipant(
+        sessionData: {
+          'requesterId': 'user-a',
+          'currentResponderId': 'user-b',
+        },
+        currentUserId: 'user-a',
+      );
+
+      expect(resolution.isParticipant, isTrue);
+      expect(resolution.isRequester, isTrue);
+      expect(resolution.isResponder, isFalse);
+      expect(resolution.counterpartUserId, 'user-b');
+    });
+
+    test('neutral requester wins over stale legacy student id', () {
+      final requesterResolution = resolveSessionReviewParticipant(
+        sessionData: {
+          'studentId': 'legacy-student',
+          'requesterId': 'neutral-requester',
+          'currentResponderId': 'neutral-responder',
+        },
+        currentUserId: 'neutral-requester',
+      );
+
+      expect(requesterResolution.isParticipant, isTrue);
+      expect(requesterResolution.isRequester, isTrue);
+      expect(requesterResolution.counterpartUserId, 'neutral-responder');
+
+      final legacyStudentResolution = resolveSessionReviewParticipant(
+        sessionData: {
+          'studentId': 'legacy-student',
+          'requesterId': 'neutral-requester',
+          'currentResponderId': 'neutral-responder',
+        },
+        currentUserId: 'legacy-student',
+      );
+
+      expect(legacyStudentResolution.isParticipant, isFalse);
+      expect(legacyStudentResolution.isRequester, isFalse);
+      expect(legacyStudentResolution.counterpartUserId, isNull);
+    });
+
+    test('neutral responder wins over stale legacy tutor id', () {
+      final responderResolution = resolveSessionReviewParticipant(
+        sessionData: {
+          'requesterId': 'neutral-requester',
+          'tutorId': 'legacy-tutor',
+          'responderId': 'neutral-responder',
+        },
+        currentUserId: 'neutral-responder',
+      );
+
+      expect(responderResolution.isParticipant, isTrue);
+      expect(responderResolution.isResponder, isTrue);
+      expect(responderResolution.counterpartUserId, 'neutral-requester');
+
+      final legacyTutorResolution = resolveSessionReviewParticipant(
+        sessionData: {
+          'requesterId': 'neutral-requester',
+          'tutorId': 'legacy-tutor',
+          'responderId': 'neutral-responder',
+        },
+        currentUserId: 'legacy-tutor',
+      );
+
+      expect(legacyTutorResolution.isParticipant, isFalse);
+      expect(legacyTutorResolution.isResponder, isFalse);
+      expect(legacyTutorResolution.counterpartUserId, isNull);
+    });
+
+    test('skips empty legacy responder fields before neutral responder fields',
+        () {
+      final resolution = resolveSessionReviewParticipant(
+        sessionData: {
+          'studentId': '',
+          'requesterId': 'user-a',
+          'tutorId': '   ',
+          'currentTutorId': '',
+          'responderId': 'user-b',
+        },
+        currentUserId: 'user-a',
+      );
+
+      expect(resolution.isParticipant, isTrue);
       expect(resolution.counterpartUserId, 'user-b');
     });
 
@@ -158,16 +248,57 @@ void main() {
       expect(resolution.counterpartUserId, isNull);
     });
 
-    test('Call Details wires counterpart resolution through the shared helper', () {
+    test(
+        'review sync update marks requester side independently from profile role',
+        () {
+      expect(
+        buildSessionReviewUpdate(
+          isTeacher: true,
+          reviewedAsRequester: true,
+        ),
+        {'studentHasReviewed': true},
+      );
+      expect(
+        buildSessionReviewUpdate(
+          isTeacher: false,
+          reviewedAsRequester: false,
+        ),
+        {'tutorHasReviewed': true},
+      );
+    });
+
+    test('Call Details wires counterpart resolution through the shared helper',
+        () {
+      final source = File(
+        'lib/shared_pages/call_details/call_details_widget.dart',
+      ).readAsStringSync();
+      final participantDisplaySource = File(
+        'lib/shared_pages/call_history/call_participant_display_utils.dart',
+      ).readAsStringSync();
+
+      expect(source, contains('resolveSessionReviewParticipant('));
+      expect(source,
+          contains('_participantResolution(session).counterpartUserId'));
+      expect(source, contains('resolveSessionParticipantDisplayInfo('));
+      expect(participantDisplaySource, contains('participantInfos'));
+      expect(participantDisplaySource, contains('requesterInfo'));
+      expect(participantDisplaySource, contains('acceptedResponderInfo'));
+    });
+
+    test('Call Details resolves call direction from requester identity', () {
       final source = File(
         'lib/shared_pages/call_details/call_details_widget.dart',
       ).readAsStringSync();
 
-      expect(source, contains('resolveSessionReviewParticipant('));
-      expect(source, contains('_participantResolution(session).counterpartUserId'));
+      expect(source, contains('_currentUserWasCaller('));
+      expect(
+          source, contains('resolveSessionRequesterId(session.snapshotData)'));
+      expect(source,
+          contains('final isOutgoing = _currentUserWasCaller(session)'));
     });
 
-    test('Video Call summary routing uses the shared counterpart resolution', () {
+    test('Video Call summary routing uses the shared counterpart resolution',
+        () {
       final source = File(
         'lib/shared_pages/video_call_page/video_call_page_widget.dart',
       ).readAsStringSync();

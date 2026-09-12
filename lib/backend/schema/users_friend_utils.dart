@@ -96,6 +96,13 @@ Map<String, dynamic> buildBlockAndRemoveFriendUpdateData(
       },
     );
 
+Map<String, dynamic> buildUnblockUserUpdateData(DocumentReference blockedRef) =>
+    mapToFirestore(
+      <String, dynamic>{
+        'blockedUsers': FieldValue.arrayRemove([blockedRef]),
+      },
+    );
+
 Future<void> backfillUserFriendsFromLegacy(UsersRecord user) async {
   if (user.favoriteNativeSpeakers.isEmpty) {
     return;

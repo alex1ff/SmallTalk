@@ -1,478 +1,782 @@
+import '/components/student_pay_bottom_bar.dart';
+import '/components/student_pay_intro.dart';
+import '/components/student_pay_plan.dart';
+import '/components/student_pay_plan_card.dart';
+import '/components/student_pay_restore_purchases_button.dart';
+import '/components/student_pay_catalog_error.dart';
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
-import '/backend/schema/enums/enums.dart';
-import '/components/button/button_widget.dart';
-import '/components/empty/empty_widget.dart';
-import '/components/trans/trans_widget.dart';
-import '/flutter_flow/flutter_flow_animations.dart';
-import '/flutter_flow/flutter_flow_icon_button.dart';
-import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import '/students_pages/components/tarif_loader/tarif_loader_widget.dart';
-import '/custom_code/actions/index.dart' as actions;
-import '/index.dart';
-import 'package:collection/collection.dart';
-import 'package:cloud_functions/cloud_functions.dart';
-import 'package:easy_debounce/easy_debounce.dart';
-import 'package:flutter/foundation.dart';
+import '/components/basic_page_header.dart';
+import '/shared_pages/design/expatlio_design.dart';
+import '/services/subscription_service.dart';
+import '/services/safe_debug_log.dart';
+import '/utils/subscription_utils.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_animate/flutter_animate.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
 
 import 'pay_model.dart';
 export 'pay_model.dart';
 
-class _PromoActivationException implements Exception {
-  const _PromoActivationException(this.message);
-
-  final String message;
-}
+typedef StudentPayCatalogLoader = Future<Map<String, String>> Function();
+typedef StudentPayPurchaseHandler = Future<void> Function(String productId);
+typedef StudentPayRestoreHandler = Future<bool> Function();
 
 class PayWidget extends StatefulWidget {
-  const PayWidget({super.key});
+  const PayWidget({super.key, this.premiumOnly = false})
+      : _catalogLoader = null,
+        _purchaseHandler = null,
+        _restoreHandler = null,
+        _trialOfferEligibleOverride = null;
 
-  static String routeName = 'pay';
+  @visibleForTesting
+  const PayWidget.withPaymentGateway({
+    super.key,
+    required StudentPayCatalogLoader catalogLoader,
+    required StudentPayPurchaseHandler purchaseHandler,
+    StudentPayRestoreHandler? restoreHandler,
+    bool trialOfferEligible = false,
+    this.premiumOnly = false,
+  })  : _catalogLoader = catalogLoader,
+        _purchaseHandler = purchaseHandler,
+        _restoreHandler = restoreHandler,
+        _trialOfferEligibleOverride = trialOfferEligible;
+
+  final StudentPayCatalogLoader? _catalogLoader;
+  final StudentPayPurchaseHandler? _purchaseHandler;
+  final StudentPayRestoreHandler? _restoreHandler;
+  final bool? _trialOfferEligibleOverride;
+  final bool premiumOnly;
+
+  static String routeName = 'Pay';
   static String routePath = '/pay';
 
   @override
   State<PayWidget> createState() => _PayWidgetState();
 }
 
-class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
-  static List<PackagesRecord>? _packagesMemoryCache;
-  static Future<List<PackagesRecord>>? _packagesInFlightFuture;
+const _trialPlan = StudentPayPlan(
+  kind: StudentPayPlanKind.trialMonthly,
+  productId: SubscriptionProductIds.trialMonthly,
+  title: '1 месяц',
+  subtitle: '3 дня бесплатно, затем полный доступ',
+  periodLabel: 'мес',
+  icon: Icons.calendar_today_rounded,
+  badge: '3 ДНЯ БЕСПЛАТНО',
+  features: [],
+);
 
+const _monthlyPlan = StudentPayPlan(
+  kind: StudentPayPlanKind.monthly,
+  productId: SubscriptionProductIds.monthly,
+  title: '1 месяц',
+  subtitle: 'Оплата ежемесячно',
+  periodLabel: 'мес',
+  icon: FFIcons.kwallet02,
+  features: [],
+);
+
+const _quarterlyPlan = StudentPayPlan(
+  kind: StudentPayPlanKind.quarterly,
+  productId: SubscriptionProductIds.quarterly,
+  title: '3 месяца',
+  subtitle: 'Оплата сразу за 3 месяца',
+  periodLabel: '3 мес',
+  icon: Icons.auto_awesome_rounded,
+  badge: 'ВЫГОДНЕЕ',
+  features: [],
+);
+
+@visibleForTesting
+List<StudentPayPlan> resolveStudentPayPlans({
+  required bool paidOnly,
+  required bool catalogLoaded,
+  required bool trialOfferEligible,
+  required Set<String> availableProductIds,
+}) {
+  bool available(String productId) =>
+      !catalogLoaded || availableProductIds.contains(productId);
+
+  if (paidOnly) {
+    return [
+      if (available(SubscriptionProductIds.monthly)) _monthlyPlan,
+      if (available(SubscriptionProductIds.quarterly)) _quarterlyPlan,
+    ];
+  }
+
+  final monthly =
+      trialOfferEligible && available(SubscriptionProductIds.trialMonthly)
+          ? _trialPlan
+          : available(SubscriptionProductIds.monthly)
+              ? _monthlyPlan
+              : available(SubscriptionProductIds.trialMonthly)
+                  ? _monthlyPlan.copyWith(
+                      productId: SubscriptionProductIds.trialMonthly,
+                    )
+                  : null;
+
+  return [
+    if (monthly != null) monthly,
+    if (available(SubscriptionProductIds.quarterly)) _quarterlyPlan,
+  ];
+}
+
+@visibleForTesting
+bool hasVerifiedThreeDayTrialOffer({
+  required SubscriptionIntroEligibility eligibility,
+  required StoreProduct? product,
+}) {
+  if (eligibility != SubscriptionIntroEligibility.eligible) return false;
+  final intro = product?.introductoryPrice;
+  return intro != null &&
+      intro.price == 0 &&
+      intro.cycles == 1 &&
+      intro.periodUnit == PeriodUnit.day &&
+      intro.periodNumberOfUnits == 3;
+}
+
+typedef StudentPayPurchaseTarget = ({
+  Package? package,
+  StoreProduct? storeProduct,
+});
+
+@visibleForTesting
+StudentPayPurchaseTarget resolveStudentPayPurchaseTarget({
+  required String productId,
+  required Map<String, Package> packagesByProductId,
+  required Map<String, StoreProduct> storeProductsByProductId,
+}) {
+  final package = packagesByProductId[productId];
+  return (
+    package: package,
+    storeProduct: package == null ? storeProductsByProductId[productId] : null,
+  );
+}
+
+@visibleForTesting
+String resolveDefaultStudentPayProductId({
+  required List<StudentPayPlan> plans,
+  required bool preferQuarterly,
+  String? currentProductId,
+}) {
+  if (plans.isEmpty) return '';
+
+  bool contains(String productId) =>
+      plans.any((plan) => plan.productId == productId);
+
+  if (preferQuarterly && contains(SubscriptionProductIds.quarterly)) {
+    return SubscriptionProductIds.quarterly;
+  }
+  if (currentProductId == SubscriptionProductIds.quarterly &&
+      contains(SubscriptionProductIds.quarterly)) {
+    return SubscriptionProductIds.quarterly;
+  }
+  if ((currentProductId == SubscriptionProductIds.monthly ||
+          currentProductId == SubscriptionProductIds.trialMonthly) &&
+      contains(SubscriptionProductIds.monthly)) {
+    return SubscriptionProductIds.monthly;
+  }
+  return plans.first.productId;
+}
+
+class _PayWidgetState extends State<PayWidget> {
   late PayModel _model;
-  bool _isCreatingPaymentSession = false;
-
   final scaffoldKey = GlobalKey<ScaffoldState>();
 
-  final animationsMap = <String, AnimationInfo>{};
+  String? _selectedProductId;
+  Map<String, Package> _packagesByProductId = const {};
+  Map<String, StoreProduct> _storeProductsByProductId = const {};
+  Map<String, String> _injectedPricesByProductId = const {};
+  bool _isLoadingPackages = true;
+  bool _isPurchasing = false;
+  bool _isRestoringPurchases = false;
+  bool _catalogLoadScheduled = false;
+  SubscriptionCatalogStatus _catalogStatus =
+      SubscriptionCatalogStatus.noProducts;
+  SubscriptionIntroEligibility _trialEligibility =
+      SubscriptionIntroEligibility.unknown;
 
   @override
   void initState() {
     super.initState();
     _model = createModel(context, () => PayModel());
-    _model.packagesFuture ??= _getPackagesFuture(
-      forceRefresh: _packagesMemoryCache != null,
-    );
-
-    _model.nameTextController ??= TextEditingController();
-    _model.nameFocusNode ??= FocusNode();
-    _model.nameFocusNode!.addListener(() => safeSetState(() {}));
-    animationsMap.addAll({
-      'columnOnActionTriggerAnimation': AnimationInfo(
-        trigger: AnimationTrigger.onActionTrigger,
-        applyInitialState: true,
-        effectsBuilder: () => [
-          ShakeEffect(
-            curve: Curves.easeInOut,
-            delay: 0.0.ms,
-            duration: 200.0.ms,
-            hz: 5,
-            offset: Offset(10.0, 0.0),
-            rotation: 0,
-          ),
-        ],
-      ),
-    });
-    setupAnimations(
-      animationsMap.values.where((anim) =>
-          anim.trigger == AnimationTrigger.onActionTrigger ||
-          !anim.applyInitialState),
-      this,
-    );
   }
 
   @override
   void dispose() {
     _model.dispose();
-
     super.dispose();
   }
 
-  Future<List<PackagesRecord>> _getPackagesFuture({
-    bool forceRefresh = false,
-  }) {
-    final cachedPackages = _packagesMemoryCache;
-    if (!forceRefresh && cachedPackages != null) {
-      return SynchronousFuture<List<PackagesRecord>>(cachedPackages);
-    }
+  bool get _paidOnly =>
+      widget.premiumOnly || hasActiveSubscription(currentUserDocument);
 
-    final inFlightFuture = _packagesInFlightFuture;
-    if (inFlightFuture != null) {
-      return inFlightFuture;
-    }
+  bool get _isAwaitingUserDocument =>
+      widget._catalogLoader == null &&
+      !hasCurrentUserDocumentForUid(currentUserUid);
 
-    late final Future<List<PackagesRecord>> packagesFuture;
-    packagesFuture = queryPackagesRecordOnce().then((packages) {
-      final normalizedPackages = List<PackagesRecord>.unmodifiable(packages);
-      if (normalizedPackages.isNotEmpty) {
-        _packagesMemoryCache = normalizedPackages;
-      } else {
-        _packagesMemoryCache = null;
-      }
-      return normalizedPackages;
-    }).whenComplete(() {
-      if (identical(_packagesInFlightFuture, packagesFuture)) {
-        _packagesInFlightFuture = null;
+  void _scheduleInitialCatalogLoad() {
+    if (_catalogLoadScheduled) return;
+    _catalogLoadScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _loadPackages();
       }
     });
-
-    _packagesInFlightFuture = packagesFuture;
-    return packagesFuture;
   }
 
-  PackagesRecord? _effectiveSelectedPackage([
-    List<PackagesRecord>? packages,
-  ]) {
-    final availablePackages = packages ?? _packagesMemoryCache ?? const [];
-    if (availablePackages.isEmpty) {
-      return _model.tarifDoc;
-    }
+  Set<String> get _availableProductIds => {
+        ..._injectedPricesByProductId.keys,
+        ..._packagesByProductId.keys,
+        ..._storeProductsByProductId.keys,
+      };
 
-    final selectedReferencePath = _model.tarifDoc?.reference.path;
-    if (selectedReferencePath == null) {
-      return availablePackages.first;
-    }
+  StoreProduct? _storeProductFor(String productId) =>
+      _packagesByProductId[productId]?.storeProduct ??
+      _storeProductsByProductId[productId];
 
-    return availablePackages.firstWhereOrNull(
-          (record) => record.reference.path == selectedReferencePath,
-        ) ??
-        availablePackages.first;
+  bool get _hasVerifiedThreeDayTrial {
+    final override = widget._trialOfferEligibleOverride;
+    if (override != null) return override;
+    return hasVerifiedThreeDayTrialOffer(
+      eligibility: _trialEligibility,
+      product: _storeProductFor(SubscriptionProductIds.trialMonthly),
+    );
   }
 
-  Future<PackagesRecord?> _resolveSelectedPackageForCheckout() async {
-    if (_packagesInFlightFuture != null) {
-      try {
-        final packages = await (_model.packagesFuture ??= _getPackagesFuture());
-        return _effectiveSelectedPackage(packages);
-      } catch (_) {
-        return _effectiveSelectedPackage();
-      }
-    }
+  List<StudentPayPlan> get _visiblePlans => resolveStudentPayPlans(
+        paidOnly: _paidOnly,
+        catalogLoaded: !_isLoadingPackages,
+        trialOfferEligible: _hasVerifiedThreeDayTrial,
+        availableProductIds: _availableProductIds,
+      ).map(_localizedPlan).toList(growable: false);
 
-    final currentSelection = _effectiveSelectedPackage();
-    if (currentSelection != null) {
-      return currentSelection;
-    }
-
-    final packages = await (_model.packagesFuture ??= _getPackagesFuture());
-    return _effectiveSelectedPackage(packages);
-  }
-
-  String? _normalizeVisibleErrorMessage(String? rawMessage) {
-    final normalized = rawMessage?.trim();
-    if (normalized == null || normalized.isEmpty) {
-      return null;
-    }
-
-    final lowerCased = normalized.toLowerCase();
-    const genericMessages = {
-      'internal',
-      'internal error',
-      'unknown',
-      'failed-precondition',
-      'firebase_functions/internal',
+  StudentPayPlan _localizedPlan(StudentPayPlan plan) {
+    return switch (plan.kind) {
+      StudentPayPlanKind.trialMonthly => plan.copyWith(
+          title: _localized('1 месяц', '1 month'),
+          subtitle: _localized(
+            '3 дня бесплатно, затем полный доступ',
+            '3 days free, then full access',
+          ),
+          periodLabel: _localized('мес', 'month'),
+          badge: _localized('3 ДНЯ БЕСПЛАТНО', '3 DAYS FREE'),
+        ),
+      StudentPayPlanKind.monthly => plan.copyWith(
+          title: _localized('1 месяц', '1 month'),
+          subtitle: _localized('Оплата ежемесячно', 'Billed monthly'),
+          periodLabel: _localized('мес', 'month'),
+        ),
+      StudentPayPlanKind.quarterly => plan.copyWith(
+          title: _localized('3 месяца', '3 months'),
+          subtitle: _localized(
+            'Оплата сразу за 3 месяца',
+            'Billed every 3 months',
+          ),
+          periodLabel: _localized('3 мес', '3 months'),
+          badge: _localized('ВЫГОДНЕЕ', 'BEST VALUE'),
+        ),
     };
-
-    if (genericMessages.contains(lowerCased)) {
-      return null;
-    }
-
-    return normalized;
   }
 
-  String? _extractMessageFromFunctionsDetails(dynamic details) {
-    if (details is String) {
-      return _normalizeVisibleErrorMessage(details);
+  StudentPayPlan get _selectedPlan {
+    final plans = _visiblePlans;
+    if (plans.isEmpty) {
+      return _paidOnly ? _quarterlyPlan : _monthlyPlan;
+    }
+    final requestedProductId = _selectedProductId;
+    final selectedProductId = requestedProductId != null &&
+            plans.any((plan) => plan.productId == requestedProductId)
+        ? requestedProductId
+        : _defaultProductId(plans);
+    return plans.firstWhere(
+      (plan) => plan.productId == selectedProductId,
+      orElse: () => plans.first,
+    );
+  }
+
+  String _defaultProductId(List<StudentPayPlan> plans) {
+    return resolveDefaultStudentPayProductId(
+      plans: plans,
+      preferQuarterly:
+          widget.premiumOnly || isTrialSubscription(currentUserDocument),
+      currentProductId: currentUserDocument?.subscription?.productId,
+    );
+  }
+
+  StudentPayPurchaseTarget get _selectedPurchaseTarget =>
+      resolveStudentPayPurchaseTarget(
+        productId: _selectedPlan.productId,
+        packagesByProductId: _packagesByProductId,
+        storeProductsByProductId: _storeProductsByProductId,
+      );
+
+  Package? get _selectedPackage => _selectedPurchaseTarget.package;
+
+  StoreProduct? get _selectedStoreProduct =>
+      _selectedPurchaseTarget.storeProduct;
+
+  Future<void> _loadPackages() async {
+    if (mounted) {
+      safeSetState(() {
+        _isLoadingPackages = true;
+      });
     }
 
-    if (details is Map) {
-      for (final key in const [
-        'userMessage',
-        'message',
-        'providerMessage',
-        'details',
-        'error',
-      ]) {
-        final candidate = _normalizeVisibleErrorMessage(
-          details[key]?.toString(),
+    final catalogLoader = widget._catalogLoader;
+    if (catalogLoader != null) {
+      Map<String, String> prices = const {};
+      try {
+        prices = await catalogLoader().timeout(
+          const Duration(seconds: 20),
+          onTimeout: () => const {},
         );
-        if (candidate != null) {
-          return candidate;
+      } catch (e, st) {
+        safeDebugLog('⚠️ PayWidget._loadPackages failed: $e\n$st');
+        if (mounted) {
+          _showSnackBar(_localized(
+            'Не удалось загрузить тарифы. Попробуйте ещё раз.',
+            'Could not load plans. Please try again.',
+          ));
         }
       }
+      if (!mounted) {
+        return;
+      }
+      safeSetState(() {
+        _injectedPricesByProductId = Map.unmodifiable(prices);
+        _catalogStatus = prices.isEmpty
+            ? SubscriptionCatalogStatus.noProducts
+            : SubscriptionCatalogStatus.ready;
+        _isLoadingPackages = false;
+        _selectedProductId = _defaultProductId(_visiblePlans);
+      });
+      return;
     }
 
-    return null;
-  }
-
-  String _resolvePaymentErrorMessage(FirebaseFunctionsException error) {
-    final detailsMessage = _extractMessageFromFunctionsDetails(error.details);
-    if (detailsMessage != null) {
-      return detailsMessage;
-    }
-
-    final directMessage = _normalizeVisibleErrorMessage(error.message);
-    if (directMessage != null) {
-      return directMessage;
-    }
-
-    switch (error.code) {
-      case 'failed-precondition':
-        return 'Не удалось создать платеж. Проверьте настройки оплаты и попробуйте еще раз.';
-      case 'unauthenticated':
-        return 'Нужно заново войти в аккаунт, чтобы создать платеж.';
-      default:
-        return 'Не удалось создать платеж. Попробуйте еще раз.';
-    }
-  }
-
-  Future<PromoCodesRecord?> _findPromoCode(String promoCode) async {
-    final candidates = <String>{
-      promoCode,
-      promoCode.toUpperCase(),
-    }.where((candidate) => candidate.isNotEmpty);
-
-    for (final candidate in candidates) {
-      final promoCodeRecord = await queryPromoCodesRecordOnce(
-        queryBuilder: (promoCodesRecord) => promoCodesRecord.where(
-          'code',
-          isEqualTo: candidate,
-        ),
-        singleRecord: true,
-      ).then((records) => records.firstOrNull);
-
-      if (promoCodeRecord != null) {
-        return promoCodeRecord;
+    List<Package> packages = const [];
+    List<StoreProduct> storeProducts = const [];
+    SubscriptionCatalogResult catalogResult;
+    try {
+      catalogResult = await SubscriptionService.instance
+          .loadSubscriptionCatalog(
+            includeTrialEligibility: !_paidOnly,
+          )
+          .timeout(
+            const Duration(seconds: 25),
+            onTimeout: () => const SubscriptionCatalogResult(
+              status: SubscriptionCatalogStatus.timedOut,
+            ),
+          );
+      packages = catalogResult.packages;
+      storeProducts = catalogResult.storeProducts;
+    } catch (e, st) {
+      safeDebugLog('⚠️ PayWidget._loadPackages failed: $e\n$st');
+      catalogResult = SubscriptionCatalogResult(
+        status: SubscriptionCatalogStatus.failed,
+        error: e,
+      );
+      if (mounted) {
+        _showSnackBar(_localized(
+          'Не удалось загрузить тарифы. Попробуйте ещё раз.',
+          'Could not load plans. Please try again.',
+        ));
       }
     }
 
-    return null;
-  }
-
-  Future<void> _showPromoCodeNotification(
-    String header, {
-    String text = '',
-    bool isError = true,
-  }) async {
     if (!mounted) {
       return;
     }
 
-    await actions.showTopNotification(
-      context,
-      header,
-      text,
-      isError,
+    safeSetState(() {
+      _packagesByProductId = mapSubscriptionPackagesByProductId(packages);
+      _storeProductsByProductId =
+          mapSubscriptionStoreProductsByProductId(storeProducts);
+      _catalogStatus = catalogResult.status;
+      _trialEligibility = catalogResult.trialEligibility;
+      _isLoadingPackages = false;
+      final plans = _visiblePlans;
+      if (!plans.any((plan) => plan.productId == _selectedProductId)) {
+        _selectedProductId = _defaultProductId(plans);
+      }
+    });
+
+    if (!catalogResult.hasAnyProduct && mounted) {
+      _showSnackBar(_catalogFailureMessage(catalogResult.status));
+    }
+  }
+
+  String _catalogFailureMessage(SubscriptionCatalogStatus status) {
+    return switch (status) {
+      SubscriptionCatalogStatus.identityUnavailable => _localized(
+          'Войдите в аккаунт и повторите загрузку тарифов.',
+          'Sign in and reload the plans.',
+        ),
+      SubscriptionCatalogStatus.configurationUnavailable => _localized(
+          'Покупки не настроены для этой версии приложения.',
+          'Purchases are not configured for this app version.',
+        ),
+      SubscriptionCatalogStatus.noProducts => _localized(
+          'App Store не вернул цены. Проверьте продукты для этого приложения.',
+          'The App Store did not return prices for this app.',
+        ),
+      SubscriptionCatalogStatus.networkUnavailable => _localized(
+          'Не удалось подключиться к App Store. Проверьте интернет.',
+          'Could not connect to the App Store. Check your connection.',
+        ),
+      SubscriptionCatalogStatus.timedOut => _localized(
+          'Загрузка тарифов заняла слишком много времени. Повторите.',
+          'Loading plans took too long. Please try again.',
+        ),
+      SubscriptionCatalogStatus.failed => _localized(
+          'Не удалось загрузить тарифы. Повторите ещё раз.',
+          'Could not load plans. Please try again.',
+        ),
+      SubscriptionCatalogStatus.ready ||
+      SubscriptionCatalogStatus.partial =>
+        _localized(
+          'Не удалось загрузить выбранный тариф.',
+          'Could not load the selected plan.',
+        ),
+    };
+  }
+
+  String _localized(String ru, String en) =>
+      FFLocalizations.of(context).getVariableText(ruText: ru, enText: en);
+
+  String _priceFor(StudentPayPlan plan) {
+    final injectedPrice = _injectedPricesByProductId[plan.productId];
+    if (injectedPrice != null) {
+      return injectedPrice;
+    }
+    final package = _packagesByProductId[plan.productId];
+    if (package != null) {
+      return package.storeProduct.priceString;
+    }
+    final storeProduct = _storeProductsByProductId[plan.productId];
+    if (storeProduct != null) {
+      return storeProduct.priceString;
+    }
+    return _isLoadingPackages
+        ? _localized('Загрузка...', 'Loading...')
+        : _localized('Недоступно', 'Unavailable');
+  }
+
+  bool _hasPackageFor(StudentPayPlan plan) =>
+      _injectedPricesByProductId.containsKey(plan.productId) ||
+      _packagesByProductId.containsKey(plan.productId) ||
+      _storeProductsByProductId.containsKey(plan.productId);
+
+  String _actionLabelFor(StudentPayPlan plan) {
+    final price = _priceFor(plan);
+    if (plan.kind == StudentPayPlanKind.trialMonthly &&
+        _hasVerifiedThreeDayTrial) {
+      return _localized(
+        'Попробовать 3 дня бесплатно',
+        'Try 3 days free',
+      );
+    }
+    if (isTrialSubscription(currentUserDocument)) {
+      return _localized(
+        'Начать Premium сейчас · $price',
+        'Start Premium now · $price',
+      );
+    }
+    return switch (plan.kind) {
+      StudentPayPlanKind.quarterly => _localized(
+          'Оформить 3 месяца · $price',
+          'Get 3 months · $price',
+        ),
+      StudentPayPlanKind.monthly ||
+      StudentPayPlanKind.trialMonthly =>
+        _localized(
+          'Оформить месяц · $price',
+          'Get 1 month · $price',
+        ),
+    };
+  }
+
+  String _termsTextFor(StudentPayPlan plan) {
+    if (plan.kind == StudentPayPlanKind.trialMonthly &&
+        _hasVerifiedThreeDayTrial) {
+      return _localized(
+        '3 дня бесплатно, затем ${_priceFor(plan)} в месяц. Автопродление, отмена в любой момент.',
+        '3 days free, then ${_priceFor(plan)} per month. Auto-renews; cancel anytime.',
+      );
+    }
+    return _localized(
+      'Подписка продлевается автоматически. Отмена в любой момент.',
+      'Subscription renews automatically. Cancel anytime.',
     );
   }
 
-  Future<void> _handleApplyPromoCode() async {
-    final enteredPromoCode = _model.nameTextController.text.trim();
-    if (enteredPromoCode.isEmpty) {
+  Future<bool> _waitForServerSubscriptionMirror([String? productId]) async {
+    final userRef = currentUserReference;
+    if (userRef == null) return false;
+    final deadline = DateTime.now().add(const Duration(seconds: 60));
+    while (DateTime.now().isBefore(deadline)) {
+      try {
+        final user = await UsersRecord.getDocumentOnce(userRef);
+        final subscription = user.subscription;
+        final matchesCurrentProduct =
+            productId == null || subscription?.productId == productId;
+        final matchesDeferredPaidChange = productId != null &&
+            subscription?.pendingProductId == productId &&
+            isPaidPremiumSubscription(user);
+        if ((matchesCurrentProduct || matchesDeferredPaidChange) &&
+            hasActiveSubscription(user)) {
+          if (matchesCurrentProduct && isTrialSubscription(user)) {
+            final trialState =
+                await userRef.collection('trialAccess').doc('current').get();
+            if (trialState.exists) return true;
+          } else if (isPaidPremiumSubscription(user)) {
+            return true;
+          }
+        }
+      } catch (error, stackTrace) {
+        safeDebugLog(
+          '⚠️ PayWidget._waitForServerSubscriptionMirror failed: '
+          '$error\n$stackTrace',
+        );
+      }
+      await Future<void>.delayed(const Duration(seconds: 2));
+    }
+    return false;
+  }
+
+  Future<void> _purchaseSelectedPlan() async {
+    if (_isPurchasing || _isRestoringPurchases || _isLoadingPackages) {
       return;
     }
 
-    FocusScope.of(context).unfocus();
-    FocusManager.instance.primaryFocus?.unfocus();
-
-    try {
-      final promoCodeRecord = await _findPromoCode(enteredPromoCode);
-      if (promoCodeRecord == null) {
-        await _showPromoCodeNotification('Промокод не найден');
-        return;
+    final purchaseHandler = widget._purchaseHandler;
+    if (purchaseHandler != null) {
+      if (!_hasPackageFor(_selectedPlan)) {
+        await _loadPackages();
       }
-
-      final userRef = currentUserReference;
-      if (userRef == null) {
-        throw const _PromoActivationException(
-          'Нужно заново войти в аккаунт, чтобы активировать промокод.',
-        );
-      }
-
-      final now = getCurrentTimestamp;
-      PromoCodesRecord? activatedPromoCode;
-
-      await FirebaseFirestore.instance.runTransaction((transaction) async {
-        final promoSnapshot = await transaction.get(promoCodeRecord.reference);
-        if (!promoSnapshot.exists) {
-          throw const _PromoActivationException('Промокод не найден');
-        }
-
-        final freshPromoCode = PromoCodesRecord.fromSnapshot(promoSnapshot);
-        if (!freshPromoCode.isActive) {
-          throw const _PromoActivationException('Промокод неактивен');
-        }
-
-        final expiredDate = freshPromoCode.expiredDate;
-        if (expiredDate == null || !expiredDate.isAfter(now)) {
-          throw const _PromoActivationException('Промокод истёк');
-        }
-
-        final alreadyUsed =
-            freshPromoCode.usedBy.any((entry) => entry.user == userRef);
-        if (alreadyUsed) {
-          throw const _PromoActivationException(
-            'Вы уже использовали этот промокод',
-          );
-        }
-
-        if (freshPromoCode.usageCount >= freshPromoCode.usageLimit) {
-          throw const _PromoActivationException('Промокод исчерпан');
-        }
-
-        final promoValue = freshPromoCode.valueSamllTalk.toDouble();
-        if (promoValue <= 0) {
-          throw const _PromoActivationException('Промокод недоступен');
-        }
-
-        transaction.update(freshPromoCode.reference, {
-          'usedBy': FieldValue.arrayUnion([
-            getPromoUsedByFirestoreData(
-              updatePromoUsedByStruct(
-                PromoUsedByStruct(
-                  user: userRef,
-                  data: now,
-                ),
-                clearUnsetFields: false,
-              ),
-              true,
-            ),
-          ]),
-          'usageCount': FieldValue.increment(1),
-        });
-
-        transaction.update(userRef, {
-          'balanceST.smallTalks': FieldValue.increment(promoValue),
-          'balanceST.minutes': FieldValue.increment(promoValue * 10),
-        });
-
-        final transactionDoc = TransactionsRecord.collection.doc();
-        transaction.set(
-          transactionDoc,
-          createTransactionsRecordData(
-            userId: userRef,
-            createdAt: now,
-            type: TypeTransactions.promocode,
-            amountST: promoValue,
-            promoCodeDocRef: freshPromoCode.reference,
-            promoCode: freshPromoCode.code,
+      if (!mounted || !_hasPackageFor(_selectedPlan)) {
+        _showSnackBar(
+          _localized(
+            'Покупки пока недоступны. Повторите загрузку тарифов.',
+            'Purchases are unavailable. Reload the plans.',
           ),
         );
-
-        activatedPromoCode = freshPromoCode;
-      });
-
-      if (!mounted || activatedPromoCode == null) {
         return;
       }
 
       safeSetState(() {
-        _model.codeCopy = activatedPromoCode;
-        _model.nameTextController?.clear();
+        _isPurchasing = true;
       });
+      try {
+        await purchaseHandler(_selectedPlan.productId);
+      } catch (_) {
+        if (mounted) {
+          _showSnackBar(_localized(
+            'Не удалось оформить подписку. Попробуйте ещё раз.',
+            'Could not complete the subscription. Please try again.',
+          ));
+        }
+      } finally {
+        if (mounted) {
+          safeSetState(() {
+            _isPurchasing = false;
+          });
+        }
+      }
+      return;
+    }
 
-      await _showPromoCodeNotification(
-        'Промокод активирован',
-        text:
-            'Вы получили ${activatedPromoCode!.valueSamllTalk.toString()} Small Talk!',
-        isError: false,
-      );
-    } on _PromoActivationException catch (error) {
-      await _showPromoCodeNotification(error.message);
-    } catch (error, stackTrace) {
-      debugPrint('Failed to apply promo code: $error');
-      debugPrintStack(stackTrace: stackTrace);
-      await _showPromoCodeNotification(
-        'Не удалось активировать промокод',
-        text: 'Попробуйте еще раз.',
-      );
+    Package? package = _selectedPackage;
+    StoreProduct? storeProduct = _selectedStoreProduct;
+    if (package == null && storeProduct == null) {
+      await _loadPackages();
+      if (!mounted) {
+        return;
+      }
+      package = _selectedPackage;
+      storeProduct = _selectedStoreProduct;
+    }
+
+    if (package == null && storeProduct == null) {
+      _showSnackBar(_localized(
+        'Покупки пока недоступны. Повторите загрузку тарифов.',
+        'Purchases are unavailable. Reload the plans.',
+      ));
+      return;
+    }
+
+    safeSetState(() {
+      _isPurchasing = true;
+    });
+
+    try {
+      final info = package != null
+          ? await SubscriptionService.instance.purchasePackage(package)
+          : await SubscriptionService.instance.purchaseStoreProduct(
+              storeProduct!,
+            );
+      if (!mounted || info == null) {
+        return;
+      }
+
+      final hasPro =
+          info.entitlements.active.containsKey(kSubscriptionProEntitlementId);
+      if (hasPro) {
+        _showSnackBar(_localized(
+          'Покупка подтверждена. Активируем доступ…',
+          'Purchase confirmed. Activating access…',
+        ));
+        final mirrorReady = await _waitForServerSubscriptionMirror(
+          _selectedPlan.productId,
+        );
+        if (!mounted) return;
+        if (mirrorReady) {
+          _showSnackBar(
+            _localized('Подписка активна.', 'Subscription active.'),
+          );
+          context.safePop();
+        } else {
+          _showSnackBar(_localized(
+            'Покупка ещё обрабатывается. Оставайтесь на экране и нажмите «Восстановить покупки» или повторите загрузку.',
+            'Your purchase is still processing. Stay on this screen and use Restore purchases or reload the plans.',
+          ));
+        }
+      }
+    } catch (_) {
+      if (mounted) {
+        _showSnackBar(_localized(
+          'Не удалось оформить подписку. Попробуйте ещё раз.',
+          'Could not complete the subscription. Please try again.',
+        ));
+      }
     } finally {
       if (mounted) {
-        safeSetState(() {});
+        safeSetState(() {
+          _isPurchasing = false;
+        });
       }
     }
   }
 
-  Future<void> _handlePayPressed() async {
-    if (_isCreatingPaymentSession) {
+  Future<void> _restorePurchases() async {
+    if (_isRestoringPurchases || _isPurchasing) {
       return;
     }
 
-    final selectedPackage = await _resolveSelectedPackageForCheckout();
-    if (selectedPackage == null) {
-      if (animationsMap['columnOnActionTriggerAnimation'] != null) {
-        animationsMap['columnOnActionTriggerAnimation']!
-            .controller
-            .forward(from: 0.0);
-      }
-      HapticFeedback.mediumImpact();
-      return;
-    }
-
-    safeSetState(() => _isCreatingPaymentSession = true);
-
-    var paymentUrl = '';
-    var transactionRefPath = '';
+    safeSetState(() {
+      _isRestoringPurchases = true;
+    });
 
     try {
-      final response = await FirebaseFunctions.instance
-          .httpsCallable('createPaymentSession')
-          .call({
-        'packageId': selectedPackage.reference.id,
-      });
-      final responseData =
-          Map<String, dynamic>.from((response.data as Map?) ?? const {});
-
-      paymentUrl = (responseData['paymentUrl']?.toString() ?? '').trim();
-      transactionRefPath =
-          (responseData['transactionRefPath']?.toString() ?? '').trim();
-
-      if (paymentUrl.isEmpty || transactionRefPath.isEmpty) {
-        throw Exception('Payment session response is incomplete');
-      }
-    } on FirebaseFunctionsException catch (error) {
-      if (mounted) {
-        showSnackbar(
-          context,
-          _resolvePaymentErrorMessage(error),
+      final restoreHandler = widget._restoreHandler;
+      if (restoreHandler != null) {
+        final hasActivePurchase = await restoreHandler();
+        if (!mounted) return;
+        _showSnackBar(
+          hasActivePurchase
+              ? _localized(
+                  'Покупки восстановлены.',
+                  'Purchases restored.',
+                )
+              : _localized(
+                  'Активных покупок для восстановления не найдено.',
+                  'No active purchases were found to restore.',
+                ),
         );
+        return;
+      }
+      final info = await SubscriptionService.instance.restorePurchases();
+      if (!mounted) {
+        return;
+      }
+      final hasPro =
+          info.entitlements.active.containsKey(kSubscriptionProEntitlementId);
+      _showSnackBar(
+        hasPro
+            ? _localized(
+                'Покупки восстановлены. Активируем доступ…',
+                'Purchases restored. Activating access…',
+              )
+            : _localized(
+                'Активных покупок для восстановления не найдено.',
+                'No active purchases were found to restore.',
+              ),
+      );
+      if (hasPro) {
+        final mirrorReady = await _waitForServerSubscriptionMirror();
+        if (!mounted) return;
+        if (mirrorReady) {
+          _showSnackBar(
+            _localized('Подписка активна.', 'Subscription active.'),
+          );
+          context.safePop();
+        } else {
+          _showSnackBar(_localized(
+            'Покупка ещё обрабатывается. Повторите восстановление позже.',
+            'Your purchase is still processing. Restore it again shortly.',
+          ));
+        }
       }
     } catch (_) {
       if (mounted) {
-        showSnackbar(
-          context,
-          'Не удалось создать платеж. Попробуйте еще раз.',
-        );
+        _showSnackBar(_localized(
+          'Не удалось восстановить покупки. Попробуйте ещё раз.',
+          'Could not restore purchases. Please try again.',
+        ));
       }
     } finally {
       if (mounted) {
-        safeSetState(() => _isCreatingPaymentSession = false);
+        safeSetState(() {
+          _isRestoringPurchases = false;
+        });
       }
     }
+  }
 
-    if (!mounted || paymentUrl.isEmpty || transactionRefPath.isEmpty) {
-      return;
-    }
-
-    context.pushNamed(
-      PayWebWiewWidget.routeName,
-      queryParameters: {
-        'paymentUrl': serializeParam(paymentUrl, ParamType.String),
-        'transactionRefPath':
-            serializeParam(transactionRefPath, ParamType.String),
-      }.withoutNulls,
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
-    final promoCodeFieldFocused = _model.nameFocusNode?.hasFocus ?? false;
+    if (widget._catalogLoader != null) {
+      _scheduleInitialCatalogLoad();
+      return _buildPaywall(context);
+    }
+    return AuthUserStreamWidget(
+      builder: (context) {
+        if (_isAwaitingUserDocument) {
+          return _buildUserDocumentLoading(context);
+        }
+        _scheduleInitialCatalogLoad();
+        return _buildPaywall(context);
+      },
+    );
+  }
 
+  Widget _buildUserDocumentLoading(BuildContext context) {
+    return Scaffold(
+      key: scaffoldKey,
+      backgroundColor: ExpatlioDesign.background,
+      body: Column(
+        children: [
+          BasicPageHeader(
+            title: _localized('Тарифы', 'Plans'),
+            onBack: () => context.safePop(),
+          ),
+          const Expanded(
+            child: Center(
+              child: CircularProgressIndicator.adaptive(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaywall(BuildContext context) {
     return GestureDetector(
       onTap: () {
         FocusScope.of(context).unfocus();
@@ -480,880 +784,76 @@ class _PayWidgetState extends State<PayWidget> with TickerProviderStateMixin {
       },
       child: Scaffold(
         key: scaffoldKey,
-        backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
-        body: Stack(
+        backgroundColor: ExpatlioDesign.background,
+        body: Column(
           children: [
-            Align(
-              alignment: AlignmentDirectional(0, 0),
-              child: Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(6, 0, 6, 0),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.max,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Column(
-                        mainAxisSize: MainAxisSize.max,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Padding(
-                            padding:
-                                EdgeInsetsDirectional.fromSTEB(10, 0, 0, 0),
-                            child: Text(
-                              FFLocalizations.of(context).getText(
-                                '1uhw3x91' /* Выберите тариф */,
-                              ),
-                              style: FlutterFlowTheme.of(context)
-                                  .bodyMedium
-                                  .override(
-                                    fontFamily: 'Cool',
-                                    fontSize: 20,
-                                    letterSpacing: 0.0,
-                                  ),
-                            ),
-                          ),
-                          Padding(
-                            padding:
-                                EdgeInsetsDirectional.fromSTEB(0, 12, 0, 0),
-                            child: FutureBuilder<List<PackagesRecord>>(
-                              future: _model.packagesFuture,
-                              initialData: _packagesMemoryCache,
-                              builder: (context, snapshot) {
-                                // Customize what your widget looks like when it's loading.
-                                if (!snapshot.hasData) {
-                                  return TarifLoaderWidget();
-                                }
-                                List<PackagesRecord>
-                                    listViewPackagesRecordList = snapshot.data!;
-                                final effectiveSelectedPackage =
-                                    _effectiveSelectedPackage(
-                                  listViewPackagesRecordList,
-                                );
-
-                                return Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: List.generate(
-                                      listViewPackagesRecordList.length,
-                                      (listViewIndex) {
-                                    final listViewPackagesRecord =
-                                        listViewPackagesRecordList[
-                                            listViewIndex];
-                                    return Padding(
-                                      padding: EdgeInsetsDirectional.fromSTEB(
-                                        0.0,
-                                        listViewIndex == 0 ? 0.0 : 6.0,
-                                        0.0,
-                                        0.0,
-                                      ),
-                                      child: InkWell(
-                                        splashColor: Colors.transparent,
-                                        focusColor: Colors.transparent,
-                                        hoverColor: Colors.transparent,
-                                        highlightColor: Colors.transparent,
-                                        onTap: () async {
-                                          _model.tarifDoc =
-                                              listViewPackagesRecord;
-                                          safeSetState(() {});
-                                          HapticFeedback.mediumImpact();
-                                        },
-                                        child: Stack(
-                                          alignment:
-                                              AlignmentDirectional(1, -1.4),
-                                          children: [
-                                            Container(
-                                              width: double.infinity,
-                                              height: 90,
-                                              decoration: BoxDecoration(
-                                                color: listViewPackagesRecord
-                                                            .reference.path ==
-                                                        effectiveSelectedPackage
-                                                            ?.reference.path
-                                                    ? FlutterFlowTheme.of(
-                                                            context)
-                                                        .primary
-                                                    : FlutterFlowTheme.of(
-                                                            context)
-                                                        .primaryBackground,
-                                                borderRadius:
-                                                    BorderRadius.circular(26),
-                                                border: Border.all(
-                                                  color: listViewPackagesRecord
-                                                              .reference.path ==
-                                                          effectiveSelectedPackage
-                                                              ?.reference.path
-                                                      ? FlutterFlowTheme.of(
-                                                              context)
-                                                          .primaryText
-                                                      : Colors.transparent,
-                                                  width: 1,
-                                                ),
-                                              ),
-                                              child: Padding(
-                                                padding: EdgeInsetsDirectional
-                                                    .fromSTEB(20, 16, 20, 16),
-                                                child: Column(
-                                                  mainAxisSize:
-                                                      MainAxisSize.max,
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.center,
-                                                  children: [
-                                                    Row(
-                                                      mainAxisSize:
-                                                          MainAxisSize.max,
-                                                      mainAxisAlignment:
-                                                          MainAxisAlignment
-                                                              .spaceBetween,
-                                                      children: [
-                                                        Text(
-                                                          listViewPackagesRecord
-                                                              .name,
-                                                          style: FlutterFlowTheme
-                                                                  .of(context)
-                                                              .bodyMedium
-                                                              .override(
-                                                                fontFamily:
-                                                                    'Cool',
-                                                                color: listViewPackagesRecord.reference.path ==
-                                                                        effectiveSelectedPackage
-                                                                            ?.reference
-                                                                            .path
-                                                                    ? FlutterFlowTheme.of(
-                                                                            context)
-                                                                        .primaryBackground
-                                                                    : FlutterFlowTheme.of(
-                                                                            context)
-                                                                        .primaryText,
-                                                                fontSize: 24,
-                                                                letterSpacing:
-                                                                    0.0,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .normal,
-                                                              ),
-                                                        ),
-                                                        Text(
-                                                          '${listViewPackagesRecord.price.toString()}₽',
-                                                          style: FlutterFlowTheme
-                                                                  .of(context)
-                                                              .bodyMedium
-                                                              .override(
-                                                                fontFamily:
-                                                                    'Cool',
-                                                                color: listViewPackagesRecord.reference.path ==
-                                                                        effectiveSelectedPackage
-                                                                            ?.reference
-                                                                            .path
-                                                                    ? FlutterFlowTheme.of(
-                                                                            context)
-                                                                        .primaryBackground
-                                                                    : FlutterFlowTheme.of(
-                                                                            context)
-                                                                        .primaryText,
-                                                                fontSize: 24,
-                                                                letterSpacing:
-                                                                    0.0,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .normal,
-                                                              ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                    Row(
-                                                      mainAxisSize:
-                                                          MainAxisSize.max,
-                                                      mainAxisAlignment:
-                                                          MainAxisAlignment
-                                                              .spaceBetween,
-                                                      children: [
-                                                        if (listViewPackagesRecord
-                                                                .description !=
-                                                            '')
-                                                          Text(
-                                                            listViewPackagesRecord
-                                                                .description,
-                                                            style: FlutterFlowTheme
-                                                                    .of(context)
-                                                                .bodyMedium
-                                                                .override(
-                                                                  fontFamily:
-                                                                      'sf pro display',
-                                                                  color: listViewPackagesRecord
-                                                                              .reference.path ==
-                                                                          effectiveSelectedPackage
-                                                                              ?.reference
-                                                                              .path
-                                                                      ? FlutterFlowTheme.of(
-                                                                              context)
-                                                                          .success
-                                                                      : FlutterFlowTheme.of(
-                                                                              context)
-                                                                          .error,
-                                                                  fontSize: 15,
-                                                                  letterSpacing:
-                                                                      0.0,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .normal,
-                                                                  lineHeight:
-                                                                      1.5,
-                                                                ),
-                                                          ),
-                                                        if (listViewPackagesRecord
-                                                                .oldPrice !=
-                                                            0)
-                                                          Text(
-                                                            ' ${listViewPackagesRecord.oldPrice.toString()}₽ ',
-                                                            style: FlutterFlowTheme
-                                                                    .of(context)
-                                                                .bodyMedium
-                                                                .override(
-                                                                  fontFamily:
-                                                                      'sf pro display',
-                                                                  color: listViewPackagesRecord
-                                                                              .reference.path ==
-                                                                          effectiveSelectedPackage
-                                                                              ?.reference
-                                                                              .path
-                                                                      ? FlutterFlowTheme.of(
-                                                                              context)
-                                                                          .primaryBackground
-                                                                      : FlutterFlowTheme.of(
-                                                                              context)
-                                                                          .secondaryText,
-                                                                  fontSize: 15,
-                                                                  letterSpacing:
-                                                                      0.0,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .normal,
-                                                                  decoration:
-                                                                      TextDecoration
-                                                                          .lineThrough,
-                                                                  lineHeight:
-                                                                      1.5,
-                                                                ),
-                                                          ),
-                                                      ],
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                            if (listViewPackagesRecord
-                                                    .reference.path ==
-                                                effectiveSelectedPackage
-                                                    ?.reference.path)
-                                              Padding(
-                                                padding: EdgeInsetsDirectional
-                                                    .fromSTEB(0, 0, 2, 0),
-                                                child: Container(
-                                                  width: 24,
-                                                  height: 24,
-                                                  decoration: BoxDecoration(
-                                                    color: FlutterFlowTheme.of(
-                                                            context)
-                                                        .success,
-                                                    shape: BoxShape.circle,
-                                                  ),
-                                                  child: Align(
-                                                    alignment:
-                                                        AlignmentDirectional(
-                                                            0, 0),
-                                                    child: Icon(
-                                                      Icons.done,
-                                                      color: Colors.black,
-                                                      size: 13,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                          ],
-                                        ),
-                                      ),
-                                    );
-                                  }),
-                                );
+            BasicPageHeader(
+              title: _localized('Тарифы', 'Plans'),
+              onBack: () => context.safePop(),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.pagePadding,
+                  ExpatlioDesign.space24,
+                  ExpatlioDesign.pagePadding,
+                  ExpatlioDesign.space24,
+                ),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 520),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        const StudentPayIntro(),
+                        const SizedBox(height: ExpatlioDesign.space24),
+                        if (!_isLoadingPackages && _visiblePlans.isEmpty)
+                          StudentPayCatalogError(
+                            message: _catalogFailureMessage(_catalogStatus),
+                            onRetry: _loadPackages,
+                          )
+                        else
+                          for (final plan in _visiblePlans) ...[
+                            StudentPayPlanCard(
+                              plan: plan,
+                              selected:
+                                  _selectedPlan.productId == plan.productId,
+                              price: _priceFor(plan),
+                              priceAvailable: _hasPackageFor(plan),
+                              onTap: () {
+                                safeSetState(() {
+                                  _selectedProductId = plan.productId;
+                                });
                               },
                             ),
-                          ),
-                        ],
-                      ).animateOnActionTrigger(
-                        animationsMap['columnOnActionTriggerAnimation']!,
-                      ),
-                      Padding(
-                        padding: EdgeInsetsDirectional.fromSTEB(10, 40, 0, 0),
-                        child: Text(
-                          FFLocalizations.of(context).getText(
-                            '2dwkyn2f' /* Промокод */,
-                          ),
-                          style:
-                              FlutterFlowTheme.of(context).bodyMedium.override(
-                                    fontFamily: 'Cool',
-                                    fontSize: 20,
-                                    letterSpacing: 0.0,
-                                  ),
+                            if (plan != _visiblePlans.last)
+                              const SizedBox(height: ExpatlioDesign.space12),
+                          ],
+                        const SizedBox(height: ExpatlioDesign.space16),
+                        StudentPayRestorePurchasesButton(
+                          isBusy: _isRestoringPurchases || _isPurchasing,
+                          onPressed: _restorePurchases,
                         ),
-                      ),
-                      Padding(
-                        padding: EdgeInsetsDirectional.fromSTEB(0, 12, 0, 0),
-                        child: Container(
-                          width: double.infinity,
-                          height: 60,
-                          decoration: BoxDecoration(
-                            color:
-                                FlutterFlowTheme.of(context).primaryBackground,
-                            borderRadius: BorderRadius.circular(100),
-                          ),
-                          child: Padding(
-                            padding: EdgeInsets.all(2),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.max,
-                              children: [
-                                Container(
-                                  width: 56,
-                                  height: 56,
-                                  decoration: BoxDecoration(
-                                    color: FlutterFlowTheme.of(context)
-                                        .secondaryBackground,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Align(
-                                    alignment: AlignmentDirectional(0, 0),
-                                    child: Icon(
-                                      FFIcons.kgift02,
-                                      color: FlutterFlowTheme.of(context)
-                                          .primaryText,
-                                      size: 20,
-                                    ),
-                                  ),
-                                ),
-                                Expanded(
-                                  child: Padding(
-                                    padding: EdgeInsetsDirectional.fromSTEB(
-                                        8, 0, 0, 0),
-                                    child: Container(
-                                      width: double.infinity,
-                                      child: TextFormField(
-                                        controller: _model.nameTextController,
-                                        focusNode: _model.nameFocusNode,
-                                        onChanged: (_) => EasyDebounce.debounce(
-                                          '_model.nameTextController',
-                                          Duration(milliseconds: 0),
-                                          () => safeSetState(() {}),
-                                        ),
-                                        autofocus: false,
-                                        textCapitalization:
-                                            TextCapitalization.characters,
-                                        textInputAction: TextInputAction.done,
-                                        obscureText: false,
-                                        decoration: InputDecoration(
-                                          isDense: false,
-                                          labelText: FFLocalizations.of(context)
-                                              .getText(
-                                            'ozmnhrl5' /* Введите промокод */,
-                                          ),
-                                          labelStyle: FlutterFlowTheme.of(
-                                                  context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                color:
-                                                    FlutterFlowTheme.of(context)
-                                                        .secondaryText,
-                                                fontSize: 16,
-                                                letterSpacing: 0.0,
-                                              ),
-                                          enabledBorder: InputBorder.none,
-                                          focusedBorder: InputBorder.none,
-                                          errorBorder: InputBorder.none,
-                                          focusedErrorBorder: InputBorder.none,
-                                          suffixIcon: _model.nameTextController!
-                                                  .text.isNotEmpty
-                                              ? InkWell(
-                                                  onTap: () async {
-                                                    _model.nameTextController
-                                                        ?.clear();
-                                                    safeSetState(() {});
-                                                  },
-                                                  child: Icon(
-                                                    Icons.clear,
-                                                    size: 18,
-                                                  ),
-                                                )
-                                              : null,
-                                        ),
-                                        style: FlutterFlowTheme.of(context)
-                                            .bodyMedium
-                                            .override(
-                                              fontFamily: 'sf pro display',
-                                              fontSize: 16,
-                                              letterSpacing: 0.0,
-                                            ),
-                                        cursorColor:
-                                            FlutterFlowTheme.of(context)
-                                                .primaryText,
-                                        enableInteractiveSelection: true,
-                                        validator: _model
-                                            .nameTextControllerValidator
-                                            .asValidator(context),
-                                        inputFormatters: [
-                                          if (!isAndroid && !isiOS)
-                                            TextInputFormatter.withFunction(
-                                                (oldValue, newValue) {
-                                              return TextEditingValue(
-                                                selection: newValue.selection,
-                                                text: newValue.text
-                                                    .toCapitalization(
-                                                        TextCapitalization
-                                                            .characters),
-                                              );
-                                            }),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                if (_model.nameTextController.text != '')
-                                  FlutterFlowIconButton(
-                                    borderRadius: 70,
-                                    buttonSize: 56,
-                                    fillColor:
-                                        FlutterFlowTheme.of(context).primary,
-                                    icon: Icon(
-                                      FFIcons.kchevronRight,
-                                      color: FlutterFlowTheme.of(context)
-                                          .primaryBackground,
-                                      size: 20,
-                                    ),
-                                    onPressed: () async {
-                                      await _handleApplyPromoCode();
-                                    },
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      Padding(
-                        padding: EdgeInsetsDirectional.fromSTEB(10, 40, 0, 0),
-                        child: Text(
-                          FFLocalizations.of(context).getText(
-                            'd4ayjswx' /* История операций */,
-                          ),
-                          style:
-                              FlutterFlowTheme.of(context).bodyMedium.override(
-                                    fontFamily: 'Cool',
-                                    fontSize: 20,
-                                    letterSpacing: 0.0,
-                                  ),
-                        ),
-                      ),
-                      Padding(
-                        padding: EdgeInsetsDirectional.fromSTEB(0, 12, 0, 0),
-                        child: Container(
-                          width: double.infinity,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color:
-                                FlutterFlowTheme.of(context).primaryBackground,
-                            borderRadius: BorderRadius.circular(100),
-                          ),
-                          child: Padding(
-                            padding: EdgeInsets.all(2),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.max,
-                              children: [
-                                Expanded(
-                                  child: InkWell(
-                                    splashColor: Colors.transparent,
-                                    focusColor: Colors.transparent,
-                                    hoverColor: Colors.transparent,
-                                    highlightColor: Colors.transparent,
-                                    onTap: () async {
-                                      _model.replenishment = 0;
-                                      safeSetState(() {});
-                                    },
-                                    child: Container(
-                                      width: double.infinity,
-                                      height: 100,
-                                      decoration: BoxDecoration(
-                                        color: valueOrDefault<Color>(
-                                          _model.replenishment == 0
-                                              ? FlutterFlowTheme.of(context)
-                                                  .secondaryBackground
-                                              : Colors.transparent,
-                                          FlutterFlowTheme.of(context)
-                                              .secondaryBackground,
-                                        ),
-                                        borderRadius: BorderRadius.circular(24),
-                                        shape: BoxShape.rectangle,
-                                      ),
-                                      child: Align(
-                                        alignment: AlignmentDirectional(0, 0),
-                                        child: Text(
-                                          FFLocalizations.of(context).getText(
-                                            '1owu01u1' /* Все */,
-                                          ),
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                color: valueOrDefault<Color>(
-                                                  _model.replenishment == 0
-                                                      ? FlutterFlowTheme.of(
-                                                              context)
-                                                          .primaryText
-                                                      : FlutterFlowTheme.of(
-                                                              context)
-                                                          .secondaryText,
-                                                  FlutterFlowTheme.of(context)
-                                                      .primaryText,
-                                                ),
-                                                letterSpacing: 0.0,
-                                              ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                Expanded(
-                                  child: InkWell(
-                                    splashColor: Colors.transparent,
-                                    focusColor: Colors.transparent,
-                                    hoverColor: Colors.transparent,
-                                    highlightColor: Colors.transparent,
-                                    onTap: () async {
-                                      _model.replenishment = 1;
-                                      safeSetState(() {});
-                                    },
-                                    child: Container(
-                                      width: double.infinity,
-                                      height: 100,
-                                      decoration: BoxDecoration(
-                                        color: valueOrDefault<Color>(
-                                          _model.replenishment == 1
-                                              ? FlutterFlowTheme.of(context)
-                                                  .secondaryBackground
-                                              : Colors.transparent,
-                                          Colors.transparent,
-                                        ),
-                                        borderRadius: BorderRadius.circular(24),
-                                        shape: BoxShape.rectangle,
-                                      ),
-                                      child: Align(
-                                        alignment: AlignmentDirectional(0, 0),
-                                        child: Text(
-                                          FFLocalizations.of(context).getText(
-                                            'm8dxuyz4' /* Пополнения */,
-                                          ),
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                color: valueOrDefault<Color>(
-                                                  _model.replenishment == 1
-                                                      ? FlutterFlowTheme.of(
-                                                              context)
-                                                          .primaryText
-                                                      : FlutterFlowTheme.of(
-                                                              context)
-                                                          .secondaryText,
-                                                  FlutterFlowTheme.of(context)
-                                                      .secondaryText,
-                                                ),
-                                                letterSpacing: 0.0,
-                                              ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                Expanded(
-                                  child: InkWell(
-                                    splashColor: Colors.transparent,
-                                    focusColor: Colors.transparent,
-                                    hoverColor: Colors.transparent,
-                                    highlightColor: Colors.transparent,
-                                    onTap: () async {
-                                      _model.replenishment = 2;
-                                      safeSetState(() {});
-                                    },
-                                    child: Container(
-                                      width: double.infinity,
-                                      height: 100,
-                                      decoration: BoxDecoration(
-                                        color: valueOrDefault<Color>(
-                                          _model.replenishment == 2
-                                              ? FlutterFlowTheme.of(context)
-                                                  .secondaryBackground
-                                              : Colors.transparent,
-                                          Colors.transparent,
-                                        ),
-                                        borderRadius: BorderRadius.circular(24),
-                                        shape: BoxShape.rectangle,
-                                      ),
-                                      child: Align(
-                                        alignment: AlignmentDirectional(0, 0),
-                                        child: Text(
-                                          FFLocalizations.of(context).getText(
-                                            'xh0vamif' /* Списания */,
-                                          ),
-                                          style: FlutterFlowTheme.of(context)
-                                              .bodyMedium
-                                              .override(
-                                                fontFamily: 'sf pro display',
-                                                color: valueOrDefault<Color>(
-                                                  _model.replenishment == 2
-                                                      ? FlutterFlowTheme.of(
-                                                              context)
-                                                          .primaryText
-                                                      : FlutterFlowTheme.of(
-                                                              context)
-                                                          .secondaryText,
-                                                  FlutterFlowTheme.of(context)
-                                                      .secondaryText,
-                                                ),
-                                                letterSpacing: 0.0,
-                                              ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      Padding(
-                        padding: EdgeInsetsDirectional.fromSTEB(0, 12, 0, 0),
-                        child: StreamBuilder<List<TransactionsRecord>>(
-                          stream: queryTransactionsRecord(
-                            queryBuilder: (transactionsRecord) =>
-                                transactionsRecord
-                                    .where(
-                                      'userId',
-                                      isEqualTo: currentUserReference,
-                                    )
-                                    .orderBy('createdAt', descending: true),
-                          ),
-                          builder: (context, snapshot) {
-                            // Customize what your widget looks like when it's loading.
-                            if (!snapshot.hasData) {
-                              return Center(
-                                child: SizedBox(
-                                  width: 50,
-                                  height: 50,
-                                  child: SpinKitCircle(
-                                    color:
-                                        FlutterFlowTheme.of(context).secondary,
-                                    size: 50,
-                                  ),
-                                ),
-                              );
-                            }
-                            List<TransactionsRecord>
-                                containerTransactionsRecordList =
-                                snapshot.data!;
-
-                            return Container(
-                              decoration: BoxDecoration(),
-                              child: Builder(
-                                builder: (context) {
-                                  final list = containerTransactionsRecordList
-                                      .where((e) => () {
-                                            if (_model.replenishment == 1) {
-                                              return ((e.type ==
-                                                      TypeTransactions
-                                                          .purchase) ||
-                                                  (e.type ==
-                                                      TypeTransactions.bonus));
-                                            } else if (_model.replenishment ==
-                                                2) {
-                                              return (e.type ==
-                                                  TypeTransactions.call_charge);
-                                            } else {
-                                              return true;
-                                            }
-                                          }())
-                                      .toList();
-
-                                  if (list.isEmpty) {
-                                    return Center(
-                                      child: EmptyWidget(
-                                        txt:
-                                            'По выбранному типу операций пока ничего нет. Попробуйте другой фильтр.',
-                                      ),
-                                    );
-                                  }
-
-                                  return Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children:
-                                        List.generate(list.length, (listIndex) {
-                                      final listItem = list[listIndex];
-                                      return Padding(
-                                        padding: EdgeInsetsDirectional.fromSTEB(
-                                          0.0,
-                                          listIndex == 0 ? 0.0 : 6.0,
-                                          0.0,
-                                          0.0,
-                                        ),
-                                        child: TransWidget(
-                                          key: Key(
-                                              'Keya8r_${listIndex}_of_${list.length}'),
-                                          trans: listItem,
-                                        ),
-                                      );
-                                    }),
-                                  );
-                                },
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ]
-                        .addToStart(SizedBox(height: 115))
-                        .addToEnd(SizedBox(height: 120)),
-                  ),
-                ),
-              ),
-            ),
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    FlutterFlowTheme.of(context).secondaryBackground,
-                    Color(0xEFF2F2F7),
-                    Color(0x00F2F2F7)
-                  ],
-                  stops: [0, 0.8, 1],
-                  begin: AlignmentDirectional(0, -1),
-                  end: AlignmentDirectional(0, 1),
-                ),
-              ),
-              child: Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(12, 55, 12, 12),
-                child: Row(
-                  mainAxisSize: MainAxisSize.max,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Container(
-                      width: 45,
-                      height: 45,
-                      decoration: BoxDecoration(
-                        boxShadow: [
-                          BoxShadow(
-                            blurRadius: 7,
-                            color: Color(0x0D2C2C2C),
-                            offset: Offset(
-                              0,
-                              2,
-                            ),
-                          )
-                        ],
-                        shape: BoxShape.circle,
-                      ),
-                      child: FlutterFlowIconButton(
-                        borderRadius: 70,
-                        buttonSize: 45,
-                        fillColor: Colors.white,
-                        icon: Icon(
-                          FFIcons.kchevronLeft,
-                          color: FlutterFlowTheme.of(context).primaryText,
-                          size: 20,
-                        ),
-                        onPressed: () async {
-                          context.safePop();
-                        },
-                      ),
-                    ),
-                    Text(
-                      FFLocalizations.of(context).getText(
-                        'biuq69s8' /* Финансы */,
-                      ),
-                      style: FlutterFlowTheme.of(context).bodyMedium.override(
-                            fontFamily: 'Cool',
-                            fontSize: 18,
-                            letterSpacing: 0.0,
-                            fontWeight: FontWeight.normal,
-                          ),
-                    ),
-                    Container(
-                      width: 45,
-                      height: 45,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            if (!keyboardVisible && !promoCodeFieldFocused)
-              Align(
-                alignment: AlignmentDirectional(0, 1),
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Color(0x00F2F2F7),
-                        Color(0xACF2F2F7),
-                        FlutterFlowTheme.of(context).secondaryBackground
                       ],
-                      stops: [0, 0.2, 1],
-                      begin: AlignmentDirectional(0, -1),
-                      end: AlignmentDirectional(0, 1),
-                    ),
-                  ),
-                  child: Padding(
-                    padding: EdgeInsetsDirectional.fromSTEB(6, 12, 6, 35),
-                    child: FutureBuilder<List<PackagesRecord>>(
-                      future: _model.packagesFuture,
-                      initialData: _packagesMemoryCache,
-                      builder: (context, snapshot) {
-                        final effectiveSelectedPackage = snapshot.hasData
-                            ? _effectiveSelectedPackage(snapshot.data!)
-                            : _effectiveSelectedPackage();
-
-                        return ButtonWidget(
-                          text: FFLocalizations.of(context).getText(
-                            '5visqusd' /* Оплатить */,
-                          ),
-                          loadingText:
-                              FFLocalizations.of(context).getVariableText(
-                            ruText: 'Создаем оплату...',
-                            enText: 'Creating payment...',
-                          ),
-                          busyStyle: ButtonBusyStyle.spinner,
-                          keyboardAwarePadding: false,
-                          padding: EdgeInsets.zero,
-                          trailingContent: effectiveSelectedPackage != null
-                              ? Text(
-                                  '${effectiveSelectedPackage.price.toString()}₽',
-                                  style: FlutterFlowTheme.of(context)
-                                      .bodyMedium
-                                      .override(
-                                        fontFamily: 'sf pro display',
-                                        color: FlutterFlowTheme.of(context)
-                                            .secondaryText,
-                                        fontSize: 15,
-                                        letterSpacing: 0.0,
-                                      ),
-                                )
-                              : null,
-                          action: () async {
-                            await _handlePayPressed();
-                          },
-                        );
-                      },
                     ),
                   ),
                 ),
               ),
+            ),
           ],
+        ),
+        bottomNavigationBar: StudentPayBottomBar(
+          plan: _selectedPlan,
+          price: _priceFor(_selectedPlan),
+          actionLabel: _actionLabelFor(_selectedPlan),
+          termsText: _termsTextFor(_selectedPlan),
+          canPurchase: _hasPackageFor(_selectedPlan),
+          isBusy: _isPurchasing || _isRestoringPurchases,
+          isLoading: _isLoadingPackages,
+          retryLabel: _localized('Повторить загрузку', 'Try again'),
+          onPressed: _hasPackageFor(_selectedPlan)
+              ? _purchaseSelectedPlan
+              : _loadPackages,
         ),
       ),
     );

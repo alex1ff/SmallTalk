@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Flutter and backend gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: 3.35.3
+          channel: stable
+          cache: false
+
+      - name: Cache Flutter pub packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-flutter-pub-${{ hashFiles('pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-flutter-pub-
+
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            firebase/custom_cloud_functions/package-lock.json
+
+      - name: Set up Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Run local release gate
+        shell: bash
+        run: |
+          set -o pipefail
+          ./scripts/local_ci.sh 2>&1 | tee .git/local-ci-console.log
+
+      - name: Upload gate log on failure
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: local-ci-log-${{ github.run_id }}
+          path: |
+            .git/local-ci-console.log
+            .git/local-ci/**
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+
+  extended-emulator:
+    name: Extended emulator checks (manual)
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            firebase/custom_cloud_functions/package-lock.json
+
+      - name: Set up Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install emulator dependencies
+        run: |
+          npm ci --ignore-scripts
+          npm ci --prefix firebase/custom_cloud_functions --ignore-scripts
+
+      - name: Run extended backend checks
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run backend:checks 2>&1 | tee backend-checks.log
+
+      - name: Upload emulator log on failure
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: backend-checks-log-${{ github.run_id }}
+          path: backend-checks.log
+          if-no-files-found: warn
+          retention-days: 7

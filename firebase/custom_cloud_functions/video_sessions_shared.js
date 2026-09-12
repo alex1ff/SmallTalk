@@ -1,3 +1,7 @@
+const {
+  normalizeSupportedLocation,
+} = require("./supported_locations");
+
 function normalizeString(value) {
   if (typeof value !== "string") {
     return "";
@@ -28,6 +32,25 @@ const UNIVERSAL_SESSION_POLICY = Object.freeze({
   effectiveLimitSeconds: 5 * 60,
 });
 const LEGACY_ACTIVE_SESSION_MAX_DURATION_MS = 60 * 60 * 1000;
+const VIDEO_SESSION_STATUS = Object.freeze({
+  SEARCHING: "searching",
+  PENDING_CONFIRMATION: "pending_confirmation",
+  CONNECTING: "connecting",
+  ACTIVE: "active",
+  CANCELLED: "cancelled",
+  EXPIRED: "expired",
+  ENDED: "ended",
+});
+const VIDEO_SESSION_CREDENTIAL_STATUSES = Object.freeze([
+  VIDEO_SESSION_STATUS.CONNECTING,
+  VIDEO_SESSION_STATUS.ACTIVE,
+  "connected",
+]);
+const VIDEO_SESSION_TERMINAL_STATUSES = Object.freeze([
+  VIDEO_SESSION_STATUS.CANCELLED,
+  VIDEO_SESSION_STATUS.EXPIRED,
+  VIDEO_SESSION_STATUS.ENDED,
+]);
 
 function readPositiveInteger(value, fallback) {
   const number = Number(value);
@@ -186,7 +209,9 @@ function extractBlockedIds(blockedUsers = []) {
         return ref.id.trim();
       }
       if (typeof ref === "string") {
-        return ref.trim();
+        const value = ref.trim();
+        const parts = value.split("/").filter(Boolean);
+        return parts.length > 0 ? parts[parts.length - 1] : "";
       }
       return "";
     })
@@ -223,6 +248,22 @@ function readCountryCode(value) {
   }
 
   return "";
+}
+
+function readMatchCity(userData = {}) {
+  const profileCity = userData.profileCity;
+  if (!profileCity || typeof profileCity !== "object" ||
+      Array.isArray(profileCity)) {
+    return null;
+  }
+  const location = normalizeSupportedLocation(
+      profileCity.countryCode,
+      profileCity.cityKey,
+  );
+  return location ? {
+    countryCode: location.countryCode,
+    cityKey: location.cityKey,
+  } : null;
 }
 
 function readLevelValue(value) {
@@ -409,10 +450,6 @@ function readTeacherAccreditationStatus(userData = {}) {
   return "";
 }
 
-function isApprovedTeacherFromLegacy(userData = {}) {
-  return readTeacherAccreditationStatus(userData) === "approved";
-}
-
 function isApprovedTeacher(userData = {}) {
   return readTeacherAccreditationStatus(userData) === "approved";
 }
@@ -560,6 +597,7 @@ function buildMatchProfile(userId, userData = {}, requestedLanguage) {
     activeLanguageSource: activeLanguage.source || null,
     supportedLanguages: activeLanguage.supportedLanguages,
     country: readMatchCountry(userData) || null,
+    city: readMatchCity(userData),
     level: readMatchLevelValue(userData) || null,
     ratingAverage: readMatchRatingAverage(userData),
     ratingCount: readMatchRatingCount(userData),
@@ -622,6 +660,11 @@ function buildStoredMatchProfile(
         readCountryCode(storedMatchProfile.country) :
         "") ||
       null,
+    city:
+      readMatchCity(userData) ||
+      (preserveStoredValues ? readMatchCity({
+        profileCity: storedMatchProfile.city,
+      }) : null),
     level:
       readLevelValue(userData.level) ||
       (preserveStoredValues ? readLevelValue(storedMatchProfile.level) : "") ||
@@ -650,17 +693,21 @@ function buildStoredMatchProfile(
 
 function getRequesterId(sessionData = {}) {
   return normalizeString(
-    sessionData.studentId ||
-      sessionData.matchContext?.requesterId ||
-      sessionData.requesterId,
+    normalizeString(sessionData.requesterId) ||
+      normalizeString(sessionData.matchContext?.requesterId) ||
+      normalizeString(sessionData.studentId),
   ) || null;
 }
 
 function getAssignedResponderId(sessionData = {}) {
   return normalizeString(
-    sessionData.tutorId ||
-      sessionData.currentTutorId ||
-      sessionData.matchContext?.acceptedResponderId,
+    normalizeString(sessionData.responderId) ||
+      normalizeString(sessionData.matchContext?.acceptedResponderId) ||
+      normalizeString(sessionData.currentResponderId) ||
+      normalizeString(sessionData.matchContext?.responderId) ||
+      normalizeString(sessionData.matchContext?.currentResponderId) ||
+      normalizeString(sessionData.tutorId) ||
+      normalizeString(sessionData.currentTutorId),
   ) || null;
 }
 
@@ -693,6 +740,168 @@ function getSessionParticipantIds(sessionData = {}) {
   return ids;
 }
 
+function getAcceptedSessionCredentialParticipantIds(sessionData = {}) {
+  const ids = [];
+  const participantIds = Array.isArray(sessionData.participantIds) ?
+    sessionData.participantIds :
+    [];
+
+  participantIds.forEach((value) => {
+    const normalized = normalizeString(value);
+    if (normalized && !ids.includes(normalized)) {
+      ids.push(normalized);
+    }
+  });
+
+  [
+    getRequesterId(sessionData),
+    normalizeString(
+      sessionData.tutorId || sessionData.matchContext?.acceptedResponderId,
+    ),
+  ]
+    .filter(Boolean)
+    .forEach((value) => {
+      const normalized = normalizeString(value);
+      if (normalized && !ids.includes(normalized)) {
+        ids.push(normalized);
+      }
+    });
+
+  return ids;
+}
+
+function isAcceptedSessionCredentialParticipant(sessionData = {}, userId) {
+  const normalizedUserId = normalizeString(userId);
+  if (!normalizedUserId) {
+    return false;
+  }
+
+  return getAcceptedSessionCredentialParticipantIds(sessionData)
+    .includes(normalizedUserId);
+}
+
+function isCredentialSessionStatus(status) {
+  return VIDEO_SESSION_CREDENTIAL_STATUSES.includes(normalizeCode(status));
+}
+
+function isVideoSessionStatus(status) {
+  return Object.values(VIDEO_SESSION_STATUS).includes(normalizeCode(status));
+}
+
+function readTimestampMillis(value) {
+  if (!value) return null;
+  if (typeof value.toMillis === "function") {
+    const millis = Number(value.toMillis());
+    return Number.isFinite(millis) ? millis : null;
+  }
+  if (value instanceof Date) {
+    const millis = value.getTime();
+    return Number.isFinite(millis) ? millis : null;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === "string") {
+    const millis = Date.parse(value);
+    return Number.isFinite(millis) ? millis : null;
+  }
+  return null;
+}
+
+function isCredentialSessionUnexpired(
+  sessionData = {},
+  nowMillis = Date.now(),
+) {
+  const expiresAtMillis = readTimestampMillis(sessionData.expiresAt);
+  if (expiresAtMillis === null) {
+    return false;
+  }
+  const safeNowMillis = Number.isFinite(Number(nowMillis))
+    ? Number(nowMillis)
+    : Date.now();
+  return expiresAtMillis > safeNowMillis;
+}
+
+function isCredentialSessionJoinable(sessionData = {}, nowMillis = Date.now()) {
+  if (!isCredentialSessionStatus(sessionData.status) ||
+      !isCredentialSessionUnexpired(sessionData, nowMillis)) {
+    return false;
+  }
+  if (normalizeCode(sessionData.status) !== VIDEO_SESSION_STATUS.CONNECTING) {
+    return true;
+  }
+
+  const joinDeadlineMillis = readTimestampMillis(sessionData.joinDeadlineAt);
+  if (joinDeadlineMillis === null) {
+    return false;
+  }
+  const safeNowMillis = Number.isFinite(Number(nowMillis))
+    ? Number(nowMillis)
+    : Date.now();
+  return joinDeadlineMillis > safeNowMillis;
+}
+
+function getCredentialDeadlineMillis(sessionData = {}) {
+  const expiresAtMillis = readTimestampMillis(sessionData.expiresAt);
+  if (expiresAtMillis === null) {
+    return null;
+  }
+  if (normalizeCode(sessionData.status) !== VIDEO_SESSION_STATUS.CONNECTING) {
+    return expiresAtMillis;
+  }
+  const joinDeadlineMillis = readTimestampMillis(sessionData.joinDeadlineAt);
+  if (joinDeadlineMillis === null) {
+    return null;
+  }
+  return Math.min(expiresAtMillis, joinDeadlineMillis);
+}
+
+function getCredentialTtlSeconds(
+  sessionData = {},
+  maxSeconds = 60 * 60,
+  nowMillis = Date.now(),
+) {
+  const credentialDeadlineMillis = getCredentialDeadlineMillis(sessionData);
+  if (credentialDeadlineMillis === null) {
+    return 0;
+  }
+  const safeNowMillis = Number.isFinite(Number(nowMillis))
+    ? Number(nowMillis)
+    : Date.now();
+  const remainingSeconds = Math.floor(
+    (credentialDeadlineMillis - safeNowMillis) / 1000,
+  );
+  if (remainingSeconds < 1) {
+    return 0;
+  }
+  return Math.min(
+    readPositiveInteger(maxSeconds, 60 * 60),
+    remainingSeconds,
+  );
+}
+
+function getSessionExpiryTtlSeconds(
+  sessionData = {},
+  maxSeconds = 60 * 60,
+  nowMillis = Date.now(),
+) {
+  const expiresAtMillis = readTimestampMillis(sessionData.expiresAt);
+  if (expiresAtMillis === null) {
+    return 0;
+  }
+  const safeNowMillis = Number.isFinite(Number(nowMillis))
+    ? Number(nowMillis)
+    : Date.now();
+  const remainingSeconds = Math.floor((expiresAtMillis - safeNowMillis) / 1000);
+  if (remainingSeconds < 1) {
+    return 0;
+  }
+  return Math.min(
+    readPositiveInteger(maxSeconds, 60 * 60),
+    remainingSeconds,
+  );
+}
+
 function isSessionParticipant(sessionData = {}, userId) {
   const normalizedUserId = normalizeString(userId);
   if (!normalizedUserId) {
@@ -716,6 +925,10 @@ module.exports = {
   buildUniversalSessionPolicy,
   extractBlockedIds,
   getAssignedResponderId,
+  getAcceptedSessionCredentialParticipantIds,
+  getCredentialDeadlineMillis,
+  getCredentialTtlSeconds,
+  getSessionExpiryTtlSeconds,
   getLegacyPriorityScore,
   hasLegacyMatchProfileSource,
   getRequesterId,
@@ -723,9 +936,14 @@ module.exports = {
   getSessionPolicyExpiresAt,
   getSessionParticipantIds,
   isApprovedTeacher,
+  isAcceptedSessionCredentialParticipant,
+  isCredentialSessionJoinable,
+  isCredentialSessionStatus,
+  isCredentialSessionUnexpired,
   isRequesterForSession,
   isSessionParticipant,
   isSupportedSessionRole,
+  isVideoSessionStatus,
   normalizeRole,
   readCountryCode,
   readLanguageCode,
@@ -743,4 +961,7 @@ module.exports = {
   resolveConversationLanguages,
   resolveRoleConversationLanguages,
   supportsConversationLanguage,
+  VIDEO_SESSION_CREDENTIAL_STATUSES,
+  VIDEO_SESSION_STATUS,
+  VIDEO_SESSION_TERMINAL_STATUSES,
 };

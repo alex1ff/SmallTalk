@@ -1,18 +1,4 @@
-import 'dart:convert';
-import 'dart:math' as math;
-
-import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
-import 'package:timeago/timeago.dart' as timeago;
-import 'lat_lng.dart';
-import 'place.dart';
-import 'uploaded_file.dart';
 import '/backend/backend.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import '/backend/schema/structs/index.dart';
-import '/backend/schema/enums/enums.dart';
-import '/auth/firebase_auth/auth_util.dart';
 
 DocumentReference videoSessionsToRef(String sessionId) {
   return FirebaseFirestore.instance.collection('videoSessions').doc(sessionId);
@@ -42,15 +28,25 @@ bool isValidName(String name) {
 }
 
 List<CountryStruct> countriesList() {
-  return [
+  final countries = [
     // Popular English-speaking countries (index 1-6)
     CountryStruct(
       code: 'US',
-      nameEn: 'United States',
-      nameRu: 'США',
+      cityKey: 'new_york',
+      nameEn: 'New York, US',
+      nameRu: 'New York, US',
       flag: '🇺🇸',
       isPopular: true,
       index: 1,
+    ),
+    CountryStruct(
+      code: 'AE',
+      cityKey: 'dubai',
+      nameEn: 'Dubai, UAE',
+      nameRu: 'Dubai, UAE',
+      flag: '🇦🇪',
+      isPopular: true,
+      index: 3,
     ),
     CountryStruct(
       code: 'GB',
@@ -345,11 +341,12 @@ List<CountryStruct> countriesList() {
     ),
     CountryStruct(
       code: 'ID',
-      nameEn: 'Indonesia',
-      nameRu: 'Индонезия',
+      cityKey: 'bali',
+      nameEn: 'Bali, Indonesia',
+      nameRu: 'Bali, Indonesia',
       flag: '🇮🇩',
-      isPopular: false,
-      index: 37,
+      isPopular: true,
+      index: 2,
     ),
     CountryStruct(
       code: 'NO',
@@ -481,12 +478,28 @@ List<CountryStruct> countriesList() {
     ),
     CountryStruct(
       code: 'TH',
-      nameEn: 'Thailand',
-      nameRu: 'Таиланд',
+      cityKey: 'phuket',
+      nameEn: 'Phuket, Thailand',
+      nameRu: 'Phuket, Thailand',
       flag: '🇹🇭',
-      isPopular: false,
-      index: 54,
+      isPopular: true,
+      index: 4,
     ),
+  ];
+
+  const referenceCountryCodes = [
+    'US',
+    'ID',
+    'AE',
+    'TH',
+  ];
+
+  return [
+    for (var i = 0; i < referenceCountryCodes.length; i++)
+      countries
+          .firstWhere((country) => country.code == referenceCountryCodes[i])
+        ..index = i + 1
+        ..isPopular = true,
   ];
 }
 

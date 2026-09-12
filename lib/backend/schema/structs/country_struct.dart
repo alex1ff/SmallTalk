@@ -9,6 +9,7 @@ import '/flutter_flow/flutter_flow_util.dart';
 class CountryStruct extends FFFirebaseStruct {
   CountryStruct({
     String? code,
+    String? cityKey,
     String? nameEn,
     String? nameRu,
     String? flag,
@@ -17,6 +18,7 @@ class CountryStruct extends FFFirebaseStruct {
     int? index,
     FirestoreUtilData firestoreUtilData = const FirestoreUtilData(),
   })  : _code = code,
+        _cityKey = cityKey,
         _nameEn = nameEn,
         _nameRu = nameRu,
         _flag = flag,
@@ -31,6 +33,13 @@ class CountryStruct extends FFFirebaseStruct {
   set code(String? val) => _code = val;
 
   bool hasCode() => _code != null;
+
+  // "cityKey" field.
+  String? _cityKey;
+  String get cityKey => _cityKey ?? '';
+  set cityKey(String? val) => _cityKey = val;
+
+  bool hasCityKey() => _cityKey != null;
 
   // "nameEn" field.
   String? _nameEn;
@@ -78,6 +87,7 @@ class CountryStruct extends FFFirebaseStruct {
 
   static CountryStruct fromMap(Map<String, dynamic> data) => CountryStruct(
         code: data['code'] as String?,
+        cityKey: data['cityKey'] as String?,
         nameEn: data['nameEn'] as String?,
         nameRu: data['nameRu'] as String?,
         flag: data['flag'] as String?,
@@ -91,6 +101,7 @@ class CountryStruct extends FFFirebaseStruct {
 
   Map<String, dynamic> toMap() => {
         'code': _code,
+        'cityKey': _cityKey,
         'nameEn': _nameEn,
         'nameRu': _nameRu,
         'flag': _flag,
@@ -103,6 +114,10 @@ class CountryStruct extends FFFirebaseStruct {
   Map<String, dynamic> toSerializableMap() => {
         'code': serializeParam(
           _code,
+          ParamType.String,
+        ),
+        'cityKey': serializeParam(
+          _cityKey,
           ParamType.String,
         ),
         'nameEn': serializeParam(
@@ -135,6 +150,11 @@ class CountryStruct extends FFFirebaseStruct {
       CountryStruct(
         code: deserializeParam(
           data['code'],
+          ParamType.String,
+          false,
+        ),
+        cityKey: deserializeParam(
+          data['cityKey'],
           ParamType.String,
           false,
         ),
@@ -177,6 +197,7 @@ class CountryStruct extends FFFirebaseStruct {
   bool operator ==(Object other) {
     return other is CountryStruct &&
         code == other.code &&
+        cityKey == other.cityKey &&
         nameEn == other.nameEn &&
         nameRu == other.nameRu &&
         flag == other.flag &&
@@ -187,11 +208,12 @@ class CountryStruct extends FFFirebaseStruct {
 
   @override
   int get hashCode => const ListEquality()
-      .hash([code, nameEn, nameRu, flag, languages, isPopular, index]);
+      .hash([code, cityKey, nameEn, nameRu, flag, languages, isPopular, index]);
 }
 
 CountryStruct createCountryStruct({
   String? code,
+  String? cityKey,
   String? nameEn,
   String? nameRu,
   String? flag,
@@ -205,6 +227,7 @@ CountryStruct createCountryStruct({
 }) =>
     CountryStruct(
       code: code,
+      cityKey: cityKey,
       nameEn: nameEn,
       nameRu: nameRu,
       flag: flag,

@@ -5,9 +5,8 @@ const path = require("node:path");
 const {
   __private__: {
     compareCandidateDetails,
-    getTeacherBoostScore,
-    isTeacherBoostTargetLevel,
-    orderCandidatesWithTeacherPriority,
+    hasCallableTeacherToken,
+    orderCandidatesByMatchQuality,
   },
 } = require("./create_video_session");
 const {
@@ -84,86 +83,102 @@ test("role-based match language ignores teacher native language", () => {
   assert.equal(supportsConversationLanguage(student, "es"), false);
 });
 
-test("teacher boost applies only for Fluent approved-teacher ranking", () => {
-  assert.equal(isTeacherBoostTargetLevel("Fluent"), true);
-  assert.equal(isTeacherBoostTargetLevel("Advanced"), false);
-  assert.equal(isTeacherBoostTargetLevel(""), false);
+function fakePrivateTokenDb(privateTokenDocsById = {}) {
+  return {
+    collection: (name) => {
+      assert.equal(name, "userPrivateTokens");
+      return {
+        doc: (id) => ({
+          get: async () => privateTokenDocsById[id] || {
+            exists: false,
+            data: () => null,
+          },
+        }),
+      };
+    },
+  };
+}
+
+test("callable teacher token check applies only to teachers", async () => {
+  const throwingDb = {
+    collection: () => {
+      throw new Error("student candidates must not read tokens");
+    },
+  };
 
   assert.equal(
-    getTeacherBoostScore({ approvedTeacher: true }, true),
-    1,
+    await hasCallableTeacherToken("student-a", {role: "student"}, throwingDb),
+    true,
   );
   assert.equal(
-    getTeacherBoostScore({ approvedTeacher: false }, true),
-    0,
+    await hasCallableTeacherToken(
+      "teacher-a",
+      {role: "native_speaker"},
+      fakePrivateTokenDb(),
+    ),
+    false,
   );
   assert.equal(
-    getTeacherBoostScore({ approvedTeacher: true }, false),
-    0,
+    await hasCallableTeacherToken(
+      "teacher-a",
+      {role: "native_speaker"},
+      fakePrivateTokenDb({
+        "teacher-a": {
+          exists: true,
+          data: () => ({voipPushToken: " push-token "}),
+        },
+      }),
+    ),
+    true,
   );
 });
 
-test("compareCandidateDetails prioritizes location, teacher boost, ratings, and tie-breakers", () => {
+test("compareCandidateDetails prioritizes location, ratings, and tie-breakers", () => {
   const detailsById = {
     locationMatched: {
       locationMatch: true,
-      teacherBoostScore: 0,
       ratingAverage: 4.0,
       ratingCount: 5,
       legacyPriorityScore: 10,
     },
     locationMismatched: {
       locationMatch: false,
-      teacherBoostScore: 1,
       ratingAverage: 5.0,
       ratingCount: 100,
       legacyPriorityScore: 0,
     },
-    boostedTeacher: {
-      locationMatch: true,
-      teacherBoostScore: 1,
-      ratingAverage: 4.2,
-      ratingCount: 10,
-      legacyPriorityScore: 50,
-    },
     higherRatedPeer: {
       locationMatch: true,
-      teacherBoostScore: 0,
       ratingAverage: 4.9,
       ratingCount: 80,
       legacyPriorityScore: 1,
     },
     higherRated: {
       locationMatch: true,
-      teacherBoostScore: 0,
       ratingAverage: 4.9,
       ratingCount: 1,
       legacyPriorityScore: 50,
     },
     moreReviewed: {
       locationMatch: true,
-      teacherBoostScore: 0,
       ratingAverage: 4.5,
       ratingCount: 20,
       legacyPriorityScore: 1,
     },
     fewerReviewed: {
       locationMatch: true,
-      teacherBoostScore: 0,
       ratingAverage: 4.5,
       ratingCount: 2,
       legacyPriorityScore: 0,
     },
     lowerLegacyPriority: {
       locationMatch: true,
-      teacherBoostScore: 0,
       ratingAverage: 4.5,
       ratingCount: 2,
       legacyPriorityScore: 1,
     },
     higherLegacyPriority: {
       locationMatch: true,
-      teacherBoostScore: 0,
       ratingAverage: 4.5,
       ratingCount: 2,
       legacyPriorityScore: 5,
@@ -174,13 +189,6 @@ test("compareCandidateDetails prioritizes location, teacher boost, ratings, and 
     compareCandidateDetails(
       "locationMatched",
       "locationMismatched",
-      detailsById,
-    ) < 0,
-  );
-  assert.ok(
-    compareCandidateDetails(
-      "boostedTeacher",
-      "higherRatedPeer",
       detailsById,
     ) < 0,
   );
@@ -207,7 +215,7 @@ test("compareCandidateDetails prioritizes location, teacher boost, ratings, and 
   );
 });
 
-test("orderCandidatesWithTeacherPriority keeps roughly four teacher slots per five", () => {
+test("orderCandidatesByMatchQuality does not reserve teacher slots", () => {
   const detailsById = {
     teacher1: {approvedTeacher: true, locationMatch: true, ratingAverage: 5, ratingCount: 1, legacyPriorityScore: 0},
     teacher2: {approvedTeacher: true, locationMatch: true, ratingAverage: 4, ratingCount: 1, legacyPriorityScore: 0},
@@ -219,12 +227,11 @@ test("orderCandidatesWithTeacherPriority keeps roughly four teacher slots per fi
   };
 
   assert.deepEqual(
-    orderCandidatesWithTeacherPriority(
+    orderCandidatesByMatchQuality(
       ["student1", "teacher5", "teacher4", "student2", "teacher3", "teacher2", "teacher1"],
       detailsById,
-      true,
     ).slice(0, 5),
-    ["teacher1", "teacher2", "teacher3", "teacher4", "student1"],
+    ["student1", "teacher1", "student2", "teacher2", "teacher3"],
   );
 });
 
@@ -238,13 +245,31 @@ test(
 
   assert.match(source, /if \(!isSupportedSessionRole\(requesterRole\)\)/);
   assert.match(source, /if \(!isSupportedSessionRole\(tutorRole\)/);
-  assert.match(source, /teacherBoostRankingApplied = isTeacherBoostTargetLevel/);
+  assert.match(source, /getReadOnlyUserVoipTokenState/);
   assert.match(
+    source,
+    /await hasCallableTeacherToken\(directTutorId,\s*tutorData,\s*db\)/,
+  );
+  assert.match(
+    source,
+    /await hasCallableTeacherToken\(tutorId,\s*tutorData,\s*db\)/,
+  );
+  assert.doesNotMatch(source, /teacherBoostRankingApplied/);
+  assert.doesNotMatch(source, /teacherBoostScore/);
+  assert.doesNotMatch(
     source,
     /orderCandidatesWithTeacherPriority\(/,
   );
+  assert.match(source, /orderCandidatesByMatchQuality\(/);
+  assert.match(source, /reserveDirectPairInTransaction\(/);
+  assert.match(source, /reserveMatchPairInTransaction\(/);
+  assert.doesNotMatch(source, /transaction\.set\(sessionRef,\s*finalSessionData\)/);
+  assert.match(source, /requestId is required for search matching/);
   assert.doesNotMatch(source, /native_language_NS\.code/);
   assert.match(source, /loadSameDayRepeatCandidateIds\(\s*db,\s*requesterId,/);
+  assert.match(source, /requesterEmail:\s*requesterData\.email/);
+  assert.match(source, /userEmailsById:\s*candidateEmailsById/);
   assert.match(source, /const sessionPolicyFields = buildCreateSessionPolicyFields\(\);/);
+  assert.match(source, /await deleteDailyRoom\(precreatedRoomName\)/);
   },
 );

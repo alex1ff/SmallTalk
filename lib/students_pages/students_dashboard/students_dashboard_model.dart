@@ -7,9 +7,6 @@ import 'package:flutter/material.dart';
 class StudentsDashboardModel extends FlutterFlowModel<StudentsDashboardWidget> {
   ///  State fields for stateful widgets in this page.
 
-  // State field(s) for availability switch widget.
-  bool? switchValue;
-
   // Cached stats stream so it is not recreated on every build().
   Stream<List<StatsRecord>>? statsStream;
 

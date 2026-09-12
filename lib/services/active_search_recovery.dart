@@ -1,0 +1,325 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+const Duration activeSearchHeartbeatStaleAfter = Duration(seconds: 90);
+
+typedef ActiveSearchSnapshotReader
+    = Future<DocumentSnapshot<Map<String, dynamic>>?> Function(String userId);
+
+class ActiveSearchRecoveryState {
+  const ActiveSearchRecoveryState({
+    required this.userId,
+    required this.requestId,
+    required this.data,
+    required this.exists,
+    required this.belongsToUser,
+    required this.isLiveStatus,
+    required this.isExpired,
+  });
+
+  final String userId;
+  final String? requestId;
+  final Map<String, dynamic> data;
+  final bool exists;
+  final bool belongsToUser;
+  final bool isLiveStatus;
+  final bool isExpired;
+
+  bool get hasActiveSearch =>
+      exists &&
+      belongsToUser &&
+      isLiveStatus &&
+      !isExpired &&
+      !hasTerminalResult;
+
+  bool get canResumeSearch => hasActiveSearch && requestId != null;
+
+  bool get hasTerminalResult => activeSearchRequestHasTerminalResult(data);
+
+  bool get isTerminalStatus {
+    final normalizedStatus = status;
+    return normalizedStatus == 'stopped' ||
+        normalizedStatus == 'expired' ||
+        normalizedStatus == 'cancelled' ||
+        normalizedStatus == 'error' ||
+        normalizedStatus == 'failed' ||
+        normalizedStatus == 'completed';
+  }
+
+  String? get status => activeSearchNonEmpty(data['status']);
+
+  String? get sessionId =>
+      activeSearchNonEmpty(data['currentSessionId']) ??
+      activeSearchNonEmpty(data['matchedSessionId']) ??
+      activeSearchNonEmpty(data['activeSessionId']);
+
+  bool get canResumeUnboundSearch => canResumeSearch && sessionId == null;
+
+  bool get canResumeActiveSession {
+    if (!exists ||
+        !belongsToUser ||
+        sessionId == null ||
+        isExpired ||
+        hasTerminalResult) {
+      return false;
+    }
+
+    return status == 'active';
+  }
+
+  bool get canResumeConnection {
+    if (!exists ||
+        !belongsToUser ||
+        sessionId == null ||
+        isExpired ||
+        hasTerminalResult) {
+      return false;
+    }
+
+    switch (status) {
+      case 'active':
+      case 'matched':
+      case 'matching':
+      case 'pending_confirmation':
+      case 'connecting':
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  DateTime? get expiresAt => activeSearchDeadline(data);
+
+  bool canOfferPassiveQueue({DateTime? now}) {
+    if (activeSearchNonEmpty(data['passiveConsentRequestId']) != null) return false;
+    if (!exists || !belongsToUser || requestId == null || sessionId != null) {
+      return false;
+    }
+    if (!const {'active', 'searching', 'expired'}.contains(status))
+      return false;
+    final stopReason = activeSearchNonEmpty(data['stopReason']);
+    if (stopReason != null &&
+        !const {
+          'expired',
+          'search_expired',
+          'max_duration_exceeded',
+          'background_expired',
+          'stale_heartbeat',
+          'heartbeat_stale',
+          'search_timeout',
+          'background_timeout',
+        }.contains(stopReason)) {
+      return false;
+    }
+    final deadline = expiresAt;
+    return deadline != null && !deadline.isAfter(now ?? DateTime.now());
+  }
+
+  Duration remainingSearchDuration({DateTime? now}) {
+    final expiresAtValue = expiresAt;
+    if (expiresAtValue == null) {
+      return Duration.zero;
+    }
+
+    final remaining = expiresAtValue.difference(now ?? DateTime.now());
+    return remaining.isNegative ? Duration.zero : remaining;
+  }
+}
+
+String? activeSearchNonEmpty(dynamic value) {
+  final text = value?.toString().trim();
+  if (text == null || text.isEmpty) {
+    return null;
+  }
+  return text;
+}
+
+DateTime? activeSearchDeadline(Map<String, dynamic> data) {
+  final expiresAt = activeSearchDateTime(data['expiresAt']);
+  final createdAt = activeSearchDateTime(data['createdAt']);
+  if (createdAt == null) return expiresAt;
+  final maximum = createdAt.add(const Duration(minutes: 2));
+  return expiresAt == null || maximum.isBefore(expiresAt) ? maximum : expiresAt;
+}
+
+DateTime? activeSearchDateTime(dynamic value) {
+  if (value is Timestamp) {
+    return value.toDate();
+  }
+  if (value is DateTime) {
+    return value;
+  }
+  if (value is int) {
+    return DateTime.fromMillisecondsSinceEpoch(value);
+  }
+  if (value is num) {
+    return DateTime.fromMillisecondsSinceEpoch(value.toInt());
+  }
+  if (value is String) return DateTime.tryParse(value);
+  return null;
+}
+
+Future<DocumentSnapshot<Map<String, dynamic>>?> readActiveSearchRequestSnapshot(
+    String userId) {
+  return FirebaseFirestore.instance
+      .collection('searchRequests')
+      .doc(userId)
+      .get();
+}
+
+bool activeSearchRequestBelongsToUser({
+  required DocumentSnapshot<Map<String, dynamic>> doc,
+  required Map<String, dynamic> data,
+  required String userId,
+}) {
+  if (doc.id != userId) {
+    return false;
+  }
+
+  String? referenceId(dynamic value) {
+    if (value is DocumentReference) {
+      return activeSearchNonEmpty(value.id);
+    }
+    return null;
+  }
+
+  final ownerIds = <String?>[
+    activeSearchNonEmpty(data['userId']),
+    activeSearchNonEmpty(data['studentId']),
+    activeSearchNonEmpty(data['requesterId']),
+    referenceId(data['userRef']),
+    referenceId(data['studentRef']),
+    referenceId(data['requesterRef']),
+  ].whereType<String>().toList();
+
+  return ownerIds.isEmpty || ownerIds.every((ownerId) => ownerId == userId);
+}
+
+bool activeSearchRequestHasLiveStatus(Map<String, dynamic> data) {
+  switch (activeSearchNonEmpty(data['status'])) {
+    case 'active':
+    case 'matching':
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool _activeSearchStringIn(
+  Map<String, dynamic> data,
+  Iterable<String> keys,
+  Set<String> values,
+) {
+  for (final key in keys) {
+    final value = activeSearchNonEmpty(data[key]);
+    if (value != null && values.contains(value)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool activeSearchRequestHasTerminalResult(Map<String, dynamic> data) {
+  const terminalSearchStatuses = <String>{
+    'stopped',
+    'expired',
+    'cancelled',
+    'error',
+    'failed',
+    'completed',
+  };
+  if (_activeSearchStringIn(data, const ['status'], terminalSearchStatuses)) {
+    return true;
+  }
+
+  if (activeSearchNonEmpty(data['stopReason']) != null) {
+    return true;
+  }
+
+  return false;
+}
+
+bool activeSearchRequestIsExpired(
+  Map<String, dynamic> data, {
+  DateTime? now,
+}) {
+  if (activeSearchRequestHasTerminalResult(data)) {
+    return true;
+  }
+
+  final status = activeSearchNonEmpty(data['status']);
+  if (status == 'stopped' ||
+      status == 'expired' ||
+      status == 'cancelled' ||
+      status == 'error') {
+    return true;
+  }
+
+  final effectiveNow = now ?? DateTime.now();
+  final expiresAt = activeSearchDeadline(data);
+  if (expiresAt == null || !expiresAt.isAfter(effectiveNow)) {
+    return true;
+  }
+
+  // A resumed client may refresh its heartbeat until the immutable deadline.
+  // Stale/background clients remain excluded from matching on the server.
+
+  if (activeSearchNonEmpty(data['appState']) == 'background') {
+    final backgroundExpiresAt =
+        activeSearchDateTime(data['backgroundExpiresAt']);
+    if (backgroundExpiresAt != null &&
+        !backgroundExpiresAt.isAfter(effectiveNow)) {
+      return true;
+    }
+    if (backgroundExpiresAt != null &&
+        backgroundExpiresAt.isAfter(effectiveNow)) {
+      return false;
+    }
+  }
+
+  return false;
+}
+
+Future<ActiveSearchRecoveryState> readActiveSearchRecoveryState(
+  String userId, {
+  ActiveSearchSnapshotReader? snapshotReader,
+  void Function(ActiveSearchRecoveryState state)? observer,
+  DateTime Function()? now,
+}) async {
+  final snapshot = await (snapshotReader ?? readActiveSearchRequestSnapshot)(
+    userId,
+  );
+  if (snapshot == null || !snapshot.exists) {
+    final state = ActiveSearchRecoveryState(
+      userId: userId,
+      requestId: null,
+      data: const <String, dynamic>{},
+      exists: false,
+      belongsToUser: false,
+      isLiveStatus: false,
+      isExpired: false,
+    );
+    observer?.call(state);
+    return state;
+  }
+
+  final data = snapshot.data() ?? const <String, dynamic>{};
+  final belongsToUser = activeSearchRequestBelongsToUser(
+    doc: snapshot,
+    data: data,
+    userId: userId,
+  );
+  final state = ActiveSearchRecoveryState(
+    userId: userId,
+    requestId: activeSearchNonEmpty(data['requestId']),
+    data: data,
+    exists: true,
+    belongsToUser: belongsToUser,
+    isLiveStatus: activeSearchRequestHasLiveStatus(data),
+    isExpired: activeSearchRequestIsExpired(
+      data,
+      now: now?.call(),
+    ),
+  );
+  observer?.call(state);
+  return state;
+}

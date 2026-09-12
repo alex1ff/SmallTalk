@@ -45,10 +45,30 @@ class MessagesRecord extends FirestoreRecord {
   String get callKind => _callKind ?? '';
   bool hasCallKind() => _callKind != null;
 
+  // "callOutcome" field.
+  String? _callOutcome;
+  String get callOutcome => _callOutcome ?? '';
+  bool hasCallOutcome() => _callOutcome != null;
+
+  // "callerId" field.
+  String? _callerId;
+  String get callerId => _callerId ?? '';
+  bool hasCallerId() => _callerId != null;
+
+  // "recipientId" field.
+  String? _recipientId;
+  String get recipientId => _recipientId ?? '';
+  bool hasRecipientId() => _recipientId != null;
+
   // "callStartedAt" field.
   DateTime? _callStartedAt;
   DateTime? get callStartedAt => _callStartedAt;
   bool hasCallStartedAt() => _callStartedAt != null;
+
+  // "callEndedAt" field.
+  DateTime? _callEndedAt;
+  DateTime? get callEndedAt => _callEndedAt;
+  bool hasCallEndedAt() => _callEndedAt != null;
 
   // "callDurationSeconds" field.
   int? _callDurationSeconds;
@@ -69,7 +89,11 @@ class MessagesRecord extends FirestoreRecord {
     _text = snapshotData['text'] as String?;
     _sessionRef = snapshotData['sessionRef'] as DocumentReference?;
     _callKind = snapshotData['callKind'] as String?;
+    _callOutcome = snapshotData['callOutcome'] as String?;
+    _callerId = snapshotData['callerId'] as String?;
+    _recipientId = snapshotData['recipientId'] as String?;
     _callStartedAt = snapshotData['callStartedAt'] as DateTime?;
+    _callEndedAt = snapshotData['callEndedAt'] as DateTime?;
     _callDurationSeconds = castToType<int>(snapshotData['callDurationSeconds']);
     _createdAt = snapshotData['createdAt'] as DateTime?;
   }
@@ -120,7 +144,11 @@ Map<String, dynamic> createMessagesRecordData({
   String? text,
   DocumentReference? sessionRef,
   String? callKind,
+  String? callOutcome,
+  String? callerId,
+  String? recipientId,
   DateTime? callStartedAt,
+  DateTime? callEndedAt,
   int? callDurationSeconds,
   DateTime? createdAt,
 }) {
@@ -132,7 +160,11 @@ Map<String, dynamic> createMessagesRecordData({
       'text': text,
       'sessionRef': sessionRef,
       'callKind': callKind,
+      'callOutcome': callOutcome,
+      'callerId': callerId,
+      'recipientId': recipientId,
       'callStartedAt': callStartedAt,
+      'callEndedAt': callEndedAt,
       'callDurationSeconds': callDurationSeconds,
       'createdAt': createdAt,
     }.withoutNulls,
@@ -152,7 +184,11 @@ class MessagesRecordDocumentEquality implements Equality<MessagesRecord> {
         e1?.text == e2?.text &&
         e1?.sessionRef == e2?.sessionRef &&
         e1?.callKind == e2?.callKind &&
+        e1?.callOutcome == e2?.callOutcome &&
+        e1?.callerId == e2?.callerId &&
+        e1?.recipientId == e2?.recipientId &&
         e1?.callStartedAt == e2?.callStartedAt &&
+        e1?.callEndedAt == e2?.callEndedAt &&
         e1?.callDurationSeconds == e2?.callDurationSeconds &&
         e1?.createdAt == e2?.createdAt;
   }
@@ -165,7 +201,11 @@ class MessagesRecordDocumentEquality implements Equality<MessagesRecord> {
         e?.text,
         e?.sessionRef,
         e?.callKind,
+        e?.callOutcome,
+        e?.callerId,
+        e?.recipientId,
         e?.callStartedAt,
+        e?.callEndedAt,
         e?.callDurationSeconds,
         e?.createdAt,
       ]);

@@ -2,6 +2,8 @@ const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const {
   buildUnlockEventPayload,
+  ensureConversationCallEventForSession,
+  getConnectedCallStartMillis,
   getUnlockEligibility,
 } = require("./chats_shared");
 const {
@@ -11,7 +13,41 @@ const {
   getRequesterId,
   isSessionParticipant,
   normalizeRole,
+  VIDEO_SESSION_STATUS,
 } = require("./video_sessions_shared");
+const {
+  incrementUsageInTransaction,
+} = require("./subscription_usage_shared");
+const {
+  remainingGiftMinutes,
+} = require("./gift_minutes_shared");
+const {
+  resolveDailyRoomName,
+} = require("./daily_room");
+const {
+  deleteDailyRoomForSession,
+} = require("./daily_room_cleanup");
+const {
+  SEARCH_REQUEST_STATUS,
+} = require("./search_requests");
+const {
+  releaseSessionPairLocksInTransaction,
+} = require("./match_pair_lock");
+const {
+  cancelProtocolV2NotificationsInTransaction,
+} = require("./call_notifications");
+const {
+  cancelProtocolV2NativeSurfaces,
+} = require("./match_delivery_v2");
+const {
+  reconcileTrialCallInTransaction,
+  trialAccessRef,
+} = require("./trial_access");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "end_session"});
+
+const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
+const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 
 // ─── Pricing ────────────────────────────────────────────────────────────────
 // Student pays ~45-50 RUB/min (10 SmallTalks = 4990₽, 20 SmallTalks = 8900₽)
@@ -58,37 +94,120 @@ function shouldProcessExpiredEndReason({
   return requestTimestamp + clockSkewGraceMs >= expiresAtMillis;
 }
 
+function hasConnectedCallEvidence(sessionData = {}) {
+  return getConnectedCallStartMillis(sessionData) > 0;
+}
+
+function isExpiredEndReason(endReason) {
+  return String(endReason || "").trim() === "expired";
+}
+
+function buildPreActiveSessionPairLockReleaseOptions({
+  db,
+  transaction,
+  sessionId,
+  sessionData = {},
+  serverTimestamp,
+  fieldDelete,
+  searchRequestStatus,
+  stopReason,
+}) {
+  return {
+    db,
+    transaction,
+    sessionId,
+    sessionData,
+    serverTimestamp,
+    fieldDelete,
+    searchRequestStatus,
+    stopReason,
+    releaseCallState: true,
+    restoreLegacyAvailability: true,
+  };
+}
+
+function buildEndedSessionPairLockReleaseOptions({
+  db,
+  transaction,
+  sessionId,
+  sessionData = {},
+  serverTimestamp,
+  fieldDelete,
+}) {
+  return {
+    db,
+    transaction,
+    sessionId,
+    sessionData,
+    serverTimestamp,
+    fieldDelete,
+    searchRequestStatus: SEARCH_REQUEST_STATUS.STOPPED,
+    stopReason: "session_ended",
+    releaseCallState: true,
+    restoreLegacyAvailability: true,
+  };
+}
+
+// Returns true if the user has a flat-rate subscription that is still active
+// at `nowMillis`. Subscribers are not debited from balanceST — billing flips
+// from per-minute to flat-rate for the duration of the subscription.
+function hasActiveSubscription(userData, nowMillis) {
+  const expiresAt = userData?.subscription?.expiresAt;
+  if (!expiresAt) {
+    return false;
+  }
+  const expiresMillis = toMillis(expiresAt);
+  return expiresMillis > nowMillis;
+}
+
 function buildStudentCallCharge({
   userId,
-  currentMinutes,
-  currentSmallTalks,
   duration,
   formattedDuration,
+  subscriptionActive = false,
+  giftRemainingMinutes = 0,
 }) {
-  const safeCurrentMinutes = Number(currentMinutes || 0);
-  const safeCurrentSmallTalks = Number(currentSmallTalks || 0);
-  const freeMinuteApplied = safeCurrentMinutes > 0 || safeCurrentSmallTalks > 0;
-  const billableDuration = freeMinuteApplied ?
-    Math.max(0, duration - 60) :
-    duration;
-  const billableMinutes = parseFloat((billableDuration / 60).toFixed(4));
-  const amountST = parseFloat((billableMinutes / 10).toFixed(4));
-  const newMinutes = parseFloat(
-    Math.max(0, safeCurrentMinutes - billableMinutes).toFixed(4),
+  // Active-subscription branch: produce a zero-charge record so downstream
+  // bookkeeping (chargedParticipantIds, teacher payout eligibility) still
+  // treats the participant as billable, but the gift minutes / balanceST
+  // and the `call_charge` transaction writes are skipped.
+  if (subscriptionActive) {
+    return {
+      userId,
+      duration,
+      billableMinutes: 0,
+      amountST: 0,
+      formattedDuration,
+      subscriptionActive: true,
+      giftMinutesUsed: 0,
+      newGiftMinutes: giftRemainingMinutes,
+      giftCovered: false,
+    };
+  }
+
+  // No subscription → fall back to gift minutes. The legacy
+  // "first minute free + balanceST debit" branch is gone; balanceST is
+  // zeroed by the migration script and is no longer credited.
+  const callMinutes = parseFloat((duration / 60).toFixed(4));
+  const safeGiftRemaining = Number(giftRemainingMinutes || 0);
+  const giftMinutesUsed = Math.min(
+      Math.max(safeGiftRemaining, 0),
+      callMinutes,
   );
-  const newSmallTalks = parseFloat((newMinutes / 10).toFixed(2));
+  const newGiftMinutes = parseFloat(
+      Math.max(0, safeGiftRemaining - callMinutes).toFixed(4),
+  );
 
   return {
     userId,
-    currentMinutes: safeCurrentMinutes,
-    currentSmallTalks: safeCurrentSmallTalks,
-    freeMinuteApplied,
-    billableDuration,
-    billableMinutes,
-    amountST,
-    newMinutes,
-    newSmallTalks,
+    duration,
+    billableMinutes: callMinutes,
+    amountST: 0,
     formattedDuration,
+    subscriptionActive: false,
+    giftMinutesUsed: parseFloat(giftMinutesUsed.toFixed(4)),
+    newGiftMinutes,
+    giftCovered: giftMinutesUsed > 0,
   };
 }
 
@@ -113,8 +232,10 @@ endSession
 начисляет заработок преподавателю, создаёт транзакции и обновляет статистику.
 */
 
-exports.endSession = functions.https.onCall(async (data, context) => {
-  console.log("🔚 Ending video session...");
+exports.endSession = functions
+  .runWith({secrets: [...apnsSecrets, ...dailySecrets]})
+  .https.onCall(async (data, context) => {
+  safeLog.log("end_started");
 
   try {
     if (!context.auth) {
@@ -127,9 +248,11 @@ exports.endSession = functions.https.onCall(async (data, context) => {
     const userId = context.auth.uid;
     const { sessionId, endReason } = data;
 
-    console.log("👤 User ID:", userId);
-    console.log("📺 Session ID:", sessionId);
-    console.log("📝 End reason:", endReason || "not_specified");
+    safeLog.log("end_attempt", {
+      userId,
+      sessionId,
+      reasonCode: isExpiredEndReason(endReason) ? "expired" : "user_ended",
+    });
 
     if (!sessionId) {
       throw new functions.https.HttpsError(
@@ -143,12 +266,12 @@ exports.endSession = functions.https.onCall(async (data, context) => {
     const requestTimestamp = Date.now();
 
     // ─── MAIN TRANSACTION (CAS + billing guard) ─────────────────────────────
-    // Read session INSIDE transaction and only allow transition:
-    // connecting|active -> ended. This makes endSession idempotent under races.
+      // Read session INSIDE transaction and only allow transition:
+      // connecting|active -> terminal. This makes endSession idempotent under races.
     const txResult = await db.runTransaction(async (transaction) => {
       const sessionDoc = await transaction.get(sessionRef);
       if (!sessionDoc.exists) {
-        console.log("❌ Video session not found:", sessionId);
+        safeLog.warn("session_not_found", {sessionId});
         throw new functions.https.HttpsError(
           "not-found",
           "Video session not found",
@@ -156,20 +279,55 @@ exports.endSession = functions.https.onCall(async (data, context) => {
       }
 
       const sessionData = sessionDoc.data() || {};
-      console.log("📋 Current session status:", sessionData.status);
+      safeLog.log("session_loaded", {sessionId, status: sessionData.status});
+      const storedTrialCallIds =
+        sessionData.trialCallIdsByUserId &&
+        typeof sessionData.trialCallIdsByUserId === "object" ?
+          sessionData.trialCallIdsByUserId : {};
+      const trialCallIdsByUserId = Object.keys(storedTrialCallIds).length > 0 ?
+        storedTrialCallIds :
+        sessionData.accessMode === "trial" && sessionData.studentId ? {
+          [sessionData.studentId]: sessionData.trialCallId || sessionId,
+        } : {};
+      const trialContexts = await Promise.all(
+          Object.entries(trialCallIdsByUserId)
+              .filter(([participantId, trialCallId]) =>
+                typeof participantId === "string" &&
+                participantId.length > 0 &&
+                !participantId.includes("/") &&
+                typeof trialCallId === "string" &&
+                trialCallId.length > 0,
+              )
+              .map(async ([participantId, trialCallId]) => {
+                const ref = trialAccessRef(db, participantId);
+                return {
+                  participantId,
+                  trialCallId,
+                  ref,
+                  snap: await transaction.get(ref),
+                };
+              }),
+      );
 
       if (!isSessionParticipant(sessionData, userId)) {
-        console.log("❌ Permission denied - user is not a participant");
+        safeLog.warn("end_participant_mismatch", {sessionId, userId});
         throw new functions.https.HttpsError(
           "permission-denied",
           "You are not a participant of this session",
         );
       }
 
-      if (sessionData.status === "ended") {
+      if ([
+        VIDEO_SESSION_STATUS.ENDED,
+        VIDEO_SESSION_STATUS.CANCELLED,
+        VIDEO_SESSION_STATUS.EXPIRED,
+      ].includes(sessionData.status)) {
         return {
-          status: "already_ended",
-          message: "Session was already ended",
+          status: sessionData.status === VIDEO_SESSION_STATUS.ENDED ?
+            "already_ended" :
+            `already_${sessionData.status}`,
+          message: "Session was already terminal",
+          dailyRoomName: resolveDailyRoomName(sessionData),
           endedAt:
             sessionData.endedAt?.toMillis?.() ||
             sessionData.sessionMetadata?.endedAtTimestamp ||
@@ -177,15 +335,117 @@ exports.endSession = functions.https.onCall(async (data, context) => {
         };
       }
 
-      if (!["connecting", "active"].includes(sessionData.status)) {
-        console.log(
-          "❌ Session cannot be ended, current status:",
-          sessionData.status,
-        );
+      if (![
+        VIDEO_SESSION_STATUS.CONNECTING,
+        VIDEO_SESSION_STATUS.ACTIVE,
+      ].includes(sessionData.status)) {
+        safeLog.warn("session_not_endable", {
+          sessionId,
+          status: sessionData.status,
+        });
         throw new functions.https.HttpsError(
           "invalid-argument",
           `Session cannot be ended. Current status: ${sessionData.status}`,
         );
+      }
+
+      const isPreActiveConnecting =
+        sessionData.status === VIDEO_SESSION_STATUS.CONNECTING &&
+        !hasConnectedCallEvidence(sessionData);
+      if (isPreActiveConnecting) {
+        const terminalStatus = isExpiredEndReason(endReason) ?
+          VIDEO_SESSION_STATUS.EXPIRED :
+          VIDEO_SESSION_STATUS.CANCELLED;
+        const searchRequestStatus =
+          terminalStatus === VIDEO_SESSION_STATUS.EXPIRED ?
+            SEARCH_REQUEST_STATUS.EXPIRED :
+            SEARCH_REQUEST_STATUS.CANCELLED;
+        const stopReason =
+          terminalStatus === VIDEO_SESSION_STATUS.EXPIRED ?
+            "pre_active_expired" :
+            "pre_active_cancelled";
+        const sessionUpdates = {
+          status: terminalStatus,
+          endedAt: admin.firestore.FieldValue.serverTimestamp(),
+          tutorNavigationTriggered: false,
+          studentNavigationTriggered: false,
+          acceptingTutorId: admin.firestore.FieldValue.delete(),
+          acceptingAt: admin.firestore.FieldValue.delete(),
+          acceptAttemptId: admin.firestore.FieldValue.delete(),
+          "sessionMetadata.endReason": stopReason,
+          "sessionMetadata.endedAtTimestamp": requestTimestamp,
+        };
+        const isProtocolV2 =
+          Number(sessionData.matchProtocolVersion) >= 2 &&
+          Boolean(String(sessionData.pairAttemptId || "").trim());
+        if (terminalStatus === VIDEO_SESSION_STATUS.EXPIRED) {
+          sessionUpdates.expiredAt =
+            admin.firestore.FieldValue.serverTimestamp();
+          sessionUpdates.expireReason = stopReason;
+        } else {
+          sessionUpdates.cancelledAt =
+            admin.firestore.FieldValue.serverTimestamp();
+          sessionUpdates.cancelledBy = userId;
+          sessionUpdates.cancelReason = stopReason;
+        }
+
+        await releaseSessionPairLocksInTransaction(
+          buildPreActiveSessionPairLockReleaseOptions({
+            db,
+            transaction,
+            sessionId,
+            sessionData,
+            serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+            fieldDelete: admin.firestore.FieldValue.delete(),
+            searchRequestStatus,
+            stopReason,
+          }),
+        );
+        for (const trialContext of trialContexts) {
+          reconcileTrialCallInTransaction({
+            transaction,
+            trialRef: trialContext.ref,
+            trialSnap: trialContext.snap,
+            trialCallId: trialContext.trialCallId,
+            durationSeconds: 0,
+            technicalFailure: true,
+            nowMillis: requestTimestamp,
+          });
+        }
+        if (isProtocolV2) {
+          const serverTimestamp =
+            admin.firestore.FieldValue.serverTimestamp();
+          cancelProtocolV2NotificationsInTransaction({
+            db,
+            transaction,
+            sessionId,
+            pairAttemptId: sessionData.pairAttemptId,
+            participantStates: sessionData.participantStates || {},
+            cancelReason: stopReason,
+            serverTimestamp,
+          });
+          sessionUpdates.matchRecovery = {
+            status: "pending",
+            attempts: 0,
+            pairAttemptId: sessionData.pairAttemptId,
+            reason: stopReason,
+            restoreParticipantIds: [],
+            requestedAt: serverTimestamp,
+          };
+        }
+        transaction.update(sessionRef, sessionUpdates);
+
+        return {
+          status: terminalStatus,
+          message: "Pre-active session closed",
+          sessionId,
+          endedAt: requestTimestamp,
+          dailyRoomName: resolveDailyRoomName(sessionData),
+          matchProtocolVersion: sessionData.matchProtocolVersion || 1,
+          pairAttemptId: sessionData.pairAttemptId || null,
+          participantStates: sessionData.participantStates || {},
+          cancelReason: stopReason,
+        };
       }
 
       if (
@@ -203,22 +463,8 @@ exports.endSession = functions.https.onCall(async (data, context) => {
       }
 
       const requesterId = getRequesterId(sessionData);
-      const endedBy = userId;
       const endedByRole = requesterId === userId ? "requester" : "responder";
-      const callConnectedAt =
-        toMillis(sessionData.sessionMetadata?.callConnectedAt);
-      const legacyCallConnectedAt =
-        toMillis(sessionData.sessionMetadata?.callConnectedAtTimestamp);
-      const startedAt = toMillis(sessionData.startedAt);
-      const acceptedAt =
-        toMillis(sessionData.acceptedAt) ||
-        toMillis(sessionData.sessionMetadata?.acceptedAt);
-      const serverConnectedAt =
-        startedAt > 0 && (acceptedAt === 0 || startedAt - acceptedAt > 1000)
-          ? startedAt
-          : 0;
-      const startTime =
-        callConnectedAt || legacyCallConnectedAt || serverConnectedAt || 0;
+      const startTime = getConnectedCallStartMillis(sessionData);
       const duration = startTime > 0
         ? Math.max(0, Math.floor((requestTimestamp - startTime) / 1000))
         : 0;
@@ -253,14 +499,33 @@ exports.endSession = functions.https.onCall(async (data, context) => {
         responderId: sessionData.tutorId || null,
         acceptedResponderRole,
       });
+      const requesterSubscriptionActive = hasActiveSubscription(
+        requesterData,
+        requestTimestamp,
+      );
+      const responderSubscriptionActive = hasActiveSubscription(
+        responderData,
+        requestTimestamp,
+      );
+      // ─── GIFT MINUTES ──────────────────────────────────────────────
+      // Read the unexpired remaining gift bucket for each participant.
+      // Subscribers get a zero passed in (subscriptionActive wins anyway).
+      const requesterGiftRemaining = requesterSubscriptionActive ?
+        0 :
+        remainingGiftMinutes(requesterData, requestTimestamp);
+      const responderGiftRemaining = responderSubscriptionActive ?
+        0 :
+        remainingGiftMinutes(responderData, requestTimestamp);
+      // ──────────────────────────────────────────────────────────────
+
       const chargeRecords = [];
       if (requesterRole === "student") {
         chargeRecords.push(buildStudentCallCharge({
           userId: sessionData.studentId,
-          currentMinutes: requesterData?.balanceST?.minutes,
-          currentSmallTalks: requesterData?.balanceST?.smallTalks,
           duration,
           formattedDuration,
+          subscriptionActive: requesterSubscriptionActive,
+          giftRemainingMinutes: requesterGiftRemaining,
         }));
       }
       if (
@@ -270,10 +535,10 @@ exports.endSession = functions.https.onCall(async (data, context) => {
       ) {
         chargeRecords.push(buildStudentCallCharge({
           userId: sessionData.tutorId,
-          currentMinutes: responderData?.balanceST?.minutes,
-          currentSmallTalks: responderData?.balanceST?.smallTalks,
           duration,
           formattedDuration,
+          subscriptionActive: responderSubscriptionActive,
+          giftRemainingMinutes: responderGiftRemaining,
         }));
       }
       const teacherEligibleForPayout =
@@ -285,35 +550,17 @@ exports.endSession = functions.https.onCall(async (data, context) => {
           .reduce((total, charge) => total + charge.amountST, 0)
           .toFixed(4),
       );
-      const freeMinuteApplied = chargeRecords.some(
-        (charge) => charge.freeMinuteApplied,
-      );
+      // Legacy field kept for back-compat with consumers of videoSession;
+      // the "first minute free" mechanic was removed in the gift-minutes
+      // refactor — the field is now always `false`.
+      const freeMinuteApplied = false;
 
-      console.log(
-        "⏱️ Session duration:",
-        duration,
-        "seconds /",
-        tutorDurationMinutes,
-        "tutor-minutes /",
-        formattedDuration,
-      );
-      console.log("👤 Ended by:", endedByRole, endedBy);
-      console.log(
-        "💰 Teacher earning:",
-        teacherEligibleForPayout ? tutorEarning : 0,
-        "RUB",
-      );
-      console.log(
-        "📉 Student charges:",
-        chargeRecords.map((charge) => ({
-          userId: charge.userId,
-          currentMinutes: charge.currentMinutes,
-          newMinutes: charge.newMinutes,
-          billableMinutes: charge.billableMinutes,
-          amountST: charge.amountST,
-          freeMinuteApplied: charge.freeMinuteApplied,
-        })),
-      );
+      safeLog.log("session_billing_completed", {
+        sessionId,
+        status: "completed",
+        durationSeconds: duration,
+        result: teacherEligibleForPayout ? "payout_eligible" : "no_payout",
+      });
 
       const pairHistoryWrite = buildCompletedPairHistoryWrite({
         db,
@@ -323,14 +570,22 @@ exports.endSession = functions.https.onCall(async (data, context) => {
         completedAtMillis: requestTimestamp,
       });
       const sessionUpdates = {
-        status: "ended",
+        status: VIDEO_SESSION_STATUS.ENDED,
         endedAt: admin.firestore.FieldValue.serverTimestamp(),
         duration: duration,
         durationMinutes: tutorDurationMinutes,
         freeMinuteApplied: freeMinuteApplied,
-        chargedParticipantIds: chargeRecords.map((charge) => charge.userId),
+        chargedParticipantIds: chargeRecords
+            .filter((charge) => !charge.subscriptionActive)
+            .map((charge) => charge.userId),
+        subscriptionCoveredParticipantIds: chargeRecords
+            .filter((charge) => charge.subscriptionActive)
+            .map((charge) => charge.userId),
         tutorNavigationTriggered: false,
         studentNavigationTriggered: false,
+        acceptingTutorId: admin.firestore.FieldValue.delete(),
+        acceptingAt: admin.firestore.FieldValue.delete(),
+        acceptAttemptId: admin.firestore.FieldValue.delete(),
         "matchContext.teacherEarningUserId": teacherEarningUserId,
         "matchContext.teacherEligibleForPayout": teacherEligibleForPayout,
         "matchContext.responderEligibleForPayout": responderEligibleForPayout,
@@ -345,6 +600,29 @@ exports.endSession = functions.https.onCall(async (data, context) => {
           pairHistoryWrite.ref;
       }
 
+      await releaseSessionPairLocksInTransaction(
+        buildEndedSessionPairLockReleaseOptions({
+          db,
+          transaction,
+          sessionId,
+          sessionData,
+          serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+          fieldDelete: admin.firestore.FieldValue.delete(),
+        }),
+      );
+
+      for (const trialContext of trialContexts) {
+        reconcileTrialCallInTransaction({
+          transaction,
+          trialRef: trialContext.ref,
+          trialSnap: trialContext.snap,
+          trialCallId: trialContext.trialCallId,
+          durationSeconds: duration,
+          technicalFailure: false,
+          nowMillis: requestTimestamp,
+        });
+      }
+
       transaction.update(sessionRef, sessionUpdates);
       if (pairHistoryWrite) {
         transaction.set(pairHistoryWrite.ref, pairHistoryWrite.data, {
@@ -352,27 +630,23 @@ exports.endSession = functions.https.onCall(async (data, context) => {
         });
       }
 
-      if (sessionData.tutorId) {
-        console.log("👨‍🏫 Releasing tutor:", sessionData.tutorId);
-        transaction.update(db.collection("users").doc(sessionData.tutorId), {
-          isInCall: false,
-          isAvailable: true,
-          currentSessionId: admin.firestore.FieldValue.delete(),
-          lastCallEndedAt: admin.firestore.FieldValue.serverTimestamp(),
-          availableAfter: admin.firestore.FieldValue.delete(),
-        });
-      }
-
       chargeRecords.forEach((charge) => {
-        transaction.update(db.collection("users").doc(charge.userId), {
-          "balanceST.minutes": charge.newMinutes,
-          "balanceST.smallTalks": charge.newSmallTalks,
-        });
+        if (charge.subscriptionActive) {
+          // Active subscription — no debit. Subscription lifecycle is
+          // tracked by the RevenueCat webhook.
+          return;
+        }
+        if (charge.giftCovered) {
+          // Gift bucket covered (some of) the call — decrement the
+          // remaining minutes. balanceST is no longer touched (legacy
+          // pre-paid balance is being phased out by the migration).
+          transaction.update(db.collection("users").doc(charge.userId), {
+            "giftMinutes.minutes": charge.newGiftMinutes,
+          });
+        }
       });
 
-      console.log(
-        "✅ Transaction completed - session ended and participant balances updated",
-      );
+      safeLog.log("end_transaction_completed", {sessionId});
       return {
         status: "ended",
         message: "Session ended successfully",
@@ -391,6 +665,7 @@ exports.endSession = functions.https.onCall(async (data, context) => {
         requesterRole,
         acceptedResponderRole,
         chargeRecords,
+        dailyRoomName: resolveDailyRoomName(sessionData),
         teacherEarningUserId,
         teacherEligibleForPayout,
         responderEligibleForPayout,
@@ -398,10 +673,62 @@ exports.endSession = functions.https.onCall(async (data, context) => {
     });
 
     if (txResult.status === "already_ended") {
+      if (txResult.dailyRoomName) {
+        await deleteDailyRoomForSession({
+          db,
+          sessionId,
+          roomName: txResult.dailyRoomName,
+          source: "endSession_already_ended",
+        });
+      }
       return txResult;
     }
 
-    if (txResult.status !== "ended") {
+    if ([
+      VIDEO_SESSION_STATUS.CANCELLED,
+      VIDEO_SESSION_STATUS.EXPIRED,
+    ].includes(txResult.status)) {
+      const terminalSideEffects = [cancelAllSessionNotifications(sessionId)];
+      if (
+        Number(txResult.matchProtocolVersion) >= 2 &&
+        txResult.pairAttemptId
+      ) {
+        terminalSideEffects.push(cancelProtocolV2NativeSurfaces({
+          db,
+          sessionId,
+          pairAttemptId: txResult.pairAttemptId,
+          participantStates: txResult.participantStates,
+          reason: txResult.cancelReason || "pre_active_cancelled",
+        }));
+      }
+      const terminalResults = await Promise.allSettled(terminalSideEffects);
+      terminalResults.forEach((result) => {
+        if (result.status === "rejected") {
+          safeLog.error("pre_active_surface_close_failed", {
+            sessionId,
+            error: result.reason,
+          });
+        }
+      });
+      if (txResult.dailyRoomName) {
+        await deleteDailyRoomForSession({
+          db,
+          sessionId,
+          roomName: txResult.dailyRoomName,
+          source: "endSession_pre_active_terminal",
+        });
+      }
+      const {
+        matchProtocolVersion: _matchProtocolVersion,
+        pairAttemptId: _pairAttemptId,
+        participantStates: _participantStates,
+        cancelReason: _cancelReason,
+        ...response
+      } = txResult;
+      return response;
+    }
+
+    if (txResult.status !== VIDEO_SESSION_STATUS.ENDED) {
       return txResult;
     }
 
@@ -415,9 +742,23 @@ exports.endSession = functions.https.onCall(async (data, context) => {
     };
 
     await attemptConversationUnlockEventWrite(db, sessionId);
+    try {
+      const endedSessionRef = db.collection("videoSessions").doc(sessionId);
+      const endedSessionSnap = await endedSessionRef.get();
+      if (endedSessionSnap.exists) {
+        await ensureConversationCallEventForSession({
+          db,
+          sessionId,
+          sessionRef: endedSessionRef,
+          sessionData: endedSessionSnap.data() || {},
+        });
+      }
+    } catch (error) {
+      safeLog.error("conversation_event_write_failed", {sessionId, error});
+    }
 
     // ─── BACKGROUND OPERATIONS (non-blocking for UX) ──────────────────────
-    console.log("📊 Running background billing, stats & notifications...");
+    safeLog.log("background_billing_started", {sessionId});
 
     const teacherEarningRef = txResult.teacherEarningUserId
       ? db.collection("users").doc(txResult.teacherEarningUserId)
@@ -426,22 +767,25 @@ exports.endSession = functions.https.onCall(async (data, context) => {
 
     const backgroundTasks = [];
 
-    // a) Student transaction documents. Student-student sessions charge both
-    // participants but do not create any earning transaction.
+    // a) Student transaction documents.
+    // After the gift-minutes refactor, students NEVER incur a paid
+    // call_charge — they are either:
+    //   • subscribed (audit in subscription_* events from RC webhook), or
+    //   • on gift minutes (audit captured by giftMinutes.minutes diff).
+    // No call_charge transaction is written in either case. Block kept
+    // for structural parity; if a future model reintroduces per-call
+    // billing this is the place to add it.
     for (const charge of txResult.chargeRecords || []) {
-      const chargedUserRef = db.collection("users").doc(charge.userId);
-      backgroundTasks.push(
-        db.collection("transactions").add({
-          userId: chargedUserRef,
-          type: "call_charge",
-          status: "completed",
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          amount_ST: Number(charge.amountST),
-          callDuration: charge.formattedDuration,
-          sessionId: sessionId,
-          freeMinuteApplied: charge.freeMinuteApplied,
-        }).catch((e) => console.error("❌ Student transaction doc failed:", e))
-      );
+      if (charge.subscriptionActive || charge.giftCovered) {
+        continue;
+      }
+      // Defensive: an unsubscribed user with no gift minutes shouldn't
+      // have been able to start the call (gate in create_video_session).
+      // If we ever land here, just log — don't charge.
+      safeLog.warn("call_without_access", {
+        userId: charge.userId,
+        sessionId,
+      });
     }
 
     // b) Teacher balance update + c) teacher transaction document
@@ -450,7 +794,7 @@ exports.endSession = functions.https.onCall(async (data, context) => {
       backgroundTasks.push(
         teacherEarningRef.update({
           balance_NS: admin.firestore.FieldValue.increment(txResult.tutorEarning),
-        }).catch((e) => console.error("❌ Tutor balance update failed:", e))
+        }).catch((e) => safeLog.error("tutor_balance_update_failed", {error: e}))
       );
 
       // c) Tutor transaction document
@@ -463,7 +807,10 @@ exports.endSession = functions.https.onCall(async (data, context) => {
           amount: txResult.tutorEarning,
           callDuration: txResult.formattedDuration,
           sessionId: sessionId,
-        }).catch((e) => console.error("❌ Tutor transaction doc failed:", e))
+        }).catch((e) => safeLog.error("tutor_transaction_write_failed", {
+          sessionId,
+          error: e,
+        }))
       );
     }
 
@@ -475,7 +822,7 @@ exports.endSession = functions.https.onCall(async (data, context) => {
           txResult.analyticsDurationMinutes,
         ),
         lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-      }, { merge: true }).catch((e) => console.error("❌ Analytics summary failed:", e))
+      }, { merge: true }).catch((e) => safeLog.error("analytics_summary_failed", {error: e}))
     );
 
     // e) Student stats (all-time + today)
@@ -494,7 +841,7 @@ exports.endSession = functions.https.onCall(async (data, context) => {
             isAllTime: true,
             lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
           }, { merge: true });
-        }).catch((e) => console.error("❌ Student allTime stats failed:", e))
+        }).catch((e) => safeLog.error("student_all_time_stats_failed", {error: e}))
       );
 
       backgroundTasks.push(
@@ -511,7 +858,7 @@ exports.endSession = functions.https.onCall(async (data, context) => {
             isAllTime: false,
             lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
           }, { merge: true });
-        }).catch((e) => console.error("❌ Student today stats failed:", e))
+        }).catch((e) => safeLog.error("student_today_stats_failed", {error: e}))
       );
     }
 
@@ -531,7 +878,7 @@ exports.endSession = functions.https.onCall(async (data, context) => {
             isAllTime: true,
             lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
           }, { merge: true });
-        }).catch((e) => console.error("❌ Tutor allTime stats failed:", e))
+        }).catch((e) => safeLog.error("tutor_all_time_stats_failed", {error: e}))
       );
 
       backgroundTasks.push(
@@ -551,29 +898,62 @@ exports.endSession = functions.https.onCall(async (data, context) => {
             isAllTime: false,
             lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
           }, { merge: true });
-        }).catch((e) => console.error("❌ Tutor today stats failed:", e))
+        }).catch((e) => safeLog.error("tutor_today_stats_failed", {error: e}))
       );
     }
 
-    // g) Cancel notifications
+    // g) Subscription usage tracking — only for subscription-covered
+    // participants. The increment runs in its own Firestore transaction
+    // and auto-resets day/week counters when the corresponding window
+    // has rolled over. Awaited via Promise.all so the next call this
+    // user starts will see the updated counters.
+    for (const charge of txResult.chargeRecords || []) {
+      if (!charge.subscriptionActive) continue;
+      backgroundTasks.push(
+        db.runTransaction(async (t) => {
+          await incrementUsageInTransaction(
+            t,
+            db,
+            charge.userId,
+            txResult.duration,
+          );
+        }).catch((e) =>
+          safeLog.error("subscription_usage_increment_failed", {error: e})
+        )
+      );
+    }
+
+    // h) Cancel notifications
     backgroundTasks.push(
       cancelAllSessionNotifications(sessionId)
     );
 
+    if (txResult.dailyRoomName) {
+      backgroundTasks.push(deleteDailyRoomForSession({
+        db,
+        sessionId,
+        roomName: txResult.dailyRoomName,
+        source: "endSession",
+      }));
+    }
+
     await Promise.all(backgroundTasks);
-    console.log("🎉 Session ended successfully with billing complete");
+    safeLog.log("end_completed", {sessionId});
 
     return response;
   } catch (error) {
-    console.error("❌ Error ending session:", error);
+    safeLog.error("end_failed", {error});
 
     if (error.code) {
       throw error;
     }
 
-    throw new functions.https.HttpsError("internal", error.message);
+    throw new functions.https.HttpsError(
+      "internal",
+      "Unable to end the call right now. Please try again.",
+    );
   }
-});
+  });
 
 function formatDuration(totalSeconds) {
   const mins = Math.floor(totalSeconds / 60);
@@ -592,18 +972,17 @@ async function attemptConversationUnlockEventWrite(db, sessionId) {
     const sessionRef = db.collection("videoSessions").doc(sessionId);
     const sessionSnap = await sessionRef.get();
     if (!sessionSnap.exists) {
-      console.log("⚠️ Skipping chat unlock event - session missing:", sessionId);
+      safeLog.warn("chat_unlock_session_missing", {sessionId});
       return;
     }
 
     const sessionData = sessionSnap.data() || {};
     const eligibility = getUnlockEligibility(sessionData);
     if (!eligibility.eligible) {
-      console.log(
-        "ℹ️ Skipping chat unlock event - session is not eligible:",
+      safeLog.log("chat_unlock_not_eligible", {
         sessionId,
-        eligibility.reason,
-      );
+        reasonCode: eligibility.reason,
+      });
       return;
     }
 
@@ -627,11 +1006,11 @@ async function attemptConversationUnlockEventWrite(db, sessionId) {
       return null;
     });
 
-    console.log("✅ Conversation unlock event written:", sessionId);
+    safeLog.log("chat_unlock_written", {sessionId});
   } catch (error) {
-    console.error("❌ Failed to write conversation unlock event:", {
+    safeLog.error("chat_unlock_write_failed", {
       sessionId,
-      error: error.message,
+      error,
     });
   }
 }
@@ -639,7 +1018,7 @@ async function attemptConversationUnlockEventWrite(db, sessionId) {
 // ОТМЕНА ВСЕХ УВЕДОМЛЕНИЙ ДЛЯ СЕССИИ
 async function cancelAllSessionNotifications(sessionId) {
   try {
-    console.log("🚫 Canceling all notifications for session:", sessionId);
+    safeLog.log("session_notifications_cancel_started", {sessionId});
 
     const activeNotificationsQuery = await admin
       .firestore()
@@ -660,17 +1039,23 @@ async function cancelAllSessionNotifications(sessionId) {
       });
 
       await batch.commit();
-      console.log(
-        `✅ Canceled ${activeNotificationsQuery.size} notification(s)`,
-      );
+      safeLog.log("session_notifications_cancelled", {
+        counts: {cancelled: activeNotificationsQuery.size},
+      });
     }
   } catch (error) {
-    console.error("❌ Error canceling session notifications:", error);
+    safeLog.error("session_notifications_cancel_failed", {sessionId, error});
   }
 }
 
 exports.__private__ = {
+  buildEndedSessionPairLockReleaseOptions,
+  buildPreActiveSessionPairLockReleaseOptions,
   buildStudentCallCharge,
+  hasConnectedCallEvidence,
+  hasActiveSubscription,
+  isExpiredEndReason,
+  remainingGiftMinutes,
   resolveTeacherEarningUserId,
   shouldProcessExpiredEndReason,
   toMillis,

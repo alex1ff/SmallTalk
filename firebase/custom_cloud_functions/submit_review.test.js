@@ -27,6 +27,21 @@ test("resolveReviewParticipants uses generalized requester/responder fields", ()
   assert.equal(resolution.targetUserId, "user-b");
 });
 
+test("resolveReviewParticipants supports neutral responderId without tutor mirror", () => {
+  const resolution = resolveReviewParticipants(
+    {
+      requesterId: "user-a",
+      responderId: "user-b",
+    },
+    "user-a",
+  );
+
+  assert.equal(resolution.isParticipant, true);
+  assert.equal(resolution.isStudent, true);
+  assert.equal(resolution.isTutor, false);
+  assert.equal(resolution.targetUserId, "user-b");
+});
+
 test("resolveReviewParticipants falls back to unique counterpart from participantIds", () => {
   const resolution = resolveReviewParticipants(
     {

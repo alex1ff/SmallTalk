@@ -12,7 +12,7 @@
 
 ```bash
 flutter analyze lib/custom_code/widgets/minimal_daily_widget.dart
-diff -u lib/custom_code/widgets/minimal_daily_widget.dart lib/custom_code/widgets/minimal_daily_widget_snapshot_20260306.dart
+diff -u lib/custom_code/widgets/minimal_daily_widget.dart audit/snapshots/minimal_daily_widget_snapshot_20260306.dart.txt
 python3 ~/.agents/skills/context7/scripts/context7.py context "/websites/daily_co_reference_flutter" "CallClient join updatePublishing updateSubscriptions InputSettingsUpdate ParticipantId VideoViewController setTrack dispose" --tokens 5000
 python3 ~/.agents/skills/context7/scripts/context7.py context "/websites/daily_co_reference_flutter" "VideoViewController setTrack track no longer exists dispose controller attached to streams individually disposed updateSubscriptions forParticipants call client" --tokens 3500
 python3 ~/.agents/skills/context7/scripts/context7.py context "/websites/developers_deepgram" "live transcription websocket auth token vs api key streaming websocket parameters language interim_results endpointing websocket reconnect and close behavior" --tokens 3500
@@ -21,7 +21,7 @@ python3 ~/.agents/skills/context7/scripts/context7.py context "/websites/develop
 
 ## Baseline Checks
 
-- `diff -u` shows that `lib/custom_code/widgets/minimal_daily_widget_snapshot_20260306.dart` matches the working widget baseline except for the snapshot header comment block.
+- `diff -u` shows that `audit/snapshots/minimal_daily_widget_snapshot_20260306.dart.txt` matches the working widget baseline except for the snapshot header comment block.
 - `flutter analyze lib/custom_code/widgets/minimal_daily_widget.dart` reports `25 issues`.
 - Result split:
   - Definite code hygiene noise: duplicate/unused imports, unused local, unused private methods.

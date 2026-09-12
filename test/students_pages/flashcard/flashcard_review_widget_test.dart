@@ -42,8 +42,8 @@ FlashcardSessionEntry _entry({
     direction: flashcardDirectionForStage(stage),
     promptText: prompt,
     answerText: answer,
-    sourceWord: stage.isOdd ? answer : prompt,
-    translationWord: stage.isOdd ? prompt : answer,
+    sourceWord: prompt,
+    translationWord: answer,
     sourceTranscription: transcription,
     sourceSynonyms: synonyms
         .map((text) => SynonymStruct(text: text))
@@ -63,7 +63,31 @@ void main() {
     await FFLocalizations.initialize();
   });
 
-  testWidgets('answer actions are available immediately and there is no reveal button',
+  testWidgets('progress text has top spacing', (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        FlashcardReviewWidget(
+          entries: [
+            _entry(
+              id: 'one',
+              prompt: 'hello',
+              answer: 'привет',
+              stage: 1,
+            ),
+          ],
+          onRemembered: (entry, {required hadAnyMiss}) async {},
+        ),
+      ),
+    );
+
+    expect(
+      tester.getTopLeft(find.byKey(const Key('flashcardProgressText'))).dy,
+      greaterThanOrEqualTo(12.0),
+    );
+  });
+
+  testWidgets(
+      'answer actions are available immediately and there is no reveal button',
       (tester) async {
     final rememberedIds = <String>[];
 
@@ -73,8 +97,8 @@ void main() {
           entries: [
             _entry(
               id: 'one',
-              prompt: 'привет',
-              answer: 'hello',
+              prompt: 'hello',
+              answer: 'привет',
               stage: 1,
             ),
           ],
@@ -97,16 +121,18 @@ void main() {
     expect(rememberedIds, ['one']);
   });
 
-  testWidgets('eye icon toggles answer visibility and example block', (tester) async {
+  testWidgets('eye icon toggles only the translation', (tester) async {
     await tester.pumpWidget(
       _buildTestApp(
         FlashcardReviewWidget(
           entries: [
             _entry(
               id: 'one',
-              prompt: 'привет',
-              answer: 'hello',
+              prompt: 'hello',
+              answer: 'привет',
               stage: 1,
+              transcription: 'həˈləʊ',
+              synonyms: ['hi'],
               exampleSource: 'He said hello to everyone.',
               exampleTranslation: 'Он всем сказал привет.',
             ),
@@ -117,19 +143,30 @@ void main() {
     );
 
     expect(find.byKey(const Key('flashcardAnswerText')), findsNothing);
+    expect(find.byKey(const Key('sourceMetadata')), findsOneWidget);
+    expect(find.byKey(const Key('sourceTranscriptionText')), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey<String>('sourceSynonym_hi')), findsOneWidget);
+    expect(find.byKey(const Key('flashcardExampleBlock')), findsNothing);
+    final promptCenterBefore = tester.getCenter(find.text('hello')).dy;
+
+    await tester.tap(find.byKey(const Key('answerVisibilityToggle')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getCenter(find.text('hello')).dy,
+      moreOrLessEquals(promptCenterBefore, epsilon: 0.01),
+    );
+    expect(find.byKey(const Key('flashcardAnswerText')), findsOneWidget);
+    expect(find.text('привет'), findsOneWidget);
+    expect(find.byKey(const Key('sourceMetadata')), findsOneWidget);
     expect(find.byKey(const Key('flashcardExampleBlock')), findsNothing);
 
     await tester.tap(find.byKey(const Key('answerVisibilityToggle')));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('flashcardAnswerText')), findsOneWidget);
-    expect(find.text('hello'), findsOneWidget);
-    expect(find.byKey(const Key('flashcardExampleBlock')), findsOneWidget);
-
-    await tester.tap(find.byKey(const Key('answerVisibilityToggle')));
-    await tester.pumpAndSettle();
-
     expect(find.byKey(const Key('flashcardAnswerText')), findsNothing);
+    expect(find.byKey(const Key('sourceMetadata')), findsOneWidget);
     expect(find.byKey(const Key('flashcardExampleBlock')), findsNothing);
   });
 
@@ -141,8 +178,8 @@ void main() {
       _buildTestApp(
         FlashcardReviewWidget(
           entries: [
-            _entry(id: 'one', prompt: 'привет', answer: 'hello', stage: 1),
-            _entry(id: 'two', prompt: 'пока', answer: 'bye', stage: 1),
+            _entry(id: 'one', prompt: 'hello', answer: 'привет', stage: 1),
+            _entry(id: 'two', prompt: 'bye', answer: 'пока', stage: 1),
           ],
           onRemembered: (entry, {required hadAnyMiss}) async {
             rememberedIds.add(entry.id);
@@ -154,14 +191,14 @@ void main() {
     await tester.tap(find.byKey(const Key('forgetButton')));
     await tester.pumpAndSettle();
 
-    expect(find.text('пока'), findsOneWidget);
-    expect(find.text('привет'), findsNothing);
+    expect(find.text('bye'), findsOneWidget);
+    expect(find.text('hello'), findsNothing);
 
     await tester.tap(find.byKey(const Key('rememberButton')));
     await tester.pumpAndSettle();
 
     expect(rememberedIds, ['two']);
-    expect(find.text('привет'), findsOneWidget);
+    expect(find.text('hello'), findsOneWidget);
   });
 
   testWidgets('session completes only after retried cards are cleared',
@@ -173,8 +210,8 @@ void main() {
       _buildTestApp(
         FlashcardReviewWidget(
           entries: [
-            _entry(id: 'one', prompt: 'привет', answer: 'hello', stage: 1),
-            _entry(id: 'two', prompt: 'пока', answer: 'bye', stage: 1),
+            _entry(id: 'one', prompt: 'hello', answer: 'привет', stage: 1),
+            _entry(id: 'two', prompt: 'bye', answer: 'пока', stage: 1),
           ],
           onRemembered: (entry, {required hadAnyMiss}) async {
             rememberedStates[entry.id] = hadAnyMiss;
@@ -202,7 +239,7 @@ void main() {
     expect(rememberedStates['one'], isTrue);
   });
 
-  testWidgets('source metadata is hidden on ru to en until answer is opened',
+  testWidgets('source metadata stays visible while translation is hidden',
       (tester) async {
     await tester.pumpWidget(
       _buildTestApp(
@@ -210,8 +247,8 @@ void main() {
           entries: [
             _entry(
               id: 'one',
-              prompt: 'привет',
-              answer: 'hello',
+              prompt: 'hello',
+              answer: 'привет',
               stage: 1,
               transcription: 'həˈləʊ',
               synonyms: ['hi'],
@@ -222,14 +259,17 @@ void main() {
       ),
     );
 
-    expect(find.byKey(const Key('sourceMetadata')), findsNothing);
+    expect(find.byKey(const Key('sourceMetadata')), findsOneWidget);
+    expect(find.byKey(const Key('flashcardAnswerText')), findsNothing);
 
     await tester.tap(find.byKey(const Key('answerVisibilityToggle')));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('sourceMetadata')), findsOneWidget);
     expect(find.byKey(const Key('sourceTranscriptionText')), findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('sourceSynonym_hi')), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey<String>('sourceSynonym_hi')), findsOneWidget);
+    expect(find.byKey(const Key('flashcardAnswerText')), findsOneWidget);
   });
 
   testWidgets('source metadata is visible immediately on en to ru cards',
@@ -262,8 +302,8 @@ void main() {
       _buildTestApp(
         FlashcardReviewWidget(
           entries: [
-            _entry(id: 'one', prompt: 'привет', answer: 'hello', stage: 1),
-            _entry(id: 'two', prompt: 'спасибо', answer: 'thanks', stage: 1),
+            _entry(id: 'one', prompt: 'hello', answer: 'привет', stage: 1),
+            _entry(id: 'two', prompt: 'thanks', answer: 'спасибо', stage: 1),
           ],
           onRemembered: (entry, {required hadAnyMiss}) async {},
         ),
@@ -272,12 +312,12 @@ void main() {
 
     await tester.tap(find.byKey(const Key('answerVisibilityToggle')));
     await tester.pumpAndSettle();
-    expect(find.text('hello'), findsOneWidget);
+    expect(find.text('привет'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('rememberButton')));
     await tester.pumpAndSettle();
 
-    expect(find.text('thanks'), findsOneWidget);
+    expect(find.text('спасибо'), findsOneWidget);
     expect(find.byKey(const Key('flashcardAnswerText')), findsOneWidget);
   });
 }

@@ -193,7 +193,12 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
             name: WaitingForTeacherPageWidget.routeName,
             path: WaitingForTeacherPageWidget.routePath,
             requireAuth: true,
-            builder: (context, params) => WaitingForTeacherPageWidget(),
+            builder: (context, params) => WaitingForTeacherPageWidget(
+              sessionId: params.getParam(
+                'sessionId',
+                ParamType.String,
+              ),
+            ),
           ),
           FFRoute(
             name: NativeSpeakerPageWidget.routeName,
@@ -218,7 +223,13 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
             name: PayWidget.routeName,
             path: PayWidget.routePath,
             requireAuth: true,
-            builder: (context, params) => PayWidget(),
+            builder: (context, params) => PayWidget(
+              premiumOnly: params.getParam(
+                    'premiumOnly',
+                    ParamType.bool,
+                  ) ??
+                  false,
+            ),
           ),
           FFRoute(
             name: AcquaintanceNSWidget.routeName,
@@ -252,25 +263,28 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
             builder: (context, params) => PayCopyWidget(),
           ),
           FFRoute(
-            name: PayWebWiewWidget.routeName,
-            path: PayWebWiewWidget.routePath,
+            name: 'PayWebWiew',
+            path: '/payWebWiew',
             requireAuth: true,
-            builder: (context, params) => PayWebWiewWidget(
-              paymentUrl: params.getParam(
-                'paymentUrl',
-                ParamType.String,
-              ),
-              transactionRefPath: params.getParam(
-                'transactionRefPath',
-                ParamType.String,
-              ),
-            ),
+            builder: (context, params) => PayWidget(),
           ),
           FFRoute(
             name: BlackListWidget.routeName,
             path: BlackListWidget.routePath,
             requireAuth: true,
             builder: (context, params) => BlackListWidget(),
+          ),
+          FFRoute(
+            name: MyCallsWidget.routeName,
+            path: MyCallsWidget.routePath,
+            requireAuth: true,
+            builder: (context, params) => MyCallsWidget(),
+          ),
+          FFRoute(
+            name: EventHistoryWidget.routeName,
+            path: EventHistoryWidget.routePath,
+            requireAuth: true,
+            builder: (context, params) => EventHistoryWidget(),
           ),
           FFRoute(
             name: MyRewNSWidget.routeName,
@@ -289,6 +303,51 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
             path: ProfileEditWidget.routePath,
             requireAuth: true,
             builder: (context, params) => ProfileEditWidget(),
+          ),
+          FFRoute(
+            name: EventCreateWidget.routeName,
+            path: EventCreateWidget.routePath,
+            requireAuth: true,
+            builder: (context, params) => EventCreateWidget(),
+          ),
+          FFRoute(
+            name: EventEditWidget.routeName,
+            path: EventEditWidget.routePath,
+            requireAuth: true,
+            builder: (context, params) => EventEditWidget(
+              eventId: params.getParam(
+                'eventId',
+                ParamType.String,
+              ),
+            ),
+          ),
+          FFRoute(
+            name: EventGroupChatWidget.routeName,
+            path: EventGroupChatWidget.routePath,
+            requireAuth: true,
+            builder: (context, params) => EventGroupChatWidget(
+              eventId: params.getParam(
+                'eventId',
+                ParamType.String,
+              ),
+            ),
+          ),
+          FFRoute(
+            name: EventDetailWidget.routeName,
+            path: EventDetailWidget.routePath,
+            requireAuth: true,
+            builder: (context, params) => EventDetailRouteWidget(
+              eventId: params.getParam(
+                'eventId',
+                ParamType.String,
+              ),
+              initialPreview: eventDetailPublicPreviewFromParam(
+                params.getParam(
+                  eventDetailPublicPreviewExtraKey,
+                  ParamType.CustomClass,
+                ),
+              ),
+            ),
           ),
         ].map((r) => r.toRoute(appStateNotifier)),
 
@@ -330,6 +389,13 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
               ),
             ),
             FFRoute(
+              name: EventListWidget.routeName,
+              path: EventListWidget.routePath,
+              requireAuth: true,
+              noTransition: true,
+              builder: (context, params) => EventListWidget(),
+            ),
+            FFRoute(
               name: ProfileWidget.routeName,
               path: ProfileWidget.routePath,
               requireAuth: true,
@@ -342,13 +408,6 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
               requireAuth: true,
               noTransition: true,
               builder: (context, params) => WordsWidget(),
-            ),
-            FFRoute(
-              name: MyCallsWidget.routeName,
-              path: MyCallsWidget.routePath,
-              requireAuth: true,
-              noTransition: true,
-              builder: (context, params) => MyCallsWidget(),
             ),
             FFRoute(
               name: FavoriteWidget.routeName,
@@ -430,15 +489,25 @@ extension GoRouterExtensions on GoRouter {
 }
 
 extension _GoRouterStateExtensions on GoRouterState {
-  Map<String, dynamic> get extraMap =>
-      extra != null ? extra as Map<String, dynamic> : {};
+  Map<String, dynamic> get extraMap {
+    final value = extra;
+    if (value is! Map) {
+      return const <String, dynamic>{};
+    }
+    return <String, dynamic>{
+      for (final entry in value.entries)
+        if (entry.key is String) entry.key as String: entry.value,
+    };
+  }
+
   Map<String, dynamic> get allParams => <String, dynamic>{}
     ..addAll(pathParameters)
     ..addAll(uri.queryParameters)
     ..addAll(extraMap);
-  TransitionInfo get transitionInfo => extraMap.containsKey(kTransitionInfoKey)
-      ? extraMap[kTransitionInfoKey] as TransitionInfo
-      : TransitionInfo.appDefault();
+  TransitionInfo get transitionInfo {
+    final value = extraMap[kTransitionInfoKey];
+    return value is TransitionInfo ? value : TransitionInfo.appDefault();
+  }
 }
 
 class FFParameters {

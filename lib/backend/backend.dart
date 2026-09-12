@@ -6,9 +6,14 @@ import '../flutter_flow/flutter_flow_util.dart';
 import 'schema/util/firestore_util.dart';
 
 import 'schema/users_record.dart';
+import 'schema/user_public_profiles_record.dart';
 import 'schema/video_sessions_record.dart';
 import 'schema/conversations_record.dart';
 import 'schema/messages_record.dart';
+import 'schema/events_record.dart';
+import 'schema/event_participants_record.dart';
+import 'schema/event_chats_record.dart';
+import 'schema/event_chat_messages_record.dart';
 import 'schema/chat_utils.dart';
 import 'schema/caption_logs_record.dart';
 import 'schema/user_words_record.dart';
@@ -31,10 +36,15 @@ export 'schema/util/firestore_util.dart';
 export 'schema/util/schema_util.dart';
 
 export 'schema/users_record.dart';
+export 'schema/user_public_profiles_record.dart';
 export 'schema/users_friend_utils.dart';
 export 'schema/video_sessions_record.dart';
 export 'schema/conversations_record.dart';
 export 'schema/messages_record.dart';
+export 'schema/events_record.dart';
+export 'schema/event_participants_record.dart';
+export 'schema/event_chats_record.dart';
+export 'schema/event_chat_messages_record.dart';
 export 'schema/chat_utils.dart';
 export 'schema/caption_logs_record.dart';
 export 'schema/user_words_record.dart';
@@ -81,6 +91,43 @@ Future<List<UsersRecord>> queryUsersRecordOnce({
     queryCollectionOnce(
       UsersRecord.collection,
       UsersRecord.fromSnapshot,
+      queryBuilder: queryBuilder,
+      limit: limit,
+      singleRecord: singleRecord,
+    );
+
+/// Functions to query UserPublicProfilesRecords (as a Stream and as a Future).
+Future<int> queryUserPublicProfilesRecordCount({
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+}) =>
+    queryCollectionCount(
+      UserPublicProfilesRecord.collection,
+      queryBuilder: queryBuilder,
+      limit: limit,
+    );
+
+Stream<List<UserPublicProfilesRecord>> queryUserPublicProfilesRecord({
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+  bool singleRecord = false,
+}) =>
+    queryCollection(
+      UserPublicProfilesRecord.collection,
+      UserPublicProfilesRecord.fromSnapshot,
+      queryBuilder: queryBuilder,
+      limit: limit,
+      singleRecord: singleRecord,
+    );
+
+Future<List<UserPublicProfilesRecord>> queryUserPublicProfilesRecordOnce({
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+  bool singleRecord = false,
+}) =>
+    queryCollectionOnce(
+      UserPublicProfilesRecord.collection,
+      UserPublicProfilesRecord.fromSnapshot,
       queryBuilder: queryBuilder,
       limit: limit,
       singleRecord: singleRecord,
@@ -165,6 +212,160 @@ Future<List<VideoSessionsRecord>> fetchRecentHubCallSessions(
 
   return sessions;
 }
+
+/// Functions to query EventsRecords (as a Stream and as a Future).
+Future<int> queryEventsRecordCount({
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+}) =>
+    queryCollectionCount(
+      EventsRecord.collection,
+      queryBuilder: queryBuilder,
+      limit: limit,
+    );
+
+Stream<List<EventsRecord>> queryEventsRecord({
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+  bool singleRecord = false,
+}) =>
+    queryCollection(
+      EventsRecord.collection,
+      EventsRecord.fromSnapshot,
+      queryBuilder: queryBuilder,
+      limit: limit,
+      singleRecord: singleRecord,
+    );
+
+Future<List<EventsRecord>> queryEventsRecordOnce({
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+  bool singleRecord = false,
+}) =>
+    queryCollectionOnce(
+      EventsRecord.collection,
+      EventsRecord.fromSnapshot,
+      queryBuilder: queryBuilder,
+      limit: limit,
+      singleRecord: singleRecord,
+    );
+
+/// Functions to query EventParticipantsRecords (as a Stream and as a Future).
+Future<int> queryEventParticipantsRecordCount({
+  DocumentReference? parent,
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+}) =>
+    queryCollectionCount(
+      EventParticipantsRecord.collection(parent),
+      queryBuilder: queryBuilder,
+      limit: limit,
+    );
+
+Stream<List<EventParticipantsRecord>> queryEventParticipantsRecord({
+  DocumentReference? parent,
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+  bool singleRecord = false,
+}) =>
+    queryCollection(
+      EventParticipantsRecord.collection(parent),
+      EventParticipantsRecord.fromSnapshot,
+      queryBuilder: queryBuilder,
+      limit: limit,
+      singleRecord: singleRecord,
+    );
+
+Future<List<EventParticipantsRecord>> queryEventParticipantsRecordOnce({
+  DocumentReference? parent,
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+  bool singleRecord = false,
+}) =>
+    queryCollectionOnce(
+      EventParticipantsRecord.collection(parent),
+      EventParticipantsRecord.fromSnapshot,
+      queryBuilder: queryBuilder,
+      limit: limit,
+      singleRecord: singleRecord,
+    );
+
+/// Functions to query EventChatsRecords (as a Stream and as a Future).
+Future<int> queryEventChatsRecordCount({
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+}) =>
+    queryCollectionCount(
+      EventChatsRecord.collection,
+      queryBuilder: queryBuilder,
+      limit: limit,
+    );
+
+Stream<List<EventChatsRecord>> queryEventChatsRecord({
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+  bool singleRecord = false,
+}) =>
+    queryCollection(
+      EventChatsRecord.collection,
+      EventChatsRecord.fromSnapshot,
+      queryBuilder: queryBuilder,
+      limit: limit,
+      singleRecord: singleRecord,
+    );
+
+Future<List<EventChatsRecord>> queryEventChatsRecordOnce({
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+  bool singleRecord = false,
+}) =>
+    queryCollectionOnce(
+      EventChatsRecord.collection,
+      EventChatsRecord.fromSnapshot,
+      queryBuilder: queryBuilder,
+      limit: limit,
+      singleRecord: singleRecord,
+    );
+
+/// Functions to query EventChatMessagesRecords (as a Stream and as a Future).
+Future<int> queryEventChatMessagesRecordCount({
+  required DocumentReference parent,
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+}) =>
+    queryCollectionCount(
+      EventChatMessagesRecord.collection(parent),
+      queryBuilder: queryBuilder,
+      limit: limit,
+    );
+
+Stream<List<EventChatMessagesRecord>> queryEventChatMessagesRecord({
+  required DocumentReference parent,
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+  bool singleRecord = false,
+}) =>
+    queryCollection(
+      EventChatMessagesRecord.collection(parent),
+      EventChatMessagesRecord.fromSnapshot,
+      queryBuilder: queryBuilder,
+      limit: limit,
+      singleRecord: singleRecord,
+    );
+
+Future<List<EventChatMessagesRecord>> queryEventChatMessagesRecordOnce({
+  required DocumentReference parent,
+  Query Function(Query)? queryBuilder,
+  int limit = -1,
+  bool singleRecord = false,
+}) =>
+    queryCollectionOnce(
+      EventChatMessagesRecord.collection(parent),
+      EventChatMessagesRecord.fromSnapshot,
+      queryBuilder: queryBuilder,
+      limit: limit,
+      singleRecord: singleRecord,
+    );
 
 /// Functions to query ConversationsRecords (as a Stream and as a Future).
 Future<int> queryConversationsRecordCount({
@@ -842,12 +1043,12 @@ Future<FFFirestorePage<T>> queryCollectionPage<T>(
 }
 
 // Creates a Firestore document representing the logged in user if it doesn't yet exist
-Future maybeCreateUser(User user) async {
+Future<bool> maybeCreateUser(User user) async {
   final userRecord = UsersRecord.collection.doc(user.uid);
   final userExists = await userRecord.get().then((u) => u.exists);
   if (userExists) {
     currentUserDocument = await UsersRecord.getDocumentOnce(userRecord);
-    return;
+    return false;
   }
 
   final userData = createUsersRecordData(
@@ -864,6 +1065,7 @@ Future maybeCreateUser(User user) async {
 
   await userRecord.set(userData);
   currentUserDocument = UsersRecord.getDocumentFromData(userData, userRecord);
+  return true;
 }
 
 Future updateUserDocument({String? email}) async {

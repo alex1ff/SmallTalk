@@ -1,88 +1,807 @@
 // Automatic FlutterFlow imports
 import '/backend/backend.dart';
-import '/backend/schema/structs/index.dart';
-import '/backend/schema/enums/enums.dart';
-import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import 'index.dart'; // Imports other custom actions
-import '/flutter_flow/custom_functions.dart'; // Imports custom functions
 import 'package:flutter/material.dart';
+export '/services/active_search_recovery.dart' show ActiveSearchRecoveryState;
 // Begin custom action code
 // DO NOT REMOVE OR MODIFY THE CODE ABOVE!
 
-import 'index.dart'; // Imports other custom actions
-
+import 'dart:async';
 import '/auth/firebase_auth/auth_util.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import '/services/active_search_recovery.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import '/index.dart' as app;
 
-Future<bool> checkActiveSessionAndNavigate(BuildContext context) async {
-  final userId = currentUserUid;
-  if (userId.isEmpty) {
+const int _activeSessionFallbackTokenMaxAttempts = 2;
+const int _activeSessionCurrentTokenMaxAttempts = 5;
+const int _activeSessionNavigationQueryLimit = 20;
+const int _activeSessionLegacyFallbackLimit = 100;
+const List<String> _activeSessionNeutralRecoveryStatuses = [
+  'connecting',
+  'active',
+  'connected',
+];
+const Duration _activeSessionFallbackTokenRetryDelay =
+    Duration(milliseconds: 400);
+const Duration _activeSessionCurrentTokenRetryDelay =
+    Duration(milliseconds: 500);
+
+class _ActiveSessionRecoveryCandidate {
+  const _ActiveSessionRecoveryCandidate({
+    required this.sessionDoc,
+    required this.data,
+    required this.tokenData,
+    required this.meetingToken,
+    required this.roomUrl,
+  });
+
+  final DocumentSnapshot<Map<String, dynamic>> sessionDoc;
+  final Map<String, dynamic> data;
+  final Map<String, dynamic> tokenData;
+  final String meetingToken;
+  final String roomUrl;
+}
+
+@visibleForTesting
+Future<DocumentSnapshot<Map<String, dynamic>>> Function(String userId)?
+    debugActiveSessionUserSnapshot;
+@visibleForTesting
+Future<List<DocumentSnapshot<Map<String, dynamic>>>> Function(String userId)?
+    debugActiveNavigationSessionSnapshots;
+@visibleForTesting
+Future<DocumentSnapshot<Map<String, dynamic>>?> Function(String sessionId)?
+    debugActiveCurrentSessionSnapshot;
+@visibleForTesting
+Future<DocumentSnapshot<Map<String, dynamic>>?> Function(String userId)?
+    debugActiveSearchRequestSnapshot;
+@visibleForTesting
+Future<dynamic> Function(String sessionId)? debugActiveSessionTokenRequest;
+@visibleForTesting
+void Function(
+  DocumentReference<Map<String, dynamic>> videoDocRef, {
+  String? roomUrl,
+  String? roomName,
+  String? meetingToken,
+})? debugActiveSessionNavigator;
+@visibleForTesting
+void Function(ActiveSearchRecoveryState state)?
+    debugActiveSearchRecoveryObserver;
+@visibleForTesting
+DateTime Function()? debugActiveSearchRecoveryNow;
+
+Map<String, dynamic> _activeSessionMap(dynamic value) {
+  if (value is Map<String, dynamic>) return value;
+  if (value is Map) {
+    return value.map((k, v) => MapEntry(k.toString(), v));
+  }
+  return <String, dynamic>{};
+}
+
+String? _activeSessionNonEmpty(dynamic value) {
+  final text = value?.toString().trim();
+  if (text == null || text.isEmpty) return null;
+  return text;
+}
+
+int _activeSessionTimestampMicros(dynamic value) {
+  if (value is Timestamp) {
+    return value.microsecondsSinceEpoch;
+  }
+  if (value is DateTime) {
+    return value.microsecondsSinceEpoch;
+  }
+  if (value is int) {
+    return value;
+  }
+  if (value is num) {
+    return value.toInt();
+  }
+  return 0;
+}
+
+Map<String, dynamic> _activeSessionNestedMap(
+  Map<String, dynamic> data,
+  String key,
+) {
+  return _activeSessionMap(data[key]);
+}
+
+bool _activeSessionListContains(dynamic values, String userId) {
+  if (values is! Iterable) {
+    return false;
+  }
+  for (final value in values) {
+    if (_activeSessionNonEmpty(value) == userId) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool _activeSessionHasParticipant(
+  Map<String, dynamic> data,
+  String userId,
+) {
+  if (_activeSessionListContains(data['participantIds'], userId)) {
+    return true;
+  }
+
+  final matchContext = _activeSessionNestedMap(data, 'matchContext');
+  final participantFields = <dynamic>[
+    data['studentId'],
+    data['requesterId'],
+    data['tutorId'],
+    data['currentResponderId'],
+    data['currentTutorId'],
+    data['responderId'],
+    matchContext['requesterId'],
+    matchContext['acceptedResponderId'],
+    matchContext['currentResponderId'],
+    matchContext['responderId'],
+  ];
+
+  return participantFields
+      .any((value) => _activeSessionNonEmpty(value) == userId);
+}
+
+bool _activeSessionIsJoinableStatus(String? status) {
+  return status == 'active' || status == 'connected' || status == 'connecting';
+}
+
+bool _activeSessionHasOpenJoinWindow(Map<String, dynamic> data) {
+  if ((data['status'] as String?) != 'connecting') {
+    return true;
+  }
+
+  final joinDeadlineAt = activeSearchDateTime(data['joinDeadlineAt']);
+  if (joinDeadlineAt == null) {
     return false;
   }
 
-  try {
-    final userDoc =
-        await FirebaseFirestore.instance.collection('users').doc(userId).get();
-    if (!userDoc.exists) {
-      return false;
-    }
+  final now = debugActiveSearchRecoveryNow?.call() ?? DateTime.now();
+  return joinDeadlineAt.isAfter(now);
+}
 
+bool _activeSessionIsTerminalStatus(String? status) {
+  switch (status?.trim()) {
+    case 'cancelled':
+    case 'ended':
+    case 'expired':
+    case 'failed':
+    case 'completed':
+    case 'no_tutors_available':
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool _activeSessionIsJoinableParticipant(
+  Map<String, dynamic> data,
+  String userId,
+) {
+  final protocolVersion = int.tryParse(
+        data['matchProtocolVersion']?.toString() ?? '',
+      ) ??
+      0;
+  if (protocolVersion >= 2) {
+    // Protocol v2 navigation is exclusively owned by MatchCoordinator.
+    return false;
+  }
+  return _activeSessionIsJoinableStatus(data['status'] as String?) &&
+      _activeSessionHasOpenJoinWindow(data) &&
+      _activeSessionHasParticipant(data, userId);
+}
+
+bool _activeSessionHasNeutralParticipant(
+  Map<String, dynamic> data,
+  String userId,
+) {
+  if (_activeSessionListContains(data['participantIds'], userId)) {
+    return true;
+  }
+
+  return <dynamic>[
+    data['requesterId'],
+    data['currentResponderId'],
+    data['responderId'],
+  ].any((value) => _activeSessionNonEmpty(value) == userId);
+}
+
+bool _activeSessionCanUseNeutralRecovery(
+  Map<String, dynamic> data,
+  String userId,
+) {
+  return _activeSessionIsJoinableParticipant(data, userId) &&
+      _activeSessionHasNeutralParticipant(data, userId);
+}
+
+bool _activeSessionHasRequesterNavigationRole(
+  Map<String, dynamic> data,
+  String userId,
+) {
+  final matchContext = _activeSessionNestedMap(data, 'matchContext');
+  return <dynamic>[
+    data['studentId'],
+    data['requesterId'],
+    matchContext['requesterId'],
+  ].any((value) => _activeSessionNonEmpty(value) == userId);
+}
+
+bool _activeSessionCanUseTutorNavigationFlag(
+  Map<String, dynamic> data,
+  String userId,
+) {
+  if (_activeSessionHasRequesterNavigationRole(data, userId)) {
+    return false;
+  }
+
+  final matchContext = _activeSessionNestedMap(data, 'matchContext');
+  final responderFields = <dynamic>[
+    data['tutorId'],
+    data['currentTutorId'],
+    data['currentResponderId'],
+    data['responderId'],
+    matchContext['acceptedResponderId'],
+    matchContext['currentResponderId'],
+    matchContext['responderId'],
+  ];
+  return responderFields
+      .any((value) => _activeSessionNonEmpty(value) == userId);
+}
+
+bool _activeSessionNavigationTriggerMatchesUser(
+  Map<String, dynamic> data,
+  String userId,
+) {
+  return (data['studentNavigationTriggered'] == true &&
+          _activeSessionNonEmpty(data['studentId']) == userId) ||
+      (data['tutorNavigationTriggered'] == true &&
+          _activeSessionCanUseTutorNavigationFlag(data, userId));
+}
+
+String? _activeSessionNavigationFlagForUser(
+  Map<String, dynamic> data,
+  String userId,
+) {
+  if (_activeSessionNonEmpty(data['studentId']) == userId) {
+    return 'studentNavigationTriggered';
+  }
+  if (_activeSessionHasRequesterNavigationRole(data, userId)) {
+    return null;
+  }
+
+  if (_activeSessionCanUseTutorNavigationFlag(data, userId)) {
+    return 'tutorNavigationTriggered';
+  }
+
+  return null;
+}
+
+void _addActiveSessionRecoverySnapshot(
+  Map<String, DocumentSnapshot<Map<String, dynamic>>> snapshotsByPath,
+  DocumentSnapshot<Map<String, dynamic>> doc,
+) {
+  snapshotsByPath[doc.reference.path] = doc;
+}
+
+List<int> _activeSessionRecoverySortValues(
+  DocumentSnapshot<Map<String, dynamic>> doc,
+) {
+  final data = doc.data();
+  if (data == null) {
+    return const [0, 0, 0, 0];
+  }
+  return [
+    data['navigationTimestamp'],
+    data['acceptedAt'],
+    data['updatedAt'],
+    data['createdAt'],
+  ].map(_activeSessionTimestampMicros).toList();
+}
+
+int _compareActiveSessionRecoveryTime(
+  DocumentSnapshot<Map<String, dynamic>> a,
+  DocumentSnapshot<Map<String, dynamic>> b,
+) {
+  final aValues = _activeSessionRecoverySortValues(a);
+  final bValues = _activeSessionRecoverySortValues(b);
+  for (var i = 0; i < aValues.length; i++) {
+    final byField = bValues[i].compareTo(aValues[i]);
+    if (byField != 0) {
+      return byField;
+    }
+  }
+  return 0;
+}
+
+List<DocumentSnapshot<Map<String, dynamic>>> _sortActiveNavigationSessions(
+  List<DocumentSnapshot<Map<String, dynamic>>> docs,
+) {
+  final sorted = [...docs];
+  sorted.sort((a, b) {
+    final byTime = _compareActiveSessionRecoveryTime(a, b);
+    if (byTime != 0) {
+      return byTime;
+    }
+    return a.reference.path.compareTo(b.reference.path);
+  });
+  return sorted;
+}
+
+Future<Map<String, dynamic>?> _requestActiveSessionTokensWithRetry(
+  String sessionId, {
+  int maxAttempts = _activeSessionFallbackTokenMaxAttempts,
+  Duration retryDelay = _activeSessionFallbackTokenRetryDelay,
+  bool retryMissingMeetingToken = false,
+}) async {
+  Object? lastError;
+  Map<String, dynamic>? lastData;
+  for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      final debugRequest = debugActiveSessionTokenRequest;
+      if (debugRequest != null) {
+        lastData = _activeSessionMap(await debugRequest(sessionId));
+      } else {
+        final result = await FirebaseFunctions.instance
+            .httpsCallable('getSessionTokens')
+            .call({'sessionId': sessionId});
+        lastData = _activeSessionMap(result.data);
+      }
+      if (!retryMissingMeetingToken ||
+          _activeSessionNonEmpty(lastData['meetingToken']) != null ||
+          attempt >= maxAttempts) {
+        return lastData;
+      }
+    } catch (error) {
+      lastError = error;
+      if (attempt >= maxAttempts) {
+        debugPrint(
+          'ActiveSessionRecovery: getSessionTokens failed for $sessionId: $lastError',
+        );
+        return null;
+      }
+    }
+    await Future.delayed(retryDelay);
+  }
+  return lastData;
+}
+
+Future<void> _clearActiveSessionNavigationFlag({
+  required DocumentReference<Map<String, dynamic>> sessionRef,
+  required String? flagField,
+}) async {
+  try {
+    final updateData = <String, dynamic>{
+      'navigationCompletedAt': FieldValue.serverTimestamp(),
+    };
+    if (flagField != null) {
+      updateData[flagField] = false;
+    }
+    await sessionRef.update(updateData);
+  } catch (error) {
+    debugPrint(
+      'ActiveSessionRecovery: failed to reset navigation flag for ${sessionRef.id}: $error',
+    );
+  }
+}
+
+Future<DocumentSnapshot<Map<String, dynamic>>> _readActiveSessionUserSnapshot(
+  String userId,
+) {
+  final debugReader = debugActiveSessionUserSnapshot;
+  if (debugReader != null) {
+    return debugReader(userId);
+  }
+  return FirebaseFirestore.instance.collection('users').doc(userId).get();
+}
+
+Future<ActiveSearchRecoveryState> _readActiveSearchRecoveryState(
+  String userId,
+) async {
+  return readActiveSearchRecoveryState(
+    userId,
+    snapshotReader: debugActiveSearchRequestSnapshot,
+    observer: debugActiveSearchRecoveryObserver,
+    now: debugActiveSearchRecoveryNow,
+  );
+}
+
+Future<void> _readNeutralActiveSessionSnapshots({
+  required String userId,
+  required String label,
+  required Query<Map<String, dynamic>> query,
+  required Map<String, DocumentSnapshot<Map<String, dynamic>>> snapshotsByPath,
+}) async {
+  try {
+    final snapshots = await query.get();
+    for (final doc in snapshots.docs) {
+      final data = doc.data();
+      if (_activeSessionCanUseNeutralRecovery(data, userId)) {
+        _addActiveSessionRecoverySnapshot(snapshotsByPath, doc);
+      }
+    }
+  } catch (error) {
+    debugPrint(
+      'ActiveSessionRecovery: failed to read $label neutral sessions for $userId: $error',
+    );
+  }
+}
+
+Future<List<DocumentSnapshot<Map<String, dynamic>>>>
+    _readActiveNavigationSessionSnapshots(String userId) async {
+  final debugReader = debugActiveNavigationSessionSnapshots;
+  if (debugReader != null) {
+    return debugReader(userId);
+  }
+
+  final snapshotsByPath = <String, DocumentSnapshot<Map<String, dynamic>>>{};
+  final videoSessions = FirebaseFirestore.instance.collection('videoSessions');
+  await _readNeutralActiveSessionSnapshots(
+    userId: userId,
+    label: 'participant',
+    query: videoSessions
+        .where('participantIds', arrayContains: userId)
+        .where('status', whereIn: _activeSessionNeutralRecoveryStatuses)
+        .orderBy('createdAt', descending: true)
+        .limit(_activeSessionNavigationQueryLimit),
+    snapshotsByPath: snapshotsByPath,
+  );
+  await _readNeutralActiveSessionSnapshots(
+    userId: userId,
+    label: 'requester',
+    query: videoSessions
+        .where('requesterId', isEqualTo: userId)
+        .where('status', whereIn: _activeSessionNeutralRecoveryStatuses)
+        .orderBy('createdAt', descending: true)
+        .limit(_activeSessionNavigationQueryLimit),
+    snapshotsByPath: snapshotsByPath,
+  );
+  await _readNeutralActiveSessionSnapshots(
+    userId: userId,
+    label: 'current responder',
+    query: videoSessions
+        .where('currentResponderId', isEqualTo: userId)
+        .where('status', whereIn: _activeSessionNeutralRecoveryStatuses)
+        .orderBy('createdAt', descending: true)
+        .limit(_activeSessionNavigationQueryLimit),
+    snapshotsByPath: snapshotsByPath,
+  );
+  await _readNeutralActiveSessionSnapshots(
+    userId: userId,
+    label: 'responder',
+    query: videoSessions
+        .where('responderId', isEqualTo: userId)
+        .where('status', whereIn: _activeSessionNeutralRecoveryStatuses)
+        .orderBy('createdAt', descending: true)
+        .limit(_activeSessionNavigationQueryLimit),
+    snapshotsByPath: snapshotsByPath,
+  );
+  try {
     final studentSessions = await FirebaseFirestore.instance
         .collection('videoSessions')
         .where('studentId', isEqualTo: userId)
         .where('studentNavigationTriggered', isEqualTo: true)
-        .limit(5)
+        .orderBy('navigationTimestamp', descending: true)
+        .limit(_activeSessionNavigationQueryLimit)
         .get();
+    for (final doc in studentSessions.docs) {
+      _addActiveSessionRecoverySnapshot(snapshotsByPath, doc);
+    }
+  } catch (error) {
+    debugPrint(
+      'ActiveSessionRecovery: failed to read student navigation sessions for $userId: $error',
+    );
+  }
+  try {
+    final legacyStudentSessions = await FirebaseFirestore.instance
+        .collection('videoSessions')
+        .where('studentId', isEqualTo: userId)
+        .where('studentNavigationTriggered', isEqualTo: true)
+        .limit(_activeSessionLegacyFallbackLimit)
+        .get();
+    for (final doc in legacyStudentSessions.docs) {
+      snapshotsByPath.putIfAbsent(doc.reference.path, () => doc);
+    }
+  } catch (error) {
+    debugPrint(
+      'ActiveSessionRecovery: failed to read legacy student navigation sessions for $userId: $error',
+    );
+  }
+  try {
     final tutorSessions = await FirebaseFirestore.instance
         .collection('videoSessions')
         .where('tutorId', isEqualTo: userId)
         .where('tutorNavigationTriggered', isEqualTo: true)
-        .limit(5)
+        .orderBy('navigationTimestamp', descending: true)
+        .limit(_activeSessionNavigationQueryLimit)
         .get();
-
-    final deduped = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
-    for (final doc in [...studentSessions.docs, ...tutorSessions.docs]) {
-      deduped[doc.reference.path] = doc;
+    for (final doc in tutorSessions.docs) {
+      _addActiveSessionRecoverySnapshot(snapshotsByPath, doc);
     }
-
-    if (deduped.isEmpty) {
-      return false;
+  } catch (error) {
+    debugPrint(
+      'ActiveSessionRecovery: failed to read tutor navigation sessions for $userId: $error',
+    );
+  }
+  try {
+    final legacyTutorSessions = await FirebaseFirestore.instance
+        .collection('videoSessions')
+        .where('tutorId', isEqualTo: userId)
+        .where('tutorNavigationTriggered', isEqualTo: true)
+        .limit(_activeSessionLegacyFallbackLimit)
+        .get();
+    for (final doc in legacyTutorSessions.docs) {
+      snapshotsByPath.putIfAbsent(doc.reference.path, () => doc);
     }
-
-    QueryDocumentSnapshot<Map<String, dynamic>>? sessionDoc;
-    for (final doc in deduped.values) {
-      final status = doc.data()['status'] as String?;
-      if (status == null || status == 'active' || status == 'connected') {
-        sessionDoc = doc;
-        break;
+  } catch (error) {
+    debugPrint(
+      'ActiveSessionRecovery: failed to read legacy tutor navigation sessions for $userId: $error',
+    );
+  }
+  try {
+    final currentTutorSessions = await FirebaseFirestore.instance
+        .collection('videoSessions')
+        .where('currentTutorId', isEqualTo: userId)
+        .where('tutorNavigationTriggered', isEqualTo: true)
+        .orderBy('navigationTimestamp', descending: true)
+        .limit(_activeSessionNavigationQueryLimit)
+        .get();
+    for (final doc in currentTutorSessions.docs) {
+      _addActiveSessionRecoverySnapshot(snapshotsByPath, doc);
+    }
+  } catch (error) {
+    debugPrint(
+      'ActiveSessionRecovery: failed to read current tutor navigation sessions for $userId: $error',
+    );
+  }
+  try {
+    final legacyCurrentTutorSessions = await FirebaseFirestore.instance
+        .collection('videoSessions')
+        .where('currentTutorId', isEqualTo: userId)
+        .where('tutorNavigationTriggered', isEqualTo: true)
+        .limit(_activeSessionLegacyFallbackLimit)
+        .get();
+    for (final doc in legacyCurrentTutorSessions.docs) {
+      snapshotsByPath.putIfAbsent(doc.reference.path, () => doc);
+    }
+  } catch (error) {
+    debugPrint(
+      'ActiveSessionRecovery: failed to read legacy current tutor navigation sessions for $userId: $error',
+    );
+  }
+  try {
+    final currentResponderSessions = await FirebaseFirestore.instance
+        .collection('videoSessions')
+        .where('currentResponderId', isEqualTo: userId)
+        .where('tutorNavigationTriggered', isEqualTo: true)
+        .orderBy('navigationTimestamp', descending: true)
+        .limit(_activeSessionNavigationQueryLimit)
+        .get();
+    for (final doc in currentResponderSessions.docs) {
+      final data = doc.data();
+      if (_activeSessionCanUseTutorNavigationFlag(data, userId)) {
+        _addActiveSessionRecoverySnapshot(snapshotsByPath, doc);
       }
     }
+  } catch (error) {
+    debugPrint(
+      'ActiveSessionRecovery: failed to read current responder navigation sessions for $userId: $error',
+    );
+  }
+  try {
+    final legacyCurrentResponderSessions = await FirebaseFirestore.instance
+        .collection('videoSessions')
+        .where('currentResponderId', isEqualTo: userId)
+        .where('tutorNavigationTriggered', isEqualTo: true)
+        .limit(_activeSessionLegacyFallbackLimit)
+        .get();
+    for (final doc in legacyCurrentResponderSessions.docs) {
+      final data = doc.data();
+      if (_activeSessionCanUseTutorNavigationFlag(data, userId)) {
+        snapshotsByPath.putIfAbsent(doc.reference.path, () => doc);
+      }
+    }
+  } catch (error) {
+    debugPrint(
+      'ActiveSessionRecovery: failed to read legacy current responder navigation sessions for $userId: $error',
+    );
+  }
+  try {
+    final responderSessions = await FirebaseFirestore.instance
+        .collection('videoSessions')
+        .where('responderId', isEqualTo: userId)
+        .where('tutorNavigationTriggered', isEqualTo: true)
+        .orderBy('navigationTimestamp', descending: true)
+        .limit(_activeSessionNavigationQueryLimit)
+        .get();
+    for (final doc in responderSessions.docs) {
+      final data = doc.data();
+      if (_activeSessionCanUseTutorNavigationFlag(data, userId)) {
+        _addActiveSessionRecoverySnapshot(snapshotsByPath, doc);
+      }
+    }
+  } catch (error) {
+    debugPrint(
+      'ActiveSessionRecovery: failed to read responder navigation sessions for $userId: $error',
+    );
+  }
+  try {
+    final legacyResponderSessions = await FirebaseFirestore.instance
+        .collection('videoSessions')
+        .where('responderId', isEqualTo: userId)
+        .where('tutorNavigationTriggered', isEqualTo: true)
+        .limit(_activeSessionLegacyFallbackLimit)
+        .get();
+    for (final doc in legacyResponderSessions.docs) {
+      final data = doc.data();
+      if (_activeSessionCanUseTutorNavigationFlag(data, userId)) {
+        snapshotsByPath.putIfAbsent(doc.reference.path, () => doc);
+      }
+    }
+  } catch (error) {
+    debugPrint(
+      'ActiveSessionRecovery: failed to read responder legacy navigation sessions for $userId: $error',
+    );
+  }
+  try {
+    final participantSessions = await FirebaseFirestore.instance
+        .collection('videoSessions')
+        .where('participantIds', arrayContains: userId)
+        .where('tutorNavigationTriggered', isEqualTo: true)
+        .orderBy('navigationTimestamp', descending: true)
+        .limit(_activeSessionNavigationQueryLimit)
+        .get();
+    for (final doc in participantSessions.docs) {
+      final data = doc.data();
+      if (_activeSessionCanUseTutorNavigationFlag(data, userId)) {
+        _addActiveSessionRecoverySnapshot(snapshotsByPath, doc);
+      }
+    }
+  } catch (error) {
+    debugPrint(
+      'ActiveSessionRecovery: failed to read participant navigation sessions for $userId: $error',
+    );
+  }
+  try {
+    final legacyParticipantSessions = await FirebaseFirestore.instance
+        .collection('videoSessions')
+        .where('participantIds', arrayContains: userId)
+        .where('tutorNavigationTriggered', isEqualTo: true)
+        .limit(_activeSessionLegacyFallbackLimit)
+        .get();
+    for (final doc in legacyParticipantSessions.docs) {
+      final data = doc.data();
+      if (_activeSessionCanUseTutorNavigationFlag(data, userId)) {
+        snapshotsByPath.putIfAbsent(doc.reference.path, () => doc);
+      }
+    }
+  } catch (error) {
+    debugPrint(
+      'ActiveSessionRecovery: failed to read legacy participant navigation sessions for $userId: $error',
+    );
+  }
 
-    if (sessionDoc == null) {
-      return false;
+  return snapshotsByPath.values.toList();
+}
+
+Future<DocumentSnapshot<Map<String, dynamic>>?> _readCurrentSessionSnapshot(
+  String? sessionId,
+) {
+  final normalizedSessionId = _activeSessionNonEmpty(sessionId);
+  if (normalizedSessionId == null) {
+    return Future<DocumentSnapshot<Map<String, dynamic>>?>.value();
+  }
+
+  final debugReader = debugActiveCurrentSessionSnapshot;
+  if (debugReader != null) {
+    return debugReader(normalizedSessionId);
+  }
+
+  return FirebaseFirestore.instance
+      .collection('videoSessions')
+      .doc(normalizedSessionId)
+      .get();
+}
+
+bool _activeSessionSnapshotHasTerminalStatus(
+  DocumentSnapshot<Map<String, dynamic>>? snapshot,
+) {
+  if (snapshot == null || !snapshot.exists) {
+    return false;
+  }
+  final data = snapshot.data();
+  if (data == null) {
+    return false;
+  }
+  return _activeSessionIsTerminalStatus(_activeSessionNonEmpty(data['status']));
+}
+
+bool _activeSessionSnapshotCanResumeConnection(
+  DocumentSnapshot<Map<String, dynamic>>? snapshot,
+  String userId,
+) {
+  if (snapshot == null || !snapshot.exists) {
+    return true;
+  }
+  final data = snapshot.data();
+  if (data == null ||
+      _activeSessionIsTerminalStatus(data['status'] as String?)) {
+    return false;
+  }
+  if ((data['status'] as String?) == 'pending_confirmation') {
+    return _activeSessionHasParticipant(data, userId);
+  }
+  return _activeSessionIsJoinableParticipant(data, userId);
+}
+
+Future<_ActiveSessionRecoveryCandidate?> _resolveActiveSessionCandidate({
+  required Iterable<DocumentSnapshot<Map<String, dynamic>>> candidates,
+  required String userId,
+  int tokenMaxAttempts = _activeSessionFallbackTokenMaxAttempts,
+  Duration tokenRetryDelay = _activeSessionFallbackTokenRetryDelay,
+  bool retryMissingMeetingToken = false,
+}) async {
+  for (final doc in candidates) {
+    final data = doc.data();
+    if (data == null) {
+      continue;
+    }
+    if (!_activeSessionIsJoinableParticipant(data, userId)) {
+      continue;
     }
 
-    final sessionRef = sessionDoc.reference;
-    final data = sessionDoc.data();
-    final isRequester = (data['studentId'] as String?) == userId;
-    if (isRequester) {
-      await sessionRef.update({
-        'studentNavigationTriggered': false,
-        'navigationCompletedAt': FieldValue.serverTimestamp(),
-      });
-    } else {
-      await sessionRef.update({
-        'tutorNavigationTriggered': false,
-        'navigationCompletedAt': FieldValue.serverTimestamp(),
-      });
+    final tokenData = await _requestActiveSessionTokensWithRetry(
+      doc.id,
+      maxAttempts: tokenMaxAttempts,
+      retryDelay: tokenRetryDelay,
+      retryMissingMeetingToken: retryMissingMeetingToken,
+    );
+    final meetingToken = _activeSessionNonEmpty(tokenData?['meetingToken']);
+    final roomUrl = _activeSessionNonEmpty(tokenData?['roomUrl']) ??
+        _activeSessionNonEmpty(data['dailyRoomUrl']);
+    if (meetingToken == null || roomUrl == null) {
+      continue;
     }
 
-    if (!context.mounted) {
-      return false;
-    }
+    return _ActiveSessionRecoveryCandidate(
+      sessionDoc: doc,
+      data: data,
+      tokenData: tokenData ?? const <String, dynamic>{},
+      meetingToken: meetingToken,
+      roomUrl: roomUrl,
+    );
+  }
+  return null;
+}
 
+Future<bool> _navigateToActiveSessionCandidate({
+  required BuildContext context,
+  required String userId,
+  required _ActiveSessionRecoveryCandidate selectedCandidate,
+}) async {
+  final sessionRef = selectedCandidate.sessionDoc.reference;
+  final data = selectedCandidate.data;
+  final tokenData = selectedCandidate.tokenData;
+  final meetingToken = selectedCandidate.meetingToken;
+  final roomUrl = selectedCandidate.roomUrl;
+
+  if (!context.mounted) {
+    return false;
+  }
+
+  final flagField = _activeSessionNavigationFlagForUser(data, userId);
+  final roomName = _activeSessionNonEmpty(tokenData['roomName']) ??
+      _activeSessionNonEmpty(data['dailyRoomName']);
+  final debugNavigator = debugActiveSessionNavigator;
+  if (debugNavigator != null) {
+    debugNavigator(
+      sessionRef,
+      roomUrl: roomUrl,
+      roomName: roomName,
+      meetingToken: meetingToken,
+    );
+  } else {
     context.goNamed(
       app.VideoCallPageWidget.routeName,
       queryParameters: {
@@ -91,17 +810,223 @@ Future<bool> checkActiveSessionAndNavigate(BuildContext context) async {
           ParamType.DocumentReference,
         ),
         'roomUrl': serializeParam(
-          sessionDoc.data()['dailyRoomUrl'] as String?,
+          roomUrl,
           ParamType.String,
         ),
         'roomName': serializeParam(
-          sessionDoc.data()['dailyRoomName'] as String?,
+          roomName,
           ParamType.String,
         ),
+        'meetingToken': serializeParam(meetingToken, ParamType.String),
       }.withoutNulls,
     );
-    return true;
-  } catch (_) {
+  }
+  unawaited(_clearActiveSessionNavigationFlag(
+    sessionRef: sessionRef,
+    flagField: flagField,
+  ));
+  return true;
+}
+
+Future<bool> checkActiveSessionAndNavigate(
+  BuildContext context, {
+  void Function(UsersRecord userDocument)? onUserDocumentRead,
+}) async {
+  final userId = currentUserUid;
+  if (userId.isEmpty) {
+    return false;
+  }
+
+  try {
+    final userDoc = await _readActiveSessionUserSnapshot(userId);
+    if (!userDoc.exists) {
+      return false;
+    }
+    onUserDocumentRead?.call(UsersRecord.fromSnapshot(userDoc));
+    final userData = userDoc.data();
+    if (userData?['isInCall'] != true) {
+      ActiveSearchRecoveryState? activeSearchState;
+      try {
+        activeSearchState = await _readActiveSearchRecoveryState(userId);
+      } catch (error) {
+        debugPrint(
+          'ActiveSessionRecovery: failed to read active search for $userId: $error',
+        );
+      }
+      DocumentSnapshot<Map<String, dynamic>>? activeSearchSession;
+      var activeSearchSessionRead = false;
+      var activeSearchLinkedSessionTerminal = false;
+      Object? activeSearchSessionReadError;
+
+      Future<DocumentSnapshot<Map<String, dynamic>>?>
+          readActiveSearchSessionOnce() async {
+        if (activeSearchSessionRead) {
+          if (activeSearchSessionReadError != null) {
+            throw activeSearchSessionReadError!;
+          }
+          return activeSearchSession;
+        }
+        activeSearchSessionRead = true;
+        try {
+          activeSearchSession = await _readCurrentSessionSnapshot(
+            activeSearchState?.sessionId,
+          );
+        } catch (error) {
+          activeSearchSessionReadError = error;
+          rethrow;
+        }
+        activeSearchLinkedSessionTerminal =
+            _activeSessionSnapshotHasTerminalStatus(activeSearchSession);
+        return activeSearchSession;
+      }
+
+      if (activeSearchState?.canResumeActiveSession == true) {
+        try {
+          final activeSearchSession = await readActiveSearchSessionOnce();
+          if (activeSearchLinkedSessionTerminal) {
+            return false;
+          }
+          final activeSearchCandidate =
+              activeSearchSession != null && activeSearchSession.exists
+                  ? await _resolveActiveSessionCandidate(
+                      candidates: [activeSearchSession],
+                      userId: userId,
+                      tokenMaxAttempts: _activeSessionCurrentTokenMaxAttempts,
+                      tokenRetryDelay: _activeSessionCurrentTokenRetryDelay,
+                      retryMissingMeetingToken: true,
+                    )
+                  : null;
+          if (activeSearchCandidate != null) {
+            return _navigateToActiveSessionCandidate(
+              context: context,
+              userId: userId,
+              selectedCandidate: activeSearchCandidate,
+            );
+          }
+        } catch (error) {
+          debugPrint(
+            'ActiveSessionRecovery: failed to recover active search session for $userId: $error',
+          );
+          if (activeSearchSessionReadError != null) {
+            return false;
+          }
+        }
+      }
+      if (activeSearchState?.canResumeUnboundSearch == true) {
+        if (!context.mounted) {
+          return false;
+        }
+        context.goNamed(app.StudentsDashboardWidget.routeName);
+        return true;
+      }
+      if (activeSearchState?.canResumeConnection == true) {
+        try {
+          final activeSearchSession = await readActiveSearchSessionOnce();
+          if (activeSearchLinkedSessionTerminal) {
+            return false;
+          }
+          if (!_activeSessionSnapshotCanResumeConnection(
+            activeSearchSession,
+            userId,
+          )) {
+            return false;
+          }
+        } catch (error) {
+          debugPrint(
+            'ActiveSessionRecovery: failed to check search session terminal status for $userId: $error',
+          );
+          return false;
+        }
+        debugPrint(
+          'ActiveSessionRecovery: connection search detected for $userId',
+        );
+        if (!context.mounted) {
+          return false;
+        }
+        context.goNamed(app.StudentsDashboardWidget.routeName);
+        return true;
+      }
+      return false;
+    }
+
+    DocumentSnapshot<Map<String, dynamic>>? currentSession;
+    var currentSessionReadFailed = false;
+    try {
+      currentSession = await _readCurrentSessionSnapshot(
+        _activeSessionNonEmpty(userData?['currentSessionId']),
+      );
+    } catch (error) {
+      debugPrint(
+        'ActiveSessionRecovery: failed to read current session for $userId: $error',
+      );
+      currentSessionReadFailed =
+          _activeSessionNonEmpty(userData?['currentSessionId']) != null;
+      currentSession = null;
+    }
+    final currentData = currentSession != null && currentSession.exists
+        ? currentSession.data()
+        : null;
+    final currentSessionIsJoinable = currentData != null &&
+        _activeSessionIsJoinableParticipant(currentData, userId);
+    final currentCandidate = currentSessionIsJoinable
+        ? await _resolveActiveSessionCandidate(
+            candidates: [currentSession!],
+            userId: userId,
+            tokenMaxAttempts: _activeSessionCurrentTokenMaxAttempts,
+            tokenRetryDelay: _activeSessionCurrentTokenRetryDelay,
+            retryMissingMeetingToken: true,
+          )
+        : null;
+
+    _ActiveSessionRecoveryCandidate? selectedCandidate = currentCandidate;
+    if (selectedCandidate == null && currentSessionIsJoinable) {
+      return false;
+    }
+    if (selectedCandidate == null && currentSessionReadFailed) {
+      return false;
+    }
+    if (selectedCandidate == null) {
+      List<DocumentSnapshot<Map<String, dynamic>>> navigationSessions =
+          const [];
+      try {
+        navigationSessions =
+            await _readActiveNavigationSessionSnapshots(userId);
+      } catch (error) {
+        debugPrint(
+          'ActiveSessionRecovery: failed to read navigation sessions for $userId: $error',
+        );
+        navigationSessions = const [];
+      }
+      final sortedNavigationSessions =
+          _sortActiveNavigationSessions(navigationSessions);
+      final currentPath = currentSession?.reference.path;
+      selectedCandidate = await _resolveActiveSessionCandidate(
+        candidates: sortedNavigationSessions.where(
+          (doc) {
+            final data = doc.data();
+            return doc.reference.path != currentPath &&
+                data != null &&
+                (_activeSessionNavigationTriggerMatchesUser(data, userId) ||
+                    _activeSessionCanUseNeutralRecovery(data, userId));
+          },
+        ),
+        userId: userId,
+      );
+    }
+
+    if (selectedCandidate == null) {
+      return false;
+    }
+
+    return _navigateToActiveSessionCandidate(
+      context: context,
+      userId: userId,
+      selectedCandidate: selectedCandidate,
+    );
+  } catch (error) {
+    debugPrint(
+      'ActiveSessionRecovery: failed to recover active session for $userId: $error',
+    );
     return false;
   }
 }
