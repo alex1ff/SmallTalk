@@ -134,6 +134,9 @@ async function backfillConversationParticipantInfo({
           );
         }
       }
+      if (writer && pageWrites.length > 0) {
+        await writer.flush();
+      }
       await Promise.all(pageWrites);
 
       cursorId = conversations.at(-1).id;

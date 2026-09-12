@@ -14,7 +14,11 @@ function fakeBackfillDb({updateError = null} = {}) {
     data: () => ({participantIds: [`user-${id}`]}),
   }));
   const writes = [];
-  const state = {writerClosed: false};
+  const state = {flushCount: 0, writerClosed: false};
+  const pendingWrites = [];
+  const settlePendingWrites = () => {
+    for (const settle of pendingWrites.splice(0)) settle();
+  };
   const conversationQuery = (startAfterId = null, pageLimit = 50) => ({
     orderBy: () => conversationQuery(startAfterId, pageLimit),
     limit: (limit) => conversationQuery(startAfterId, limit),
@@ -44,12 +48,25 @@ function fakeBackfillDb({updateError = null} = {}) {
     },
     bulkWriter() {
       return {
-        async update(ref, update, precondition) {
-          if (updateError) throw updateError;
-          writes.push({ref, update, precondition});
+        update(ref, update, precondition) {
+          return new Promise((resolve, reject) => {
+            pendingWrites.push(() => {
+              if (updateError) {
+                reject(updateError);
+                return;
+              }
+              writes.push({ref, update, precondition});
+              resolve();
+            });
+          });
+        },
+        async flush() {
+          state.flushCount += 1;
+          settlePendingWrites();
         },
         async close() {
           state.writerClosed = true;
+          settlePendingWrites();
         },
       };
     },
@@ -89,10 +106,13 @@ test("participant identity backfill closes writer after a fatal write error",
   async () => {
     const db = fakeBackfillDb({updateError: new Error("fatal write")});
 
-    await assert.rejects(
-        backfillConversationParticipantInfo({db, apply: true}),
-        /fatal write/,
-    );
+    const run = backfillConversationParticipantInfo({db, apply: true});
+    const rejection = assert.rejects(run, /fatal write/);
+    await new Promise((resolve) => {
+      setImmediate(resolve);
+    });
+    assert.equal(db.state.flushCount, 1);
+    await rejection;
     assert.equal(db.state.writerClosed, true);
   });
 
@@ -131,13 +151,18 @@ test("participant identity backfill is bounded, resumable, and revision-safe",
     assert.equal(dryRunDb.writes.length, 0);
 
     const applyDb = fakeBackfillDb();
-    const secondRun = await backfillConversationParticipantInfo({
+    const secondRunFuture = backfillConversationParticipantInfo({
       db: applyDb,
       apply: true,
       pageSize: 1,
       maxPages: 2,
       startAfterId: firstRun.nextCursor,
     });
+    await new Promise((resolve) => {
+      setImmediate(resolve);
+    });
+    assert.equal(applyDb.state.flushCount, 1);
+    const secondRun = await secondRunFuture;
     assert.equal(secondRun.scanned, 1);
     assert.equal(secondRun.written, 1);
     assert.equal(secondRun.nextCursor, null);
