@@ -21,30 +21,29 @@ void main() {
   });
 
   group('EventDetailRepository', () {
-    test('default callable detail source refreshes and updates cache',
+    test('default callable detail source loads once and updates cache',
         () async {
       var calls = 0;
       final events = await EventDetailRepository.watchEventDetail(
         eventId: 'event-live',
         sessionCacheUserId: 'user-a',
-        callableRefreshInterval: Duration.zero,
         callableLoader: (eventRef) async {
           calls += 1;
           return EventsRecord.getDocumentFromData(
-            eventDetailData(title: calls == 1 ? 'Initial' : 'Updated'),
+            eventDetailData(title: 'Initial'),
             eventRef,
           );
         },
-      ).take(2).toList();
+      ).toList();
 
-      expect(events.map((event) => event?.title), ['Initial', 'Updated']);
-      expect(calls, 2);
+      expect(events.map((event) => event?.title), ['Initial']);
+      expect(calls, 1);
       expect(
         EventDetailRepository.cachedEventDetail(
           eventId: 'event-live',
           userId: 'user-a',
         )?.title,
-        'Updated',
+        'Initial',
       );
     });
 

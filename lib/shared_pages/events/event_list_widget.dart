@@ -2886,6 +2886,7 @@ class _EventListWidgetState extends State<EventListWidget> {
               _eventListPublicLocationLabel(event, selectedCity),
           participantsCount: event.participantsCount,
           capacity: event.capacity,
+          joinCtaState: _eventDetailJoinStateForListCard(event.joinCtaState),
         ),
       },
     );
@@ -4865,6 +4866,21 @@ EventListJoinCtaState _eventListJoinStateForRecord({
   }
   return EventListJoinCtaState.join;
 }
+
+EventDetailJoinCtaState _eventDetailJoinStateForListCard(
+  EventListJoinCtaState state,
+) =>
+    switch (state) {
+      EventListJoinCtaState.join => EventDetailJoinCtaState.join,
+      EventListJoinCtaState.joining => EventDetailJoinCtaState.joining,
+      EventListJoinCtaState.joined => EventDetailJoinCtaState.joined,
+      EventListJoinCtaState.leaving => EventDetailJoinCtaState.optimisticLeft,
+      EventListJoinCtaState.joinedLocked =>
+        EventDetailJoinCtaState.joinedLocked,
+      EventListJoinCtaState.full => EventDetailJoinCtaState.full,
+      EventListJoinCtaState.canceled => EventDetailJoinCtaState.canceled,
+      EventListJoinCtaState.past => EventDetailJoinCtaState.past,
+    };
 
 class _EventListEmptyState extends StatelessWidget {
   const _EventListEmptyState({

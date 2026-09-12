@@ -2037,39 +2037,31 @@ class _EventDetailPrimaryCtaState extends State<_EventDetailPrimaryCta> {
       EventDetailJoinCtaState.past =>
         false,
     };
-    final backgroundColor = enabled
-        ? switch (state) {
-            EventDetailJoinCtaState.join => ExpatlioDesign.primary,
-            EventDetailJoinCtaState.joining =>
-              ExpatlioDesign.secondarySystemBackground,
-            EventDetailJoinCtaState.optimisticJoined ||
-            EventDetailJoinCtaState.optimisticLeft =>
-              ExpatlioDesign.secondarySystemBackground,
-            EventDetailJoinCtaState.joined =>
-              _eventDetailDestructiveCtaBackground,
-            EventDetailJoinCtaState.joinedLocked =>
-              ExpatlioDesign.secondarySystemBackground,
-            EventDetailJoinCtaState.full ||
-            EventDetailJoinCtaState.canceled ||
-            EventDetailJoinCtaState.past =>
-              ExpatlioDesign.secondarySystemBackground,
-          }
-        : ExpatlioDesign.secondarySystemBackground;
-    final textColor = enabled
-        ? switch (state) {
-            EventDetailJoinCtaState.join => Colors.white,
-            EventDetailJoinCtaState.joining => ExpatlioDesign.muted,
-            EventDetailJoinCtaState.optimisticJoined ||
-            EventDetailJoinCtaState.optimisticLeft =>
-              ExpatlioDesign.muted,
-            EventDetailJoinCtaState.joined => Colors.white,
-            EventDetailJoinCtaState.joinedLocked => ExpatlioDesign.muted,
-            EventDetailJoinCtaState.full ||
-            EventDetailJoinCtaState.canceled ||
-            EventDetailJoinCtaState.past =>
-              ExpatlioDesign.muted,
-          }
-        : ExpatlioDesign.muted;
+    final backgroundColor = switch (state) {
+      EventDetailJoinCtaState.join => ExpatlioDesign.primary,
+      EventDetailJoinCtaState.joined => _eventDetailDestructiveCtaBackground,
+      EventDetailJoinCtaState.joining ||
+      EventDetailJoinCtaState.optimisticJoined ||
+      EventDetailJoinCtaState.optimisticLeft ||
+      EventDetailJoinCtaState.joinedLocked ||
+      EventDetailJoinCtaState.full ||
+      EventDetailJoinCtaState.canceled ||
+      EventDetailJoinCtaState.past =>
+        ExpatlioDesign.secondarySystemBackground,
+    };
+    final textColor = switch (state) {
+      EventDetailJoinCtaState.join ||
+      EventDetailJoinCtaState.joined =>
+        Colors.white,
+      EventDetailJoinCtaState.joining ||
+      EventDetailJoinCtaState.optimisticJoined ||
+      EventDetailJoinCtaState.optimisticLeft ||
+      EventDetailJoinCtaState.joinedLocked ||
+      EventDetailJoinCtaState.full ||
+      EventDetailJoinCtaState.canceled ||
+      EventDetailJoinCtaState.past =>
+        ExpatlioDesign.muted,
+    };
     final effectiveOnPressed = enabled
         ? state == EventDetailJoinCtaState.joined
             ? () {
@@ -2097,9 +2089,9 @@ class _EventDetailPrimaryCtaState extends State<_EventDetailPrimaryCta> {
               borderRadius: BorderRadius.circular(_eventDetailButtonRadius),
             ),
             backgroundColor: backgroundColor,
-            disabledBackgroundColor: _eventDetailControlFill,
+            disabledBackgroundColor: backgroundColor,
             foregroundColor: Colors.white,
-            disabledForegroundColor: ExpatlioDesign.muted,
+            disabledForegroundColor: textColor,
           ),
           child: state == EventDetailJoinCtaState.joining ||
                   state == EventDetailJoinCtaState.optimisticJoined ||

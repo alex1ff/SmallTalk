@@ -60,7 +60,7 @@ class EventDetailRepository {
     EventDetailSnapshotFlagReader? snapshotIsFromCache,
     EventDetailSnapshotFlagReader? snapshotHasPendingWrites,
     EventDetailCallableLoader? callableLoader,
-    Duration callableRefreshInterval = const Duration(seconds: 15),
+    Duration? callableRefreshInterval,
     Duration callableRetryInitialDelay = const Duration(seconds: 1),
     Duration callableRetryMaxDelay = const Duration(seconds: 30),
   }) {
@@ -146,7 +146,7 @@ class EventDetailRepository {
     required _EventDetailCacheKey? cacheKey,
     required int? cacheWatcherToken,
     required EventDetailCallableLoader loader,
-    required Duration refreshInterval,
+    required Duration? refreshInterval,
     required Duration retryInitialDelay,
     required Duration retryMaxDelay,
   }) {
@@ -211,6 +211,10 @@ class EventDetailRepository {
             lastEvent = event;
             retryAttempt = 0;
             controller.add(event);
+            if (refreshInterval == null) {
+              await controller.close();
+              return;
+            }
             await waitFor(_nonNegativeDuration(refreshInterval));
           } catch (error, stackTrace) {
             if (canceled || controller.isClosed) return;
@@ -407,6 +411,19 @@ class EventDetailRepository {
       }
       return EventParticipantsRecord.fromSnapshot(snapshot);
     });
+  }
+
+  static Future<EventParticipantsRecord?> loadCurrentUserParticipant({
+    required String eventId,
+    required String userId,
+  }) async {
+    final snapshot = await currentUserParticipantReference(
+      eventId: eventId,
+      userId: userId,
+    ).get();
+    return snapshot.exists
+        ? EventParticipantsRecord.fromSnapshot(snapshot)
+        : null;
   }
 
   static Stream<List<EventParticipantsRecord>> watchActiveParticipants({

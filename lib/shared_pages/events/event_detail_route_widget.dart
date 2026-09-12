@@ -434,6 +434,7 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
     EventDetailPublicPreview preview, {
     required bool hasRefreshError,
   }) {
+    final organizer = _eventDetailPreviewOrganizer(preview);
     final content = EventDetailWidget(
       eventId: _eventStreamDataKey.eventId,
       levelMin: preview.levelMin,
@@ -448,7 +449,9 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       startsAt: preview.startsAt,
       timeZoneId: preview.timeZoneId,
       locationName: preview.publicLocationLabel,
-      participants: const <EventDetailParticipantViewModel>[],
+      participants: organizer == null
+          ? const <EventDetailParticipantViewModel>[]
+          : <EventDetailParticipantViewModel>[organizer],
       participantsCount: preview.participantsCount,
       capacity: preview.capacity,
       joinCtaState: preview.joinCtaState,
@@ -469,6 +472,15 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       userId: _eventStreamDataKey.userId,
     );
     _eventStream = _watchEvent(sessionCacheUserId: sessionCacheUserId);
+  }
+
+  void _refreshEventDetailAfterEdit() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _configureEventStream(sessionCacheUserId: _sessionCacheUserId);
+    });
   }
 
   Stream<EventsRecord?> _watchEvent({required String sessionCacheUserId}) =>
@@ -502,12 +514,18 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
       _currentUserParticipantStreamEventId = eventId;
       _currentUserParticipantStreamUserId = userId;
       _currentUserParticipantStreamLoaderIdentity = loaderIdentity;
-      _currentUserParticipantStream =
-          EventDetailRepository.watchCurrentUserParticipant(
-        eventId: eventId,
-        userId: userId,
-        snapshotStream: widget.participantSnapshotStream,
-      );
+      _currentUserParticipantStream = widget.participantSnapshotStream == null
+          ? Stream<EventParticipantsRecord?>.fromFuture(
+              EventDetailRepository.loadCurrentUserParticipant(
+                eventId: eventId,
+                userId: userId,
+              ),
+            )
+          : EventDetailRepository.watchCurrentUserParticipant(
+              eventId: eventId,
+              userId: userId,
+              snapshotStream: widget.participantSnapshotStream,
+            );
     }
     return _currentUserParticipantStream;
   }
@@ -524,10 +542,16 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
         )) {
       _activeParticipantsStreamEventId = eventId;
       _activeParticipantsStreamLoaderIdentity = loaderIdentity;
-      _activeParticipantsStream = EventDetailRepository.watchActiveParticipants(
-        eventId: eventId,
-        participantsStream: widget.participantsStream,
-      );
+      _activeParticipantsStream = widget.participantsStream == null
+          ? Stream<List<EventParticipantsRecord>>.fromFuture(
+              EventDetailRepository.loadActiveParticipants(
+                eventRef: EventDetailRepository.eventReferenceForId(eventId),
+              ),
+            )
+          : EventDetailRepository.watchActiveParticipants(
+              eventId: eventId,
+              participantsStream: widget.participantsStream,
+            );
     }
     return _activeParticipantsStream!;
   }
@@ -1115,10 +1139,13 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
                 organizerPhotoUrl: event.organizerPhotoUrl,
                 startsAt: event.startsAt,
                 timeZoneId: event.timeZoneId,
-                locationName: '',
-                participants: const <EventDetailParticipantViewModel>[],
-                participantsCount: null,
-                capacity: null,
+                locationName: _eventDetailPublicLocationLabel(context, event),
+                participants: _eventDetailParticipantViewModelsForRoute(
+                  event: event,
+                  participants: const <EventParticipantsRecord>[],
+                ),
+                participantsCount: confirmedParticipantsCount,
+                capacity: event.hasCapacity() ? event.capacity : null,
                 joinCtaState:
                     pendingPreviewJoinCtaState ?? EventDetailJoinCtaState.join,
                 onPrimaryCtaPressed:
@@ -1234,11 +1261,16 @@ class _EventDetailRouteWidgetState extends State<EventDetailRouteWidget> {
                     onOrganizerEditPressed: _isCanceling
                         ? null
                         : () {
-                            context.pushNamed(
+                            final editNavigation = context.pushNamed(
                               EventEditWidget.routeName,
                               pathParameters: <String, String>{
                                 'eventId': eventId,
                               },
+                            );
+                            unawaited(
+                              editNavigation.whenComplete(
+                                _refreshEventDetailAfterEdit,
+                              ),
                             );
                           },
                     onOrganizerCancelPressed: _isCanceling || isCanceled
@@ -2041,6 +2073,34 @@ List<EventDetailParticipantViewModel>
     ),
     ...participantViewModels,
   ];
+}
+
+EventDetailParticipantViewModel? _eventDetailPreviewOrganizer(
+  EventDetailPublicPreview preview,
+) {
+  final displayName = preview.organizerDisplayName.trim();
+  final photoUrl = preview.organizerPhotoUrl?.trim() ?? '';
+  if (displayName.isEmpty && photoUrl.isEmpty) {
+    return null;
+  }
+  return EventDetailParticipantViewModel(
+    userId: 'preview-organizer:${preview.eventId}',
+    displayName: displayName,
+    photoUrl: photoUrl.isEmpty ? null : photoUrl,
+  );
+}
+
+String _eventDetailPublicLocationLabel(
+  BuildContext context,
+  EventsRecord event,
+) {
+  final isRu = FFLocalizations.of(context).languageCode == 'ru';
+  final cityName = (isRu ? event.cityNameRu : event.cityNameEn).trim();
+  final displayContext = event.cityDisplayContext.trim();
+  if (cityName.isEmpty) {
+    return displayContext;
+  }
+  return displayContext.isEmpty ? cityName : '$cityName, $displayContext';
 }
 
 String _eventDetailCanonicalParticipantUserId(
