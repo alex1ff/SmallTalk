@@ -6,7 +6,7 @@ const {
   buildConversationParticipantInfoBackfillUpdate,
 } = require("./scripts/backfill_conversation_participant_info");
 
-function fakeBackfillDb() {
+function fakeBackfillDb({updateError = null} = {}) {
   const conversations = ["a", "b", "c"].map((id) => ({
     id,
     ref: {id, path: `conversations/${id}`},
@@ -14,6 +14,7 @@ function fakeBackfillDb() {
     data: () => ({participantIds: [`user-${id}`]}),
   }));
   const writes = [];
+  const state = {writerClosed: false};
   const conversationQuery = (startAfterId = null, pageLimit = 50) => ({
     orderBy: () => conversationQuery(startAfterId, pageLimit),
     limit: (limit) => conversationQuery(startAfterId, limit),
@@ -28,8 +29,10 @@ function fakeBackfillDb() {
   });
   return {
     writes,
+    state,
     collection(name) {
       if (name === "conversations") return conversationQuery();
+      assert.equal(name, "userPublicProfiles");
       return {doc: (id) => ({id, path: `${name}/${id}`})};
     },
     async getAll(...refs) {
@@ -42,9 +45,12 @@ function fakeBackfillDb() {
     bulkWriter() {
       return {
         async update(ref, update, precondition) {
+          if (updateError) throw updateError;
           writes.push({ref, update, precondition});
         },
-        async close() {},
+        async close() {
+          state.writerClosed = true;
+        },
       };
     },
   };
@@ -78,6 +84,17 @@ test("participant identity backfill adds only missing public fields", () => {
   });
   assert.equal(Object.hasOwn(update, "updatedAt"), false);
 });
+
+test("participant identity backfill closes writer after a fatal write error",
+  async () => {
+    const db = fakeBackfillDb({updateError: new Error("fatal write")});
+
+    await assert.rejects(
+        backfillConversationParticipantInfo({db, apply: true}),
+        /fatal write/,
+    );
+    assert.equal(db.state.writerClosed, true);
+  });
 
 test("participant identity backfill is a no-op without missing fields", () => {
   assert.equal(

@@ -33,7 +33,7 @@ void main() {
       expect(source, isNot(contains('final partnerIdentityLoading')));
       expect(source, isNot(contains('_buildChatPartnerNamePlaceholder')));
       expect(source, isNot(contains('SpinKitCircle')));
-      expect(source, contains("ruText: 'Собеседник'"));
+      expect(source, isNot(contains("ruText: 'Собеседник'")));
       expect(source, isNot(contains("ruText: 'Пользователь'")));
       expect(source,
           isNot(contains('initialData: const _ConversationsLoadState()')));

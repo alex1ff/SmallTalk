@@ -189,7 +189,7 @@ async function executeOpenEventOrganizerChatTransaction({
     const publicProfileSnaps = [];
     for (const participantId of participantIds) {
       publicProfileSnaps.push(await transaction.get(
-          db.collection("user_public_profiles").doc(participantId),
+          db.collection("userPublicProfiles").doc(participantId),
       ));
     }
     const participantInfos = Object.fromEntries(

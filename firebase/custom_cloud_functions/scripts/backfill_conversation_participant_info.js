@@ -78,67 +78,70 @@ async function backfillConversationParticipantInfo({
   let hasMore = false;
   const writer = apply ? db.bulkWriter() : null;
 
-  while (pages < maxPages) {
-    let query = db.collection("conversations")
-      .orderBy(FieldPath.documentId())
-      .limit(pageSize + 1);
-    if (cursorId) query = query.startAfter(cursorId);
-    const page = await query.get();
-    if (page.empty) break;
-    pages += 1;
-    const conversations = page.docs.slice(0, pageSize);
-    hasMore = page.docs.length > pageSize;
+  try {
+    while (pages < maxPages) {
+      let query = db.collection("conversations")
+        .orderBy(FieldPath.documentId())
+        .limit(pageSize + 1);
+      if (cursorId) query = query.startAfter(cursorId);
+      const page = await query.get();
+      if (page.empty) break;
+      pages += 1;
+      const conversations = page.docs.slice(0, pageSize);
+      hasMore = page.docs.length > pageSize;
 
-    const userIds = new Set();
-    for (const conversation of conversations) {
-      for (const uid of conversation.data().participantIds || []) {
-        if (typeof uid === "string" && uid.trim()) userIds.add(uid.trim());
+      const userIds = new Set();
+      for (const conversation of conversations) {
+        for (const uid of conversation.data().participantIds || []) {
+          if (typeof uid === "string" && uid.trim()) userIds.add(uid.trim());
+        }
       }
-    }
-    const profileRefs = [...userIds].map((uid) =>
-      db.collection("user_public_profiles").doc(uid),
-    );
-    const profileSnaps = profileRefs.length ? await db.getAll(...profileRefs) : [];
-    const profilesByUserId = Object.fromEntries(
-      profileSnaps
-        .filter((snapshot) => snapshot.exists)
-        .map((snapshot) => [snapshot.id, snapshot.data() || {}]),
-    );
-    const pageWrites = [];
-
-    for (const conversation of conversations) {
-      scanned += 1;
-      const update = buildConversationParticipantInfoBackfillUpdate(
-        conversation.data(),
-        profilesByUserId,
+      const profileRefs = [...userIds].map((uid) =>
+        db.collection("userPublicProfiles").doc(uid),
       );
-      if (!update) continue;
-      eligible += 1;
-      if (writer) {
-        pageWrites.push(
-          writer.update(
-            conversation.ref,
-            update,
-            {lastUpdateTime: conversation.updateTime},
-          ).then(() => {
-            written += 1;
-          }).catch((error) => {
-            if (error?.code === 9 || error?.code === "failed-precondition") {
-              conflicts += 1;
-              return;
-            }
-            throw error;
-          }),
+      const profileSnaps = profileRefs.length ?
+        await db.getAll(...profileRefs) : [];
+      const profilesByUserId = Object.fromEntries(
+        profileSnaps
+          .filter((snapshot) => snapshot.exists)
+          .map((snapshot) => [snapshot.id, snapshot.data() || {}]),
+      );
+      const pageWrites = [];
+
+      for (const conversation of conversations) {
+        scanned += 1;
+        const update = buildConversationParticipantInfoBackfillUpdate(
+          conversation.data(),
+          profilesByUserId,
         );
+        if (!update) continue;
+        eligible += 1;
+        if (writer) {
+          pageWrites.push(
+            writer.update(
+              conversation.ref,
+              update,
+              {lastUpdateTime: conversation.updateTime},
+            ).then(() => {
+              written += 1;
+            }).catch((error) => {
+              if (error?.code === 9 || error?.code === "failed-precondition") {
+                conflicts += 1;
+                return;
+              }
+              throw error;
+            }),
+          );
+        }
       }
+      await Promise.all(pageWrites);
+
+      cursorId = conversations.at(-1).id;
+      if (!hasMore) break;
     }
-    await Promise.all(pageWrites);
-
-    cursorId = conversations.at(-1).id;
-    if (!hasMore) break;
+  } finally {
+    if (writer) await writer.close();
   }
-
-  if (writer) await writer.close();
   return {
     apply,
     scanned,

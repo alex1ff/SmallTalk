@@ -998,13 +998,6 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
     }
   }
 
-  String _fallbackPartnerDisplayName(BuildContext context) {
-    return FFLocalizations.of(context).getVariableText(
-      ruText: 'Собеседник',
-      enText: 'Conversation partner',
-    );
-  }
-
   String _publicProfilePhotoUrl(UserPublicProfilesRecord? profile) =>
       profile?.photoUrl.trim() ?? '';
 
@@ -1965,9 +1958,6 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
             partnerRef,
             partner,
           );
-          final visiblePartnerDisplayName = partnerDisplayName.isNotEmpty
-              ? partnerDisplayName
-              : _fallbackPartnerDisplayName(context);
           final unread = conversationIsUnreadForUser(conversation, currentUid);
           final subtitle =
               _conversationSubtitle(context, conversation, currentUid);
@@ -2024,11 +2014,12 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                                 )
                               : null,
                         ),
-                        child: partnerPhotoUrl.isEmpty
+                        child: partnerPhotoUrl.isEmpty &&
+                                partnerDisplayName.isNotEmpty
                             ? Center(
                                 child: Text(
                                   ExpatlioDesign.avatarInitial(
-                                      visiblePartnerDisplayName),
+                                      partnerDisplayName),
                                   style: ExpatlioDesign.textStyle(
                                     context,
                                     color: ExpatlioDesign.avatarFallbackText,
@@ -2058,7 +2049,7 @@ class _FavoriteWidgetState extends State<FavoriteWidget> {
                                       children: [
                                         Flexible(
                                           child: Text(
-                                            visiblePartnerDisplayName,
+                                            partnerDisplayName,
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                             style: ExpatlioDesign.textStyle(

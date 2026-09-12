@@ -138,12 +138,12 @@ test("executeOpenEventOrganizerChatTransaction creates unlocked conversation",
     async () => {
       const {db, reads, store, writes} = createFakeFirestore({
         "events/event-1": activeEvent(),
-        "user_public_profiles/organizer-1": {
+        "userPublicProfiles/organizer-1": {
           display_name: "Organizer",
           photo_url: "https://img/organizer",
           email: "must-not-copy@example.com",
         },
-        "user_public_profiles/student-1": {
+        "userPublicProfiles/student-1": {
           display_name: "Student",
           photo_url: null,
         },
@@ -158,8 +158,8 @@ test("executeOpenEventOrganizerChatTransaction creates unlocked conversation",
       assert.deepEqual(reads, [
         "events/event-1",
         "conversations/organizer-1_student-1",
-        "user_public_profiles/organizer-1",
-        "user_public_profiles/student-1",
+        "userPublicProfiles/organizer-1",
+        "userPublicProfiles/student-1",
       ]);
       assert.equal(result.conversationId, "organizer-1_student-1");
       assert.equal(
@@ -209,11 +209,11 @@ test("executeOpenEventOrganizerChatTransaction reuses unlocked conversation",
       const {db, store, writes} = createFakeFirestore({
         "events/event-1": activeEvent(),
         "conversations/organizer-1_student-1": existingConversation,
-        "user_public_profiles/organizer-1": {
+        "userPublicProfiles/organizer-1": {
           display_name: "Current organizer",
           photo_url: null,
         },
-        "user_public_profiles/student-1": {
+        "userPublicProfiles/student-1": {
           display_name: "Student",
           photo_url: "https://img/student",
         },

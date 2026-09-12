@@ -3703,6 +3703,12 @@ void main() {
       id: 'profile-row',
       ownerUid: 'user-a',
       partnerUid: 'friend-profile',
+      participantInfoByUserId: <String, dynamic>{
+        'friend-profile': <String, dynamic>{
+          'displayName': 'Profile friend',
+          'photoUrl': null,
+        },
+      },
     );
     await _mount(
       tester,
@@ -3731,6 +3737,7 @@ void main() {
 
     final row = _conversationRow('profile-row');
     expect(tester.getSize(row).height, favoriteChatRowHeight());
+    expect(find.text('Profile friend'), findsOneWidget);
 
     profileCompleter.complete(
       UserPublicProfilesRecord.getDocumentFromData(
@@ -3870,6 +3877,6 @@ void main() {
     final row = _conversationRow('profile-error-row');
     expect(row, findsOneWidget);
     expect(tester.getSize(row).height, favoriteChatRowHeight());
-    expect(find.text('Собеседник'), findsOneWidget);
+    expect(find.text('Собеседник'), findsNothing);
   });
 }
