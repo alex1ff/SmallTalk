@@ -56,9 +56,9 @@ Production snapshot 10.09.2026: 27 событий, 3 будущих, 24 прош
   manifest, performance budget и critical-flow matrix — пройдены.
 - После gate выполнен production deploy в `smalltalk-2109b`: rules, indexes,
   hosting и весь `custom_cloud_functions` codebase опубликованы успешно.
-- Production backfill старых conversation snapshots не выполнен: dry-run
-  безопасно остановился из-за отсутствия локальных Application Default
-  Credentials; ни одной production-записи не изменено.
+- Production backfill старых conversation snapshots проверен после настройки
+  Application Default Credentials: dry-run просканировал 12 диалогов и нашёл
+  `eligible: 0`. `--apply` не требовался, production-записи не изменялись.
 
 Перед gate исправлены три устаревших source-contract test: проверка меню поддержки
 теперь различает удалённый компонент и актуальный layout delegate, а чатовые тесты

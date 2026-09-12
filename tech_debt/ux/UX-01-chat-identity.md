@@ -1,7 +1,7 @@
 # UX-01 · Устранить смену имени и аватара в списке чатов
 
-- Статус: CODE DONE — код и review loop готовы; backend deploy выполнен,
-  production backfill ожидает окружение с Application Default Credentials.
+- Статус: CODE DONE — код, backend deploy и dry-run backfill готовы;
+  обязательная device QA остаётся за пользователем.
 - Приоритет: P1.
 - Зависимости: нет обязательных.
 - Основание: исследование от 09–10.09.2026, код `e783d6f`.
@@ -49,8 +49,8 @@
 ## Порядок завершения
 
 - [x] Подтверждена причина или зафиксировано исходное поведение.
-- [x] Кодовый объём выполнен; backend deploy завершён, production backfill
-  остаётся отдельным операционным шагом.
+- [x] Кодовый объём выполнен; backend deploy завершён, dry-run backfill не
+  нашёл подходящих legacy-диалогов.
 - [x] Пройдены относящиеся к изменению проверки по [общим правилам](README.md).
 - [x] Review loop завершён, actionable findings устранены.
 - [x] Ниже записаны изменения, проверки и оставшиеся ограничения.
@@ -85,7 +85,9 @@
 - Backend deploy выполнен 12.09.2026 в Firebase project `smalltalk-2109b`:
   rules, indexes, hosting и весь `custom_cloud_functions` codebase опубликованы
   успешно (Firebase CLI 15.30.0). Hosting: `https://smalltalk-2109b.web.app`.
-- Backfill dry-run запускался с `GCLOUD_PROJECT=smalltalk-2109b`, но остановился
-  до чтения Firestore: локально отсутствуют Google Application Default
-  Credentials. Запись не выполнялась; `--apply` намеренно не запускался.
+- После настройки Google Application Default Credentials dry-run backfill
+  выполнен 12.09.2026: `scanned: 12`, `eligible: 0`, `written: 0`,
+  `conflicts: 0`, `pages: 1`, `nextCursor: null`. Все существующие диалоги
+  уже содержат нужные snapshot-поля либо не требуют обновления. `--apply`
+  намеренно не запускался: записывать нечего.
 - Commit/push выполнены в `5c3def9`; device QA пока не выполнялся.
