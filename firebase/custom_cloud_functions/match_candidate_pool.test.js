@@ -314,28 +314,29 @@ test("active student candidates come only from fresh active search requests", ()
       appState: "background",
       backgroundExpiresAt: timestampFromMillis(fixedNowMillis - 1),
     }), fixedNowMillis),
-    {valid: false, reason: "not_foreground"},
+    {valid: false, reason: "background_expired"},
   );
   assert.deepEqual(
     validateActiveStudentSearchRequest(activeRequest({
       appState: "background",
       backgroundExpiresAt: null,
     }), fixedNowMillis),
-    {valid: false, reason: "not_foreground"},
+    {valid: false, reason: "background_expired"},
   );
   assert.deepEqual(
     validateActiveStudentSearchRequest(activeRequest({
       appState: "background",
       backgroundExpiresAt: "not-a-date",
     }), fixedNowMillis),
-    {valid: false, reason: "not_foreground"},
+    {valid: false, reason: "background_expired"},
   );
   assert.equal(
     isActiveStudentSearchRequest(activeRequest({
       appState: "background",
+      matchProtocolVersion: 2,
       backgroundExpiresAt: timestampFromMillis(fixedNowMillis + 1),
     }), fixedNowMillis),
-    false,
+    true,
   );
   assert.equal(
     isActiveStudentSearchRequest(activeRequest({

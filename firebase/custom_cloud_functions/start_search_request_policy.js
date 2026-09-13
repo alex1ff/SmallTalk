@@ -289,20 +289,23 @@ function buildStartSearchRequestData({
       ) :
       null;
 
-  return buildInitialSearchRequestData({
-    userId,
-    userRef,
-    requestId,
-    role: "student",
-    language: resolvedLanguage.code,
-    filters: buildStartSearchFilters({input}),
-    appState: input.appState,
-    platform: input.platform,
-    serverTimestamp,
-    expiresAt,
-    backgroundExpiresAt,
-    matchProtocolVersion: input.matchProtocolVersion,
-  });
+  return {
+    ...buildInitialSearchRequestData({
+      userId,
+      userRef,
+      requestId,
+      role: "student",
+      language: resolvedLanguage.code,
+      filters: buildStartSearchFilters({input}),
+      appState: input.appState,
+      platform: input.platform,
+      serverTimestamp,
+      expiresAt,
+      backgroundExpiresAt,
+      matchProtocolVersion: input.matchProtocolVersion,
+    }),
+    locale: input.locale === "en" ? "en" : "ru",
+  };
 }
 
 function buildReusedSearchRequestRefresh({
@@ -325,6 +328,7 @@ function buildReusedSearchRequestRefresh({
       null;
   const refresh = {
     ...requestData,
+    locale: input.locale === "en" ? "en" : "ru",
     [SEARCH_REQUEST_FIELD.APP_STATE]: input.appState,
     [SEARCH_REQUEST_FIELD.APP_STATE_UPDATED_AT]: serverTimestamp,
     [SEARCH_REQUEST_FIELD.PLATFORM]: input.platform,

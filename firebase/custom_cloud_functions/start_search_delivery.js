@@ -56,16 +56,15 @@ function waitForForegroundStudentResponderResolution(options = {}) {
 async function routeProtocolV2InitialMatch({
   db,
   lockResult = {},
-  requesterId = "",
   responderRole = "student",
   studentPushSender = sendVoipPushToStudentResponder,
   teacherPushSender = sendVoipPushToStudentResponder,
   studentPreDispatchWait = waitForForegroundStudentResponderResolution,
 }) {
   const isTeacherMatch = normalizeRole(responderRole) === "native_speaker";
-  const participantIds = isTeacherMatch ?
-    [normalizeString(lockResult.responderId)] :
-    [normalizeString(requesterId), normalizeString(lockResult.responderId)];
+  // The requester is already in the app and can claim after startSearch
+  // returns. Initial delivery is only for the participant that was waiting.
+  const participantIds = [normalizeString(lockResult.responderId)];
   const results = await Promise.all(participantIds.filter(Boolean).map(
     async (participantId) => {
       try {

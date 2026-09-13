@@ -55,7 +55,8 @@ function syntheticPassiveSearch(queue, nowMillis, timestampFromMillis) {
 }
 function compatiblePair({activeId, active, activeUser, activeTrial,
   passiveId, passive, passiveUser, passiveTrial, nowMillis}) {
-  if (active.passiveBroadcastReady !== true || activeId === passiveId || !isWaiting(passive, nowMillis) ||
+  if (active.passiveBroadcastReady !== true || active.appState !== "foreground" ||
+      activeId === passiveId || !isWaiting(passive, nowMillis) ||
       passive.userId !== passiveId || active.userId !== activeId ||
       Number(active.matchProtocolVersion) < 2 ||
       activeUser.currentSessionId || passiveUser.currentSessionId) return false;
@@ -97,25 +98,33 @@ function buildPartnerAvailableMessage({token, recipientId, passive,
     activeUser.name;
   const nameRu = String(providedName || "Собеседник").slice(0, 80);
   const nameEn = String(providedName || "A partner").slice(0, 80);
-  const cityValue = activeUser.profileCity?.label || activeUser.profileCity?.name ||
+  const cityRuValue = activeUser.profileCity?.cityNameRu ||
+    activeUser.profileCity?.label || activeUser.profileCity?.name ||
     activeUser.cityName || activeUser.city ||
     activeUser.location?.cityName || activeUser.location?.city;
-  const city = typeof cityValue === "string" ? cityValue.trim().slice(0, 80) : "";
-  const whoRu = city ? `${nameRu} из ${city}` : nameRu;
-  const whoEn = city ? `${nameEn} from ${city}` : nameEn;
+  const cityEnValue = activeUser.profileCity?.cityNameEn ||
+    activeUser.profileCity?.label || activeUser.profileCity?.name ||
+    activeUser.cityName || activeUser.city ||
+    activeUser.location?.cityName || activeUser.location?.city;
+  const cityRu = typeof cityRuValue === "string" ?
+    cityRuValue.trim().slice(0, 80) : "";
+  const cityEn = typeof cityEnValue === "string" ?
+    cityEnValue.trim().slice(0, 80) : "";
+  const whoRu = cityRu ? `${nameRu} из ${cityRu}` : nameRu;
+  const whoEn = cityEn ? `${nameEn} from ${cityEn}` : nameEn;
   const localizedWho = ru ? whoRu : whoEn;
   return {
     token,
     notification: {
       title: ru ? "Собеседник найден" : "A partner is available",
-      body: ru ? `${localizedWho} ждет собеседника. Подключитесь прямо сейчас` :
-        `${localizedWho} is waiting for a partner. Connect now`,
+      body: ru ? `${localizedWho} ждёт собеседника. Подключитесь прямо сейчас.` :
+        `${localizedWho} is waiting for a partner. Connect now.`,
     },
     data: {type: "partner_available", recipientId,
       requestId: passive.requestId, activeUserId,
       activeRequestId: active.requestId, expiresAt: new Date(expiry).toISOString(),
-      bodyRu: `${whoRu} ждет собеседника. Подключитесь прямо сейчас`,
-      bodyEn: `${whoEn} is waiting for a partner. Connect now`},
+      bodyRu: `${whoRu} ждёт собеседника. Подключитесь прямо сейчас.`,
+      bodyEn: `${whoEn} is waiting for a partner. Connect now.`},
     android: {ttl: Math.max(0, expiry - nowMillis),
       collapseKey: operationId(recipientId, passive.requestId)},
     apns: {headers: {"apns-push-type": "alert", "apns-priority": "10",

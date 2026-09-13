@@ -233,18 +233,65 @@ test("in-flight dispatch keeps durable stage until its lease can be reclaimed", 
   assert.equal(reclaimed.dispatchId, "dispatch-recovered");
 });
 
-test("students never dispatch native calls during recovery", async () => {
+test("students receive ordinary alerts without native call records", async () => {
   const session = v2Session();
   const {db, store} = createFakeFirestore(seedForSession(session));
+  const pushes = [];
   for (const participantId of session.participantIds) {
     const result = await routeProtocolV2Participant({db, sessionId: "session-a",
       pairAttemptId: "pair-a", participantId,
-      pushSender: async () => {throw new Error("student native dispatch forbidden");},
+      pushSender: async (recipientId, callData) => {
+        pushes.push({recipientId, callData});
+        return {sent: true, channel: "fcm_alert"};
+      },
     });
-    assert.equal(result.reason, "student_native_disabled");
-    assert.equal(result.shouldNotify, false);
+    assert.equal(result.shouldNotify, true);
+    assert.equal(result.deliveryKind, "student_alert");
+    assert.equal(result.pushResult.channel, "fcm_alert");
+    const state = store.get("videoSessions/session-a")
+      .participantStates[participantId];
+    assert.equal(state.surface, MATCH_SURFACE.PENDING);
+    assert.equal(state.delivery, MATCH_DELIVERY.SENT);
   }
+  assert.equal(pushes.length, 2);
+  assert.ok(pushes.every(({callData}) =>
+    callData.surface === "notification" && !callData.callKitId));
   assert.equal([...store.keys()].some((key) => key.startsWith("notifications/")), false);
+});
+
+test("initial student match alerts only the waiting participant", async () => {
+  const session = v2Session();
+  session.matchStage = "awaiting_initial_dispatch";
+  const {db, store} = createFakeFirestore(seedForSession(session));
+  const pushedParticipants = [];
+  const result = await routeProtocolV2InitialMatch({
+    db,
+    lockResult: {
+      sessionId: "session-a",
+      pairAttemptId: "pair-a",
+      responderId: "student-b",
+    },
+    requesterId: "student-a",
+    responderRole: "student",
+    studentPreDispatchWait: async () => {},
+    studentPushSender: async (participantId) => {
+      pushedParticipants.push(participantId);
+      return {sent: true, channel: "fcm_alert"};
+    },
+  });
+
+  assert.equal(result.failedResult, null);
+  assert.deepEqual(pushedParticipants, ["student-b"]);
+  const updated = store.get("videoSessions/session-a");
+  assert.equal(updated.matchStage, "awaiting_acceptance");
+  assert.equal(
+    updated.participantStates["student-a"].delivery,
+    MATCH_DELIVERY.PENDING,
+  );
+  assert.equal(
+    updated.participantStates["student-b"].delivery,
+    MATCH_DELIVERY.SENT,
+  );
 });
 
 test("missing FCM fallback after ambiguous APNs failure stays unknown", () => {
@@ -373,6 +420,32 @@ test("foreground wait exits as soon as app moves to background", async () => {
 
   assert.equal(result.reason, "participant_left_foreground");
   assert.equal(sleeps, 1);
+});
+
+test("foreground timeout stays in app and does not send a student alert", async () => {
+  const session = v2Session();
+  const {db, store} = createFakeFirestore(seedForSession(session));
+  let pushCount = 0;
+  const result = await routeProtocolV2Participant({
+    db,
+    sessionId: "session-a",
+    pairAttemptId: "pair-a",
+    participantId: "student-a",
+    preDispatchWait: async () => ({reason: "foreground_claim_timeout"}),
+    pushSender: async () => {
+      pushCount += 1;
+      return {sent: true};
+    },
+  });
+
+  assert.equal(result.reason, "foreground_client_expected");
+  assert.equal(result.shouldNotify, false);
+  assert.equal(pushCount, 0);
+  assert.equal(
+    store.get("videoSessions/session-a").participantStates["student-a"]
+      .delivery,
+    MATCH_DELIVERY.PENDING,
+  );
 });
 
 test("cancel during deferred push cannot resurrect notification", async () => {
@@ -573,7 +646,7 @@ test("CallKit timeout accepts small client/server clock skew", () => {
   }), false);
 });
 
-test("teacher accepts while student continues exclusively in app", async () => {
+test("teacher accept sends student an ordinary alert without CallKit", async () => {
   const session = v2Session({scenario: "student_teacher"});
   session.participantStates["teacher-a"] = {
     ...session.participantStates["teacher-a"],
@@ -596,7 +669,7 @@ test("teacher accepts while student continues exclusively in app", async () => {
     },
   });
   assert.equal(response.status, "pending_confirmation");
-  assert.deepEqual(pushedParticipants, []);
+  assert.deepEqual(pushedParticipants, ["student-a"]);
   const updated = store.get("videoSessions/session-a");
   assert.equal(updated.matchStage, "awaiting_acceptance");
   assert.equal(
@@ -605,7 +678,11 @@ test("teacher accepts while student continues exclusively in app", async () => {
   );
   assert.equal(
     updated.participantStates["student-a"].delivery,
-    MATCH_DELIVERY.PENDING,
+    MATCH_DELIVERY.SENT,
+  );
+  assert.equal(
+    updated.participantStates["student-a"].surface,
+    MATCH_SURFACE.PENDING,
   );
 });
 

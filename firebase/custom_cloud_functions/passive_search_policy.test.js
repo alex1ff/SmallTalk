@@ -37,8 +37,8 @@ test("ordinary notification+data contains exact consent and no native call paylo
   assert.match(message.notification.body, /Маша из New York/);
   assert.deepEqual(message.data, {type: "partner_available", recipientId: "a", requestId: "p",
     activeUserId: "b", activeRequestId: "s", expiresAt: "2026-09-05T12:02:00.000Z",
-    bodyRu: "Маша из New York ждет собеседника. Подключитесь прямо сейчас",
-    bodyEn: "Маша from New York is waiting for a partner. Connect now"});
+    bodyRu: "Маша из New York ждёт собеседника. Подключитесь прямо сейчас.",
+    bodyEn: "Маша from New York is waiting for a partner. Connect now."});
   assert.equal(message.apns.headers["apns-push-type"], "alert");
   assert.equal(message.android.ttl, 120000);
   assert.equal(message.android.notification, undefined);

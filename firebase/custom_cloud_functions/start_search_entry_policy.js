@@ -77,6 +77,9 @@ function normalizeStartSearchInput(data) {
   return {
     requestId,
     language: normalizeString(payload.language || payload.languageCode),
+    locale: normalizeString(payload.locale).toLowerCase() === "en" ?
+      "en" :
+      "ru",
     preferredPartnerLevel: normalizeString(
         payload.preferredPartnerLevel ||
         payload.preferredLevel ||

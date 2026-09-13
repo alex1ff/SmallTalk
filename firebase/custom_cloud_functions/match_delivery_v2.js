@@ -2,6 +2,7 @@ const crypto = require("node:crypto");
 const admin = require("firebase-admin");
 const {
   buildCallKitIdForMatchParticipant,
+  buildIncomingCallPayloadMetadata,
   createIncomingCallNotificationInTransaction,
 } = require("./call_notifications");
 const {
@@ -100,7 +101,8 @@ function buildProtocolV2CallData({sessionId = "", pushPayload = {}} = {}) {
     tokenStrategy: "accept_call",
     matchProtocolVersion: "2",
     pairAttemptId: normalizeString(pushPayload.pairAttemptId),
-    surface: "callkit",
+    surface: normalizeString(pushPayload.surface) || "callkit",
+    locale: normalizeString(pushPayload.locale) || "ru",
   };
 }
 
@@ -332,10 +334,6 @@ async function claimProtocolV2CallKitDispatch({
       sessionData.participantStates?.[normalizedParticipantId],
       sessionData.participantRoles?.[normalizedParticipantId],
     );
-    if (currentState.role !== "native_speaker") {
-      return {shouldNotify: false, reason: "student_native_disabled",
-        participantState: currentState};
-    }
     const responseExpiresAtMillis = timestampToMillis(
       sessionData.responseExpiresAt || sessionData.confirmationExpiresAt,
     );
@@ -348,6 +346,81 @@ async function claimProtocolV2CallKitDispatch({
         reason: "response_window_closed",
         participantState: currentState,
       };
+    }
+    if (currentState.role === "student") {
+      const dispatchLeaseExpired =
+        currentState.delivery === MATCH_DELIVERY.DISPATCHING &&
+        (timestampToMillis(currentState.dispatchExpiresAt) || 0) <= nowMillis;
+      if (currentState.decision !== MATCH_DECISION.PENDING) {
+        return {shouldNotify: false, reason: "decision_locked",
+          participantState: currentState};
+      }
+      if (currentState.surface !== MATCH_SURFACE.PENDING) {
+        return {shouldNotify: false, reason: "surface_locked",
+          participantState: currentState};
+      }
+      if (currentState.delivery === MATCH_DELIVERY.SENT) {
+        return {shouldNotify: false, reason: "alert_already_sent",
+          participantState: currentState};
+      }
+      if (currentState.delivery === MATCH_DELIVERY.DISPATCHING &&
+          !dispatchLeaseExpired) {
+        return {shouldNotify: false, reason: "dispatch_in_progress",
+          participantState: currentState};
+      }
+      const serverTimestamp = admin.firestore.FieldValue.serverTimestamp();
+      const nextState = {
+        ...currentState,
+        surface: MATCH_SURFACE.PENDING,
+        delivery: MATCH_DELIVERY.DISPATCHING,
+        dispatchId,
+        dispatchExpiresAt: admin.firestore.Timestamp.fromMillis(
+            nowMillis + CALLKIT_DISPATCH_LEASE_MS,
+        ),
+        deliveryFailureKind: null,
+        updatedAt: serverTimestamp,
+      };
+      const participantStates = {
+        ...sessionData.participantStates,
+        [normalizedParticipantId]: nextState,
+      };
+      const callerInfo = buildParticipantCallerInfo(
+          sessionData,
+          normalizedParticipantId,
+      );
+      const payloadMetadata = buildIncomingCallPayloadMetadata({
+        recipientId: normalizedParticipantId,
+        sessionId: normalizedSessionId,
+        sessionData: {...sessionData, participantStates},
+      });
+      transaction.update(sessionRef, {
+        participantStates,
+        updatedAt: serverTimestamp,
+      });
+      return {
+        shouldNotify: true,
+        reason: dispatchLeaseExpired ?
+          "dispatch_lease_reclaimed" :
+          "dispatch_claimed",
+        dispatchId,
+        notificationId: "",
+        deliveryKind: "student_alert",
+        participantState: nextState,
+        pushPayload: {
+          ...payloadMetadata,
+          type: "student_match_available",
+          studentId: callerInfo.participantId,
+          studentName: callerInfo.name,
+          studentPhoto: callerInfo.photo,
+          callKitId: "",
+          notificationId: "",
+          surface: "notification",
+        },
+      };
+    }
+    if (currentState.role !== "native_speaker") {
+      return {shouldNotify: false, reason: "unsupported_participant_role",
+        participantState: currentState};
     }
     const dispatchLeaseExpired =
       currentState.delivery === MATCH_DELIVERY.DISPATCHING &&
@@ -499,34 +572,94 @@ async function finalizeProtocolV2CallKitDispatch({
 }) {
   return db.runTransaction(async (transaction) => {
     const sessionRef = db.collection("videoSessions").doc(sessionId);
-    const notificationRef = db.collection("notifications").doc(notificationId);
-    const [sessionSnap, notificationSnap] = await Promise.all([
-      transaction.get(sessionRef),
-      transaction.get(notificationRef),
-    ]);
-    if (!sessionSnap.exists || !notificationSnap.exists) {
-      return {updated: false, reason: "session_or_notification_missing"};
+    const sessionSnap = await transaction.get(sessionRef);
+    if (!sessionSnap.exists) {
+      return {updated: false, reason: "session_missing"};
     }
     const sessionData = sessionSnap.data() || {};
-    const notificationData = notificationSnap.data() || {};
+    const currentState = normalizeParticipantState(
+      sessionData.participantStates?.[participantId],
+      sessionData.participantRoles?.[participantId],
+    );
     if (
       Number(sessionData.matchProtocolVersion) !== MATCH_PROTOCOL_VERSION ||
-      normalizeString(sessionData.pairAttemptId) !== pairAttemptId ||
+      normalizeString(sessionData.pairAttemptId) !== pairAttemptId
+    ) {
+      return {
+        updated: false,
+        reason: "dispatch_stale",
+        needsCancellation: pushResult?.sent === true &&
+          currentState.role === "native_speaker",
+      };
+    }
+
+    const sent = pushResult?.sent === true;
+    const serverTimestamp = admin.firestore.FieldValue.serverTimestamp();
+    if (currentState.role === "student") {
+      if (
+        currentState.surface === MATCH_SURFACE.IN_APP &&
+        currentState.decision === MATCH_DECISION.ACCEPTED
+      ) {
+        return {
+          updated: false,
+          reason: "accepted_before_finalization",
+          participantState: currentState,
+          needsCancellation: false,
+        };
+      }
+      if (!ROUTABLE_SESSION_STATUSES.has(sessionData.status)) {
+        return {
+          updated: false,
+          reason: "session_not_pending",
+          participantState: currentState,
+          needsCancellation: false,
+        };
+      }
+      const transition = finalizeCallKitDelivery({
+        state: currentState,
+        dispatchId,
+        sent,
+        failureKind: isDefinitiveDeliveryFailure(pushResult) ?
+          "definitive" :
+          "unknown",
+        updatedAt: serverTimestamp,
+      });
+      if (!transition.changed) {
+        return {updated: false, reason: transition.reason,
+          participantState: transition.state};
+      }
+      const participantStates = {
+        ...sessionData.participantStates,
+        [participantId]: transition.state,
+      };
+      transaction.update(sessionRef, {
+        participantStates,
+        updatedAt: serverTimestamp,
+      });
+      return {
+        updated: true,
+        reason: transition.reason,
+        participantState: transition.state,
+        needsCancellation: false,
+      };
+    }
+
+    const notificationRef = db.collection("notifications").doc(notificationId);
+    const notificationSnap = await transaction.get(notificationRef);
+    if (!notificationSnap.exists) {
+      return {updated: false, reason: "notification_missing"};
+    }
+    const notificationData = notificationSnap.data() || {};
+    if (
       normalizeString(notificationData.pairAttemptId) !== pairAttemptId ||
       normalizeString(notificationData.recipientId) !== participantId
     ) {
       return {
         updated: false,
         reason: "dispatch_stale",
-        needsCancellation: pushResult?.sent === true,
+        needsCancellation: sent,
       };
     }
-
-    const sent = pushResult?.sent === true;
-    const serverTimestamp = admin.firestore.FieldValue.serverTimestamp();
-    const currentState = normalizeParticipantState(
-      sessionData.participantStates?.[participantId],
-    );
     const acceptedBeforeFinalization =
       notificationData.status === "accepted" &&
       currentState.decision === MATCH_DECISION.ACCEPTED;
@@ -634,13 +767,21 @@ async function routeProtocolV2Participant({
     setTimeout(resolve, DEFINITIVE_FAILURE_RECOVERY_GRACE_MS);
   }),
 }) {
+  let preDispatchResult = null;
   if (typeof preDispatchWait === "function") {
-    await preDispatchWait({
+    preDispatchResult = await preDispatchWait({
       db,
       sessionId,
       pairAttemptId,
       participantId,
     });
+  }
+  if (preDispatchResult?.reason === "foreground_claim_timeout") {
+    return {
+      shouldNotify: false,
+      reason: "foreground_client_expected",
+      participantId,
+    };
   }
   const claim = await claimProtocolV2CallKitDispatch({
     db,
@@ -654,6 +795,19 @@ async function routeProtocolV2Participant({
     sessionId,
     pushPayload: claim.pushPayload,
   });
+  if (claim.deliveryKind === "student_alert") {
+    try {
+      const requestSnap = await db.collection("searchRequests")
+          .doc(participantId)
+          .get();
+      callData.locale = requestSnap.exists &&
+        normalizeString(requestSnap.data()?.locale) === "en" ?
+        "en" :
+        "ru";
+    } catch (error) {
+      callData.locale = "ru";
+    }
+  }
   let pushResult;
   try {
     pushResult = await pushSender(participantId, callData);

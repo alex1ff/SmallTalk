@@ -882,6 +882,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       'requestId': requestId,
       'appState': _searchAppState,
       'matchProtocolVersion': matchProtocolVersion,
+      'locale': FFLocalizations.of(context).languageCode == 'en' ? 'en' : 'ru',
     };
     final language = resolveUserActiveConversationLanguage(user);
     if (language != null && language.trim().isNotEmpty) {

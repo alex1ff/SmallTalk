@@ -2759,6 +2759,65 @@ test("teacher transport: student responder transport preserves early result cont
   });
 });
 
+test("student transport sends an ordinary localized alert and skips PushKit", async () => {
+  let sentMessage = null;
+  let apnsSendCount = 0;
+  const result = await sendVoipPushToStudentResponder(
+    "student-b",
+    {
+      sessionId: "session-ab",
+      pairAttemptId: "pair-ab",
+      callerName: "Маша",
+      callerId: "student-a",
+      callerPhoto: "photo",
+      language: "en",
+      scenario: "student_student",
+      recipientId: "student-b",
+      requesterId: "student-a",
+      responderId: "student-b",
+      searchRequestId: "request-b",
+      expiresAt: new Date(Date.now() + 45_000).toISOString(),
+      locale: "ru",
+    },
+    {
+      firestore: {
+        collection: () => ({
+          doc: (id) => ({
+            get: async () => ({
+              exists: true,
+              data: () => id === "student-b" ?
+                {role: "student"} :
+                {profileCity: {cityNameRu: "New York"}},
+            }),
+          }),
+        }),
+      },
+      getUserVoipTokens: async () => ({
+        voipPushToken: "pushkit-must-not-be-used",
+        voipToken: "fcm-token",
+      }),
+      sendApnsVoip: async () => {
+        apnsSendCount += 1;
+      },
+      messaging: {
+        send: async (message) => {
+          sentMessage = message;
+          return "message-id";
+        },
+      },
+    },
+  );
+
+  assert.deepEqual(result, {sent: true, channel: "fcm_alert"});
+  assert.equal(apnsSendCount, 0);
+  assert.equal(sentMessage.data.type, "student_match_available");
+  assert.equal(sentMessage.apns.headers["apns-push-type"], "alert");
+  assert.equal(
+    sentMessage.notification.body,
+    "Маша из New York ждёт собеседника. Подключитесь прямо сейчас.",
+  );
+});
+
 test("teacher transport: student responder APNS failure is preserved when FCM is missing", async () => {
   let fcmSendCount = 0;
   const result = await sendVoipPushToStudentResponder(
@@ -5315,7 +5374,7 @@ if (!hasFirestoreEmulator) {
     assert.equal(waitingNotifications.empty, true);
   });
 
-  test("startSearch callable never notifies background student responder", async () => {
+  test("startSearch sends a background v2 student an ordinary alert", async () => {
     const waitingUid = uniqueId("student-background-waiting");
     const joiningUid = uniqueId("student-background-joining");
     const cityKey = cityKeyForUid(`${waitingUid}-${joiningUid}`);
@@ -5345,6 +5404,7 @@ if (!hasFirestoreEmulator) {
       preferredPartnerLevel: "B1",
       appState: "foreground",
       platform: "ios",
+      matchProtocolVersion: 2,
     }, authContext(joiningUid), {
       backgroundStudentResponderPushSender: async (responderId, callData) => {
         pushSendCount += 1;
@@ -5361,14 +5421,16 @@ if (!hasFirestoreEmulator) {
         assert.equal(callData.requesterRole, "student");
         assert.equal(callData.responderRole, "student");
         assert.equal(callData.navRole, "student");
-        assert.equal(callData.acceptMode, "responder_accepts");
+        assert.equal(callData.acceptMode, "respond_to_match");
         assert.equal(callData.searchRequestId, waitingResponse.requestId);
-        assert.ok(callData.callKitId);
-        assert.ok(callData.notificationId);
+        assert.equal(callData.callKitId, "");
+        assert.equal(callData.notificationId, "");
         assert.ok(callData.expiresAt);
         assert.equal(callData.roomUrl, "");
         assert.equal(typeof callData.roomName, "string");
         assert.equal(callData.tokenStrategy, "accept_call");
+        assert.equal(callData.matchProtocolVersion, "2");
+        assert.equal(callData.surface, "notification");
         assert.equal(Object.hasOwn(callData, "meetingToken"), false);
         return {sent: true, channel: "test_voip"};
       },
@@ -5382,10 +5444,10 @@ if (!hasFirestoreEmulator) {
       .filter((item) => item.data.sessionId === joiningResponse.sessionId);
 
     assert.equal(waitingResponse.status, "active");
-    assert.equal(joiningResponse.status, "active");
+    assert.equal(joiningResponse.status, "matched");
     assert.equal(matchingNotifications.length, 0);
-    assert.equal(pushSendCount, 0);
-    assert.equal(pushedCallData, null);
+    assert.equal(pushSendCount, 1);
+    assert.ok(pushedCallData);
   });
 
   test("declineCall restores student requester search", async () => {

@@ -390,6 +390,7 @@ test("stale search request cannot be reserved", () => {
       requestExists: true,
       requestData: activeSearchRequest("student-b", {
         appState: "background",
+        matchProtocolVersion: 2,
         heartbeatAt: timestampFromMillis(fixedNowMillis - 91 * 1000),
         backgroundExpiresAt: timestampFromMillis(fixedNowMillis + 60 * 1000),
       }),
@@ -397,7 +398,7 @@ test("stale search request cannot be reserved", () => {
       nowMillis: fixedNowMillis,
       participantKey: "responder",
     }),
-    {ok: false, reason: "responder_search_stale"},
+    {ok: true, reason: "ready"},
   );
 });
 
@@ -930,11 +931,6 @@ for (const [caseName, responderOverrides] of [
       timestampFromMillis,
     });
 
-    if (caseName === "background") {
-      assert.equal(result.locked, false);
-      assert.equal(result.reason, "responder_search_stale");
-      return;
-    }
     assert.equal(result.locked, true);
     assert.equal(result.finalizationRequested, false);
     const session = store.get(`videoSessions/${result.sessionId}`);
@@ -968,7 +964,7 @@ test("teacher pair never uses foreground student auto-accept", () => {
   assert.equal(session.participantStates["teacher-a"].decision, "pending");
 });
 
-test("background heartbeat during pair lock prevents reservation",
+test("background heartbeat during pair lock keeps reservation eligible",
     async () => {
       let injected = false;
       const {db, store, versions} = createFakeFirestore({
@@ -1010,9 +1006,9 @@ test("background heartbeat during pair lock prevents reservation",
         timestampFromMillis,
       });
 
-      assert.equal(result.locked, false);
-      assert.equal(result.reason, "responder_search_stale");
-      assert.equal(store.has("videoSessions/session-v2-lifecycle-race"), false);
+      assert.equal(result.locked, true);
+      assert.equal(result.reason, "locked");
+      assert.equal(store.has("videoSessions/session-v2-lifecycle-race"), true);
     });
 
 test("reserveMatchPair locks teacher through user document", async () => {

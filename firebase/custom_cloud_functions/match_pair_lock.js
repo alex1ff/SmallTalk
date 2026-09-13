@@ -156,6 +156,27 @@ function isSearchRequestFreshForPairLock(
   requestData = {},
   nowMillis = Date.now(),
 ) {
+  const expiresAtMillis = activeSearchDeadlineMillis(requestData);
+  if (expiresAtMillis === null || expiresAtMillis <= nowMillis) {
+    return false;
+  }
+
+  const appState = normalizeString(requestData[SEARCH_REQUEST_FIELD.APP_STATE]);
+  if ([
+    SEARCH_REQUEST_APP_STATE.BACKGROUND,
+    SEARCH_REQUEST_APP_STATE.INACTIVE,
+  ].includes(appState)) {
+    if (Number(requestData.matchProtocolVersion) < MATCH_PROTOCOL_VERSION) {
+      return false;
+    }
+    const backgroundExpiresAtMillis = timestampToMillis(
+        requestData[SEARCH_REQUEST_FIELD.BACKGROUND_EXPIRES_AT],
+    );
+    return backgroundExpiresAtMillis !== null &&
+      backgroundExpiresAtMillis > nowMillis;
+  }
+  if (appState !== SEARCH_REQUEST_APP_STATE.FOREGROUND) return false;
+
   const heartbeatAtMillis = timestampToMillis(
     requestData[SEARCH_REQUEST_FIELD.HEARTBEAT_AT],
   );
@@ -164,14 +185,6 @@ function isSearchRequestFreshForPairLock(
   if (heartbeatAtMillis === null || heartbeatAtMillis < staleCutoffMillis) {
     return false;
   }
-
-  const expiresAtMillis = activeSearchDeadlineMillis(requestData);
-  if (expiresAtMillis === null || expiresAtMillis <= nowMillis) {
-    return false;
-  }
-
-  const appState = normalizeString(requestData[SEARCH_REQUEST_FIELD.APP_STATE]);
-  if (appState !== SEARCH_REQUEST_APP_STATE.FOREGROUND) return false;
 
   return true;
 }

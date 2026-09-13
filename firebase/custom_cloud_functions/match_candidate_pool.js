@@ -5,12 +5,14 @@ const {
   hasActiveCallState,
 } = require("./call_access");
 const {
+  SEARCH_REQUEST_APP_STATE,
   SEARCH_REQUEST_COLLECTION,
   SEARCH_REQUEST_FIELD,
   SEARCH_REQUEST_FILTER_FIELD,
   SEARCH_REQUEST_LEVEL_RANK,
   SEARCH_REQUEST_STATUS,
   SEARCH_REQUEST_TIMING,
+  normalizeAppState,
   normalizeSearchRequestCityKey,
   normalizeSearchRequestCountryCode,
   normalizeSearchRequestLevel,
@@ -622,6 +624,34 @@ function validateActiveStudentSearchRequest(
     return {valid: false, reason: "open_match_state"};
   }
 
+  const expiresAtMillis = activeSearchDeadlineMillis(requestData);
+  if (expiresAtMillis === null || expiresAtMillis <= safeNowMillis) {
+    return {valid: false, reason: "expired_request"};
+  }
+
+  const appState = normalizeAppState(
+    requestData[SEARCH_REQUEST_FIELD.APP_STATE],
+  );
+  if ([
+    SEARCH_REQUEST_APP_STATE.BACKGROUND,
+    SEARCH_REQUEST_APP_STATE.INACTIVE,
+  ].includes(appState)) {
+    if (Number(requestData.matchProtocolVersion) < 2) {
+      return {valid: false, reason: "background_protocol_unsupported"};
+    }
+    const backgroundExpiresAtMillis = timestampToMillis(
+        requestData[SEARCH_REQUEST_FIELD.BACKGROUND_EXPIRES_AT],
+    );
+    if (backgroundExpiresAtMillis === null ||
+        backgroundExpiresAtMillis <= safeNowMillis) {
+      return {valid: false, reason: "background_expired"};
+    }
+    return {valid: true, reason: "active_background"};
+  }
+  if (appState !== SEARCH_REQUEST_APP_STATE.FOREGROUND) {
+    return {valid: false, reason: "invalid_app_state"};
+  }
+
   const heartbeatAtMillis = timestampToMillis(
     requestData[SEARCH_REQUEST_FIELD.HEARTBEAT_AT],
   );
@@ -633,18 +663,6 @@ function validateActiveStudentSearchRequest(
     SEARCH_REQUEST_TIMING.HEARTBEAT_STALE_SECONDS * 1000;
   if (heartbeatAtMillis < staleCutoffMillis) {
     return {valid: false, reason: "stale_heartbeat"};
-  }
-
-  const expiresAtMillis = activeSearchDeadlineMillis(requestData);
-  if (expiresAtMillis === null || expiresAtMillis <= safeNowMillis) {
-    return {valid: false, reason: "expired_request"};
-  }
-
-  const appState = normalizeString(
-    requestData[SEARCH_REQUEST_FIELD.APP_STATE],
-  );
-  if (appState !== "foreground") {
-    return {valid: false, reason: "not_foreground"};
   }
 
   return {valid: true, reason: "active"};

@@ -1,6 +1,7 @@
 const admin = require("firebase-admin");
 const {sendApnsVoip} = require("./apns_voip");
 const {getUserVoipTokens} = require("./voip_tokens");
+const {normalizeRole} = require("./video_sessions_shared");
 
 const BACKGROUND_STUDENT_RESPONDER_PUSH_TIMEOUT_MS = 3 * 1000;
 const BACKGROUND_STUDENT_RESPONDER_APNS_TIMEOUT_MS = 2 * 1000;
@@ -216,6 +217,104 @@ function buildStudentPairResponderFcmMessage({
   };
 }
 
+function readStudentAlertCity(userData = {}, locale = "ru") {
+  const profileCity = userData.profileCity || {};
+  const localizedValue = locale === "en" ?
+    profileCity.cityNameEn :
+    profileCity.cityNameRu;
+  const fallbackValue = profileCity.cityNameEn || profileCity.cityNameRu ||
+    profileCity.label || profileCity.name || userData.cityName ||
+    userData.city || userData.location?.cityName || userData.location?.city;
+  return normalizeString(localizedValue || fallbackValue).slice(0, 80);
+}
+
+function buildStudentMatchAvailablePushPayload(callData = {}) {
+  return {
+    type: "student_match_available",
+    sessionId: normalizeString(callData.sessionId),
+    pairAttemptId: normalizeString(callData.pairAttemptId),
+    recipientId: normalizeString(callData.recipientId),
+    requesterId: normalizeString(callData.requesterId),
+    responderId: normalizeString(callData.responderId),
+    callerId: normalizeString(callData.callerId),
+    callerName: normalizeString(callData.callerName),
+    callerPhoto: normalizeString(callData.callerPhoto),
+    language: normalizeString(callData.language),
+    scenario: normalizeString(callData.scenario),
+    searchRequestId: normalizeString(callData.searchRequestId),
+    expiresAt: normalizeString(callData.expiresAt),
+    matchProtocolVersion: "2",
+    surface: "notification",
+  };
+}
+
+function buildStudentMatchAvailableFcmMessage({
+  fcmToken = "",
+  callData = {},
+  callerData = {},
+  bundleId = "com.appwave.expatlio",
+} = {}) {
+  const locale = normalizeString(callData.locale).toLowerCase() === "en" ?
+    "en" :
+    "ru";
+  const callerName = normalizeString(callData.callerName) ||
+    normalizeString(callerData.display_name) ||
+    normalizeString(callerData.displayName) ||
+    (locale === "en" ? "A partner" : "Собеседник");
+  const city = readStudentAlertCity(callerData, locale);
+  const who = city ?
+    (locale === "en" ? `${callerName} from ${city}` : `${callerName} из ${city}`) :
+    callerName;
+  const expiresAtMillis = Date.parse(normalizeString(callData.expiresAt));
+  const ttl = Number.isFinite(expiresAtMillis) ?
+    Math.max(0, expiresAtMillis - Date.now()) :
+    45 * 1000;
+  const collapseId = normalizeString(callData.pairAttemptId).slice(0, 64);
+  const payload = buildStudentMatchAvailablePushPayload({
+    ...callData,
+    callerName,
+  });
+  const title = locale === "en" ?
+    "A partner is available" :
+    "Собеседник найден";
+  const body = locale === "en" ?
+    `${who} is waiting for a partner. Connect now.` :
+    `${who} ждёт собеседника. Подключитесь прямо сейчас.`;
+  return {
+    token: normalizeString(fcmToken),
+    notification: {title, body},
+    data: payload,
+    android: {
+      priority: "high",
+      ttl,
+      ...(collapseId ? {collapseKey: collapseId} : {}),
+    },
+    apns: {
+      headers: {
+        "apns-priority": "10",
+        "apns-push-type": "alert",
+        "apns-topic": bundleId,
+        ...(Number.isFinite(expiresAtMillis) ? {
+          "apns-expiration": String(Math.floor(expiresAtMillis / 1000)),
+        } : {}),
+        ...(collapseId ? {"apns-collapse-id": collapseId} : {}),
+      },
+      payload: {aps: {sound: "default"}},
+    },
+  };
+}
+
+function classifyFcmDeliveryFailure(error) {
+  const code = normalizeString(error?.code).toLowerCase();
+  const message = readErrorMessage(error, "").toLowerCase();
+  return [
+    "messaging/invalid-registration-token",
+    "messaging/registration-token-not-registered",
+  ].includes(code) || message.includes("registration-token-not-registered") ?
+    "invalid_fcm_token" :
+    "fcm_failed";
+}
+
 async function sendVoipPushToStudentResponder(
     responderId,
     callData = {},
@@ -247,10 +346,11 @@ async function sendVoipPushToStudentResponder(
   }
 
   const responderData = responderDoc.data() || {};
-  // This transport is shared with teacher delivery. Trust the stored role,
-  // never a client payload or the historical function name.
-  if (require("./video_sessions_shared").normalizeRole(responderData.role) !== "native_speaker") {
-    return {sent: false, reason: "student_native_disabled"};
+  // Trust the stored role, never the client payload. Students get an ordinary
+  // alert; only teachers are allowed to enter the PushKit/CallKit branch.
+  const responderRole = normalizeRole(responderData.role);
+  if (!["student", "native_speaker"].includes(responderRole)) {
+    return {sent: false, reason: "unsupported_responder_role"};
   }
   const callExpiresAtMillis = Date.parse(normalizeString(callData.expiresAt));
   if (Number.isFinite(callExpiresAtMillis) &&
@@ -261,6 +361,38 @@ async function sendVoipPushToStudentResponder(
     Math.floor(callExpiresAtMillis / 1000) :
     null;
   const bundleId = process.env.IOS_BUNDLE_ID || "com.appwave.expatlio";
+  if (responderRole === "student") {
+    const {voipToken: fcmToken} =
+      await getTokens(normalizedResponderId, responderData);
+    throwIfAborted(signal);
+    if (!fcmToken) {
+      return {sent: false, reason: "missing_fcm_token"};
+    }
+    let callerData = {};
+    const callerId = normalizeString(callData.callerId);
+    if (callerId) {
+      const callerDoc = await firestore.collection("users").doc(callerId).get();
+      throwIfAborted(signal);
+      callerData = callerDoc.exists ? callerDoc.data() || {} : {};
+    }
+    try {
+      await waitForAbortable(messaging.send(
+          buildStudentMatchAvailableFcmMessage({
+            fcmToken,
+            callData,
+            callerData,
+            bundleId,
+          }),
+      ), signal);
+      return {sent: true, channel: "fcm_alert"};
+    } catch (error) {
+      return {
+        sent: false,
+        reason: classifyFcmDeliveryFailure(error),
+        error: readErrorMessage(error, "fcm_failed"),
+      };
+    }
+  }
   const voipTopic =
     process.env.IOS_VOIP_TOPIC ||
     (bundleId.endsWith(".voip") ? bundleId : `${bundleId}.voip`);
@@ -389,10 +521,13 @@ async function runBackgroundStudentResponderPushSender({
 
 module.exports = {
   BACKGROUND_STUDENT_RESPONDER_PUSH_TIMEOUT_MS,
+  buildStudentMatchAvailableFcmMessage,
+  buildStudentMatchAvailablePushPayload,
   buildStudentPairResponderCallData,
   buildStudentPairResponderFcmMessage,
   buildStudentPairResponderPushPayload,
   classifyApnsDeliveryFailure,
+  classifyFcmDeliveryFailure,
   runBackgroundStudentResponderPushSender,
   sendVoipPushToStudentResponder,
 };
