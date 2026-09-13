@@ -340,6 +340,7 @@ class _CallDetailsWidgetState extends State<CallDetailsWidget> {
     await showModalBottomSheet(
       useRootNavigator: true,
       isScrollControlled: true,
+      enableDrag: false,
       backgroundColor: Colors.transparent,
       context: context,
       builder: (context) {

@@ -163,6 +163,25 @@ class WordLookupResult {
   final bool fromMemoryCache;
 }
 
+enum WordRemoteLookupFailure {
+  entries,
+  examples,
+}
+
+class WordRemoteLookupResult {
+  const WordRemoteLookupResult({
+    required this.entries,
+    required this.examples,
+    this.failures = const <WordRemoteLookupFailure>{},
+  });
+
+  final List<EntryStruct> entries;
+  final List<SentenceStruct> examples;
+  final Set<WordRemoteLookupFailure> failures;
+
+  bool get hasFailures => failures.isNotEmpty;
+}
+
 class WordLookupService {
   WordLookupService._();
 
@@ -222,6 +241,36 @@ class WordLookupService {
       );
     }
 
+    final remoteResult = await fetchRemote(
+      word: normalizedWord,
+      languageConfig: languageConfig,
+      fetchEntries: fetchEntries,
+      fetchExamples: fetchExamples,
+    );
+    final result = WordLookupResult(
+      entries: remoteResult.entries,
+      examples: remoteResult.examples,
+    );
+    if (remoteResult.failures.length < WordRemoteLookupFailure.values.length) {
+      _memoryCache[cacheKey] = result;
+    }
+    return result;
+  }
+
+  static Future<WordRemoteLookupResult> fetchRemote({
+    required String word,
+    required WordLookupLanguageConfig languageConfig,
+    WordEntriesFetcher? fetchEntries,
+    WordExamplesFetcher? fetchExamples,
+  }) async {
+    final normalizedWord = _normalizeText(word);
+    if (normalizedWord.isEmpty) {
+      return const WordRemoteLookupResult(
+        entries: <EntryStruct>[],
+        examples: <SentenceStruct>[],
+      );
+    }
+
     final request = WordLookupRequest(
       word: normalizedWord,
       languageConfig: languageConfig,
@@ -230,25 +279,30 @@ class WordLookupService {
     final examplesFetcher = fetchExamples ?? _fetchExamplesFromApi;
     var entries = const <EntryStruct>[];
     var examples = const <SentenceStruct>[];
+    final failures = <WordRemoteLookupFailure>{};
 
     await Future.wait([
-      Future(() async {
+      Future<void>(() async {
         try {
           entries = await entriesFetcher(request);
-        } catch (_) {}
+        } catch (_) {
+          failures.add(WordRemoteLookupFailure.entries);
+        }
       }),
-      Future(() async {
+      Future<void>(() async {
         try {
           examples = await examplesFetcher(request);
-        } catch (_) {}
+        } catch (_) {
+          failures.add(WordRemoteLookupFailure.examples);
+        }
       }),
     ]);
-    final result = WordLookupResult(
+
+    return WordRemoteLookupResult(
       entries: entries,
       examples: examples,
+      failures: Set<WordRemoteLookupFailure>.unmodifiable(failures),
     );
-    _memoryCache[cacheKey] = result;
-    return result;
   }
 
   static Future<List<WordLookupSavedContent>> _loadSavedContents({

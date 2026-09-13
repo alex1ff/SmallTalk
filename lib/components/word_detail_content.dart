@@ -1,5 +1,7 @@
-import '/backend/schema/structs/index.dart';
 import 'package:collection/collection.dart';
+
+import '/backend/schema/structs/index.dart';
+import '/students_pages/words/word_content_normalization.dart';
 
 class WordDetailContent {
   const WordDetailContent({
@@ -13,88 +15,155 @@ class WordDetailContent {
   EntryStruct? get primaryEntry => entries.firstOrNull;
 
   String get sourceText {
-    final text = primaryEntry?.text.trim();
-    if (text != null && text.isNotEmpty) {
-      return text;
+    for (final entry in entries) {
+      final text = entry.text.trim();
+      if (text.isNotEmpty) {
+        return text;
+      }
     }
     return '-';
   }
 
   String get transcription {
-    final value = primaryEntry?.ts.trim() ?? '';
-    if (value.isEmpty) {
-      return '';
+    final sourceKey = normalizeWordContentValue(sourceText);
+    for (final entry in entries) {
+      if (normalizeWordContentValue(entry.text) != sourceKey) {
+        continue;
+      }
+      final value = entry.ts.trim();
+      if (value.isEmpty) {
+        continue;
+      }
+      if (value.startsWith('/') && value.endsWith('/')) {
+        return value;
+      }
+      return '/${value.replaceAll('/', '')}/';
     }
-    if (value.startsWith('/')) {
-      return value;
-    }
-    return '/$value/';
+    return '';
   }
 
-  String get translationText {
-    final translations = primaryEntry?.tr
-            .map((translation) => translation.text.trim())
-            .where((text) => text.isNotEmpty)
-            .take(3)
-            .toList() ??
-        const <String>[];
-    if (translations.isEmpty) {
-      return '-';
+  TranslationStruct? get primaryTranslation {
+    for (final entry in entries) {
+      for (final translation in entry.tr) {
+        if (translation.text.trim().isNotEmpty) {
+          return translation;
+        }
+      }
     }
-    return translations.join('; ');
+    return null;
   }
+
+  String get translationText => primaryTranslation?.text.trim() ?? '-';
 
   List<SynonymStruct> get sourceSynonyms {
-    final synonyms = <SynonymStruct>[];
-    final seen = <String>{};
-
-    for (final synonym in primaryEntry?.syn ?? const <SynonymStruct>[]) {
-      final text = synonym.text.trim();
-      if (text.isEmpty) {
-        continue;
+    final used = <String>{normalizeWordContentValue(sourceText)};
+    final result = <SynonymStruct>[];
+    for (final entry in entries) {
+      for (final synonym in entry.syn) {
+        _addSynonym(result, used, synonym);
       }
-
-      final key = text.toLowerCase();
-      if (!seen.add(key)) {
-        continue;
-      }
-
-      synonyms.add(
-        SynonymStruct(
-          text: text,
-          gen: synonym.gen.trim().isEmpty ? null : synonym.gen.trim(),
-        ),
-      );
     }
-
-    return synonyms;
+    return result;
   }
 
-  List<WordDetailTranslationGroup> get translationGroups {
-    final groups = <WordDetailTranslationGroup>[];
+  List<SynonymStruct> get additionalTranslations {
+    final used = <String>{
+      normalizeWordContentValue(sourceText),
+      normalizeWordContentValue(translationText),
+      ...sourceSynonyms.map(
+        (synonym) => normalizeWordContentValue(synonym.text),
+      ),
+    };
+    final result = <SynonymStruct>[];
+    var skippedPrimary = false;
     for (final entry in entries) {
-      for (final translation in entry.tr.take(3)) {
-        final synonyms = _translationSynonyms(translation);
-        final meanings = translation.mean
-            .where((meaning) => meaning.text.trim().isNotEmpty)
-            .toList();
-        if (translation.text.trim().isEmpty &&
-            synonyms.isEmpty &&
-            meanings.isEmpty) {
+      for (final translation in entry.tr) {
+        final key = normalizeWordContentValue(translation.text);
+        if (!skippedPrimary && key.isNotEmpty) {
+          skippedPrimary = true;
           continue;
         }
-
-        groups.add(
-          WordDetailTranslationGroup(
-            entry: entry,
-            translation: translation,
-            synonyms: synonyms,
-            meanings: meanings,
-          ),
+        _addSynonym(
+          result,
+          used,
+          SynonymStruct(text: translation.text, gen: translation.gen),
         );
       }
     }
-    return groups;
+    return result;
+  }
+
+  List<SynonymStruct> get translationSynonyms {
+    final used = <String>{
+      normalizeWordContentValue(sourceText),
+      normalizeWordContentValue(translationText),
+      ...sourceSynonyms.map(
+        (synonym) => normalizeWordContentValue(synonym.text),
+      ),
+      ...additionalTranslations.map(
+        (translation) => normalizeWordContentValue(translation.text),
+      ),
+      ...meanings.map(normalizeWordContentValue),
+    };
+    final result = <SynonymStruct>[];
+    for (final entry in entries) {
+      for (final translation in entry.tr) {
+        for (final synonym in translation.syn) {
+          _addSynonym(result, used, synonym);
+        }
+      }
+    }
+    return result;
+  }
+
+  List<String> get meanings {
+    final used = <String>{
+      normalizeWordContentValue(sourceText),
+      normalizeWordContentValue(translationText),
+      ...additionalTranslations.map(
+        (translation) => normalizeWordContentValue(translation.text),
+      ),
+      ...sourceSynonyms.map(
+        (synonym) => normalizeWordContentValue(synonym.text),
+      ),
+    };
+    final result = <String>[];
+    for (final entry in entries) {
+      for (final translation in entry.tr) {
+        for (final meaning in translation.mean) {
+          final text = meaning.text.trim();
+          final key = normalizeWordContentValue(text);
+          if (key.isEmpty || !used.add(key)) {
+            continue;
+          }
+          result.add(text);
+        }
+      }
+    }
+    return result;
+  }
+
+  List<WordDetailTranslationGroup> get translationGroups {
+    final synonyms = translationSynonyms;
+    final allMeanings =
+        meanings.map((text) => MeaningStruct(text: text)).toList();
+    if (additionalTranslations.isEmpty &&
+        synonyms.isEmpty &&
+        allMeanings.isEmpty) {
+      return const <WordDetailTranslationGroup>[];
+    }
+    return <WordDetailTranslationGroup>[
+      WordDetailTranslationGroup(
+        entry: primaryEntry ?? EntryStruct(text: sourceText),
+        translation:
+            primaryTranslation ?? TranslationStruct(text: translationText),
+        synonyms: <SynonymStruct>[
+          ...additionalTranslations,
+          ...synonyms,
+        ],
+        meanings: allMeanings,
+      ),
+    ];
   }
 }
 
@@ -127,6 +196,24 @@ WordDetailContent buildWordDetailContent({
   );
 }
 
+void _addSynonym(
+  List<SynonymStruct> result,
+  Set<String> used,
+  SynonymStruct synonym,
+) {
+  final text = synonym.text.trim();
+  final key = normalizeWordContentValue(text);
+  if (key.isEmpty || !used.add(key)) {
+    return;
+  }
+  result.add(
+    SynonymStruct(
+      text: text,
+      gen: synonym.gen.trim().isEmpty ? null : synonym.gen.trim(),
+    ),
+  );
+}
+
 List<SentenceStruct> _mergeExamples({
   required List<SentenceStruct> savedExamples,
   required List<SentenceStruct> apiExamples,
@@ -134,79 +221,30 @@ List<SentenceStruct> _mergeExamples({
   final merged = <SentenceStruct>[];
   final indexByKey = <String, int>{};
 
-  void upsertSentence(
-    SentenceStruct sentence, {
-    required bool preferNew,
-  }) {
+  void upsertSentence(SentenceStruct sentence) {
     final text = sentence.text.trim();
     if (text.isEmpty) {
       return;
     }
-
-    final language = _normalizeLanguageCode(sentence.lang);
-    final dedupeKey = '$language|${text.toLowerCase()}';
-    final existingIndex = indexByKey[dedupeKey];
-
-    if (existingIndex != null) {
-      if (preferNew) {
-        merged[existingIndex] = sentence;
-      }
+    final key =
+        '${normalizedWordLanguageCode(sentence.lang)}|${normalizeWordContentValue(text)}';
+    final existingIndex = indexByKey[key];
+    if (existingIndex == null) {
+      indexByKey[key] = merged.length;
+      merged.add(sentence);
       return;
     }
-
-    indexByKey[dedupeKey] = merged.length;
-    merged.add(sentence);
+    if (merged[existingIndex].translations.isEmpty &&
+        sentence.translations.isNotEmpty) {
+      merged[existingIndex] = sentence;
+    }
   }
 
   for (final sentence in savedExamples) {
-    upsertSentence(sentence, preferNew: false);
+    upsertSentence(sentence);
   }
-
   for (final sentence in apiExamples) {
-    upsertSentence(sentence, preferNew: true);
+    upsertSentence(sentence);
   }
-
   return merged;
-}
-
-List<SynonymStruct> _translationSynonyms(TranslationStruct translation) {
-  final synonyms = <SynonymStruct>[];
-  final seen = <String>{};
-
-  void addSynonym(SynonymStruct synonym) {
-    final text = synonym.text.trim();
-    if (text.isEmpty) {
-      return;
-    }
-
-    final gen = synonym.gen.trim();
-    final key = '$text|$gen'.toLowerCase();
-    if (!seen.add(key)) {
-      return;
-    }
-
-    synonyms.add(
-      SynonymStruct(
-        text: text,
-        gen: gen.isEmpty ? null : gen,
-      ),
-    );
-  }
-
-  for (final synonym in translation.syn) {
-    addSynonym(synonym);
-  }
-
-  addSynonym(
-    SynonymStruct(
-      text: translation.text,
-      gen: translation.gen,
-    ),
-  );
-
-  return synonyms;
-}
-
-String _normalizeLanguageCode(String? code) {
-  return (code ?? '').trim().toLowerCase().replaceAll('_', '-');
 }

@@ -19,6 +19,11 @@ class ChatComposer extends StatelessWidget {
     required this.isSending,
     this.inputKey,
     this.sendButtonKey,
+    this.surfaceColor = ExpatlioDesign.background,
+    this.capsuleColor = ExpatlioDesign.card,
+    this.borderColor = ExpatlioDesign.separator,
+    this.textColor,
+    this.hintColor,
   });
 
   final TextEditingController controller;
@@ -30,6 +35,11 @@ class ChatComposer extends StatelessWidget {
   final bool isSending;
   final Key? inputKey;
   final Key? sendButtonKey;
+  final Color surfaceColor;
+  final Color capsuleColor;
+  final Color borderColor;
+  final Color? textColor;
+  final Color? hintColor;
 
   void _sendIfAvailable() {
     if (enabled && !isSending && controller.text.trim().isNotEmpty) {
@@ -46,7 +56,7 @@ class ChatComposer extends StatelessWidget {
             enabled && !isSending && controller.text.trim().isNotEmpty;
 
         return DecoratedBox(
-          decoration: const BoxDecoration(color: ExpatlioDesign.background),
+          decoration: BoxDecoration(color: surfaceColor),
           child: Padding(
             padding: EdgeInsetsDirectional.fromSTEB(
               ExpatlioDesign.space16,
@@ -58,9 +68,9 @@ class ChatComposer extends StatelessWidget {
             child: DecoratedBox(
               key: chatComposerCapsuleKey,
               decoration: BoxDecoration(
-                color: ExpatlioDesign.card,
+                color: capsuleColor,
                 borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: ExpatlioDesign.separator),
+                border: Border.all(color: borderColor),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -79,8 +89,10 @@ class ChatComposer extends StatelessWidget {
                         isDense: true,
                         filled: false,
                         hintText: hintText,
-                        hintStyle: ExpatlioDesign.formTextStyle(context,
-                            enabled: false),
+                        hintStyle: ExpatlioDesign.formTextStyle(
+                          context,
+                          enabled: false,
+                        ).copyWith(color: hintColor),
                         contentPadding:
                             const EdgeInsetsDirectional.fromSTEB(16, 11, 8, 11),
                         border: InputBorder.none,
@@ -93,7 +105,7 @@ class ChatComposer extends StatelessWidget {
                       style: ExpatlioDesign.formTextStyle(
                         context,
                         enabled: enabled,
-                      ),
+                      ).copyWith(color: textColor),
                       onFieldSubmitted: (_) => _sendIfAvailable(),
                     ),
                   ),

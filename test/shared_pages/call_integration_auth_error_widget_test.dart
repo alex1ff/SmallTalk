@@ -80,6 +80,46 @@ void main() {
     currentUserDocument = null;
   });
 
+  testWidgets('keyboard Done closes quick translation without translating',
+      (tester) async {
+    var translateCalls = 0;
+    final repository = TranslationRepository(
+      invoker: (_, __) async {
+        translateCalls += 1;
+        return <String, dynamic>{};
+      },
+    );
+
+    await tester.pumpWidget(
+      _testApp(
+        Builder(
+          builder: (context) => TextButton(
+            onPressed: () => showModalBottomSheet<void>(
+              context: context,
+              isScrollControlled: true,
+              builder: (_) => InCallTranslationSheet(
+                sessionId: 'session-a',
+                practicedLanguageCode: 'en',
+                repository: repository,
+              ),
+            ),
+            child: const Text('Open'),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'hello');
+    await tester.pump();
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(InCallTranslationSheet), findsNothing);
+    expect(translateCalls, 0);
+  });
+
   testWidgets('translation maps authenticated 401 to App Check copy',
       (tester) async {
     final repository = TranslationRepository(
@@ -97,7 +137,8 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'как жизнь');
-    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    await tester.tap(find.text('Перевести'));
     await tester.pumpAndSettle();
 
     expect(
@@ -124,7 +165,8 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'как жизнь');
-    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    await tester.tap(find.text('Перевести'));
     await tester.pumpAndSettle();
 
     expect(find.text('Войдите в аккаунт и повторите.'), findsOneWidget);
@@ -173,7 +215,8 @@ void main() {
     expect(find.text('English → Русский · авто'), findsOneWidget);
 
     await tester.enterText(find.byType(TextField), 'привет');
-    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    await tester.tap(find.text('Перевести'));
     await tester.pumpAndSettle();
 
     expect(translatedPayload?['sourceLang'], 'ru');
@@ -222,11 +265,10 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), 'привет');
-    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    await tester.tap(find.text('Перевести'));
     await tester.pump();
     await tester.enterText(find.byType(TextField), 'hello');
-    await tester.pump();
-    await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pump();
     expect(translateCalls, 1);
 

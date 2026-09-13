@@ -756,6 +756,7 @@ class _VideoCallPageWidgetState extends State<VideoCallPageWidget> {
                     actionCallback: (word, sentence, contextText) async {
                       await showModalBottomSheet(
                         isScrollControlled: true,
+                        enableDrag: false,
                         backgroundColor: Colors.transparent,
                         context: context,
                         builder: (context) {

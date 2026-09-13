@@ -145,6 +145,22 @@ void main() {
     expect(result.examples.single.text, 'Hello!');
   });
 
+  test('remote lookup reports a partial failure without dropping examples',
+      () async {
+    final result = await WordLookupService.fetchRemote(
+      word: 'hello',
+      languageConfig: languageConfig,
+      fetchEntries: (_) async => throw Exception('dictionary failed'),
+      fetchExamples: (_) async => [
+        SentenceStruct(text: 'Hello!', lang: 'eng'),
+      ],
+    );
+
+    expect(result.entries, isEmpty);
+    expect(result.examples.single.text, 'Hello!');
+    expect(result.failures, {WordRemoteLookupFailure.entries});
+  });
+
   group('word lookup language helpers', () {
     test('normalizes display codes and applies fallback order', () {
       expect(normalizeWordLookupLanguageCode(' EN_us '), 'en-us');

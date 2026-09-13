@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '/auth/firebase_auth/auth_util.dart';
@@ -5,6 +7,8 @@ import '/flutter_flow/flutter_flow_util.dart';
 import '/services/translation_repository.dart';
 import '/services/error_reporting/error_reporter.dart';
 import '/shared_pages/design/expatlio_design.dart';
+import '/students_pages/words/quick_translation_word_enricher.dart';
+import '/students_pages/words/word_lookup_service.dart';
 
 class InCallTranslationSheet extends StatefulWidget {
   const InCallTranslationSheet({
@@ -137,12 +141,21 @@ class _InCallTranslationSheetState extends State<InCallTranslationSheet> {
     });
   }
 
+  void _dismissFromKeyboard() {
+    _focusNode.unfocus();
+    if (mounted) {
+      Navigator.of(context).maybePop();
+    }
+  }
+
   Future<void> _saveResult() async {
     final result = _result;
     if (result == null || _isSaving || _saved) return;
     setState(() => _isSaving = true);
     try {
-      await widget.repository.saveToDictionary(lookupId: result.lookupId);
+      final saved =
+          await widget.repository.saveToDictionary(lookupId: result.lookupId);
+      unawaited(_enrichSavedWord(saved, result));
       if (!mounted) return;
       setState(() => _saved = true);
     } on TranslationFailure catch (failure) {
@@ -162,6 +175,60 @@ class _InCallTranslationSheetState extends State<InCallTranslationSheet> {
       );
     } finally {
       if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _enrichSavedWord(
+    SavedTranslationResult saved,
+    TranslationResult translation,
+  ) async {
+    try {
+      final config = WordLookupLanguageConfig(
+        sourceLanguageCode: translation.sourceLanguage.code,
+        yandexSourceLanguageCode: resolveYandexWordLookupLanguageCode(
+          <String?>[translation.sourceLanguage.code],
+          fallback: 'en',
+        ),
+        yandexTranslationLanguageCode: resolveYandexWordLookupLanguageCode(
+          <String?>[translation.targetLanguage.code],
+          fallback: 'ru',
+        ),
+        tatoebaSourceLanguageCode: resolveTatoebaWordLookupLanguageCode(
+          <String?>[translation.sourceLanguage.code],
+          fallback: 'eng',
+        ),
+        tatoebaTranslationLanguageCode: resolveTatoebaWordLookupLanguageCode(
+          <String?>[translation.targetLanguage.code],
+          fallback: 'rus',
+        ),
+      );
+      final remote = await WordLookupService.fetchRemote(
+        word: translation.sourceText,
+        languageConfig: config,
+      );
+      if (remote.hasFailures) {
+        ErrorReporting.reporter.captureNonFatal(
+          feature: ErrorFeature.translation,
+          code: AppErrorCode.translationUnexpected,
+          error: StateError('word_enrichment_partial_failure'),
+          stackTrace: StackTrace.current,
+          sessionId: widget.sessionId,
+        );
+      }
+      await const QuickTranslationWordEnricher().enrich(
+        wordReference: FirebaseFirestore.instance.doc(saved.wordPath),
+        sourceText: translation.sourceText,
+        directTranslation: translation.translatedText,
+        remoteResult: remote,
+      );
+    } catch (error, stackTrace) {
+      ErrorReporting.reporter.captureNonFatal(
+        feature: ErrorFeature.translation,
+        code: AppErrorCode.translationUnexpected,
+        error: error,
+        stackTrace: stackTrace,
+        sessionId: widget.sessionId,
+      );
     }
   }
 
@@ -283,7 +350,7 @@ class _InCallTranslationSheetState extends State<InCallTranslationSheet> {
                   maxLength: 250,
                   textInputAction: TextInputAction.done,
                   onChanged: _handleTextChanged,
-                  onSubmitted: (_) => _focusNode.unfocus(),
+                  onSubmitted: (_) => _dismissFromKeyboard(),
                   decoration: InputDecoration(
                     hintText: FFLocalizations.of(context).getVariableText(
                       ruText: 'Введите слово или фразу',

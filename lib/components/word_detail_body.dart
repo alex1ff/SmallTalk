@@ -114,7 +114,9 @@ class _TranslationDetails extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final groups = content.translationGroups;
+    final additionalTranslations = content.additionalTranslations;
+    final synonyms = content.translationSynonyms;
+    final meanings = content.meanings;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -128,76 +130,69 @@ class _TranslationDetails extends StatelessWidget {
             height: 1.2,
           ),
         ),
-        if (groups.isNotEmpty) ...[
+        if (additionalTranslations.isNotEmpty) ...[
           const SizedBox(height: ExpatlioDesign.space20),
-          ...groups.map(
-            (group) => Padding(
-              padding: const EdgeInsetsDirectional.fromSTEB(
-                  ExpatlioDesign.space0,
-                  ExpatlioDesign.space0,
-                  ExpatlioDesign.space0,
-                  ExpatlioDesign.space16),
-              child: _TranslationGroupView(group: group),
+          _SectionLabel(
+            text: FFLocalizations.of(context).getVariableText(
+              ruText: 'Другие варианты',
+              enText: 'Other translations',
             ),
           ),
+          const SizedBox(height: ExpatlioDesign.space8),
+          _SynonymWrap(synonyms: additionalTranslations),
+        ],
+        if (meanings.isNotEmpty) ...[
+          const SizedBox(height: ExpatlioDesign.space20),
+          _SectionLabel(
+            text: FFLocalizations.of(context).getVariableText(
+              ruText: 'Значения',
+              enText: 'Meanings',
+            ),
+          ),
+          const SizedBox(height: ExpatlioDesign.space8),
+          Text(
+            meanings.join(' · '),
+            style: ExpatlioDesign.textStyle(
+              context,
+              color: ExpatlioDesign.muted,
+              size: 15.0,
+              weight: FontWeight.w500,
+              height: 1.3,
+            ),
+          ),
+        ],
+        if (synonyms.isNotEmpty) ...[
+          const SizedBox(height: ExpatlioDesign.space20),
+          _SectionLabel(
+            text: FFLocalizations.of(context).getVariableText(
+              ruText: 'Близкие по смыслу',
+              enText: 'Related words',
+            ),
+          ),
+          const SizedBox(height: ExpatlioDesign.space8),
+          _SynonymWrap(synonyms: synonyms),
         ],
       ],
     );
   }
 }
 
-class _TranslationGroupView extends StatelessWidget {
-  const _TranslationGroupView({
-    required this.group,
-  });
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel({required this.text});
 
-  final WordDetailTranslationGroup group;
-
-  String get _meaningsText {
-    final meanings = group.meanings
-        .map((meaning) => meaning.text.trim())
-        .where((text) => text.isNotEmpty)
-        .toList();
-    if (meanings.isEmpty) {
-      return '';
-    }
-    return meanings.map((meaning) => '$meaning.').join(' ');
-  }
+  final String text;
 
   @override
   Widget build(BuildContext context) {
-    final meaningsText = _meaningsText;
-    final hasSynonyms = group.synonyms.isNotEmpty;
-    final hasMeanings = meaningsText.isNotEmpty;
-
-    if (!hasSynonyms && !hasMeanings) {
-      return const SizedBox.shrink();
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (hasSynonyms) _SynonymWrap(synonyms: group.synonyms),
-        if (hasMeanings)
-          Padding(
-            padding: EdgeInsetsDirectional.fromSTEB(
-              ExpatlioDesign.space0,
-              hasSynonyms ? ExpatlioDesign.space8 : ExpatlioDesign.space0,
-              ExpatlioDesign.space0,
-              ExpatlioDesign.space0,
-            ),
-            child: Text(
-              meaningsText,
-              style: ExpatlioDesign.textStyle(
-                context,
-                color: ExpatlioDesign.muted,
-                size: 15.0,
-                weight: FontWeight.w500,
-                height: 1.25,
-              ),
-            ),
-          ),
-      ],
+    return Text(
+      text,
+      style: ExpatlioDesign.textStyle(
+        context,
+        color: ExpatlioDesign.muted,
+        size: 13.0,
+        weight: FontWeight.w600,
+        height: 1.2,
+      ),
     );
   }
 }

@@ -43,7 +43,8 @@ void main() {
       expect(content.examples.single.translations.single.text, 'Привет!');
     });
 
-    test('keeps translation synonyms, current translation, and meanings', () {
+    test('shows the primary translation once and deduplicates lower sections',
+        () {
       final content = buildWordDetailContent(
         savedEntries: [
           EntryStruct(
@@ -54,22 +55,44 @@ void main() {
                 gen: 'м',
                 syn: [
                   SynonymStruct(text: 'здравствуй'),
+                  SynonymStruct(text: 'Привет!'),
                 ],
                 mean: [
                   MeaningStruct(text: 'greeting'),
+                  MeaningStruct(text: 'привет'),
                 ],
               ),
+              TranslationStruct(text: 'Привет.'),
+              TranslationStruct(text: 'здравствуйте'),
             ],
           ),
         ],
       );
 
-      final group = content.translationGroups.single;
-      expect(group.synonyms.map((synonym) => synonym.text), [
-        'здравствуй',
-        'привет',
-      ]);
-      expect(group.meanings.map((meaning) => meaning.text), ['greeting']);
+      expect(content.translationText, 'привет');
+      expect(
+        content.additionalTranslations.map((value) => value.text),
+        ['здравствуйте'],
+      );
+      expect(
+        content.translationSynonyms.map((value) => value.text),
+        ['здравствуй'],
+      );
+      expect(content.meanings, ['greeting']);
+    });
+
+    test('uses transcription from a matching enriched entry', () {
+      final content = buildWordDetailContent(
+        savedEntries: [
+          EntryStruct(
+            text: 'hello',
+            tr: [TranslationStruct(text: 'привет')],
+          ),
+          EntryStruct(text: 'Hello', ts: 'həˈləʊ'),
+        ],
+      );
+
+      expect(content.transcription, '/həˈləʊ/');
     });
   });
 }
