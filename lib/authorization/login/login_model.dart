@@ -15,9 +15,6 @@ class LoginModel extends FlutterFlowModel<LoginWidget> {
   TextEditingController? passTextController;
   late bool passVisibility;
   String? Function(BuildContext, String?)? passTextControllerValidator;
-  // State field(s) for Switch widget.
-  bool? switchValue;
-
   @override
   void initState(BuildContext context) {
     passVisibility = false;

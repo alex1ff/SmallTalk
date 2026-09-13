@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "metadata": {
+    "commit": "<git-revision>",
+    "dirtyState": "clean",
+    "flutterVersion": "<flutter-version>",
+    "dartVersion": "<dart-version>",
+    "buildMode": "profile",
+    "deviceModel": "<device-model>",
+    "osVersion": "<os-version>",
+    "deviceKind": "<physical|emulator|browser>",
+    "refreshRateHz": "<positive integer; not_applicable for browser>",
+    "scenarioVersion": "<scenario-version>",
+    "collectionMethod": "<repeatable-command-or-driver>",
+    "network": "<network-profile>",
+    "authState": "<authentication-state>",
+    "cacheState": "<cache-state>"
+  },
+  "metrics": {
+    "startup_first_interactive_ms": {
+      "status": "not_collected",
+      "unit": "ms",
+      "direction": "lower_is_better",
+      "samples": [],
+      "reason": "requires profile/release run on a declared device"
+    },
+    "frame_jank_percent": {
+      "status": "not_collected",
+      "unit": "percent",
+      "direction": "lower_is_better",
+      "samples": [],
+      "reason": "requires Flutter frame timing trace"
+    },
+    "peak_memory_mb": {
+      "status": "not_collected",
+      "unit": "MB",
+      "direction": "lower_is_better",
+      "samples": [],
+      "reason": "requires declared profile/release device method"
+    },
+    "call_join_success_percent": {
+      "status": "not_collected",
+      "unit": "percent",
+      "direction": "higher_is_better",
+      "samples": [],
+      "reason": "requires physical-device call smoke"
+    }
+  }
+}

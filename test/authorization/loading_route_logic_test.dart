@@ -181,7 +181,7 @@ void main() {
       );
     });
 
-    test('routes legacy completed student without profile flag to dashboard',
+    test('routes legacy student with an unsupported country to location resume',
         () {
       final hasInferredStudentProfileCompletion =
           hasCompletedStudentOnboardingContract(
@@ -205,7 +205,7 @@ void main() {
 
       expect(
         destination,
-        LoadingRouteDestination.studentsDashboard,
+        LoadingRouteDestination.acquaintanceStudentResume,
       );
     });
 
@@ -236,7 +236,7 @@ void main() {
       );
     });
 
-    test('accepts legacy non-en-ru learning languages in fallback inference',
+    test('still resets unsupported location with a legacy learning language',
         () {
       final hasInferredStudentProfileCompletion =
           hasCompletedStudentOnboardingContract(
@@ -262,7 +262,7 @@ void main() {
 
       expect(
         destination,
-        LoadingRouteDestination.studentsDashboard,
+        LoadingRouteDestination.acquaintanceStudentResume,
       );
     });
   });

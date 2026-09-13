@@ -1,5 +1,5 @@
+import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
-import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
@@ -93,22 +93,36 @@ Map<String, dynamic> _sessionMatchContext(Map<String, dynamic> sessionData) {
 
 String? resolveSessionRequesterId(Map<String, dynamic> sessionData) {
   final matchContext = _sessionMatchContext(sessionData);
-  final requesterId = _normalizeSessionParticipantId(
-    sessionData['studentId'] ??
-        matchContext['requesterId'] ??
-        sessionData['requesterId'],
-  );
-  return requesterId.isNotEmpty ? requesterId : null;
+  for (final candidate in [
+    sessionData['requesterId'],
+    matchContext['requesterId'],
+    sessionData['studentId'],
+  ]) {
+    final requesterId = _normalizeSessionParticipantId(candidate);
+    if (requesterId.isNotEmpty) {
+      return requesterId;
+    }
+  }
+  return null;
 }
 
 String? resolveSessionResponderId(Map<String, dynamic> sessionData) {
   final matchContext = _sessionMatchContext(sessionData);
-  final responderId = _normalizeSessionParticipantId(
-    sessionData['tutorId'] ??
-        sessionData['currentTutorId'] ??
-        matchContext['acceptedResponderId'],
-  );
-  return responderId.isNotEmpty ? responderId : null;
+  for (final candidate in [
+    sessionData['responderId'],
+    matchContext['acceptedResponderId'],
+    sessionData['currentResponderId'],
+    matchContext['responderId'],
+    matchContext['currentResponderId'],
+    sessionData['tutorId'],
+    sessionData['currentTutorId'],
+  ]) {
+    final responderId = _normalizeSessionParticipantId(candidate);
+    if (responderId.isNotEmpty) {
+      return responderId;
+    }
+  }
+  return null;
 }
 
 List<String> resolveSessionParticipantIds(Map<String, dynamic> sessionData) {
@@ -335,12 +349,16 @@ Future<PairReviewState> resolveCurrentUserPairReview({
 Map<String, dynamic> buildSessionReviewUpdate({
   required bool isTeacher,
   DocumentReference? reviewRef,
+  bool? reviewedAsRequester,
 }) {
+  final markRequesterReviewed = reviewedAsRequester ?? !isTeacher;
   return <String, dynamic>{
-    if (isTeacher) 'tutorHasReviewed': true,
-    if (!isTeacher) 'studentHasReviewed': true,
-    if (isTeacher && reviewRef != null) 'tutorReviewRef': reviewRef,
-    if (!isTeacher && reviewRef != null) 'studentReviewRef': reviewRef,
+    if (markRequesterReviewed) 'studentHasReviewed': true,
+    if (!markRequesterReviewed) 'tutorHasReviewed': true,
+    if (markRequesterReviewed && reviewRef != null)
+      'studentReviewRef': reviewRef,
+    if (!markRequesterReviewed && reviewRef != null)
+      'tutorReviewRef': reviewRef,
   };
 }
 
@@ -348,12 +366,41 @@ Future<void> syncSessionReviewState({
   required DocumentReference sessionRef,
   required bool isTeacher,
   DocumentReference? reviewRef,
+  String? currentUserId,
 }) async {
+  bool? reviewedAsRequester;
+
+  final normalizedCurrentUserId = (currentUserId ?? '').trim();
+  if (normalizedCurrentUserId.isNotEmpty) {
+    try {
+      final sessionSnap = await sessionRef.get();
+      final rawSessionData = sessionSnap.data();
+      if (rawSessionData is Map) {
+        final sessionData = rawSessionData.map(
+          (key, value) => MapEntry(key.toString(), value),
+        );
+        final participantResolution = resolveSessionReviewParticipant(
+          sessionData: sessionData,
+          currentUserId: normalizedCurrentUserId,
+        );
+        if (participantResolution.isRequester) {
+          reviewedAsRequester = true;
+        } else if (participantResolution.isResponder) {
+          reviewedAsRequester = false;
+        }
+      }
+    } catch (error) {
+      debugPrint(
+          'Failed to resolve review side for ${sessionRef.path}: $error');
+    }
+  }
+
   try {
     await sessionRef.set(
       buildSessionReviewUpdate(
         isTeacher: isTeacher,
         reviewRef: reviewRef,
+        reviewedAsRequester: reviewedAsRequester,
       ),
       SetOptions(merge: true),
     );
@@ -406,11 +453,10 @@ String reviewErrorMessage(
         enText: 'Unable to submit a review for this call.',
       );
     default:
-      return error.message ??
-          FFLocalizations.of(context).getVariableText(
-            ruText: 'Не удалось отправить отзыв. Попробуйте снова.',
-            enText: 'Failed to submit review. Please try again.',
-          );
+      return FFLocalizations.of(context).getVariableText(
+        ruText: 'Не удалось отправить отзыв. Попробуйте снова.',
+        enText: 'Failed to submit review. Please try again.',
+      );
   }
 }
 
@@ -468,6 +514,7 @@ Future<ReviewSubmissionResult> submitSessionReview({
     sessionRef: sessionRef,
     isTeacher: isTeacher,
     reviewRef: reviewRef,
+    currentUserId: currentUserUid,
   );
 
   return ReviewSubmissionResult(
@@ -475,89 +522,4 @@ Future<ReviewSubmissionResult> submitSessionReview({
     reviewId: reviewId,
     reviewRef: reviewRef,
   );
-}
-
-class PairReviewContent extends StatelessWidget {
-  const PairReviewContent({
-    super.key,
-    required this.hasReviewed,
-    required this.formContent,
-    this.reviewContent,
-    this.reviewNoteText,
-    this.reviewFallbackText,
-  });
-
-  final bool hasReviewed;
-  final Widget formContent;
-  final Widget? reviewContent;
-  final String? reviewNoteText;
-  final String? reviewFallbackText;
-
-  @override
-  Widget build(BuildContext context) {
-    if (!hasReviewed) {
-      return formContent;
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (reviewNoteText != null && reviewNoteText!.trim().isNotEmpty) ...[
-          Container(
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: FlutterFlowTheme.of(context).primaryBackground,
-              borderRadius: BorderRadius.circular(26.0),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Text(
-                reviewNoteText!,
-                style: FlutterFlowTheme.of(context).bodyMedium.override(
-                      fontFamily: 'sf pro display',
-                      fontSize: 15.0,
-                      letterSpacing: 0.0,
-                    ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12.0),
-        ],
-        reviewContent ??
-            _PairReviewFallbackCard(
-              message: reviewFallbackText ?? reviewAlreadyLeftMessage(context),
-            ),
-      ],
-    );
-  }
-}
-
-class _PairReviewFallbackCard extends StatelessWidget {
-  const _PairReviewFallbackCard({
-    required this.message,
-  });
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: FlutterFlowTheme.of(context).primaryBackground,
-        borderRadius: BorderRadius.circular(26.0),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Text(
-          message,
-          style: FlutterFlowTheme.of(context).bodyMedium.override(
-                fontFamily: 'sf pro display',
-                fontSize: 15.0,
-                letterSpacing: 0.0,
-              ),
-        ),
-      ),
-    );
-  }
 }

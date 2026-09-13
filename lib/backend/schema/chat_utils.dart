@@ -8,6 +8,9 @@ import '/backend/schema/video_sessions_record.dart';
 const String kConversationMessageTypeText = 'text';
 const String kConversationMessageTypeCallEvent = 'call_event';
 const String kConversationCallKindVideo = 'video';
+const String kConversationCallOutcomeCompleted = 'completed';
+const String kConversationCallOutcomeMissed = 'missed';
+const String kConversationCallOutcomeCancelled = 'cancelled';
 
 String canonicalConversationPairId(String uidA, String uidB) {
   if (uidA == uidB) {
@@ -85,6 +88,21 @@ bool conversationIsUnreadForUser(
 
 bool messageIsCallEvent(MessagesRecord? message) =>
     message?.type == kConversationMessageTypeCallEvent;
+
+bool conversationPartnerIsFriend(
+  ConversationsRecord conversation,
+  Iterable<DocumentReference> friends,
+  String currentUserUid,
+) {
+  final friendPaths = friends.map((reference) => reference.path).toSet();
+  for (final participantRef in conversation.participantRefs) {
+    if (participantRef.id != currentUserUid &&
+        friendPaths.contains(participantRef.path)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 int compareConversationsForInbox(
   ConversationsRecord a,

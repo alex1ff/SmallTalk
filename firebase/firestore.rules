@@ -1,6 +1,8 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Shared identity and defensive field helpers. Privileged client access is
+    // sourced only from the signed Firebase Auth custom claim.
     function isSignedIn() {
       return request.auth != null;
     }
@@ -13,10 +15,52 @@ service cloud.firestore {
       return hasField(data, fieldName) && data[fieldName] == value;
     }
 
+    function fieldHasText(data, fieldName) {
+      return hasField(data, fieldName) &&
+        data[fieldName] is string &&
+        data[fieldName].size() > 0;
+    }
+
+    function nestedFieldHasText(data, parentFieldName, fieldName) {
+      return hasField(data, parentFieldName) &&
+        data[parentFieldName] is map &&
+        fieldHasText(data[parentFieldName], fieldName);
+    }
+
+    function textField(data, fieldName) {
+      return fieldHasText(data, fieldName) ? data[fieldName] : '';
+    }
+
+    function nestedTextField(data, parentFieldName, fieldName) {
+      return nestedFieldHasText(data, parentFieldName, fieldName) ?
+        data[parentFieldName][fieldName] :
+        '';
+    }
+
     function isAdmin() {
       return isSignedIn() &&
         request.auth.token.keys().hasAny(['admin']) &&
         request.auth.token.admin == true;
+    }
+
+    function isEventProtectedFromAdminFallback(documentPath) {
+      return documentPath[0] in [
+        'eventCreationCounters',
+        'eventCreateRequests',
+        'eventChats',
+        'eventReports',
+        'chatMessageReports',
+        'searchRequests',
+        'passiveSearches',
+        'activeSearchAttempts',
+        'passiveSearchOperations',
+        'passiveSearchDeliveries',
+        'translationCache',
+        'translationRateLimits',
+        'aiFeedbackRateLimits',
+        'passwordResetRequests',
+        'passwordResetRateLimits'
+      ];
     }
 
     function isSelf(userId) {
@@ -27,36 +71,119 @@ service cloud.firestore {
       return /databases/$(database)/documents/users/$(request.auth.uid);
     }
 
-    function isOwnerRef(userRef) {
-      return isSignedIn() && userRef == currentUserRef();
+    function currentUserDocumentExists() {
+      return isSignedIn() && exists(currentUserRef());
     }
 
-    function isSessionParticipant(data) {
-      return isSignedIn() && (
-        isParticipantIdForSession(data) ||
-        fieldEquals(data, 'studentId', request.auth.uid) ||
-        fieldEquals(data, 'tutorId', request.auth.uid) ||
-        fieldEquals(data, 'currentTutorId', request.auth.uid)
-      );
+    function currentUserHasPaidPremium() {
+      return currentUserDocumentExists() &&
+        get(currentUserRef()).data.keys().hasAny(['subscription']) &&
+        get(currentUserRef()).data.subscription is map &&
+        get(currentUserRef()).data.subscription.keys()
+          .hasAll(['productId', 'periodType', 'expiresAt']) &&
+        get(currentUserRef()).data.subscription.productId in [
+          'expatlio_1_Month',
+          'expatlio_3_Month',
+          'expatlio_trial_1_Month',
+          'revenuecat_promotional'
+        ] &&
+        get(currentUserRef()).data.subscription.periodType in
+          ['NORMAL', 'PROMOTIONAL'] &&
+        get(currentUserRef()).data.subscription.expiresAt is timestamp &&
+        get(currentUserRef()).data.subscription.expiresAt > request.time;
+    }
+
+    function isOwnerRef(userRef) {
+      return isSignedIn() && userRef == currentUserRef();
     }
 
     function isParticipantIdForSession(data) {
       return isSignedIn() &&
         (
+          hasField(data, 'participantIds') &&
           data.participantIds is list &&
           data.participantIds.hasAny([request.auth.uid])
       );
     }
 
+    function hasResolvedSessionParticipantScope(data) {
+      return hasField(data, 'participantIds') &&
+        data.participantIds is list &&
+        data.participantIds.size() >= 2;
+    }
+
+    function resolvedSessionRequesterId(data) {
+      let requesterId = textField(data, 'requesterId');
+      let matchRequesterId = nestedTextField(data, 'matchContext', 'requesterId');
+      let studentId = textField(data, 'studentId');
+      return requesterId != '' ?
+        requesterId :
+        (matchRequesterId != '' ? matchRequesterId : studentId);
+    }
+
+    function resolvedSessionResponderId(data) {
+      let responderId = textField(data, 'responderId');
+      let acceptedResponderId = nestedTextField(
+        data,
+        'matchContext',
+        'acceptedResponderId'
+      );
+      let currentResponderId = textField(data, 'currentResponderId');
+      let matchResponderId = nestedTextField(data, 'matchContext', 'responderId');
+      let matchCurrentResponderId = nestedTextField(
+        data,
+        'matchContext',
+        'currentResponderId'
+      );
+      let tutorId = textField(data, 'tutorId');
+      let currentTutorId = textField(data, 'currentTutorId');
+      return responderId != '' ?
+        responderId :
+        (
+          acceptedResponderId != '' ?
+            acceptedResponderId :
+            (
+              currentResponderId != '' ?
+                currentResponderId :
+                (
+                  matchResponderId != '' ?
+                    matchResponderId :
+                    (
+                      matchCurrentResponderId != '' ?
+                        matchCurrentResponderId :
+                        (tutorId != '' ? tutorId : currentTutorId)
+                    )
+                )
+            )
+        );
+    }
+
+    function isSessionParticipant(data) {
+      return isSignedIn() && (
+        (
+          hasResolvedSessionParticipantScope(data) &&
+          isParticipantIdForSession(data)
+        ) ||
+        (
+          !hasResolvedSessionParticipantScope(data) &&
+          (
+            isParticipantIdForSession(data) ||
+            resolvedSessionRequesterId(data) == request.auth.uid ||
+            resolvedSessionResponderId(data) == request.auth.uid
+          )
+        )
+      );
+    }
+
     function isRequesterForSession(data) {
-      return isSignedIn() && fieldEquals(data, 'studentId', request.auth.uid);
+      return isSignedIn() &&
+        resolvedSessionRequesterId(data) == request.auth.uid;
     }
 
     function isResponderForSession(data) {
-      return isSignedIn() && (
-        fieldEquals(data, 'tutorId', request.auth.uid) ||
-        fieldEquals(data, 'currentTutorId', request.auth.uid)
-      );
+      return isSignedIn() &&
+        resolvedSessionRequesterId(data) != request.auth.uid &&
+        resolvedSessionResponderId(data) == request.auth.uid;
     }
 
     function isValidSessionNavigationTimestamp(fieldName) {
@@ -85,11 +212,6 @@ service cloud.firestore {
           (
             isResponderForSession(resource.data) &&
             request.resource.data.tutorNavigationTriggered is bool
-          ) ||
-          (
-            isParticipantIdForSession(resource.data) &&
-            !isRequesterForSession(resource.data) &&
-            request.resource.data.tutorNavigationTriggered is bool
           )
         ) &&
         isValidSessionNavigationTimestamp('navigationTimestamp') &&
@@ -100,6 +222,208 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/videoSessions/$(sessionId)).data;
     }
 
+    function isSafeCaptionRuntimeDiagnosticText(text) {
+      return text in [
+        'Субтитры временно недоступны: не удалось получить токен распознавания.',
+        'Субтитры временно недоступны: сервис распознавания требует настройки.',
+        'Субтитры временно недоступны: нет доступа к микрофону.',
+        'Субтитры временно недоступны: не удалось передать звук на распознавание.',
+        'Субтитры временно недоступны: не удалось запустить распознавание речи.',
+        'Субтитры временно недоступны: соединение с распознаванием речи прервано.',
+        'Субтитры временно недоступны: не удалось обработать ответ распознавания.',
+        'Субтитры временно недоступны: сервис распознавания вернул ошибку.'
+      ];
+    }
+
+    function isSafeCaptionRuntimeDiagnosticCode(code) {
+      return code in [
+        'caption_token_unavailable',
+        'deepgram_token_grant_forbidden',
+        'microphone_permission_denied',
+        'audio_stream_error',
+        'deepgram_start_failed',
+        'deepgram_websocket_error',
+        'deepgram_message_parse_failed',
+        'deepgram_error_frame'
+      ];
+    }
+
+    function isSafeCaptionRuntimeDiagnosticPair(code, text) {
+      return (
+          code == 'caption_token_unavailable' &&
+          text == 'Субтитры временно недоступны: не удалось получить токен распознавания.'
+        ) ||
+        (
+          code == 'deepgram_token_grant_forbidden' &&
+          text == 'Субтитры временно недоступны: сервис распознавания требует настройки.'
+        ) ||
+        (
+          code == 'microphone_permission_denied' &&
+          text == 'Субтитры временно недоступны: нет доступа к микрофону.'
+        ) ||
+        (
+          code == 'audio_stream_error' &&
+          text == 'Субтитры временно недоступны: не удалось передать звук на распознавание.'
+        ) ||
+        (
+          code == 'deepgram_start_failed' &&
+          text == 'Субтитры временно недоступны: не удалось запустить распознавание речи.'
+        ) ||
+        (
+          code == 'deepgram_websocket_error' &&
+          text == 'Субтитры временно недоступны: соединение с распознаванием речи прервано.'
+        ) ||
+        (
+          code == 'deepgram_message_parse_failed' &&
+          text == 'Субтитры временно недоступны: не удалось обработать ответ распознавания.'
+        ) ||
+        (
+          code == 'deepgram_error_frame' &&
+          text == 'Субтитры временно недоступны: сервис распознавания вернул ошибку.'
+        );
+    }
+
+    function isReservedCaptionDiagnosticLogId(logId) {
+      return logId.matches('system_.*');
+    }
+
+    function usesReservedCaptionDiagnosticSpeaker(data) {
+      return data.speakerId == 'system' ||
+        data.speakerName == 'SmallTalk' ||
+        data.speakerRole == 'system';
+    }
+
+    function isSafeCaptionParticipantId(value) {
+      return value is string &&
+        value.size() > 0 &&
+        value.size() <= 128 &&
+        value.matches('[A-Za-z0-9_.-]+');
+    }
+
+    function isOtherSessionParticipantId(sessionData, speakerId) {
+      return isSafeCaptionParticipantId(speakerId) &&
+        speakerId != request.auth.uid &&
+        (
+          fieldEquals(sessionData, 'studentId', speakerId) ||
+          fieldEquals(sessionData, 'tutorId', speakerId) ||
+          fieldEquals(sessionData, 'currentTutorId', speakerId) ||
+          (
+            sessionData.participantIds is list &&
+            sessionData.participantIds.hasAny([speakerId])
+          )
+        );
+    }
+
+    function isCaptionLogIdForSpeaker(data, logId) {
+      return logId == data.speakerId + '_' + string(data.utteranceId);
+    }
+
+    function canWriteNonDiagnosticCaptionLogData(data, logId) {
+      return data.keys().hasOnly([
+          'speakerId',
+          'speakerName',
+          'speakerRole',
+          'utteranceId',
+          'text',
+          'language',
+          'source',
+          'capturedAtClient',
+          'createdAtServer',
+          'writerId',
+          'confidence'
+        ]) &&
+        data.source in ['local_deepgram_final', 'peer_legacy_final'] &&
+        isSafeCaptionParticipantId(data.speakerId) &&
+        data.speakerName is string &&
+        data.speakerName.size() > 0 &&
+        data.speakerName.size() <= 128 &&
+        data.speakerRole in ['student', 'tutor'] &&
+        data.utteranceId is int &&
+        data.utteranceId >= 0 &&
+        data.utteranceId <= 1000000 &&
+        data.text is string &&
+        data.text.size() > 0 &&
+        data.text.size() <= 4000 &&
+        data.language is string &&
+        data.language.size() <= 32 &&
+        data.capturedAtClient is timestamp &&
+        data.createdAtServer == request.time &&
+        (
+          !data.keys().hasAny(['confidence']) ||
+          (
+            data.confidence is number &&
+            data.confidence >= 0 &&
+            data.confidence <= 1
+          )
+        ) &&
+        isCaptionLogIdForSpeaker(data, logId) &&
+        !isReservedCaptionDiagnosticLogId(logId) &&
+        !usesReservedCaptionDiagnosticSpeaker(data);
+    }
+
+    function canWriteLocalCaptionLogData(data, logId) {
+      return canWriteNonDiagnosticCaptionLogData(data, logId) &&
+        data.source == 'local_deepgram_final' &&
+        data.speakerId == request.auth.uid;
+    }
+
+    function canWritePeerLegacyCaptionLogData(data, logId, sessionData) {
+      return canWriteNonDiagnosticCaptionLogData(data, logId) &&
+        data.source == 'peer_legacy_final' &&
+        isOtherSessionParticipantId(sessionData, data.speakerId);
+    }
+
+    function canWriteCaptionRuntimeDiagnostic(data, logId) {
+      return data.keys().hasOnly([
+          'speakerId',
+          'speakerName',
+          'speakerRole',
+          'utteranceId',
+          'text',
+          'language',
+          'source',
+          'capturedAtClient',
+          'createdAtServer',
+          'writerId',
+          'diagnosticCode'
+        ]) &&
+        data.source == 'caption_runtime_diagnostic' &&
+        data.diagnosticCode is string &&
+        isSafeCaptionRuntimeDiagnosticCode(data.diagnosticCode) &&
+        logId == 'system_' + request.auth.uid + '_' + data.diagnosticCode &&
+        data.speakerId == 'system' &&
+        data.speakerName == 'SmallTalk' &&
+        data.speakerRole == 'system' &&
+        data.utteranceId == 0 &&
+        data.text is string &&
+        isSafeCaptionRuntimeDiagnosticText(data.text) &&
+        isSafeCaptionRuntimeDiagnosticPair(data.diagnosticCode, data.text) &&
+        data.language is string &&
+        data.language.size() <= 32 &&
+        data.capturedAtClient is timestamp &&
+        data.createdAtServer == request.time;
+    }
+
+    function canWriteCaptionLogData(data, logId, sessionData) {
+      return data.writerId == request.auth.uid &&
+        (
+          canWriteLocalCaptionLogData(data, logId) ||
+          canWritePeerLegacyCaptionLogData(data, logId, sessionData) ||
+          canWriteCaptionRuntimeDiagnostic(data, logId)
+        );
+    }
+
+    function canUpdateCaptionLogData(data, logId, sessionData) {
+      return resource.data.writerId == request.auth.uid &&
+        data.writerId == resource.data.writerId &&
+        data.speakerId == resource.data.speakerId &&
+        data.speakerName == resource.data.speakerName &&
+        data.speakerRole == resource.data.speakerRole &&
+        data.utteranceId == resource.data.utteranceId &&
+        data.source == resource.data.source &&
+        canWriteCaptionLogData(data, logId, sessionData);
+    }
+
     function conversationData(pairId) {
       return get(/databases/$(database)/documents/conversations/$(pairId)).data;
     }
@@ -108,16 +432,24 @@ service cloud.firestore {
       return exists(/databases/$(database)/documents/conversations/$(pairId));
     }
 
-    function isConversationParticipant(data) {
+    function isConversationParticipantByMap(data) {
       return isSignedIn() &&
+        data.participantMap is map &&
+        data.participantMap[request.auth.uid] == true;
+    }
+
+    function isConversationParticipant(data) {
+      return isConversationParticipantByMap(data) || (
+        isSignedIn() &&
         data.participantIds is list &&
-        data.participantIds.hasAny([request.auth.uid]);
+        request.auth.uid in data.participantIds
+      );
     }
 
     function canUpdateConversationReadMarker() {
       return isSignedIn() &&
         resource.data.isUnlocked == true &&
-        request.resource.data.diff(resource.data).changedKeys().hasOnly([
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'lastReadAtByUserId'
         ]) &&
         request.resource.data.lastReadAtByUserId is map &&
@@ -127,24 +459,13 @@ service cloud.firestore {
         ) &&
         request.resource.data.lastReadAtByUserId.diff(
           resource.data.lastReadAtByUserId
-        ).changedKeys().hasOnly([request.auth.uid]) &&
+        ).affectedKeys().hasOnly([request.auth.uid]) &&
         request.resource.data.lastReadAtByUserId[request.auth.uid] == request.time &&
         (
           !resource.data.lastReadAtByUserId.keys().hasAny([request.auth.uid]) ||
           request.resource.data.lastReadAtByUserId[request.auth.uid] >=
           resource.data.lastReadAtByUserId[request.auth.uid]
         );
-    }
-
-    function isPromoCodeRedeemUpdate() {
-      return isSignedIn() &&
-        request.resource.data.diff(resource.data).changedKeys().hasOnly([
-          'usageCount',
-          'usedBy'
-        ]) &&
-        request.resource.data.usageCount is int &&
-        resource.data.usageCount is int &&
-        request.resource.data.usageCount == resource.data.usageCount + 1;
     }
 
     function hasExplicitTeacherAccreditationStatus(data) {
@@ -198,13 +519,7 @@ service cloud.firestore {
     }
 
     function canCreateTransaction() {
-      return isAdmin() || (
-        isOwnerRef(request.resource.data.userId) &&
-        (
-          request.resource.data.type != 'withdrawal' ||
-          hasApprovedTeacherAccreditation(get(currentUserRef()).data)
-        )
-      );
+      return isAdmin();
     }
 
     function protectedTeacherAccreditationFields() {
@@ -216,6 +531,15 @@ service cloud.firestore {
         'teacherAccreditationUpdatedAt',
         'verif_NS',
         'matchProfile'
+      ];
+    }
+
+    function privateUserTokenFields() {
+      return [
+        'voipToken',
+        'voipTokenUpdatedAt',
+        'voipPushToken',
+        'voipPushTokenUpdatedAt'
       ];
     }
 
@@ -393,16 +717,146 @@ service cloud.firestore {
 
     function canCreateOwnUser(userId) {
       return isSelf(userId) &&
-        !request.resource.data.keys().hasAny(protectedTeacherAccreditationFields());
+        ownUserUidIsValid(userId) &&
+        ownUserRoleCreateIsValid() &&
+        ownUserAvailabilityTodayCreateIsValid() &&
+        ownUserLastSeenAtCreateIsValid() &&
+        !request.resource.data.keys().hasAny(protectedTeacherAccreditationFields()) &&
+        !request.resource.data.keys().hasAny(privateUserTokenFields()) &&
+        !request.resource.data.keys().hasAny(privateUserLifecycleFields()) &&
+        !request.resource.data.keys().hasAny(serverOwnedUserFields());
     }
 
     function canUpdateOwnUser(userId) {
+      let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
       return isSelf(userId) &&
+        ownUserUidUpdateIsValid(userId) &&
+        ownUserRoleUpdateIsValid() &&
+        ownUserAvailabilityTodayUpdateIsValid() &&
+        ownUserLastSeenAtUpdateIsValid(changedKeys) &&
+        !changedKeys.hasAny(privateUserTokenFields()) &&
+        !changedKeys.hasAny(privateUserLifecycleFields()) &&
+        !changedKeys.hasAny(serverOwnedUserFields()) &&
         (
-          !request.resource.data.diff(resource.data).affectedKeys()
-            .hasAny(protectedTeacherAccreditationFields()) ||
+          !changedKeys.hasAny(protectedTeacherAccreditationFields()) ||
           canSetOwnTeacherAccreditationPending()
         );
+    }
+
+    function ownUserLastSeenAtCreateIsValid() {
+      return !request.resource.data.keys().hasAny(['lastSeenAt']) ||
+        request.resource.data.lastSeenAt == request.time;
+    }
+
+    function ownUserLastSeenAtUpdateIsValid(changedKeys) {
+      return !changedKeys.hasAny(['lastSeenAt']) ||
+        request.resource.data.lastSeenAt == request.time;
+    }
+
+    function canReadUserDocument(userId) {
+      return isAdmin() ||
+        isSelf(userId) ||
+        (
+          isSignedIn() &&
+          resource.data.uid == request.auth.uid
+        );
+    }
+
+    function ownUserUidIsValid(userId) {
+      return !request.resource.data.keys().hasAny(['uid']) ||
+        request.resource.data.uid == userId;
+    }
+
+    function ownUserUidUpdateIsValid(userId) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['uid']) ||
+        request.resource.data.uid == userId;
+    }
+
+    function ownUserRoleCreateIsValid() {
+      return !request.resource.data.keys().hasAny(['role']) ||
+        request.resource.data.get('role', '') in ['student', 'native_speaker'];
+    }
+
+    function ownUserRoleUpdateIsValid() {
+      let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+      return !changedKeys.hasAny(['role']) ||
+        (
+          request.resource.data.get('role', '') == 'student' ||
+          canSetInitialOwnRole() ||
+          canSetOwnNativeSpeakerRole()
+        );
+    }
+
+    function ownUserAvailabilityTodayCreateIsValid() {
+      return !request.resource.data.keys().hasAny(['availabilityToday']) ||
+        userRoleCanOwnAvailabilityToday(request.resource.data);
+    }
+
+    function ownUserAvailabilityTodayUpdateIsValid() {
+      return userRoleCanOwnAvailabilityToday(request.resource.data) ||
+        !request.resource.data.keys().hasAny(['availabilityToday']);
+    }
+
+    function userRoleCanOwnAvailabilityToday(data) {
+      return data.get('role', '') in ['native_speaker', 'teacher', 'tutor'];
+    }
+
+    function canSetInitialOwnRole() {
+      return !resource.data.keys().hasAny(['role']) &&
+        request.resource.data.get('role', '') in ['student', 'native_speaker'];
+    }
+
+    function canSetOwnNativeSpeakerRole() {
+      return request.resource.data.get('role', '') == 'native_speaker' &&
+        (
+          hasApprovedTeacherAccreditation(resource.data) ||
+          hasPendingTeacherAccreditation(resource.data) ||
+          canSetOwnTeacherAccreditationPending()
+        );
+    }
+
+    function hasPendingTeacherAccreditation(data) {
+      return (
+        data.keys().hasAny(['teacherAccreditationStatus']) &&
+        data.teacherAccreditationStatus == 'pending'
+      ) ||
+      (
+        data.keys().hasAny(['teacherVerificationStatus']) &&
+        data.teacherVerificationStatus == 'pending'
+      ) ||
+      (
+        data.keys().hasAny(['verificationStatus']) &&
+        data.verificationStatus == 'pending'
+      );
+    }
+
+    function privateUserLifecycleFields() {
+      return [
+        'currentSessionId',
+        'isAvailable',
+        'isInCall',
+        'availableAfter',
+        'lastCallEndedAt'
+      ];
+    }
+
+    function serverOwnedUserFields() {
+      return [
+        'balanceST',
+        'balance_NS',
+        'earnings',
+        'giftMinutes',
+        'priorityScore',
+        'rating',
+        'subscription',
+        'queuePriority',
+        'matchProtocolVersion',
+        'v2CallKitCapable',
+        'v2CallKitCapabilityExpiresAt',
+        'matchProtocolPlatform',
+        'matchProtocolUpdatedAt',
+        'totalCalls'
+      ];
     }
 
     function canSetOwnTeacherAccreditationPending() {
@@ -411,12 +865,10 @@ service cloud.firestore {
           'verif_NS'
         ]) &&
         (
-          !resource.data.keys().hasAny(['teacherAccreditationStatus']) ||
-          resource.data.teacherAccreditationStatus != 'approved'
+          resource.data.get('teacherAccreditationStatus', null) != 'approved'
         ) &&
         (
-          !resource.data.keys().hasAny(['verif_NS']) ||
-          resource.data.verif_NS != true
+          resource.data.get('verif_NS', null) != true
         ) &&
         !request.resource.data.diff(resource.data).affectedKeys().hasAny([
           'teacherVerificationStatus',
@@ -425,15 +877,480 @@ service cloud.firestore {
           'teacherAccreditationUpdatedAt',
           'matchProfile'
         ]) &&
-        request.resource.data.teacherAccreditationStatus == 'pending' &&
-        request.resource.data.verif_NS == false;
+        request.resource.data.get('teacherAccreditationStatus', null) == 'pending' &&
+        request.resource.data.get('verif_NS', null) == false;
     }
 
+    function canListActiveEvent(data) {
+      return isAdmin() || (currentUserHasPaidPremium() && data.status == 'active');
+    }
+
+    function canGetEventDetail(eventId, data) {
+      return isSignedIn() &&
+        isAllowedEventStatus(data.status) &&
+        (
+          isAdmin() ||
+          (currentUserHasPaidPremium() && data.status == 'active') ||
+          data.organizerId == request.auth.uid ||
+          isActiveEventParticipant(eventId, request.auth.uid)
+        );
+    }
+
+    function directEventEditFields() {
+      return [
+        'title',
+        'description',
+        'levelMin',
+        'levelMax',
+        'locationName',
+        'locationGeoPoint',
+        'startsAt',
+        'capacity',
+        'updatedAt'
+      ];
+    }
+
+    function directEventEditContentFields() {
+      return [
+        'title',
+        'description',
+        'levelMin',
+        'levelMax',
+        'locationName',
+        'locationGeoPoint',
+        'startsAt',
+        'capacity'
+      ];
+    }
+
+    function directEventEditRequiredFields() {
+      return [
+        'title',
+        'description',
+        'levelMin',
+        'levelMax',
+        'locationName',
+        'locationGeoPoint',
+        'startsAt',
+        'capacity',
+        'participantsCount',
+        'updatedAt',
+        'status',
+        'canceledAt'
+      ];
+    }
+
+    function isValidEventLevel(value) {
+      return value in ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+    }
+
+    function isAllowedEventStatus(value) {
+      return value in ['active', 'canceled'];
+    }
+
+    function isValidEventLevelRange(data) {
+      return (
+          data.levelMin == 'A1' &&
+          data.levelMax in ['A1', 'A2', 'B1', 'B2', 'C1', 'C2']
+        ) ||
+        (
+          data.levelMin == 'A2' &&
+          data.levelMax in ['A2', 'B1', 'B2', 'C1', 'C2']
+        ) ||
+        (
+          data.levelMin == 'B1' &&
+          data.levelMax in ['B1', 'B2', 'C1', 'C2']
+        ) ||
+        (
+          data.levelMin == 'B2' &&
+          data.levelMax in ['B2', 'C1', 'C2']
+        ) ||
+        (
+          data.levelMin == 'C1' &&
+          data.levelMax in ['C1', 'C2']
+        ) ||
+        (
+          data.levelMin == 'C2' &&
+          data.levelMax == 'C2'
+        );
+    }
+
+    function isValidEventGeoPoint(data) {
+      return !data.keys().hasAny(['locationGeoPoint']) ||
+        data.locationGeoPoint == null ||
+        data.locationGeoPoint is latlng;
+    }
+
+    function isValidDirectEventEditData(data) {
+      return data.keys().hasAll(directEventEditRequiredFields()) &&
+        data.title is string &&
+        data.title.size() > 0 &&
+        data.title.size() <= 70 &&
+        data.description is string &&
+        data.description.size() > 0 &&
+        data.description.size() <= 1000 &&
+        isValidEventLevel(data.levelMin) &&
+        isValidEventLevel(data.levelMax) &&
+        isValidEventLevelRange(data) &&
+        data.locationName is string &&
+        data.locationName.size() > 0 &&
+        data.locationName.size() <= 200 &&
+        isValidEventGeoPoint(data) &&
+        data.startsAt is timestamp &&
+        data.startsAt > request.time &&
+        data.capacity is int &&
+        data.capacity >= 2 &&
+        data.capacity <= 50 &&
+        data.participantsCount is int &&
+        data.participantsCount >= 1 &&
+        data.capacity >= data.participantsCount &&
+        data.updatedAt == request.time &&
+        isAllowedEventStatus(data.status) &&
+        data.status == 'active' &&
+        data.canceledAt == null;
+    }
+
+    function canDirectlyEditOwnEvent() {
+      let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+      return isSignedIn() &&
+        resource.data.organizerId == request.auth.uid &&
+        resource.data.status == 'active' &&
+        resource.data.canceledAt == null &&
+        resource.data.startsAt is timestamp &&
+        resource.data.startsAt > request.time &&
+        changedKeys.hasOnly(directEventEditFields()) &&
+        changedKeys.hasAny(directEventEditContentFields()) &&
+        isValidDirectEventEditData(request.resource.data);
+    }
+
+    function eventDocumentData(eventId) {
+      return get(/databases/$(database)/documents/events/$(eventId)).data;
+    }
+
+    function eventDocumentExists(eventId) {
+      return exists(/databases/$(database)/documents/events/$(eventId));
+    }
+
+    function eventIsActive(eventId) {
+      return eventDocumentExists(eventId) &&
+        eventDocumentData(eventId).status == 'active';
+    }
+
+    function eventParticipantDocumentExists(eventId, userId) {
+      return exists(
+        /databases/$(database)/documents/events/$(eventId)/participants/$(userId)
+      );
+    }
+
+    function eventParticipantDocumentData(eventId, userId) {
+      return get(
+        /databases/$(database)/documents/events/$(eventId)/participants/$(userId)
+      ).data;
+    }
+
+    function isValidEventParticipantRole(value) {
+      return value in ['organizer', 'participant'];
+    }
+
+    function isValidEventParticipantStatus(value) {
+      return value in ['active', 'left'];
+    }
+
+    function hasValidEventParticipantPhoto(data) {
+      return !data.keys().hasAny(['photoUrl']) ||
+        data.photoUrl == null ||
+        (
+          data.photoUrl is string &&
+          data.photoUrl.size() <= 2048
+        );
+    }
+
+    function isValidEventParticipantReadData(userId, data) {
+      return data.keys().hasOnly([
+          'userId',
+          'displayName',
+          'photoUrl',
+          'role',
+          'status',
+          'joinedAt',
+          'leftAt',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.keys().hasAll([
+          'userId',
+          'displayName',
+          'role',
+          'status',
+          'joinedAt',
+          'leftAt',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.userId == userId &&
+        data.displayName is string &&
+        data.displayName.size() > 0 &&
+        data.displayName.size() <= 70 &&
+        hasValidEventParticipantPhoto(data) &&
+        isValidEventParticipantRole(data.role) &&
+        isValidEventParticipantStatus(data.status) &&
+        data.joinedAt is timestamp &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp &&
+        (
+          (
+            data.status == 'active' &&
+            data.leftAt == null
+          ) ||
+          (
+            data.status == 'left' &&
+            data.leftAt is timestamp
+          )
+        );
+    }
+
+    function canGetEventParticipant(eventId, userId, data) {
+      return isSignedIn() &&
+        eventIsActive(eventId) &&
+        (
+          isAdmin() ||
+          currentUserHasPaidPremium() ||
+          eventDocumentData(eventId).organizerId == request.auth.uid ||
+          isActiveEventParticipant(eventId, request.auth.uid)
+        ) &&
+        isValidEventParticipantReadData(userId, data) &&
+        data.status == 'active';
+    }
+
+    function canGetOwnEventParticipant(eventId, userId, data) {
+      return isSelf(userId) &&
+        eventIsActive(eventId) &&
+        (
+          !eventParticipantDocumentExists(eventId, userId) ||
+          isValidEventParticipantReadData(userId, data)
+        );
+    }
+
+    function canListActiveEventParticipants(eventId, data) {
+      return isSignedIn() &&
+        eventIsActive(eventId) &&
+        (
+          isAdmin() ||
+          currentUserHasPaidPremium() ||
+          eventDocumentData(eventId).organizerId == request.auth.uid ||
+          isActiveEventParticipant(eventId, request.auth.uid)
+        ) &&
+        request.query.limit <= 50 &&
+        data.status == 'active';
+    }
+
+    function hasValidEventChatMetadata(chatId, data) {
+      return data.keys().hasOnly([
+          'eventId',
+          'readAccessUserIds',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.keys().hasAll([
+          'eventId',
+          'readAccessUserIds',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.eventId == chatId &&
+        data.readAccessUserIds is list &&
+        data.readAccessUserIds.size() <= 50 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function eventHasMatchingActiveChat(chatId) {
+      return eventDocumentExists(chatId) &&
+        eventDocumentData(chatId).chatId == chatId &&
+        eventDocumentData(chatId).status == 'active' &&
+        eventDocumentData(chatId).canceledAt == null;
+    }
+
+    function eventHasMatchingCanceledChat(chatId) {
+      return eventDocumentExists(chatId) &&
+        eventDocumentData(chatId).chatId == chatId &&
+        eventDocumentData(chatId).status == 'canceled' &&
+        eventDocumentData(chatId).canceledAt is timestamp;
+    }
+
+    function isActiveEventParticipant(eventId, userId) {
+      return eventParticipantDocumentExists(eventId, userId) &&
+        isValidEventParticipantReadData(
+          userId,
+          eventParticipantDocumentData(eventId, userId)
+        ) &&
+        eventParticipantDocumentData(eventId, userId).status == 'active' &&
+        eventParticipantDocumentData(eventId, userId).leftAt == null;
+    }
+
+    function canGetActiveEventChat(chatId, data) {
+      return isSignedIn() &&
+        hasValidEventChatMetadata(chatId, data) &&
+        eventHasMatchingActiveChat(chatId) &&
+        isActiveEventParticipant(chatId, request.auth.uid);
+    }
+
+    function canGetCanceledEventChat(chatId, data) {
+      return isSignedIn() &&
+        hasValidEventChatMetadata(chatId, data) &&
+        eventHasMatchingCanceledChat(chatId) &&
+        data.readAccessUserIds.hasAny([request.auth.uid]);
+    }
+
+    function eventChatDocumentExists(chatId) {
+      return exists(/databases/$(database)/documents/eventChats/$(chatId));
+    }
+
+    function eventChatDocumentData(chatId) {
+      return get(/databases/$(database)/documents/eventChats/$(chatId)).data;
+    }
+
+    function canGetActiveEventChatMessage(chatId) {
+      return eventChatDocumentExists(chatId) &&
+        canGetActiveEventChat(chatId, eventChatDocumentData(chatId));
+    }
+
+    function canGetCanceledEventChatMessage(chatId) {
+      return eventChatDocumentExists(chatId) &&
+        canGetCanceledEventChat(chatId, eventChatDocumentData(chatId));
+    }
+
+    // Direct event chat message data model:
+    // - senderId: string, authenticated participant UID
+    // - senderDisplayName: string, exact trusted participant snapshot
+    // - senderPhotoUrl: string or null, exact trusted participant snapshot
+    // - text: canonical string, 1-1000 Rules characters
+    // - createdAt: server timestamp equal to request.time
+    // - deletedAt: null on create
+    function directEventChatMessageFields() {
+      return [
+        'senderId',
+        'senderDisplayName',
+        'senderPhotoUrl',
+        'text',
+        'createdAt',
+        'deletedAt'
+      ];
+    }
+
+    function isLowercaseUuidV4(value) {
+      return value is string &&
+        value.matches(
+          '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+        );
+    }
+
+    function isValidDirectEventChatMessageText(value) {
+      return value is string &&
+        value.size() > 0 &&
+        value.size() <= 1000 &&
+        value == value.trim() &&
+        value == value.replace('\\r', '') &&
+        value == value.replace('\\n{3,}', '\\n\\n');
+    }
+
+    function hasValidDirectEventChatSenderPhoto(participantData, messageData) {
+      return (
+          (
+            !participantData.keys().hasAny(['photoUrl']) ||
+            participantData.photoUrl == null
+          ) &&
+          messageData.senderPhotoUrl == null
+        ) ||
+        (
+          participantData.keys().hasAny(['photoUrl']) &&
+          participantData.photoUrl is string &&
+          participantData.photoUrl.size() > 0 &&
+          participantData.photoUrl.size() <= 2048 &&
+          participantData.photoUrl == participantData.photoUrl.trim() &&
+          messageData.senderPhotoUrl is string &&
+          messageData.senderPhotoUrl == participantData.photoUrl
+        );
+    }
+
+    function hasValidDirectEventChatSenderSnapshot(chatId, data) {
+      let participantData = eventParticipantDocumentData(
+        chatId,
+        request.auth.uid
+      );
+      return participantData.displayName is string &&
+        participantData.displayName.size() > 0 &&
+        participantData.displayName.size() <= 70 &&
+        participantData.displayName == participantData.displayName.trim() &&
+        data.senderDisplayName is string &&
+        data.senderDisplayName == participantData.displayName &&
+        hasValidDirectEventChatSenderPhoto(participantData, data);
+    }
+
+    function isValidDirectEventChatMessageData(chatId, data) {
+      return data.keys().hasOnly(directEventChatMessageFields()) &&
+        data.keys().hasAll(directEventChatMessageFields()) &&
+        data.senderId is string &&
+        data.senderId == request.auth.uid &&
+        (data.senderPhotoUrl == null || data.senderPhotoUrl is string) &&
+        hasValidDirectEventChatSenderSnapshot(chatId, data) &&
+        isValidDirectEventChatMessageText(data.text) &&
+        data.createdAt is timestamp &&
+        data.createdAt == request.time &&
+        data.deletedAt == null;
+    }
+
+    function canCreateDirectEventChatMessage(chatId, messageId) {
+      return isSignedIn() &&
+        isLowercaseUuidV4(messageId) &&
+        eventChatDocumentExists(chatId) &&
+        hasValidEventChatMetadata(
+          chatId,
+          eventChatDocumentData(chatId)
+        ) &&
+        eventHasMatchingActiveChat(chatId) &&
+        isActiveEventParticipant(chatId, request.auth.uid) &&
+        isValidDirectEventChatMessageData(
+          chatId,
+          request.resource.data
+        );
+    }
+
+    function hasBoundedEventChatMessagesQuery() {
+      return request.query.limit is int &&
+        request.query.limit > 0 &&
+        request.query.limit <= 100;
+    }
+
+    // User identity and account-owned data. Client writes must remain scoped
+    // to the authenticated document owner unless an explicit admin rule says otherwise.
     match /users/{userId} {
       allow create: if isAdmin() || canCreateOwnUser(userId);
-      allow read: if isSignedIn();
+      allow get, list: if canReadUserDocument(userId);
       allow update: if isAdmin() || canUpdateOwnUser(userId);
       allow delete: if isAdmin();
+    }
+
+    match /users/{userId}/trialAccess/{trialId} {
+      allow get: if trialId == 'current' && isSelf(userId);
+      allow list, create, update, delete: if false;
+    }
+
+    match /subscriptionTrialGrants/{grantId} {
+      allow read, write: if false;
+    }
+
+    match /userPrivateTokens/{userId} {
+      allow read, write: if false;
+    }
+
+    match /registrationGiftClaims/{userId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /userPublicProfiles/{userId} {
+      allow read: if isSignedIn();
+      allow write: if false;
     }
 
     match /teacherVerificationRequests/{userId} {
@@ -441,6 +1358,27 @@ service cloud.firestore {
       allow create: if isAdmin() || canCreateOwnTeacherVerificationRequest(userId);
       allow update: if isAdmin() || canUpdateOwnTeacherVerificationRequest(userId);
       allow delete: if isAdmin();
+    }
+
+    // Call lifecycle and generated call integrations. Lifecycle documents are
+    // server-created; clients receive only participant-scoped reads and narrow updates.
+    match /passiveSearches/{userId} {
+      allow get: if request.auth != null && request.auth.uid == userId;
+      allow list, write: if false;
+    }
+    match /activeSearchAttempts/{operationId} {
+      allow read, write: if false;
+    }
+    match /passiveSearchOperations/{operationId} {
+      allow read, write: if false;
+    }
+    match /passiveSearchDeliveries/{deliveryId} {
+      allow read, write: if false;
+    }
+
+    match /searchRequests/{userId} {
+      allow get: if isAdmin() || isSelf(userId);
+      allow list, create, update, delete: if false;
     }
 
     match /videoSessions/{sessionId} {
@@ -451,14 +1389,51 @@ service cloud.firestore {
 
       match /captionLogs/{logId} {
         allow read: if isSessionParticipant(videoSessionData(sessionId));
-        allow create, update: if isSessionParticipant(videoSessionData(sessionId)) &&
-          request.resource.data.writerId == request.auth.uid &&
-          (
-            request.resource.data.speakerId == request.auth.uid ||
-            request.resource.data.source == 'peer_legacy_final'
+        allow create: if isSessionParticipant(videoSessionData(sessionId)) &&
+          canWriteCaptionLogData(
+            request.resource.data,
+            logId,
+            videoSessionData(sessionId)
+          );
+        allow update: if isSessionParticipant(videoSessionData(sessionId)) &&
+          canUpdateCaptionLogData(
+            request.resource.data,
+            logId,
+            videoSessionData(sessionId)
           );
         allow delete: if false;
       }
+
+      match /aiFeedback/{feedbackUserId} {
+        allow get: if isSelf(feedbackUserId) &&
+          isSessionParticipant(videoSessionData(sessionId));
+        allow list, create, update, delete: if false;
+      }
+    }
+
+    match /translationCache/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /translationRateLimits/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /aiFeedbackRateLimits/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /passwordResetRequests/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /passwordResetRateLimits/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /users/{userId}/translationLookups/{lookupId} {
+      allow get, list: if isSelf(userId);
+      allow create, update, delete: if false;
     }
 
     match /conversationUnlockEvents/{sessionId} {
@@ -469,9 +1444,11 @@ service cloud.firestore {
       allow create, read, update, delete: if false;
     }
 
+    // Direct conversations and events. Membership comes from server-owned
+    // participant fields; client updates cannot expand those authority fields.
     match /conversations/{pairId} {
       allow get: if isConversationParticipant(resource.data);
-      allow list: if isConversationParticipant(resource.data);
+      allow list: if isConversationParticipantByMap(resource.data);
       allow create: if false;
       allow update: if isConversationParticipant(resource.data) &&
         canUpdateConversationReadMarker();
@@ -501,6 +1478,46 @@ service cloud.firestore {
       }
     }
 
+    match /events/{eventId} {
+      allow get: if canGetEventDetail(eventId, resource.data);
+      allow list: if canListActiveEvent(resource.data);
+      allow create: if false;
+      allow update: if canDirectlyEditOwnEvent();
+      allow delete: if false;
+
+      match /participants/{userId} {
+        allow get: if canGetOwnEventParticipant(eventId, userId, resource.data) ||
+          canGetEventParticipant(eventId, userId, resource.data);
+        allow list: if canListActiveEventParticipants(eventId, resource.data);
+        allow create, update, delete: if false;
+      }
+    }
+
+    match /events_public/{eventId} {
+      allow get: if isSignedIn() && resource.data.status == 'active';
+      allow list: if isSignedIn() && resource.data.status == 'active';
+      allow create, update, delete: if false;
+    }
+
+    match /eventChats/{chatId} {
+      allow get: if canGetActiveEventChat(chatId, resource.data) ||
+        canGetCanceledEventChat(chatId, resource.data);
+      allow list: if false;
+      allow create, update, delete: if false;
+
+      match /messages/{messageId} {
+        allow get: if canGetActiveEventChatMessage(chatId) ||
+          canGetCanceledEventChatMessage(chatId);
+        allow list: if hasBoundedEventChatMessagesQuery() &&
+          (
+            canGetActiveEventChatMessage(chatId) ||
+            canGetCanceledEventChatMessage(chatId)
+          );
+        allow create: if canCreateDirectEventChatMessage(chatId, messageId);
+        allow update, delete: if false;
+      }
+    }
+
     match /users/{userId}/userWords/{wordId} {
       allow create, read, update, delete: if isAdmin() || isSelf(userId);
     }
@@ -509,6 +1526,7 @@ service cloud.firestore {
       allow create, read, update, delete: if isAdmin() || isSelf(userId);
     }
 
+    // Billing, catalog, reviews and low-risk account utilities.
     match /notifications/{notificationId} {
       allow create: if isAdmin();
       allow read: if isAdmin() || (
@@ -526,8 +1544,7 @@ service cloud.firestore {
 
     match /promoCodes/{promoCodeId} {
       allow read: if isAdmin() || isSignedIn();
-      allow update: if isAdmin() || isPromoCodeRedeemUpdate();
-      allow create, delete: if isAdmin();
+      allow create, update, delete: if isAdmin();
     }
 
     match /reviews/{reviewId} {
@@ -568,12 +1585,39 @@ service cloud.firestore {
       allow create, read, update, delete: if isAdmin() || isSelf(userId);
     }
 
+    match /users/{userId}/usage/{usageId} {
+      allow read: if isAdmin() || isSelf(userId);
+      allow create, update, delete: if isAdmin();
+    }
+
     match /users/{userId}/cards/{cardId} {
       allow create, read, update, delete: if isAdmin() || isSelf(userId);
     }
 
-    match /{document=**} {
+    // Operational and moderation collections. Explicit false rules below also
+    // prevent the final admin-read fallback where listed by its exclusion helper.
+    match /eventCreationCounters/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /eventCreateRequests/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /eventReports/{document=**} {
       allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /chatMessageReports/{document=**} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // Default deny for normal users. The custom-claim admin read fallback is a
+    // deliberate support capability; it never grants writes and excludes sensitive paths.
+    match /{document=**} {
+      allow read: if isAdmin() && !isEventProtectedFromAdminFallback(document);
     }
   }
 }

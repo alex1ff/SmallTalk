@@ -1,7 +1,13 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const axios = require("axios");
-const { isSessionParticipant } = require("./video_sessions_shared");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "get_deepgram_token"});
+const {
+  getCredentialTtlSeconds,
+  isAcceptedSessionCredentialParticipant,
+  isCredentialSessionJoinable,
+} = require("./video_sessions_shared");
 
 const deepgramSecrets = ["DEEPGRAM_API_KEY"];
 const DEEPGRAM_GRANT_URL = "https://api.deepgram.com/v1/auth/grant";
@@ -19,6 +25,10 @@ function shouldFallbackToApiKey(error) {
     errCode === "INSUFFICIENT_PERMISSIONS" ||
     errMsg.includes("insufficient permissions")
   );
+}
+
+function isDeepgramGrantConfigurationError(error) {
+  return shouldFallbackToApiKey(error);
 }
 
 exports.getDeepgramToken = functions
@@ -40,7 +50,10 @@ exports.getDeepgramToken = functions
     }
 
     const userId = context.auth.uid;
-    const sessionRef = admin.firestore().collection("videoSessions").doc(sessionId);
+    const sessionRef = admin
+      .firestore()
+      .collection("videoSessions")
+      .doc(sessionId);
     const sessionSnap = await sessionRef.get();
 
     if (!sessionSnap.exists) {
@@ -48,17 +61,17 @@ exports.getDeepgramToken = functions
     }
 
     const sessionData = sessionSnap.data() || {};
-    if (!isSessionParticipant(sessionData, userId)) {
+    if (!isAcceptedSessionCredentialParticipant(sessionData, userId)) {
       throw new functions.https.HttpsError(
         "permission-denied",
         "Not allowed to access this session",
       );
     }
 
-    if (["ended", "cancelled"].includes(sessionData.status)) {
+    if (!isCredentialSessionJoinable(sessionData)) {
       throw new functions.https.HttpsError(
         "failed-precondition",
-        `Session is not active (status: ${sessionData.status})`,
+        `Session is not joinable (status: ${sessionData.status || "unknown"})`,
       );
     }
 
@@ -72,10 +85,21 @@ exports.getDeepgramToken = functions
       );
     }
 
+    const ttlSeconds = getCredentialTtlSeconds(
+      sessionData,
+      DEFAULT_TTL_SECONDS,
+    );
+    if (ttlSeconds < 1) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "Session credential window has expired",
+      );
+    }
+
     try {
       const response = await axios.post(
         DEEPGRAM_GRANT_URL,
-        {ttl_seconds: DEFAULT_TTL_SECONDS},
+        {ttl_seconds: ttlSeconds},
         {
           headers: {
             Authorization: `Token ${apiKey}`,
@@ -96,35 +120,28 @@ exports.getDeepgramToken = functions
         sessionId,
         accessToken: token,
         credentialType: "temporary_token",
-        ttlSeconds: DEFAULT_TTL_SECONDS,
+        ttlSeconds,
       };
     } catch (error) {
-      if (shouldFallbackToApiKey(error)) {
-        console.warn(
-          "⚠️ Deepgram grant forbidden, falling back to API key auth",
-          {
-            sessionId,
-            userId,
-            status: error?.response?.status,
-            data: error?.response?.data,
-          },
-        );
-
-        return {
-          status: "ok",
+      if (isDeepgramGrantConfigurationError(error)) {
+        safeLog.warn("deepgram_grant_forbidden", {
           sessionId,
-          accessToken: apiKey,
-          credentialType: "api_key_fallback",
-          ttlSeconds: null,
-        };
+          userId,
+          statusCode: error?.response?.status,
+        });
+
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "Deepgram temporary token grants are not enabled",
+          {reason: "deepgram_token_grant_forbidden"},
+        );
       }
 
-      console.error("❌ Failed to create Deepgram access token:", {
+      safeLog.error("deepgram_token_failed", {
         sessionId,
         userId,
-        status: error?.response?.status,
-        data: error?.response?.data,
-        message: error?.message,
+        statusCode: error?.response?.status,
+        error,
       });
       throw new functions.https.HttpsError(
         "internal",
@@ -132,3 +149,8 @@ exports.getDeepgramToken = functions
       );
     }
   });
+
+exports.__private__ = {
+  isDeepgramGrantConfigurationError,
+  shouldFallbackToApiKey,
+};

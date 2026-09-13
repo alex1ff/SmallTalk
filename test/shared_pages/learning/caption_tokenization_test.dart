@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:small_talk/shared_pages/learning/caption_word_flow.dart';
 import 'package:small_talk/shared_pages/learning/caption_tokenization.dart';
-import 'package:small_talk/shared_pages/learning/interactive_caption_text.dart';
-import 'package:small_talk/students_pages/components/new_word/new_word_widget.dart';
+import 'package:small_talk/components/interactive_caption_text.dart';
+import 'package:small_talk/components/new_word_widget.dart';
 
 Widget _buildTestApp(Widget child) {
   return MaterialApp(
@@ -68,7 +68,6 @@ void main() {
         _buildTestApp(
           InteractiveCaptionText(
             text: '“hello!”',
-            style: const TextStyle(fontSize: 16),
             mode: InteractiveCaptionTextMode.tokenSplit,
             onWordTap: (word) async {
               tappedWord = word;
@@ -90,7 +89,6 @@ void main() {
         _buildTestApp(
           InteractiveCaptionText(
             text: 'hello',
-            style: const TextStyle(fontSize: 16),
             mode: InteractiveCaptionTextMode.wordScan,
             onWordTap: (word) async {
               tappedWord = word;

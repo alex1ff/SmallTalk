@@ -4,10 +4,10 @@ import 'package:small_talk/students_pages/flashcard/flashcard_review_logic.dart'
 
 void main() {
   group('flashcard review logic', () {
-    test('maps stages to directions and intervals', () {
+    test('uses English to Russian direction and maps intervals', () {
       expect(
         flashcardDirectionForStage(1),
-        FlashcardPromptDirection.ruToEn,
+        FlashcardPromptDirection.enToRu,
       );
       expect(
         flashcardDirectionForStage(2),
@@ -57,7 +57,8 @@ void main() {
       expect(state.dueAt, DateTime(2026, 3, 2, 0, 1));
     });
 
-    test('selects source-language example containing the source word first', () {
+    test('selects source-language example containing the source word first',
+        () {
       final selected = selectFlashcardExampleSentence(
         sentences: [
           SentenceStruct(text: 'Пример без английского', lang: 'ru'),
@@ -72,7 +73,8 @@ void main() {
       expect(selected?.text, 'He said hello to everyone.');
     });
 
-    test('prefers translated dictionary example over untranslated context sentence',
+    test(
+        'prefers translated dictionary example over untranslated context sentence',
         () {
       final selected = selectFlashcardExampleSentence(
         sentences: [
@@ -97,7 +99,8 @@ void main() {
       expect(selected?.text, 'He said hello to everyone.');
     });
 
-    test('matches the exact source word instead of a substring inside another word',
+    test(
+        'matches the exact source word instead of a substring inside another word',
         () {
       final selected = selectFlashcardExampleSentence(
         sentences: [
@@ -139,7 +142,8 @@ void main() {
       expect(selected?.text, 'They waved and said hello');
     });
 
-    test('selects example translation by matching target language, not first', () {
+    test('selects example translation by matching target language, not first',
+        () {
       final translation = selectFlashcardExampleTranslation(
         sentence: SentenceStruct(
           text: 'He said hello to everyone.',
@@ -155,7 +159,8 @@ void main() {
       expect(translation?.text, 'Он всем сказал привет.');
     });
 
-    test('resolveFlashcardExample uses existing matching translation', () async {
+    test('resolveFlashcardExample uses existing matching translation',
+        () async {
       final resolved = await resolveFlashcardExample(
         sentences: [
           SentenceStruct(
@@ -176,7 +181,8 @@ void main() {
       expect(resolved.exampleTranslation, 'Он всем сказал привет.');
     });
 
-    test('resolveFlashcardExample leaves translation empty when the target is missing',
+    test(
+        'resolveFlashcardExample leaves translation empty when the target is missing',
         () async {
       final resolved = await resolveFlashcardExample(
         sentences: [
@@ -197,7 +203,8 @@ void main() {
       expect(resolved.exampleTranslation, isNull);
     });
 
-    test('resolveFlashcardExample leaves translation empty when source and target languages match',
+    test(
+        'resolveFlashcardExample leaves translation empty when source and target languages match',
         () async {
       final resolved = await resolveFlashcardExample(
         sentences: [

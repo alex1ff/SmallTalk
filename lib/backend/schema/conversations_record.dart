@@ -80,6 +80,21 @@ class ConversationsRecord extends FirestoreRecord {
   String? get lastMessageId => _lastMessageId;
   bool hasLastMessageId() => _lastMessageId != null;
 
+  // "lastCallOutcome" field.
+  String? _lastCallOutcome;
+  String? get lastCallOutcome => _lastCallOutcome;
+  bool hasLastCallOutcome() => _lastCallOutcome != null;
+
+  // "lastCallCallerId" field.
+  String? _lastCallCallerId;
+  String? get lastCallCallerId => _lastCallCallerId;
+  bool hasLastCallCallerId() => _lastCallCallerId != null;
+
+  // "lastCallRecipientId" field.
+  String? _lastCallRecipientId;
+  String? get lastCallRecipientId => _lastCallRecipientId;
+  bool hasLastCallRecipientId() => _lastCallRecipientId != null;
+
   // "lastUnreadMessageAt" field.
   DateTime? _lastUnreadMessageAt;
   DateTime? get lastUnreadMessageAt => _lastUnreadMessageAt;
@@ -111,6 +126,9 @@ class ConversationsRecord extends FirestoreRecord {
     _lastMessageType = snapshotData['lastMessageType'] as String?;
     _lastMessageSenderId = snapshotData['lastMessageSenderId'] as String?;
     _lastMessageId = snapshotData['lastMessageId'] as String?;
+    _lastCallOutcome = snapshotData['lastCallOutcome'] as String?;
+    _lastCallCallerId = snapshotData['lastCallCallerId'] as String?;
+    _lastCallRecipientId = snapshotData['lastCallRecipientId'] as String?;
     _lastUnreadMessageAt = snapshotData['lastUnreadMessageAt'] as DateTime?;
     _lastUnreadMessageSenderId =
         snapshotData['lastUnreadMessageSenderId'] as String?;
@@ -168,6 +186,9 @@ Map<String, dynamic> createConversationsRecordData({
   String? lastMessageType,
   String? lastMessageSenderId,
   String? lastMessageId,
+  String? lastCallOutcome,
+  String? lastCallCallerId,
+  String? lastCallRecipientId,
   DateTime? lastUnreadMessageAt,
   String? lastUnreadMessageSenderId,
   Map<String, DateTime?>? lastReadAtByUserId,
@@ -187,6 +208,9 @@ Map<String, dynamic> createConversationsRecordData({
       'lastMessageType': lastMessageType,
       'lastMessageSenderId': lastMessageSenderId,
       'lastMessageId': lastMessageId,
+      'lastCallOutcome': lastCallOutcome,
+      'lastCallCallerId': lastCallCallerId,
+      'lastCallRecipientId': lastCallRecipientId,
       'lastUnreadMessageAt': lastUnreadMessageAt,
       'lastUnreadMessageSenderId': lastUnreadMessageSenderId,
       'lastReadAtByUserId': lastReadAtByUserId ?? const <String, DateTime?>{},
@@ -217,6 +241,9 @@ class ConversationsRecordDocumentEquality
         e1?.lastMessageType == e2?.lastMessageType &&
         e1?.lastMessageSenderId == e2?.lastMessageSenderId &&
         e1?.lastMessageId == e2?.lastMessageId &&
+        e1?.lastCallOutcome == e2?.lastCallOutcome &&
+        e1?.lastCallCallerId == e2?.lastCallCallerId &&
+        e1?.lastCallRecipientId == e2?.lastCallRecipientId &&
         e1?.lastUnreadMessageAt == e2?.lastUnreadMessageAt &&
         e1?.lastUnreadMessageSenderId == e2?.lastUnreadMessageSenderId &&
         mapEquality.equals(e1?.lastReadAtByUserId, e2?.lastReadAtByUserId);
@@ -237,6 +264,9 @@ class ConversationsRecordDocumentEquality
         e?.lastMessageType,
         e?.lastMessageSenderId,
         e?.lastMessageId,
+        e?.lastCallOutcome,
+        e?.lastCallCallerId,
+        e?.lastCallRecipientId,
         e?.lastUnreadMessageAt,
         e?.lastUnreadMessageSenderId,
         e?.lastReadAtByUserId

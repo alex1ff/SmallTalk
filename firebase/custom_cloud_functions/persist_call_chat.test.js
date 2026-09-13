@@ -4,6 +4,11 @@ const admin = require("firebase-admin");
 const {Timestamp} = require("firebase-admin/firestore");
 
 const {
+  CALL_EVENT_OUTCOME_COMPLETED,
+  buildCallEventMessageId,
+} = require("./chats_shared");
+
+const {
   __private__: {
     assertPersistEligibility,
     buildPersistCallChatMessages,
@@ -16,8 +21,9 @@ if (!admin.apps.length) {
   admin.initializeApp({projectId: "demo-smalltalk"});
 }
 
-function createFakeFirestore(seed = {}) {
+function createFakeFirestore(seed = {}, options = {}) {
   const store = new Map(Object.entries(seed));
+  const enforceReadsBeforeWrites = options.enforceReadsBeforeWrites === true;
 
   const makeRef = (path) => ({
     path,
@@ -48,15 +54,23 @@ function createFakeFirestore(seed = {}) {
       };
     },
     async runTransaction(callback) {
+      let hasWrites = false;
       const transaction = {
         async get(ref) {
+          if (enforceReadsBeforeWrites && hasWrites) {
+            throw new Error(
+              "Firestore transactions require all reads before writes",
+            );
+          }
           return ref.get();
         },
         set(ref, data, options = {}) {
+          hasWrites = true;
           const current = store.get(ref.path) || {};
           store.set(ref.path, options.merge ? {...current, ...data} : data);
         },
         update(ref, data) {
+          hasWrites = true;
           const current = store.get(ref.path) || {};
           store.set(ref.path, {...current, ...data});
         },
@@ -76,6 +90,10 @@ function qualifyingSessionData() {
     endedAt: Timestamp.fromMillis(Date.parse("2026-04-19T09:05:00Z")),
     studentId: "student",
     tutorId: "teacher",
+    participantInfos: {
+      student: {displayName: "Alice", photoUrl: null},
+      teacher: {displayName: "Bob", photoUrl: "https://img/bob"},
+    },
     sessionMetadata: {
       callConnectedAt: Timestamp.fromMillis(Date.parse("2026-04-19T09:00:30Z")),
     },
@@ -110,6 +128,21 @@ test("assertPersistEligibility rejects non-participants", () => {
         nowMillis: Date.parse("2026-04-19T09:05:10Z"),
       }),
     /not a participant/,
+  );
+});
+
+test("assertPersistEligibility rejects startedAt-only sessions", () => {
+  const sessionData = qualifyingSessionData();
+  delete sessionData.sessionMetadata.callConnectedAt;
+
+  assert.throws(
+    () =>
+      assertPersistEligibility({
+        sessionData,
+        userId: "student",
+        nowMillis: Date.parse("2026-04-19T09:05:10Z"),
+      }),
+    /not eligible/,
   );
 });
 
@@ -172,11 +205,120 @@ test("persistCallChatForUser upserts conversation and is idempotent", async () =
 
   assert.equal(first.status, "persisted");
   assert.equal(first.written, 1);
+  assert.equal(first.callEventStatus, "created");
   assert.equal(second.status, "already_persisted");
+  assert.equal(second.callEventStatus, "already_exists");
   assert.equal(second.skipped, 1);
   assert.equal(store.get("conversations/student_teacher").isUnlocked, true);
+  assert.deepEqual(
+    store.get("conversations/student_teacher").participantMap,
+    {
+      student: true,
+      teacher: true,
+    },
+  );
+  assert.deepEqual(
+    store.get("conversations/student_teacher").participantInfoByUserId,
+    {
+      student: {displayName: "Alice", photoUrl: null},
+      teacher: {displayName: "Bob", photoUrl: "https://img/bob"},
+    },
+  );
+  assert.equal(
+    store.get("conversations/student_teacher").lastMessageType,
+    "call_event",
+  );
+  assert.equal(
+    store.get("conversations/student_teacher").lastCallOutcome,
+    CALL_EVENT_OUTCOME_COMPLETED,
+  );
+  assert.equal(
+    store.get(
+      "conversations/student_teacher/messages/" +
+        buildCallEventMessageId("session-1", CALL_EVENT_OUTCOME_COMPLETED),
+    ).callOutcome,
+    CALL_EVENT_OUTCOME_COMPLETED,
+  );
   assert.equal(
     store.get("conversations/student_teacher/messages/incall_session-1_student_m1").text,
     "hello",
+  );
+});
+
+test(
+  "persistCallChatForUser writes call event and in-call text with Firestore ordering",
+  async () => {
+    const sessionData = qualifyingSessionData();
+    const {db, store} = createFakeFirestore(
+      {
+        "videoSessions/session-1": sessionData,
+        "conversations/student_teacher": {
+          pairId: "student_teacher",
+          participantIds: ["student", "teacher"],
+          isUnlocked: true,
+        },
+      },
+      {enforceReadsBeforeWrites: true},
+    );
+    const messages = normalizeCallChatMessages([
+      {
+        clientId: "m1",
+        text: "hello after call",
+        sentAtMs: Date.parse("2026-04-19T09:01:00Z"),
+      },
+    ]);
+
+    const result = await persistCallChatForUser({
+      db,
+      userId: "student",
+      sessionId: "session-1",
+      messages,
+      nowMillis: Date.parse("2026-04-19T09:05:10Z"),
+    });
+
+    const callEventPath =
+      "conversations/student_teacher/messages/" +
+      buildCallEventMessageId("session-1", CALL_EVENT_OUTCOME_COMPLETED);
+
+    assert.equal(result.status, "persisted");
+    assert.equal(result.callEventStatus, "created");
+    assert.equal(
+      store.get(callEventPath).callOutcome,
+      CALL_EVENT_OUTCOME_COMPLETED,
+    );
+    assert.equal(
+      store.get(
+        "conversations/student_teacher/messages/incall_session-1_student_m1",
+      ).text,
+      "hello after call",
+    );
+  },
+);
+
+test("persistCallChatForUser creates call event even without in-call text", async () => {
+  const {db, store} = createFakeFirestore({
+    "videoSessions/session-1": qualifyingSessionData(),
+  });
+
+  const result = await persistCallChatForUser({
+    db,
+    userId: "student",
+    sessionId: "session-1",
+    messages: [],
+    nowMillis: Date.parse("2026-04-19T09:05:10Z"),
+  });
+
+  assert.equal(result.status, "call_event_persisted");
+  assert.equal(result.written, 0);
+  assert.equal(
+    store.get("conversations/student_teacher").lastMessageType,
+    "call_event",
+  );
+  assert.equal(
+    store.has(
+      "conversations/student_teacher/messages/" +
+        buildCallEventMessageId("session-1", CALL_EVENT_OUTCOME_COMPLETED),
+    ),
+    true,
   );
 });

@@ -3,9 +3,13 @@ import '/backend/custom_cloud_functions/custom_cloud_function_response_manager.d
 import '/backend/schema/structs/index.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/flutter_flow/permissions_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import '/flutter_flow/flutter_flow_widgets.dart';
 import '/services/partner_filter_preferences.dart';
+import '/services/safe_debug_log.dart';
 import '/services/user_match_profile.dart';
+import '/services/supported_location_catalog.dart';
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -20,12 +24,23 @@ class WaitingForTeacherPageWidget extends StatefulWidget {
   const WaitingForTeacherPageWidget({
     super.key,
     this.targetTutorId,
+    this.sessionId,
   });
 
   static String routeName = 'WaitingForTeacherPage';
   static String routePath = '/waitingForTeacherPage';
 
   final String? targetTutorId;
+  final String? sessionId;
+
+  static Future<dynamic> Function(Map<String, dynamic> payload)?
+      debugCreateVideoSessionRequest;
+  static Future<dynamic> Function(String sessionId)? debugCancelCallRequest;
+  static Future<dynamic> Function(String sessionId)?
+      debugGetSessionTokensRequest;
+  static Stream<DocumentSnapshot<Map<String, dynamic>>> Function(
+    String sessionId,
+  )? debugSessionSnapshots;
 
   @override
   State<WaitingForTeacherPageWidget> createState() =>
@@ -35,11 +50,14 @@ class WaitingForTeacherPageWidget extends StatefulWidget {
 class _WaitingForTeacherPageWidgetState
     extends State<WaitingForTeacherPageWidget> {
   static const bool _isFlutterTest = bool.fromEnvironment('FLUTTER_TEST');
+  static const int _tokenFetchMaxAttempts = 2;
+  static const Duration _tokenFetchRetryDelay = Duration(milliseconds: 400);
 
   late WaitingForTeacherPageModel _model;
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
 
+  bool _usesExistingQueueSession = false;
   bool _navigationHandled = false;
   bool _tokenFetchInProgress = false;
   bool _isCreating = false;
@@ -53,6 +71,8 @@ class _WaitingForTeacherPageWidgetState
       _sessionSubscription;
   String? _listeningSessionId;
   String? _lastSnapshotFingerprint;
+  Map<String, dynamic>? _sessionData;
+  bool _sessionStreamHasError = false;
 
   bool get _isDirectTutorCall => _nonEmpty(widget.targetTutorId) != null;
 
@@ -60,6 +80,14 @@ class _WaitingForTeacherPageWidgetState
   void initState() {
     super.initState();
     _model = createModel(context, () => WaitingForTeacherPageModel());
+    final existingSessionId = _nonEmpty(widget.sessionId);
+    if (existingSessionId != null) {
+      _usesExistingQueueSession = true;
+      _model.sessionId = existingSessionId;
+      _createSessionRequested = true;
+      _ensureSessionListener(existingSessionId);
+      return;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _tryStartCreateSession();
@@ -88,26 +116,21 @@ class _WaitingForTeacherPageWidgetState
     return trimmed;
   }
 
-  String? _sanitizeMessage(String? value) {
-    final message = _nonEmpty(value);
-    if (message == null) return null;
-    const maxLen = 200;
-    if (message.length <= maxLen) return message;
-    return '${message.substring(0, maxLen)}…';
-  }
-
   String _snapshotFingerprint(Map<String, dynamic>? data) {
     if (data == null) return 'null';
 
     final status = _nonEmpty(data['status']?.toString()) ?? '';
     final roomUrl = _nonEmpty(data['dailyRoomUrl']?.toString()) ?? '';
     final roomName = _nonEmpty(data['dailyRoomName']?.toString()) ?? '';
-    final meetingToken =
-        _nonEmpty(data['studentMeetingToken']?.toString()) ?? '';
+    final tutorInfo = data['tutorInfo'];
+    final tutorName =
+        tutorInfo is Map ? _nonEmpty(tutorInfo['name']?.toString()) ?? '' : '';
+    final tutorPhoto =
+        tutorInfo is Map ? _nonEmpty(tutorInfo['photo']?.toString()) ?? '' : '';
     final studentTriggered =
         data['studentNavigationTriggered'] == true ? '1' : '0';
 
-    return '$status|$roomUrl|$roomName|$meetingToken|$studentTriggered';
+    return '$status|$roomUrl|$roomName|$tutorName|$tutorPhoto|$studentTriggered';
   }
 
   void _detachSessionListener() {
@@ -115,6 +138,8 @@ class _WaitingForTeacherPageWidgetState
     _lastSnapshotFingerprint = null;
     final subscription = _sessionSubscription;
     _sessionSubscription = null;
+    _sessionData = null;
+    _sessionStreamHasError = false;
     if (subscription != null) {
       unawaited(subscription.cancel());
     }
@@ -128,11 +153,7 @@ class _WaitingForTeacherPageWidgetState
     _detachSessionListener();
     _listeningSessionId = sessionId;
 
-    _sessionSubscription = FirebaseFirestore.instance
-        .collection('videoSessions')
-        .doc(sessionId)
-        .snapshots()
-        .listen(
+    _sessionSubscription = _sessionSnapshots(sessionId).listen(
       (snapshot) {
         final data = snapshot.data();
         final fingerprint = _snapshotFingerprint(data);
@@ -140,12 +161,48 @@ class _WaitingForTeacherPageWidgetState
           return;
         }
         _lastSnapshotFingerprint = fingerprint;
+        if (mounted) {
+          safeSetState(() {
+            _sessionData = data;
+            _sessionStreamHasError = false;
+          });
+        }
         _handleSnapshot(data);
       },
       onError: (error) {
-        debugPrint('WaitingForTeacher: session stream error: $error');
+        safeDebugLog('WaitingForTeacher: session stream error: $error');
+        if (mounted) {
+          safeSetState(() {
+            _sessionData = null;
+            _sessionStreamHasError = true;
+          });
+        }
       },
     );
+  }
+
+  Stream<DocumentSnapshot<Map<String, dynamic>>> _sessionSnapshots(
+    String sessionId,
+  ) {
+    final debugSessionSnapshots =
+        WaitingForTeacherPageWidget.debugSessionSnapshots;
+    if (debugSessionSnapshots != null) {
+      return debugSessionSnapshots(sessionId);
+    }
+
+    return FirebaseFirestore.instance
+        .collection('videoSessions')
+        .doc(sessionId)
+        .snapshots();
+  }
+
+  void _leaveWaitingPage() {
+    if (!mounted) return;
+    if (!_usesExistingQueueSession) {
+      context.safePop();
+      return;
+    }
+    context.goNamed(app.StudentsDashboardWidget.routeName);
   }
 
   Map<String, dynamic> _asMap(dynamic value) {
@@ -168,9 +225,15 @@ class _WaitingForTeacherPageWidgetState
 
   String _createFailureMessage({
     String? status,
-    String? fallbackMessage,
     String? errorCode,
   }) {
+    if (status == 'expired') {
+      return _localizedText(
+        ruText: 'Время ожидания истекло. Попробуйте начать поиск снова.',
+        enText: 'The waiting time expired. Please start matching again.',
+      );
+    }
+
     if (status == 'no_tutors_available') {
       if (_isDirectTutorCall) {
         return _localizedText(
@@ -186,14 +249,10 @@ class _WaitingForTeacherPageWidgetState
       );
     }
 
-    if (fallbackMessage != null) {
-      return fallbackMessage;
-    }
-
-    if (errorCode != null) {
+    if (errorCode == 'invalid-profile') {
       return _localizedText(
-        ruText: 'Не удалось начать поиск собеседника ($errorCode).',
-        enText: 'Failed to start matching ($errorCode).',
+        ruText: 'Профиль заполнен не полностью. Проверьте язык обучения.',
+        enText: 'Your profile is incomplete. Check your learning language.',
       );
     }
 
@@ -224,7 +283,9 @@ class _WaitingForTeacherPageWidgetState
     final language = _nonEmpty(resolveUserActiveConversationLanguage(user));
     if (language == null) return null;
 
-    final preferredCountry = _nonEmpty(user.preferences.preferredLocation.code);
+    final preferredLocation =
+        resolveSupportedCountryStruct(user.preferences.preferredLocation);
+    final preferredCountry = preferredLocation?.countryCode;
     final preferredPartnerLevel = _nonEmpty(
       resolveEffectivePreferredPartnerLevelName(
         preferredPartnerLevel: user.preferences.preferredPartnerLevel,
@@ -237,6 +298,8 @@ class _WaitingForTeacherPageWidgetState
       if (_isDirectTutorCall) 'directTutorId': _nonEmpty(widget.targetTutorId),
       if (!_isDirectTutorCall && preferredCountry != null)
         'preferredCountry': preferredCountry,
+      if (!_isDirectTutorCall && preferredLocation != null)
+        'cityKey': preferredLocation.cityKey,
       if (!_isDirectTutorCall && preferredPartnerLevel != null)
         'preferredPartnerLevel': preferredPartnerLevel,
     };
@@ -255,10 +318,31 @@ class _WaitingForTeacherPageWidgetState
 
     try {
       if (currentUserDocument == null) {
-        debugPrint(
+        safeDebugLog(
           'WaitingForTeacher: user profile is not ready yet, delaying createVideoSession.',
         );
         _createSessionRequested = false;
+        return;
+      }
+
+      final hasMediaPermissions = await ensureCameraAndMicrophonePermissions();
+      if (!mounted) {
+        return;
+      }
+      if (!hasMediaPermissions) {
+        _createSessionRequested = false;
+        _model.sessionId = null;
+        _createFailed = true;
+        _createMessage = _localizedText(
+          ruText: 'Разрешите доступ к камере и микрофону, чтобы начать звонок.',
+          enText: 'Allow camera and microphone access to start a call.',
+        );
+        safeDebugLog(
+          'WaitingForTeacher: camera or microphone permission denied before createVideoSession.',
+        );
+        return;
+      }
+      if (!mounted) {
         return;
       }
 
@@ -268,26 +352,28 @@ class _WaitingForTeacherPageWidgetState
         _model.sessionId = null;
         _createFailed = true;
         _createMessage = _createFailureMessage(
-          fallbackMessage: _localizedText(
-            ruText: 'Профиль заполнен не полностью. Проверьте язык обучения.',
-            enText: 'Your profile is incomplete. Check your learning language.',
-          ),
+          errorCode: 'invalid-profile',
         );
-        debugPrint(
+        safeDebugLog(
             'WaitingForTeacher: missing user data for createVideoSession');
         return;
       }
 
-      final result = await FirebaseFunctions.instance
-          .httpsCallable('createVideoSession')
-          .call(payload);
+      final debugCreateVideoSessionRequest =
+          WaitingForTeacherPageWidget.debugCreateVideoSessionRequest;
+      final resultData = debugCreateVideoSessionRequest != null
+          ? await debugCreateVideoSessionRequest(payload)
+          : (await FirebaseFunctions.instance
+                  .httpsCallable('createVideoSession')
+                  .call(payload))
+              .data;
 
-      final resultMap = _asMap(result.data);
+      final resultMap = _asMap(resultData);
       _model.newSession = CreateVideoSessionCloudFunctionCallResponse(
         data: CallRequestResponseStruct.fromMap(resultMap),
         succeeded: true,
-        resultAsString: result.data.toString(),
-        jsonBody: result.data,
+        resultAsString: resultData.toString(),
+        jsonBody: resultData,
       );
 
       final sessionId = _nonEmpty(_model.newSession?.data?.sessionId);
@@ -296,7 +382,7 @@ class _WaitingForTeacherPageWidgetState
       // If cancel was requested while createVideoSession was in-flight,
       // immediately cancel the newly created session on the server.
       if (_cancelRequested && sessionId != null) {
-        debugPrint(
+        safeDebugLog(
           'WaitingForTeacher: cancel was requested while creating session. '
           'Cancelling session $sessionId now.',
         );
@@ -307,14 +393,11 @@ class _WaitingForTeacherPageWidgetState
       if (sessionId == null) {
         _detachSessionListener();
         final status = _nonEmpty(resultMap['status']?.toString());
-        final backendMessage =
-            _sanitizeMessage(resultMap['message']?.toString());
         _createFailed = true;
         _createMessage = _createFailureMessage(
           status: status,
-          fallbackMessage: backendMessage,
         );
-        debugPrint(
+        safeDebugLog(
           'WaitingForTeacher: createVideoSession returned without sessionId '
           '(status: ${status ?? "unknown"})',
         );
@@ -330,10 +413,9 @@ class _WaitingForTeacherPageWidgetState
       _model.sessionId = null;
       _createFailed = true;
       _createMessage = _createFailureMessage(
-        fallbackMessage: _sanitizeMessage(error.message),
         errorCode: error.code,
       );
-      debugPrint(
+      safeDebugLog(
         'WaitingForTeacher: createVideoSession failed: '
         '${error.code} ${error.message}',
       );
@@ -341,10 +423,8 @@ class _WaitingForTeacherPageWidgetState
       _detachSessionListener();
       _model.sessionId = null;
       _createFailed = true;
-      _createMessage = _createFailureMessage(
-        fallbackMessage: _sanitizeMessage(error.toString()),
-      );
-      debugPrint(
+      _createMessage = _createFailureMessage();
+      safeDebugLog(
           'WaitingForTeacher: unexpected createVideoSession error: $error');
     } finally {
       _isCreating = false;
@@ -360,26 +440,30 @@ class _WaitingForTeacherPageWidgetState
 
   Future<void> _cancelSession(String sessionId) async {
     try {
-      final result =
-          await FirebaseFunctions.instance.httpsCallable('cancelCall').call({
-        'sessionId': sessionId,
-      });
+      final debugCancelCallRequest =
+          WaitingForTeacherPageWidget.debugCancelCallRequest;
+      final resultData = debugCancelCallRequest != null
+          ? await debugCancelCallRequest(sessionId)
+          : (await FirebaseFunctions.instance.httpsCallable('cancelCall').call({
+              'sessionId': sessionId,
+            }))
+              .data;
       _model.cloudFunction5c0 = CancelCallCloudFunctionCallResponse(
-        data: CancelCallResponseStruct.fromMap(_asMap(result.data)),
+        data: CancelCallResponseStruct.fromMap(_asMap(resultData)),
         succeeded: true,
-        resultAsString: result.data.toString(),
-        jsonBody: result.data,
+        resultAsString: resultData.toString(),
+        jsonBody: resultData,
       );
     } on FirebaseFunctionsException catch (error) {
       _model.cloudFunction5c0 = CancelCallCloudFunctionCallResponse(
         errorCode: error.code,
         succeeded: false,
       );
-      debugPrint(
+      safeDebugLog(
         'WaitingForTeacher: cancelCall failed: ${error.code} ${error.message}',
       );
     } catch (error) {
-      debugPrint('WaitingForTeacher: unexpected cancelCall error: $error');
+      safeDebugLog('WaitingForTeacher: unexpected cancelCall error: $error');
     }
   }
 
@@ -397,7 +481,7 @@ class _WaitingForTeacherPageWidgetState
         try {
           await completer.future.timeout(const Duration(seconds: 8));
         } on TimeoutException {
-          debugPrint(
+          safeDebugLog(
             'WaitingForTeacher: cancel timeout while waiting createVideoSession',
           );
         }
@@ -407,7 +491,7 @@ class _WaitingForTeacherPageWidgetState
       if (currentSessionId != null) {
         await _cancelSession(currentSessionId);
       } else {
-        debugPrint(
+        safeDebugLog(
           'WaitingForTeacher: cancel requested before sessionId was created. '
           'Skipping cancelCall.',
         );
@@ -416,7 +500,7 @@ class _WaitingForTeacherPageWidgetState
       _detachSessionListener();
       if (mounted && !_navigationHandled) {
         _navigationHandled = true;
-        context.safePop();
+        _leaveWaitingPage();
       }
       if (mounted) {
         safeSetState(() {
@@ -434,30 +518,20 @@ class _WaitingForTeacherPageWidgetState
     final status = data['status'] as String?;
     final roomUrl = _nonEmpty(data['dailyRoomUrl'] as String?);
     final roomName = _nonEmpty(data['dailyRoomName'] as String?);
-    final studentMeetingToken =
-        _nonEmpty(data['studentMeetingToken'] as String?);
-    final studentTriggered = data['studentNavigationTriggered'] == true;
 
-    final isActive = status == 'active' || status == 'connected';
+    final isJoinable =
+        status == 'active' || status == 'connected' || status == 'connecting';
 
-    // Navigate when session is active and we have room data
-    if ((isActive || studentTriggered) && roomUrl != null) {
-      if (studentMeetingToken != null) {
-        _navigateToVideoCall(
-          roomUrl: roomUrl,
-          meetingToken: studentMeetingToken,
-          roomName: roomName,
-        );
-      } else if (!_tokenFetchInProgress) {
-        _fetchTokenAndNavigate(roomUrl: roomUrl, roomName: roomName);
-      }
+    // Navigate when session is joinable and we have room data.
+    if (isJoinable && roomUrl != null && !_tokenFetchInProgress) {
+      _fetchTokenAndNavigate(roomUrl: roomUrl, roomName: roomName);
     }
 
     // Auto-pop on terminal statuses
-    if (status == 'cancelled' || status == 'ended') {
+    if (status == 'cancelled' || status == 'expired' || status == 'ended') {
       _navigationHandled = true;
       _detachSessionListener();
-      context.safePop();
+      _leaveWaitingPage();
     }
   }
 
@@ -495,6 +569,44 @@ class _WaitingForTeacherPageWidgetState
     );
   }
 
+  Future<dynamic> _requestSessionTokens(String sessionId) {
+    final debugGetSessionTokensRequest =
+        WaitingForTeacherPageWidget.debugGetSessionTokensRequest;
+    if (debugGetSessionTokensRequest != null) {
+      return debugGetSessionTokensRequest(sessionId);
+    }
+    return FirebaseFunctions.instance
+        .httpsCallable('getSessionTokens')
+        .call({'sessionId': sessionId}).then((result) => result.data);
+  }
+
+  Future<Map<String, dynamic>?> _requestSessionTokensWithRetry(
+    String sessionId,
+  ) async {
+    Object? lastError;
+    for (var attempt = 1; attempt <= _tokenFetchMaxAttempts; attempt += 1) {
+      if (!mounted || _navigationHandled || _cancelRequested) {
+        return null;
+      }
+
+      try {
+        return _asMap(await _requestSessionTokens(sessionId));
+      } catch (error) {
+        lastError = error;
+        if (attempt >= _tokenFetchMaxAttempts ||
+            !mounted ||
+            _navigationHandled ||
+            _cancelRequested) {
+          break;
+        }
+        await Future.delayed(_tokenFetchRetryDelay);
+      }
+    }
+
+    safeDebugLog('WaitingForTeacher: getSessionTokens failed: $lastError');
+    return null;
+  }
+
   Future<void> _fetchTokenAndNavigate({
     required String roomUrl,
     String? roomName,
@@ -505,10 +617,10 @@ class _WaitingForTeacherPageWidgetState
     _tokenFetchInProgress = true;
 
     try {
-      final result = await FirebaseFunctions.instance
-          .httpsCallable('getSessionTokens')
-          .call({'sessionId': sessionId});
-      final data = _asMap(result.data);
+      final data = await _requestSessionTokensWithRetry(sessionId);
+      if (data == null) {
+        return;
+      }
       final token = _nonEmpty(data['meetingToken']?.toString());
       final refreshedRoomUrl = _nonEmpty(data['roomUrl']?.toString());
       final refreshedRoomName = _nonEmpty(data['roomName']?.toString());
@@ -522,8 +634,6 @@ class _WaitingForTeacherPageWidgetState
           roomName: refreshedRoomName ?? roomName,
         );
       }
-    } catch (e) {
-      debugPrint('WaitingForTeacher: getSessionTokens failed: $e');
     } finally {
       _tokenFetchInProgress = false;
     }
@@ -534,6 +644,8 @@ class _WaitingForTeacherPageWidgetState
     _tryStartCreateSession();
     final sessionId = _nonEmpty(_model.sessionId);
     final isLoading = sessionId == null && !_createFailed;
+    final sessionData = _sessionStreamHasError ? null : _sessionData;
+    final sessionStatus = sessionData?['status'] as String?;
     if (sessionId != null) {
       _ensureSessionListener(sessionId);
     } else {
@@ -547,24 +659,14 @@ class _WaitingForTeacherPageWidgetState
       },
       child: Scaffold(
         key: scaffoldKey,
-        backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
+        backgroundColor: ExpatlioDesign.background,
         body: sessionId == null
             ? _buildStatusBody(context,
                 status: null, isLoading: isLoading, data: null)
-            : StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                stream: FirebaseFirestore.instance
-                    .collection('videoSessions')
-                    .doc(sessionId)
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    return _buildStatusBody(context, status: null, data: null);
-                  }
-                  final data = snapshot.data?.data();
-                  final status = data?['status'] as String?;
-
-                  return _buildStatusBody(context, status: status, data: data);
-                },
+            : _buildStatusBody(
+                context,
+                status: sessionStatus,
+                data: sessionData,
               ),
       ),
     );
@@ -580,16 +682,18 @@ class _WaitingForTeacherPageWidgetState
     final tutorInfoMap = tutorInfoRaw is Map ? _asMap(tutorInfoRaw) : null;
     final tutorName = _nonEmpty(tutorInfoMap?['name'] as String?);
     final tutorPhoto = _nonEmpty(tutorInfoMap?['photo'] as String?);
-    final isDialingTutor =
-        tutorName != null && (status == 'searching' || status == 'connecting');
+    final isDialingTutor = tutorName != null &&
+        (status == 'searching' ||
+            status == 'pending_confirmation' ||
+            status == 'connecting');
 
     String title;
     String subtitle;
 
     if (_createFailed && status == null) {
       title = _localizedText(
-        ruText: 'Не удалось начать Small Talk',
-        enText: 'Unable to start Small Talk',
+        ruText: 'Не удалось начать звонок в Expatlio',
+        enText: 'Unable to start an Expatlio call',
       );
       subtitle = _createMessage ??
           _localizedText(
@@ -598,10 +702,12 @@ class _WaitingForTeacherPageWidgetState
           );
     } else if (isLoading || status == null) {
       title = _localizedText(
-        ruText:
-            _isDirectTutorCall ? 'Звоним собеседнику' : 'Small Talk начинается',
-        enText:
-            _isDirectTutorCall ? 'Calling your partner' : 'Small Talk begins',
+        ruText: _isDirectTutorCall
+            ? 'Звоним собеседнику'
+            : 'Звонок в Expatlio начинается',
+        enText: _isDirectTutorCall
+            ? 'Calling your partner'
+            : 'Expatlio call begins',
       );
       subtitle = _localizedText(
         ruText: _isDirectTutorCall
@@ -617,7 +723,7 @@ class _WaitingForTeacherPageWidgetState
         ruText: 'Дозваниваемся до собеседника…',
         enText: 'Connecting to your partner…',
       );
-    } else if (status == 'searching') {
+    } else if (status == 'searching' || status == 'pending_confirmation') {
       title = _localizedText(
         ruText: _isDirectTutorCall ? 'Звоним собеседнику' : 'Дозваниваемся',
         enText: _isDirectTutorCall ? 'Calling your partner' : 'Connecting…',
@@ -639,7 +745,7 @@ class _WaitingForTeacherPageWidgetState
         ruText: 'Подключаемся к звонку…',
         enText: 'Connecting to the call…',
       );
-    } else if (status == 'no_tutors_available') {
+    } else if (status == 'no_tutors_available' || status == 'expired') {
       if (_isDirectTutorCall) {
         title = FFLocalizations.of(context).getVariableText(
           ruText: 'Собеседник недоступен',
@@ -672,8 +778,8 @@ class _WaitingForTeacherPageWidgetState
       );
     } else {
       title = FFLocalizations.of(context).getVariableText(
-        ruText: 'Small Talk начинается',
-        enText: 'Small Talk begins',
+        ruText: 'Звонок в Expatlio начинается',
+        enText: 'Expatlio call begins',
       );
       subtitle = FFLocalizations.of(context).getVariableText(
         ruText: 'Ищем идеального собеседника',
@@ -733,21 +839,30 @@ class _WaitingForTeacherPageWidgetState
               ),
             ),
             child: Padding(
-              padding: EdgeInsetsDirectional.fromSTEB(6.0, 35.0, 6.0, 35.0),
+              padding: EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space8,
+                  ExpatlioDesign.space32,
+                  ExpatlioDesign.space8,
+                  ExpatlioDesign.space32),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   Padding(
-                    padding: EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 0.0, 6.0),
+                    padding: EdgeInsetsDirectional.fromSTEB(
+                        ExpatlioDesign.space0,
+                        ExpatlioDesign.space0,
+                        ExpatlioDesign.space0,
+                        ExpatlioDesign.space8),
                     child: Container(
                       width: double.infinity,
                       decoration: BoxDecoration(
-                        color: FlutterFlowTheme.of(context).primaryBackground,
-                        borderRadius: BorderRadius.circular(26.0),
+                        color: ExpatlioDesign.card,
+                        borderRadius:
+                            BorderRadius.circular(ExpatlioDesign.radiusLarge),
                       ),
                       child: Padding(
-                        padding: EdgeInsets.all(16.0),
+                        padding: EdgeInsets.all(ExpatlioDesign.space16),
                         child: Column(
                           mainAxisSize: MainAxisSize.max,
                           crossAxisAlignment: CrossAxisAlignment.center,
@@ -761,14 +876,17 @@ class _WaitingForTeacherPageWidgetState
                                     fontFamily: 'Cool',
                                     color: FlutterFlowTheme.of(context)
                                         .primaryText,
-                                    fontSize: 21.0,
+                                    fontSize: 22.0,
                                     letterSpacing: 0.0,
                                     fontWeight: FontWeight.normal,
                                   ),
                             ),
                             Padding(
                               padding: EdgeInsetsDirectional.fromSTEB(
-                                  0.0, 8.0, 0.0, 0.0),
+                                  ExpatlioDesign.space0,
+                                  ExpatlioDesign.space8,
+                                  ExpatlioDesign.space0,
+                                  ExpatlioDesign.space0),
                               child: Text(
                                 subtitle,
                                 textAlign: TextAlign.center,
@@ -807,12 +925,18 @@ class _WaitingForTeacherPageWidgetState
                     ),
                     options: FFButtonOptions(
                       width: double.infinity,
-                      height: 50.0,
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(16.0, 0.0, 16.0, 0.0),
+                      height: ExpatlioDesign.buttonHeight,
+                      padding: EdgeInsetsDirectional.fromSTEB(
+                          ExpatlioDesign.space16,
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space16,
+                          ExpatlioDesign.space0),
                       iconAlignment: IconAlignment.end,
-                      iconPadding:
-                          EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 0.0, 0.0),
+                      iconPadding: EdgeInsetsDirectional.fromSTEB(
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space0,
+                          ExpatlioDesign.space0),
                       color: Color(0xFF6E6CFA),
                       textStyle: FlutterFlowTheme.of(context)
                           .titleSmall
@@ -825,7 +949,8 @@ class _WaitingForTeacherPageWidgetState
                             fontWeight: FontWeight.w500,
                           ),
                       elevation: 0.0,
-                      borderRadius: BorderRadius.circular(50.0),
+                      borderRadius:
+                          BorderRadius.circular(ExpatlioDesign.buttonRadius),
                     ),
                     showLoadingIndicator: _isCancelling,
                   ),

@@ -3,6 +3,8 @@ import '/authorization/shared/pending_social_auth_context.dart';
 import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/services/new_account_inbox_bootstrap.dart';
+import '/services/safe_debug_log.dart';
 import 'package:flutter/foundation.dart';
 
 enum SocialAuthEntryDestination {
@@ -15,13 +17,17 @@ enum UserRoleRecoverySource {
   canonical,
   pendingIntent,
   profileShape,
-  manualRecovery,
 }
 
 enum LoadingRecoveryAction {
   assignRole,
-  showManualRoleChoice,
   fatalError,
+}
+
+enum LoadingRecoveryFailure {
+  duplicateProfiles,
+  ambiguousProfile,
+  profileUnavailable,
 }
 
 class SocialAuthEntryDecision {
@@ -44,24 +50,40 @@ class LoadingRecoveryDecision {
     this.roleToAssign,
     this.grantStudentBonus = false,
     this.recoverySource,
-    this.errorMessage,
-    this.suggestedNativeSpeakerValue = false,
+    this.failure,
   });
 
   final LoadingRecoveryAction action;
   final UserRole? roleToAssign;
   final bool grantStudentBonus;
   final UserRoleRecoverySource? recoverySource;
-  final String? errorMessage;
-  final bool suggestedNativeSpeakerValue;
+  final LoadingRecoveryFailure? failure;
 }
 
 SocialAuthEntryDecision resolveSocialAuthEntryDecision({
   required bool hasAssignedRole,
   required bool nativeSpeakerIntent,
   required bool hasStudentBalance,
+  UserRole? inferredRole,
+  bool allowNewAccountRoleIntent = true,
 }) {
   if (hasAssignedRole) {
+    return const SocialAuthEntryDecision(
+      destination: SocialAuthEntryDestination.loading,
+      roleToAssign: null,
+      grantStudentBonus: false,
+    );
+  }
+
+  if (inferredRole != null) {
+    return SocialAuthEntryDecision(
+      destination: SocialAuthEntryDestination.loading,
+      roleToAssign: inferredRole,
+      grantStudentBonus: inferredRole == UserRole.student && !hasStudentBalance,
+    );
+  }
+
+  if (!allowNewAccountRoleIntent) {
     return const SocialAuthEntryDecision(
       destination: SocialAuthEntryDestination.loading,
       roleToAssign: null,
@@ -88,7 +110,7 @@ void _debugSocialAuthLog(String message) {
   if (!kDebugMode) {
     return;
   }
-  debugPrint('🔐 SocialAuthEntry: $message');
+  safeDebugLog('🔐 SocialAuthEntry: $message');
 }
 
 UserRole roleIntentFromNativeSpeakerIntent(bool nativeSpeakerIntent) =>
@@ -209,7 +231,6 @@ bool _hasTeacherRoleSignals(UsersRecord? user) {
       user.hasNativeLanguageNS() ||
       user.hasCountryNS() ||
       user.hasVerifNS() ||
-      user.hasAvailabilityToday() ||
       user.hasEarnings() ||
       user.hasBalanceNS();
 }
@@ -243,6 +264,16 @@ UserRole? inferRoleFromUserDocument(UsersRecord? user) =>
       hasStudentSignals: _hasStudentRoleSignals(user),
     );
 
+Map<String, dynamic> buildCanonicalUserRoleUpdateData({
+  required UserRole role,
+}) {
+  final updateData = createUsersRecordData(role: role);
+  if (role == UserRole.student) {
+    updateData['availabilityToday'] = FieldValue.delete();
+  }
+  return updateData;
+}
+
 Future<UsersRecord?> persistCanonicalUserRole({
   required DocumentReference userRef,
   required UserRole role,
@@ -252,44 +283,14 @@ Future<UsersRecord?> persistCanonicalUserRole({
   bool grantStudentBonus = false,
   void Function(String message)? onDebugLog,
 }) async {
-  final shouldGrantStudentBonus = role == UserRole.student &&
-      grantStudentBonus &&
-      !(existingUser?.hasBalanceST() ?? false);
+  // Trial access is now granted by RevenueCat after the user subscribes.
+  // Do not create legacy gift-minute balances during registration or role
+  // recovery; they bypass the one-call trial policy.
+  const shouldGrantStudentBonus = false;
 
-  final updateData = <String, dynamic>{
-    ...createUsersRecordData(
-      role: role,
-    ),
-  };
-
-  if (shouldGrantStudentBonus) {
-    updateData.addAll(
-      createUsersRecordData(
-        balanceST: updateBalanceStruct(
-          BalanceStruct(
-            smallTalks: 1,
-            minutes: 10,
-          ),
-          clearUnsetFields: false,
-          create: true,
-        ),
-      ),
-    );
-  }
+  final updateData = buildCanonicalUserRoleUpdateData(role: role);
 
   await userRef.set(updateData, SetOptions(merge: true));
-
-  if (shouldGrantStudentBonus) {
-    await TransactionsRecord.collection.doc().set(
-          createTransactionsRecordData(
-            userId: userRef,
-            createdAt: getCurrentTimestamp,
-            type: TypeTransactions.bonus,
-            status: StatusTransactions.completed,
-            amountST: 1.0,
-          ),
-        );
-  }
 
   final updatedUser = await ensureCanonicalCurrentUserDocument(
     preferredUid: authUserUid ?? userRef.id,
@@ -329,20 +330,7 @@ LoadingRecoveryDecision resolveLoadingRecoveryDecisionFromState({
       AuthenticatedUserProfileResolutionStatus.duplicateLegacyProfiles) {
     return const LoadingRecoveryDecision(
       action: LoadingRecoveryAction.fatalError,
-      errorMessage:
-          'Найдено несколько профилей для этого аккаунта. Попробуйте ещё раз позже.',
-    );
-  }
-
-  if (pendingContextRole != null) {
-    return LoadingRecoveryDecision(
-      action: LoadingRecoveryAction.assignRole,
-      roleToAssign: pendingContextRole,
-      grantStudentBonus:
-          pendingContextRole == UserRole.student && !hasStudentBalance,
-      recoverySource: UserRoleRecoverySource.pendingIntent,
-      suggestedNativeSpeakerValue:
-          pendingContextRole == UserRole.native_speaker,
+      failure: LoadingRecoveryFailure.duplicateProfiles,
     );
   }
 
@@ -352,15 +340,23 @@ LoadingRecoveryDecision resolveLoadingRecoveryDecisionFromState({
       roleToAssign: inferredRole,
       grantStudentBonus: inferredRole == UserRole.student && !hasStudentBalance,
       recoverySource: UserRoleRecoverySource.profileShape,
-      suggestedNativeSpeakerValue: inferredRole == UserRole.native_speaker,
+    );
+  }
+
+  if (!hasUserDocument && pendingContextRole != null) {
+    return LoadingRecoveryDecision(
+      action: LoadingRecoveryAction.assignRole,
+      roleToAssign: pendingContextRole,
+      grantStudentBonus:
+          pendingContextRole == UserRole.student && !hasStudentBalance,
+      recoverySource: UserRoleRecoverySource.pendingIntent,
     );
   }
 
   if (hasUserDocument) {
     return const LoadingRecoveryDecision(
-      action: LoadingRecoveryAction.showManualRoleChoice,
-      recoverySource: UserRoleRecoverySource.manualRecovery,
-      suggestedNativeSpeakerValue: false,
+      action: LoadingRecoveryAction.fatalError,
+      failure: LoadingRecoveryFailure.ambiguousProfile,
     );
   }
 
@@ -368,13 +364,13 @@ LoadingRecoveryDecision resolveLoadingRecoveryDecisionFromState({
       AuthenticatedUserProfileResolutionStatus.missingProfile) {
     return const LoadingRecoveryDecision(
       action: LoadingRecoveryAction.fatalError,
-      errorMessage: 'Не удалось загрузить профиль. Попробуйте ещё раз.',
+      failure: LoadingRecoveryFailure.profileUnavailable,
     );
   }
 
   return const LoadingRecoveryDecision(
     action: LoadingRecoveryAction.fatalError,
-    errorMessage: 'Не удалось загрузить профиль. Попробуйте ещё раз.',
+    failure: LoadingRecoveryFailure.profileUnavailable,
   );
 }
 
@@ -414,12 +410,16 @@ Future<SocialAuthEntryDecision?> resolveAndPersistSocialAuthEntry({
   final pendingContext = getValidPendingSocialAuthContext(
     currentAuthUid: userRef.id,
   );
+  final inferredRole = inferRoleFromUserDocument(currentUser);
   final effectiveRoleIntent = pendingContext?.roleIntent ??
       roleIntentFromNativeSpeakerIntent(nativeSpeakerIntent);
   final decision = resolveSocialAuthEntryDecision(
     hasAssignedRole: currentUser.hasRole(),
     nativeSpeakerIntent: effectiveRoleIntent == UserRole.native_speaker,
     hasStudentBalance: currentUser.hasBalanceST(),
+    inferredRole: inferredRole,
+    allowNewAccountRoleIntent:
+        NewAccountInboxBootstrap.wasAccountCreatedInCurrentSession(userRef.id),
   );
   _debugSocialAuthLog(
     'uid=${userRef.id} decision=${decision.destination.name} '
@@ -441,9 +441,9 @@ Future<SocialAuthEntryDecision?> resolveAndPersistSocialAuthEntry({
   final updatedUser = await persistCanonicalUserRole(
     userRef: userRef,
     role: decision.roleToAssign!,
-    recoverySource: pendingContext != null
-        ? UserRoleRecoverySource.pendingIntent
-        : UserRoleRecoverySource.manualRecovery,
+    recoverySource: inferredRole != null
+        ? UserRoleRecoverySource.profileShape
+        : UserRoleRecoverySource.pendingIntent,
     authUserUid: authUserUid ?? userRef.id,
     existingUser: currentUser,
     grantStudentBonus: decision.grantStudentBonus,

@@ -2,12 +2,15 @@ const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const {FieldValue, Timestamp} = require("firebase-admin/firestore");
 const {
+  CALL_EVENT_OUTCOME_COMPLETED,
   CONVERSATION_MESSAGE_TYPE_TEXT,
+  buildConversationParticipantInfoByUserId,
   buildConversationSeed,
   conversationMatchesUnlockParticipants,
+  ensureConversationCallEventForSession,
   getConnectedCallStartMillis,
+  getConversationCallEventEligibility,
   getSessionEndedAtMillis,
-  getUnlockEligibility,
   toMillis,
 } = require("./chats_shared");
 
@@ -89,7 +92,9 @@ function assertPersistEligibility({
   userId,
   nowMillis = Date.now(),
 }) {
-  const eligibility = getUnlockEligibility(sessionData);
+  const eligibility = getConversationCallEventEligibility(sessionData, {
+    callOutcome: CALL_EVENT_OUTCOME_COMPLETED,
+  });
   if (!eligibility.eligible) {
     throw new functions.https.HttpsError(
       "failed-precondition",
@@ -189,22 +194,40 @@ async function persistCallChatForUser({
 }) {
   const sessionRef = db.collection("videoSessions").doc(sessionId);
   const userRef = db.collection("users").doc(userId);
+  const sessionSnap = await sessionRef.get();
+  if (!sessionSnap.exists) {
+    throw new functions.https.HttpsError(
+      "not-found",
+      "Video session not found.",
+    );
+  }
+
+  const sessionData = sessionSnap.data() || {};
+  const {eligibility, endedAtMillis} = assertPersistEligibility({
+    sessionData,
+    userId,
+    nowMillis,
+  });
+  const callEventResult = await ensureConversationCallEventForSession({
+    db,
+    sessionId,
+    sessionRef,
+    sessionData,
+    callOutcome: eligibility.callOutcome,
+    eventMillis: endedAtMillis,
+  });
+
+  if (messages.length === 0) {
+    return {
+      status: "call_event_persisted",
+      written: 0,
+      skipped: 0,
+      callEventStatus: callEventResult.status,
+      conversationPath: callEventResult.conversationRef?.path || null,
+    };
+  }
 
   return db.runTransaction(async (transaction) => {
-    const sessionSnap = await transaction.get(sessionRef);
-    if (!sessionSnap.exists) {
-      throw new functions.https.HttpsError(
-        "not-found",
-        "Video session not found.",
-      );
-    }
-
-    const sessionData = sessionSnap.data() || {};
-    const {eligibility, endedAtMillis} = assertPersistEligibility({
-      sessionData,
-      userId,
-      nowMillis,
-    });
     const conversationRef = db.collection("conversations").doc(
       eligibility.pairId,
     );
@@ -244,6 +267,7 @@ async function persistCallChatForUser({
         buildConversationSeed({
           participants: eligibility,
           sessionRef,
+          sessionData,
         }),
       );
     } else if (conversationData.isUnlocked !== true) {
@@ -258,6 +282,18 @@ async function persistCallChatForUser({
         {merge: true},
       );
     }
+
+    transaction.set(
+      conversationRef,
+      {
+        participantInfoByUserId: buildConversationParticipantInfoByUserId({
+          participants: eligibility,
+          sessionData,
+          existingInfoByUserId: conversationData.participantInfoByUserId,
+        }),
+      },
+      {merge: true},
+    );
 
     let written = 0;
     let skipped = 0;
@@ -274,6 +310,7 @@ async function persistCallChatForUser({
       status: written > 0 ? "persisted" : "already_persisted",
       written,
       skipped,
+      callEventStatus: callEventResult.status,
       conversationPath: conversationRef.path,
     };
   });
@@ -297,14 +334,6 @@ exports.persistCallChat = functions.https.onCall(async (data, context) => {
     }
 
     const messages = normalizeCallChatMessages(data?.messages);
-    if (messages.length === 0) {
-      return {
-        status: "empty",
-        written: 0,
-        skipped: 0,
-      };
-    }
-
     return await persistCallChatForUser({
       db: admin.firestore(),
       userId: context.auth.uid,

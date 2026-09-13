@@ -1,5 +1,6 @@
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
 import 'pop_model.dart';
 export 'pop_model.dart';
@@ -50,15 +51,16 @@ class _PopWidgetState extends State<PopWidget> {
     final hasText = text.isNotEmpty;
     final primaryText = hasHeader ? header : text;
     final secondaryText = hasHeader && hasText ? text : null;
-    final cardBorderRadius = BorderRadius.circular(24.0);
+    final cardBorderRadius = BorderRadius.circular(ExpatlioDesign.cardRadius);
 
     return Padding(
-      padding: EdgeInsetsDirectional.fromSTEB(20.0, 0.0, 20.0, 0.0),
+      padding: EdgeInsetsDirectional.fromSTEB(ExpatlioDesign.space20,
+          ExpatlioDesign.space0, ExpatlioDesign.space20, ExpatlioDesign.space0),
       child: Container(
         width: double.infinity,
         constraints: BoxConstraints(minHeight: 60.0),
         decoration: BoxDecoration(
-          color: FlutterFlowTheme.of(context).primaryBackground,
+          color: ExpatlioDesign.card,
           boxShadow: [
             BoxShadow(
               blurRadius: 24.0,
@@ -72,13 +74,13 @@ class _PopWidgetState extends State<PopWidget> {
           ],
           borderRadius: cardBorderRadius,
           border: Border.all(
-            color: FlutterFlowTheme.of(context).secondaryBackground,
+            color: ExpatlioDesign.border,
           ),
         ),
         child: ClipRRect(
           borderRadius: cardBorderRadius,
           child: Padding(
-            padding: EdgeInsets.all(4.0),
+            padding: EdgeInsets.all(ExpatlioDesign.space4),
             child: Row(
               mainAxisSize: MainAxisSize.max,
               children: [
@@ -86,8 +88,9 @@ class _PopWidgetState extends State<PopWidget> {
                   width: 52.0,
                   height: 52.0,
                   decoration: BoxDecoration(
-                    color: Color(0xFFF2F2F7),
-                    borderRadius: BorderRadius.circular(18.0),
+                    color: ExpatlioDesign.mutedSurface,
+                    borderRadius:
+                        BorderRadius.circular(ExpatlioDesign.radiusLarge),
                   ),
                   child: Builder(
                     builder: (context) {
@@ -109,7 +112,7 @@ class _PopWidgetState extends State<PopWidget> {
                             ),
                             child: Icon(
                               FFIcons.kcheck,
-                              color: FlutterFlowTheme.of(context).primaryText,
+                              color: ExpatlioDesign.text,
                               size: 14.0,
                             ),
                           ),
@@ -120,8 +123,11 @@ class _PopWidgetState extends State<PopWidget> {
                 ),
                 Flexible(
                   child: Padding(
-                    padding:
-                        EdgeInsetsDirectional.fromSTEB(12.0, 9.0, 12.0, 9.0),
+                    padding: EdgeInsetsDirectional.fromSTEB(
+                        ExpatlioDesign.space12,
+                        ExpatlioDesign.space12,
+                        ExpatlioDesign.space12,
+                        ExpatlioDesign.space12),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -135,8 +141,7 @@ class _PopWidgetState extends State<PopWidget> {
                                 .bodyMedium
                                 .override(
                                   fontFamily: 'Cool',
-                                  color:
-                                      FlutterFlowTheme.of(context).primaryText,
+                                  color: ExpatlioDesign.text,
                                   fontSize: 16.0,
                                   letterSpacing: 0.0,
                                   fontWeight: FontWeight.normal,
@@ -145,7 +150,10 @@ class _PopWidgetState extends State<PopWidget> {
                         if (secondaryText != null)
                           Padding(
                             padding: EdgeInsetsDirectional.fromSTEB(
-                                0.0, 3.0, 0.0, 0.0),
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space4,
+                                ExpatlioDesign.space0,
+                                ExpatlioDesign.space0),
                             child: Text(
                               secondaryText,
                               maxLines: 2,

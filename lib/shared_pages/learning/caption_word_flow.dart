@@ -1,6 +1,6 @@
 import '/backend/backend.dart';
-import '/students_pages/components/new_word/new_word_widget.dart';
-import '/students_pages/components/woed/woed_widget.dart';
+import '/components/new_word_widget.dart';
+import '/components/woed_widget.dart';
 import 'package:flutter/material.dart';
 
 Widget buildLiveCaptionWordSheet({

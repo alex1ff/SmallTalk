@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "artifactKind": "historical-diagnostics-not-authoritative-baseline-evidence",
+  "collectedAt": "2026-09-08T01:26:25+05:00",
+  "source": {
+    "commit": "5d785a8d1bfe34724901b0a773869e9473417881",
+    "branch": "codex/smalltalk-v2-remediation",
+    "dirtyState": "dirty",
+    "buildInputFingerprint": "14a7ba6b85b3c1b6a8ce8f65ba56ef599e9f9039f7ecca68177c2bade4819a4b",
+    "runtimeInputsMatchCommit": true,
+    "runtimeInputScope": "lib/**, web/**, assets/**, pubspec.yaml, pubspec.lock",
+    "manifestRunId": "see web-profile-2026-09-07.manifest.json for the authoritative promoted run"
+  },
+  "environment": {
+    "host": "MacBookPro18,3 / Apple M1 Pro / 16 GB",
+    "os": "macOS 26.5.2 (25F84)",
+    "browser": "Headless Chrome 145.0.7632.160",
+    "playwrightCli": "0.1.19",
+    "flutter": "3.35.3",
+    "dart": "3.9.2",
+    "buildMode": "profile",
+    "viewport": "390x844@1x",
+    "measuredFrameCadenceHz": 82.7586206896552,
+    "network": "127.0.0.1 local HTTP server; CDP latency 0; throughput unlimited",
+    "authState": "signed out; onboarding",
+    "coldCache": "fresh browser context; service workers blocked; HTTP cache disabled",
+    "nonRuntimeDirtyStatusAtBuild": "present; exact state is bound by manifest run ID; runtime inputs were clean"
+  },
+  "build": {
+    "command": "flutter build web --profile --source-maps",
+    "elapsedSeconds": 73.04,
+    "outputPath": "build/web",
+    "outputBytes": 62289976,
+    "fileCount": 86,
+    "artifactFingerprint": "0442536dc639a0dd095f47204c39f26e6916cbf082c5b0a5cf35a8ce17a8f2de",
+    "mainDartJs": {
+      "bytes": 20332401,
+      "sha256": "1b56ce6500d4e8c46fbe73f6a95f9c02b7b6e86f77eaede9084c5fc598bb1900"
+    },
+    "canvasKitWasm": {
+      "bytes": 7052864,
+      "sha256": "20e2f59919d514cc194444ec3b38adafcc898ba38e3283a4e525ecfbd2514117"
+    },
+    "flutterJsSha256": "e3081edda6d2ee9064d700a98f7ba8bb634aea05d735980272ff8d2179e48016",
+    "indexHtmlSha256": "e20cc27ba66992e5fb1c25b5ba8aa87dd6c1c71459ed88d0f8cf26e6ee5d65dc"
+  },
+  "coldStartup": {
+    "eligibleForBudget": false,
+    "reason": "historical pre-actionability-check batch retained only to explain timing variance; authoritative samples are in the collector JSON",
+    "collector": "audit/scripts/collect_web_startup.playwright.js",
+    "collectorSha256": "eca5ab067e79ddea4e92349cbffdf399502dca18243b54b5a5f975a0d1c41d11",
+    "batches": 1,
+    "samples": [
+      {"surfaceReadyMs": 1220, "firstInteractiveMs": 1480, "domContentLoadedMs": 11.9, "loadEventMs": 645.1, "resourceCount": 37, "transferredBytes": 23708869, "usedJsHeapBytes": 94932027},
+      {"surfaceReadyMs": 1282, "firstInteractiveMs": 1519, "domContentLoadedMs": 11.1, "loadEventMs": 639.6, "resourceCount": 36, "transferredBytes": 23462373, "usedJsHeapBytes": 95736854},
+      {"surfaceReadyMs": 1219, "firstInteractiveMs": 1456, "domContentLoadedMs": 11.2, "loadEventMs": 660.3, "resourceCount": 36, "transferredBytes": 23462373, "usedJsHeapBytes": 91742982},
+      {"surfaceReadyMs": 1317, "firstInteractiveMs": 1530, "domContentLoadedMs": 9.1, "loadEventMs": 641.6, "resourceCount": 36, "transferredBytes": 23462373, "usedJsHeapBytes": 90162981},
+      {"surfaceReadyMs": 1178, "firstInteractiveMs": 1560, "domContentLoadedMs": 9.1, "loadEventMs": 623.9, "resourceCount": 36, "transferredBytes": 23462373, "usedJsHeapBytes": 86837560},
+      {"surfaceReadyMs": 1320, "firstInteractiveMs": 1549, "domContentLoadedMs": 11.7, "loadEventMs": 644.1, "resourceCount": 36, "transferredBytes": 23462373, "usedJsHeapBytes": 90402575},
+      {"surfaceReadyMs": 1290, "firstInteractiveMs": 1482, "domContentLoadedMs": 10.0, "loadEventMs": 643.2, "resourceCount": 36, "transferredBytes": 23462373, "usedJsHeapBytes": 94380596},
+      {"surfaceReadyMs": 1300, "firstInteractiveMs": 1513, "domContentLoadedMs": 10.0, "loadEventMs": 628.5, "resourceCount": 36, "transferredBytes": 23462373, "usedJsHeapBytes": 90274567},
+      {"surfaceReadyMs": 1330, "firstInteractiveMs": 1556, "domContentLoadedMs": 9.6, "loadEventMs": 629.7, "resourceCount": 36, "transferredBytes": 23462373, "usedJsHeapBytes": 90481211},
+      {"surfaceReadyMs": 1290, "firstInteractiveMs": 1477, "domContentLoadedMs": 10.3, "loadEventMs": 631.1, "resourceCount": 36, "transferredBytes": 23462373, "usedJsHeapBytes": 94178608}
+    ]
+  },
+  "timingRepeatabilityDiagnostics": {
+    "eligibleForBudget": false,
+    "earlierBatchMeans": [
+      {"surfaceReadyMs": 1257.8, "firstInteractiveMs": 1510.8},
+      {"surfaceReadyMs": 1295.4, "firstInteractiveMs": 1689.8}
+    ],
+    "currentBatchMean": {"surfaceReadyMs": 1603.3, "firstInteractiveMs": 2886.4},
+    "reason": "Headless semantic readiness varied too much between otherwise equivalent batches. Timing and JS heap remain diagnostic and have no regression budget."
+  },
+  "warmStartupDiagnostics": {
+    "eligibleForBudget": false,
+    "reason": "Browser reload/new-page samples alternated between memory cache and full transfer, while process-wide performance.memory accumulated. These samples are retained for diagnosis and must not be compared as a product warm-start budget.",
+    "newPageAfterPrime": [
+      {"surfaceReadyMs": 719, "firstInteractiveMs": 1572, "resourceCount": 36, "transferredBytes": 20871558, "usedJsHeapBytes": 89172331},
+      {"surfaceReadyMs": 799, "firstInteractiveMs": 1268, "resourceCount": 34, "transferredBytes": 20546780, "usedJsHeapBytes": 87852125},
+      {"surfaceReadyMs": 731, "firstInteractiveMs": 1533, "resourceCount": 36, "transferredBytes": 20871558, "usedJsHeapBytes": 89418767},
+      {"surfaceReadyMs": 715, "firstInteractiveMs": 1558, "resourceCount": 36, "transferredBytes": 20871558, "usedJsHeapBytes": 89058381},
+      {"surfaceReadyMs": 696, "firstInteractiveMs": 1505, "resourceCount": 36, "transferredBytes": 20871558, "usedJsHeapBytes": 89289527}
+    ],
+    "samePageReload": [
+      {"surfaceReadyMs": 267, "firstInteractiveMs": 1079, "resourceCount": 36, "transferredBytes": 538857, "usedJsHeapBytes": 141079405},
+      {"surfaceReadyMs": 386, "firstInteractiveMs": 682, "resourceCount": 37, "transferredBytes": 20579197, "usedJsHeapBytes": 197909584},
+      {"surfaceReadyMs": 310, "firstInteractiveMs": 436, "resourceCount": 37, "transferredBytes": 0, "usedJsHeapBytes": 196499444},
+      {"surfaceReadyMs": 563, "firstInteractiveMs": 831, "resourceCount": 37, "transferredBytes": 20332701, "usedJsHeapBytes": 270470731},
+      {"surfaceReadyMs": 443, "firstInteractiveMs": 715, "resourceCount": 37, "transferredBytes": 0, "usedJsHeapBytes": 295333197}
+    ]
+  },
+  "frameCadenceDiagnostic": {
+    "eligibleForBudget": false,
+    "frames": 120,
+    "durationMs": 1013.3,
+    "estimatedRefreshRateHz": 118,
+    "reason": "requestAnimationFrame cadence is environment metadata, not Flutter build/raster frame timing"
+  }
+}

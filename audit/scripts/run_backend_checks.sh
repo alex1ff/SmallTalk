@@ -16,8 +16,12 @@ if [[ ! -x "${FIREBASE_BIN}" ]]; then
   exit 1
 fi
 
+# Access rules have one canonical emulator suite. The second emulator run is
+# intentionally limited to unique integration and load checks.
+npm run firestore:rules:test
+
 "${FIREBASE_BIN}" emulators:exec \
   --project "${FIREBASE_PROJECT}" \
   --config "${FIREBASE_CONFIG_PATH}" \
-  --only firestore,storage,functions \
+  --only firestore,functions \
   "node audit/scripts/backend_checks_runner.js"

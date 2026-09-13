@@ -1,0 +1,767 @@
+const fs = require("node:fs");
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const admin = require("firebase-admin");
+
+const {
+  cancelEvent,
+  __private__: {
+    executeCancelEventTransaction,
+    normalizeCancelEventPayload,
+  },
+} = require("./cancel_event");
+
+const fixedNow = new Date("2026-06-16T10:00:00.000Z");
+const fixedTimestamp = {
+  toMillis: () => fixedNow.getTime(),
+  toDate: () => fixedNow,
+};
+const originalCanceledAt = {
+  toMillis: () => Date.parse("2026-06-15T10:00:00.000Z"),
+  toDate: () => new Date("2026-06-15T10:00:00.000Z"),
+};
+
+function assertHttpsError(fn, code, domainCode, field, reason) {
+  assert.throws(fn, (err) => {
+    assert.equal(err.code, code);
+    assert.equal(err.details?.domainCode, domainCode);
+    if (field) {
+      assert.equal(err.details?.field, field);
+    }
+    if (reason) {
+      assert.equal(err.details?.reason, reason);
+    }
+    return true;
+  });
+}
+
+async function assertRejectsHttpsError(promiseFactory, code, domainCode) {
+  await assert.rejects(promiseFactory, (err) => {
+    assert.equal(err.code, code);
+    assert.equal(err.details?.domainCode, domainCode);
+    return true;
+  });
+}
+
+function createFakeFirestore(seed = {}) {
+  const store = new Map(Object.entries(seed));
+  const reads = [];
+  const writes = [];
+
+  const makeRef = (path) => ({
+    path,
+    id: path.split("/").pop(),
+    collection(name) {
+      return makeCollection(`${path}/${name}`);
+    },
+    async get() {
+      const data = store.get(path);
+      return {
+        exists: data !== undefined,
+        data: () => data,
+        ref: makeRef(path),
+      };
+    },
+  });
+
+  const makeQuery = (collectionPath, filters) => ({
+    path: `${collectionPath}?${filters
+        .map((filter) => `${filter.field}${filter.op}${filter.value}`)
+        .join("&")}`,
+    async get() {
+      const docs = [];
+      const prefix = `${collectionPath}/`;
+      for (const [path, data] of store.entries()) {
+        if (!path.startsWith(prefix)) {
+          continue;
+        }
+        const remainder = path.slice(prefix.length);
+        if (!remainder || remainder.includes("/")) {
+          continue;
+        }
+        const matches = filters.every((filter) => (
+          filter.op === "==" && data?.[filter.field] === filter.value
+        ));
+        if (matches) {
+          docs.push({
+            id: remainder,
+            exists: true,
+            data: () => data,
+            ref: makeRef(path),
+          });
+        }
+      }
+      docs.sort((left, right) => left.id.localeCompare(right.id));
+      return {docs};
+    },
+  });
+
+  const makeCollection = (path) => ({
+    doc(id) {
+      return makeRef(`${path}/${id}`);
+    },
+    where(field, op, value) {
+      return makeQuery(path, [{field, op, value}]);
+    },
+  });
+
+  const db = {
+    collection(name) {
+      return makeCollection(name);
+    },
+    async runTransaction(callback) {
+      let hasWrites = false;
+      const pendingWrites = [];
+      const tx = {
+        async get(refOrQuery) {
+          if (hasWrites) {
+            throw new Error("Firestore transactions require reads first");
+          }
+          reads.push(refOrQuery.path);
+          return refOrQuery.get();
+        },
+        create(ref, data) {
+          hasWrites = true;
+          if (store.has(ref.path)) {
+            throw new Error(`Document already exists: ${ref.path}`);
+          }
+          writes.push({type: "create", path: ref.path, data});
+          pendingWrites.push({path: ref.path, data});
+        },
+        update(ref, data) {
+          hasWrites = true;
+          if (!store.has(ref.path)) {
+            throw new Error(`Document does not exist: ${ref.path}`);
+          }
+          writes.push({type: "update", path: ref.path, data});
+          pendingWrites.push({path: ref.path, data});
+        },
+      };
+      const result = await callback(tx);
+      for (const write of pendingWrites) {
+        store.set(write.path, {...store.get(write.path), ...write.data});
+      }
+      return result;
+    },
+  };
+
+  return {db, reads, store, writes};
+}
+
+async function withAdminFirestore(db, callback) {
+  const originalFirestore = Object.getOwnPropertyDescriptor(admin, "firestore");
+  const timestamp = admin.firestore.Timestamp;
+  const geoPoint = admin.firestore.GeoPoint;
+  const firestore = () => db;
+  firestore.Timestamp = timestamp;
+  firestore.GeoPoint = geoPoint;
+
+  Object.defineProperty(admin, "firestore", {
+    configurable: true,
+    value: firestore,
+  });
+
+  try {
+    return await callback();
+  } finally {
+    if (originalFirestore) {
+      Object.defineProperty(admin, "firestore", originalFirestore);
+    } else {
+      delete admin.firestore;
+    }
+  }
+}
+
+async function withSequencedDate(isoValues, callback) {
+  const RealDate = Date;
+  const millisValues = isoValues.map((isoValue) => RealDate.parse(isoValue));
+  let noArgDateCalls = 0;
+
+  class SequencedDate extends RealDate {
+    constructor(...args) {
+      if (args.length === 0) {
+        const index = Math.min(noArgDateCalls, millisValues.length - 1);
+        noArgDateCalls += 1;
+        super(millisValues[index]);
+        return;
+      }
+      super(...args);
+    }
+
+    static now() {
+      return millisValues[Math.min(noArgDateCalls, millisValues.length - 1)];
+    }
+  }
+
+  Object.setPrototypeOf(SequencedDate, RealDate);
+  global.Date = SequencedDate;
+  try {
+    return await callback(() => noArgDateCalls);
+  } finally {
+    global.Date = RealDate;
+  }
+}
+
+function activeEvent(overrides = {}) {
+  return {
+    organizerId: "uid",
+    chatId: "event-1",
+    status: "active",
+    canceledAt: null,
+    participantsCount: 3,
+    capacity: 10,
+    ...overrides,
+  };
+}
+
+function eventChat(overrides = {}) {
+  return {
+    eventId: "event-1",
+    readAccessUserIds: ["uid"],
+    createdAt: fixedTimestamp,
+    updatedAt: fixedTimestamp,
+    ...overrides,
+  };
+}
+
+function participant(status = "active") {
+  return {
+    status,
+    role: "participant",
+    joinedAt: fixedTimestamp,
+    leftAt: status === "left" ? fixedTimestamp : null,
+  };
+}
+
+function counterData() {
+  return {
+    userId: "uid",
+    dayKeyUtc: "2026-06-16",
+    count: 4,
+    eventIds: ["event-a", "event-b", "event-c", "event-1"],
+    requestEventIds: {
+      req1: "event-a",
+      req2: "event-b",
+      req3: "event-c",
+      req4: "event-1",
+    },
+    requestPayloadHashes: {
+      req1: "a".repeat(64),
+      req2: "b".repeat(64),
+      req3: "c".repeat(64),
+      req4: "d".repeat(64),
+    },
+    windowStartAt: fixedTimestamp,
+    windowEndAt: fixedTimestamp,
+    createdAt: fixedTimestamp,
+    updatedAt: fixedTimestamp,
+  };
+}
+
+test("normalizeCancelEventPayload rejects unknown and missing keys", () => {
+  for (const field of ["status", "canceledAt", "updatedAt"]) {
+    assertHttpsError(
+        () => normalizeCancelEventPayload({
+          eventId: "event-1",
+          [field]: field === "status" ? "canceled" : fixedNow.toISOString(),
+        }),
+        "invalid-argument",
+        "invalid_cancel_request",
+        field,
+        "unknown_key",
+    );
+  }
+  assertHttpsError(
+      () => normalizeCancelEventPayload({}),
+      "invalid-argument",
+      "invalid_cancel_request",
+      "eventId",
+      "missing",
+  );
+  assertHttpsError(
+      () => normalizeCancelEventPayload({eventId: "events/event-1"}),
+      "invalid-argument",
+      "invalid_cancel_request",
+      "eventId",
+      "invalid_format",
+  );
+});
+
+test("cancelEvent callable captures trusted backend timestamp", () => {
+  const source = fs.readFileSync(require.resolve("./cancel_event"), "utf8");
+
+  assert.match(source, /const cancelDate = new Date\(\);/);
+  assert.match(
+      source,
+      /const cancelTimestamp = admin\.firestore\.Timestamp\.fromDate\(cancelDate\);/,
+  );
+  assert.match(source, /executeCancelEventTransaction\(\{[\s\S]*cancelDate,/);
+  assert.match(source, /executeCancelEventTransaction\(\{[\s\S]*cancelTimestamp,/);
+  assert.doesNotMatch(source, /serverTimestamp/);
+});
+
+test("cancelEvent callable lets organizer cancel active event", async () => {
+  const {db, reads, store, writes} = createFakeFirestore({
+    "events/event-1": activeEvent(),
+    "eventChats/event-1": eventChat({
+      readAccessUserIds: ["uid", "left-before-cancel"],
+    }),
+    "events/event-1/participants/uid": participant("active"),
+    "events/event-1/participants/alex": participant("active"),
+    "events/event-1/participants/olga": participant("active"),
+    "events/event-1/participants/left-before-cancel": participant("left"),
+  });
+
+  await withAdminFirestore(db, async () => {
+    await withSequencedDate(["2026-06-16T10:00:00.000Z"], async () => {
+      const response = await cancelEvent.run(
+          {eventId: " event-1 "},
+          {auth: {uid: "uid"}},
+      );
+
+      assert.deepEqual(response, {
+        eventId: "event-1",
+        status: "canceled",
+        canceledAt: "2026-06-16T10:00:00.000Z",
+      });
+    });
+  });
+
+  assert.equal(store.get("events/event-1").status, "canceled");
+  assert.equal(
+      store.get("events/event-1").canceledAt.toMillis(),
+      fixedNow.getTime(),
+  );
+  assert.deepEqual(store.get("eventChats/event-1").readAccessUserIds, [
+    "uid",
+    "alex",
+    "olga",
+  ]);
+  assert.equal(
+      store.get("eventChats/event-1").updatedAt.toMillis(),
+      fixedNow.getTime(),
+  );
+  assert.deepEqual(reads, [
+    "events/event-1",
+    "eventChats/event-1",
+    "events/event-1/participants?status==active",
+    "events_public/event-1",
+  ]);
+  assert.deepEqual(
+      writes.map((write) => `${write.type}:${write.path}`),
+      [
+        "update:events/event-1",
+        "update:eventChats/event-1",
+        "create:events_public/event-1",
+      ],
+  );
+  assert.equal(
+      writes.some((write) => (
+        write.path.includes("eventCreationCounters") ||
+        write.path.includes("participants")
+      )),
+      false,
+  );
+});
+
+test("cancelEvent callable rejects non-organizer without writes", async () => {
+  const eventBefore = activeEvent({organizerId: "other"});
+  const chatBefore = eventChat({
+    readAccessUserIds: ["other", "uid"],
+  });
+  const {db, reads, store, writes} = createFakeFirestore({
+    "events/event-1": eventBefore,
+    "eventChats/event-1": chatBefore,
+    "events/event-1/participants/other": participant("active"),
+    "events/event-1/participants/uid": participant("active"),
+  });
+
+  await withAdminFirestore(db, async () => {
+    await assertRejectsHttpsError(
+        () => cancelEvent.run(
+            {eventId: " event-1 "},
+            {auth: {uid: "uid"}},
+        ),
+        "permission-denied",
+        "not_event_organizer",
+    );
+  });
+
+  assert.strictEqual(store.get("events/event-1"), eventBefore);
+  assert.strictEqual(store.get("eventChats/event-1"), chatBefore);
+  assert.deepEqual(reads, ["events/event-1", "eventChats/event-1"]);
+  assert.deepEqual(writes, []);
+});
+
+test("executeCancelEventTransaction cancels active event without counter writes", async () => {
+  const counterBefore = counterData();
+  const eventBefore = activeEvent({startsAt: fixedTimestamp});
+  const {db, reads, store, writes} = createFakeFirestore({
+    "events/event-1": eventBefore,
+    "events_public/event-1": {status: "active"},
+    "eventChats/event-1": eventChat({
+      readAccessUserIds: ["uid", "left-before-cancel", "stale-reader"],
+    }),
+    "events/event-1/participants/uid": participant("active"),
+    "events/event-1/participants/alex": participant("active"),
+    "events/event-1/participants/olga": participant("active"),
+    "events/event-1/participants/left-before-cancel": participant("left"),
+    "eventCreationCounters/uid/days/20260616": counterBefore,
+  });
+  const organizerParticipantBefore = store.get(
+      "events/event-1/participants/uid",
+  );
+  const participantBefore = store.get("events/event-1/participants/alex");
+  const leftParticipantBefore = store.get(
+      "events/event-1/participants/left-before-cancel",
+  );
+
+  const response = await executeCancelEventTransaction({
+    db,
+    uid: "uid",
+    cancelDate: fixedNow,
+    cancelTimestamp: fixedTimestamp,
+    payload: {eventId: "event-1"},
+  });
+
+  assert.deepEqual(response, {
+    eventId: "event-1",
+    status: "canceled",
+    canceledAt: "2026-06-16T10:00:00.000Z",
+  });
+  assert.equal(store.get("events/event-1").status, "canceled");
+  assert.equal(store.get("events/event-1").canceledAt, fixedTimestamp);
+  assert.equal(store.get("events/event-1").participantsCount, 3);
+  assert.equal(store.get("events/event-1").organizerId, eventBefore.organizerId);
+  assert.equal(store.get("events/event-1").chatId, eventBefore.chatId);
+  assert.equal(store.get("events/event-1").capacity, eventBefore.capacity);
+  assert.equal(store.get("events/event-1").startsAt, eventBefore.startsAt);
+  assert.deepEqual(writes[0].data, {
+    status: "canceled",
+    canceledAt: fixedTimestamp,
+    updatedAt: fixedTimestamp,
+  });
+  assert.deepEqual(writes[1].data, {
+    readAccessUserIds: ["uid", "alex", "olga"],
+    updatedAt: fixedTimestamp,
+  });
+  assert.equal(store.get("eventChats/event-1").eventId, "event-1");
+  assert.equal(store.get("eventChats/event-1").createdAt, fixedTimestamp);
+  assert.equal(
+      Object.prototype.hasOwnProperty.call(
+          store.get("eventChats/event-1"),
+          "status",
+      ),
+      false,
+  );
+  assert.equal(
+      Object.prototype.hasOwnProperty.call(
+          store.get("eventChats/event-1"),
+          "canceledAt",
+      ),
+      false,
+  );
+  assert.deepEqual(
+      store.get("eventChats/event-1").readAccessUserIds,
+      ["uid", "alex", "olga"],
+  );
+  assert.strictEqual(
+      store.get("events/event-1/participants/uid"),
+      organizerParticipantBefore,
+  );
+  assert.strictEqual(
+      store.get("events/event-1/participants/alex"),
+      participantBefore,
+  );
+  assert.strictEqual(
+      store.get("events/event-1/participants/left-before-cancel"),
+      leftParticipantBefore,
+  );
+  assert.strictEqual(
+      store.get("eventCreationCounters/uid/days/20260616"),
+      counterBefore,
+  );
+  const counterAfter = store.get("eventCreationCounters/uid/days/20260616");
+  assert.equal(counterAfter.count, 4);
+  assert.deepEqual(
+      counterAfter.eventIds,
+      ["event-a", "event-b", "event-c", "event-1"],
+  );
+  assert.deepEqual(counterAfter.requestEventIds, counterBefore.requestEventIds);
+  assert.deepEqual(
+      counterAfter.requestPayloadHashes,
+      counterBefore.requestPayloadHashes,
+  );
+  assert.deepEqual(
+      writes.map((write) => `${write.type}:${write.path}`),
+      [
+        "update:events/event-1",
+        "update:eventChats/event-1",
+        "update:events_public/event-1",
+      ],
+  );
+  assert.equal(
+      writes.some((write) => write.path.includes("eventCreationCounters")),
+      false,
+  );
+  assert.deepEqual(reads, [
+    "events/event-1",
+    "eventChats/event-1",
+    "events/event-1/participants?status==active",
+    "events_public/event-1",
+  ]);
+  assert.equal(store.get("events_public/event-1").status, "canceled");
+});
+
+test("executeCancelEventTransaction rejects participant count drift", async () => {
+  for (const seed of [
+    {
+      "events/event-1": activeEvent({participantsCount: 3}),
+      "eventChats/event-1": eventChat(),
+      "events/event-1/participants/uid": participant("active"),
+      "events/event-1/participants/alex": participant("active"),
+    },
+    {
+      "events/event-1": activeEvent({participantsCount: 2}),
+      "eventChats/event-1": eventChat(),
+      "events/event-1/participants/uid": participant("active"),
+      "events/event-1/participants/alex": participant("active"),
+      "events/event-1/participants/olga": participant("active"),
+    },
+    {
+      "events/event-1": activeEvent({participantsCount: 2}),
+      "eventChats/event-1": eventChat(),
+      "events/event-1/participants/alex": participant("active"),
+      "events/event-1/participants/olga": participant("active"),
+    },
+  ]) {
+    const {db, writes} = createFakeFirestore(seed);
+
+    await assertRejectsHttpsError(
+        () => executeCancelEventTransaction({
+          db,
+          uid: "uid",
+          cancelDate: fixedNow,
+          cancelTimestamp: fixedTimestamp,
+          payload: {eventId: "event-1"},
+        }),
+        "failed-precondition",
+        "event_participant_state_inconsistent",
+    );
+    assert.deepEqual(writes, []);
+  }
+});
+
+test("executeCancelEventTransaction rejects non-organizer without writes", async () => {
+  const {db, reads, writes} = createFakeFirestore({
+    "events/event-1": activeEvent({organizerId: "other"}),
+    "eventChats/event-1": eventChat(),
+  });
+
+  await assertRejectsHttpsError(
+      () => executeCancelEventTransaction({
+        db,
+        uid: "uid",
+        cancelDate: fixedNow,
+        cancelTimestamp: fixedTimestamp,
+        payload: {eventId: "event-1"},
+      }),
+      "permission-denied",
+      "not_event_organizer",
+  );
+  assert.deepEqual(reads, ["events/event-1", "eventChats/event-1"]);
+  assert.deepEqual(writes, []);
+});
+
+test("executeCancelEventTransaction fails closed on invalid chat metadata", async () => {
+  await assertRejectsHttpsError(
+      () => executeCancelEventTransaction({
+        db: createFakeFirestore({
+          "events/event-1": activeEvent(),
+        }).db,
+        uid: "uid",
+        cancelDate: fixedNow,
+        cancelTimestamp: fixedTimestamp,
+        payload: {eventId: "event-1"},
+      }),
+      "failed-precondition",
+      "event_chat_metadata_invalid",
+  );
+
+  for (const chatSeed of [
+    eventChat({eventId: "other-event"}),
+    eventChat({status: "active"}),
+    eventChat({canceledAt: null}),
+    (() => {
+      const chatData = eventChat();
+      delete chatData.createdAt;
+      return chatData;
+    })(),
+    (() => {
+      const chatData = eventChat();
+      delete chatData.updatedAt;
+      return chatData;
+    })(),
+    eventChat({createdAt: "2026-06-16T10:00:00.000Z"}),
+    eventChat({updatedAt: "2026-06-16T10:00:00.000Z"}),
+  ]) {
+    const {db, writes} = createFakeFirestore({
+      "events/event-1": activeEvent(),
+      "eventChats/event-1": chatSeed,
+    });
+
+    await assertRejectsHttpsError(
+        () => executeCancelEventTransaction({
+          db,
+          uid: "uid",
+          cancelDate: fixedNow,
+          cancelTimestamp: fixedTimestamp,
+          payload: {eventId: "event-1"},
+        }),
+        "failed-precondition",
+        "event_chat_metadata_invalid",
+    );
+    assert.deepEqual(writes, []);
+  }
+});
+
+test("executeCancelEventTransaction fails closed on event chat id mismatch", async () => {
+  const {db, writes} = createFakeFirestore({
+    "events/event-1": activeEvent({chatId: "other-chat"}),
+    "eventChats/event-1": eventChat(),
+  });
+
+  await assertRejectsHttpsError(
+      () => executeCancelEventTransaction({
+        db,
+        uid: "uid",
+        cancelDate: fixedNow,
+        cancelTimestamp: fixedTimestamp,
+        payload: {eventId: "event-1"},
+      }),
+      "failed-precondition",
+      "event_chat_metadata_invalid",
+  );
+  assert.deepEqual(writes, []);
+});
+
+test("executeCancelEventTransaction returns idempotent canceled response", async () => {
+  const counterBefore = counterData();
+  const {db, reads, store, writes} = createFakeFirestore({
+    "events/event-1": activeEvent({
+      status: "canceled",
+      canceledAt: originalCanceledAt,
+    }),
+    "eventChats/event-1": eventChat({
+      readAccessUserIds: ["uid", "alex"],
+      updatedAt: originalCanceledAt,
+    }),
+    "events/event-1/participants/new-user": participant("active"),
+    "eventCreationCounters/uid/days/20260616": counterBefore,
+  });
+
+  const response = await executeCancelEventTransaction({
+    db,
+    uid: "uid",
+    cancelDate: fixedNow,
+    cancelTimestamp: fixedTimestamp,
+    payload: {eventId: "event-1"},
+  });
+
+  assert.deepEqual(response, {
+    eventId: "event-1",
+    status: "canceled",
+    canceledAt: "2026-06-15T10:00:00.000Z",
+  });
+  assert.equal(store.get("events/event-1").status, "canceled");
+  assert.equal(store.get("events/event-1").canceledAt, originalCanceledAt);
+  assert.deepEqual(store.get("eventChats/event-1").readAccessUserIds, [
+    "uid",
+    "alex",
+  ]);
+  assert.equal(store.get("eventChats/event-1").updatedAt, originalCanceledAt);
+  assert.strictEqual(
+      store.get("eventCreationCounters/uid/days/20260616"),
+      counterBefore,
+  );
+  const counterAfter = store.get("eventCreationCounters/uid/days/20260616");
+  assert.equal(counterAfter.count, 4);
+  assert.deepEqual(
+      counterAfter.eventIds,
+      ["event-a", "event-b", "event-c", "event-1"],
+  );
+  assert.deepEqual(counterAfter.requestEventIds, counterBefore.requestEventIds);
+  assert.deepEqual(
+      counterAfter.requestPayloadHashes,
+      counterBefore.requestPayloadHashes,
+  );
+  assert.deepEqual(reads, ["events/event-1", "eventChats/event-1"]);
+  assert.deepEqual(writes, []);
+});
+
+test("executeCancelEventTransaction rejects non-active statuses without writes", async () => {
+  for (const status of ["draft", "completed", "deleted", "archived"]) {
+    const {db, writes} = createFakeFirestore({
+      "events/event-1": activeEvent({status}),
+      "eventChats/event-1": eventChat(),
+    });
+
+    await assertRejectsHttpsError(
+        () => executeCancelEventTransaction({
+          db,
+          uid: "uid",
+          cancelDate: fixedNow,
+          cancelTimestamp: fixedTimestamp,
+          payload: {eventId: "event-1"},
+        }),
+        "failed-precondition",
+        "event_not_cancelable",
+    );
+    assert.deepEqual(writes, [], status);
+  }
+});
+
+test("executeCancelEventTransaction fails closed on corrupt canceled event", async () => {
+  for (const canceledAt of [null, "bad"]) {
+    const {db, writes} = createFakeFirestore({
+      "events/event-1": activeEvent({
+        status: "canceled",
+        canceledAt,
+      }),
+      "eventChats/event-1": eventChat(),
+    });
+
+    await assertRejectsHttpsError(
+        () => executeCancelEventTransaction({
+          db,
+          uid: "uid",
+          cancelDate: fixedNow,
+          cancelTimestamp: fixedTimestamp,
+          payload: {eventId: "event-1"},
+        }),
+        "failed-precondition",
+        "event_cancellation_inconsistent",
+    );
+    assert.deepEqual(writes, []);
+  }
+});
+
+test("executeCancelEventTransaction rejects active event with cancellation timestamp", async () => {
+  const {db, writes} = createFakeFirestore({
+    "events/event-1": activeEvent({canceledAt: originalCanceledAt}),
+    "eventChats/event-1": eventChat(),
+  });
+
+  await assertRejectsHttpsError(
+      () => executeCancelEventTransaction({
+        db,
+        uid: "uid",
+        cancelDate: fixedNow,
+        cancelTimestamp: fixedTimestamp,
+        payload: {eventId: "event-1"},
+      }),
+      "failed-precondition",
+      "event_not_cancelable",
+  );
+  assert.deepEqual(writes, []);
+});

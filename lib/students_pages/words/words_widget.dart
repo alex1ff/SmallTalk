@@ -1,20 +1,268 @@
 import '/auth/firebase_auth/auth_util.dart';
 import '/backend/backend.dart';
+import '/components/app_loading_indicator.dart';
+import '/components/dictionary_word_row.dart';
 import '/components/empty/empty_widget.dart';
-import '/components/word_pos_chip/word_pos_chip_widget.dart';
-import '/flutter_flow/flutter_flow_theme.dart';
+import '/components/review_words_bar.dart';
+import '/components/ux_error_state.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/index.dart';
-import '/students_pages/components/word_card/word_card_widget.dart';
+import '/services/ux_loading_state.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import '/students_pages/flashcard/flashcard_review_repository.dart';
+import '/students_pages/words/word_detail_widget.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'words_model.dart';
 export 'words_model.dart';
 
+const ValueKey<String> wordsHeaderKey = ValueKey<String>('words_header');
+const ValueKey<String> wordsContentViewportKey =
+    ValueKey<String>('words_content_viewport');
+const ValueKey<String> wordsInitialLoadingKey =
+    ValueKey<String>('words_initial_loading');
+const ValueKey<String> wordsListKey = ValueKey<String>('words_list');
+const ValueKey<String> wordsEmptyStateKey =
+    ValueKey<String>('words_empty_state');
+const ValueKey<String> wordsFullErrorStateKey =
+    ValueKey<String>('words_full_error_state');
+const ValueKey<String> wordsRetryButtonKey =
+    ValueKey<String>('words_retry_button');
+const ValueKey<String> wordsRefreshErrorIndicatorKey =
+    ValueKey<String>('words_refresh_error_indicator');
+
+ValueKey<String> wordsRowKey(String wordPath) =>
+    ValueKey<String>('words_row_$wordPath');
+
+final class WordsQueryResult<T extends Object> {
+  WordsQueryResult({
+    required List<T> items,
+    required this.isServerConfirmed,
+  }) : items = List<T>.unmodifiable(items);
+
+  final List<T> items;
+  final bool isServerConfirmed;
+}
+
+typedef WordsQueryStreamFactory<T extends Object> = Stream<WordsQueryResult<T>>
+    Function(DocumentReference? userReference);
+
+bool wordsSnapshotIsServerConfirmed({
+  required bool isFromCache,
+  required bool hasPendingWrites,
+}) {
+  return !isFromCache && !hasPendingWrites;
+}
+
+Stream<WordsQueryResult<UserWordsRecord>> _watchUserWords(
+  DocumentReference? userReference,
+) {
+  if (userReference == null) {
+    return const Stream<WordsQueryResult<UserWordsRecord>>.empty();
+  }
+  return UserWordsRecord.collection(userReference)
+      .snapshots(includeMetadataChanges: true)
+      .map(
+        (snapshot) => WordsQueryResult<UserWordsRecord>(
+          items: snapshot.docs.map(UserWordsRecord.fromSnapshot).toList(),
+          isServerConfirmed: wordsSnapshotIsServerConfirmed(
+            isFromCache: snapshot.metadata.isFromCache,
+            hasPendingWrites: snapshot.metadata.hasPendingWrites,
+          ),
+        ),
+      );
+}
+
+Stream<WordsQueryResult<WordReviewsRecord>> _watchWordReviews(
+  DocumentReference? userReference,
+) {
+  if (userReference == null) {
+    return const Stream<WordsQueryResult<WordReviewsRecord>>.empty();
+  }
+  return WordReviewsRecord.collection(userReference)
+      .snapshots(includeMetadataChanges: true)
+      .map(
+        (snapshot) => WordsQueryResult<WordReviewsRecord>(
+          items: snapshot.docs.map(WordReviewsRecord.fromSnapshot).toList(),
+          isServerConfirmed: wordsSnapshotIsServerConfirmed(
+            isFromCache: snapshot.metadata.isFromCache,
+            hasPendingWrites: snapshot.metadata.hasPendingWrites,
+          ),
+        ),
+      );
+}
+
+final class _RetainedWordsQuerySummary<T extends Object> {
+  const _RetainedWordsQuerySummary({
+    required this.connectionState,
+    required this.lastSuccessfulResult,
+    required this.hasNewResult,
+    required this.awaitingServerConfirmation,
+    required this.error,
+  });
+
+  factory _RetainedWordsQuerySummary.initial({
+    required Object dataKey,
+    required List<T>? initialItems,
+  }) {
+    return _RetainedWordsQuerySummary<T>(
+      connectionState: ConnectionState.none,
+      lastSuccessfulResult: initialItems == null
+          ? null
+          : uxLoadedListResult<T>(
+              dataKey: dataKey,
+              items: initialItems,
+            ),
+      hasNewResult: false,
+      awaitingServerConfirmation: false,
+      error: null,
+    );
+  }
+
+  final ConnectionState connectionState;
+  final UxLoadedResult<List<T>>? lastSuccessfulResult;
+  final bool hasNewResult;
+  final bool awaitingServerConfirmation;
+  final Object? error;
+
+  UxLoadingState<List<T>> resolve(Object dataKey) {
+    return UxLoadingState<List<T>>.resolve(
+      activeDataKey: dataKey,
+      isLoading: connectionState == ConnectionState.waiting ||
+          awaitingServerConfirmation,
+      newResult: hasNewResult ? lastSuccessfulResult : null,
+      lastSuccessfulResult: lastSuccessfulResult,
+      error: error,
+      errorDataKey: error == null ? null : dataKey,
+    );
+  }
+}
+
+typedef _RetainedWordsStateBuilder<T extends Object> = Widget Function(
+  BuildContext context,
+  UxLoadingState<List<T>> state,
+);
+
+class _RetainedWordsQueryBuilder<T extends Object> extends StreamBuilderBase<
+    WordsQueryResult<T>, _RetainedWordsQuerySummary<T>> {
+  const _RetainedWordsQueryBuilder({
+    super.key,
+    required super.stream,
+    required this.dataKey,
+    required this.initialItems,
+    required this.onAcceptedItems,
+    required this.builder,
+  });
+
+  final Object dataKey;
+  final List<T>? initialItems;
+  final ValueChanged<List<T>> onAcceptedItems;
+  final _RetainedWordsStateBuilder<T> builder;
+
+  @override
+  _RetainedWordsQuerySummary<T> initial() =>
+      _RetainedWordsQuerySummary<T>.initial(
+        dataKey: dataKey,
+        initialItems: initialItems,
+      );
+
+  @override
+  _RetainedWordsQuerySummary<T> afterConnected(
+    _RetainedWordsQuerySummary<T> current,
+  ) {
+    return _RetainedWordsQuerySummary<T>(
+      connectionState: ConnectionState.waiting,
+      lastSuccessfulResult: current.lastSuccessfulResult,
+      hasNewResult: false,
+      awaitingServerConfirmation: false,
+      error: null,
+    );
+  }
+
+  @override
+  _RetainedWordsQuerySummary<T> afterData(
+    _RetainedWordsQuerySummary<T> current,
+    WordsQueryResult<T> data,
+  ) {
+    final canAcceptItems = data.isServerConfirmed || data.items.isNotEmpty;
+    final result = canAcceptItems
+        ? uxLoadedListResult<T>(dataKey: dataKey, items: data.items)
+        : current.lastSuccessfulResult;
+    if (canAcceptItems) {
+      onAcceptedItems(data.items);
+    }
+    return _RetainedWordsQuerySummary<T>(
+      connectionState: ConnectionState.active,
+      lastSuccessfulResult: result,
+      hasNewResult: data.isServerConfirmed,
+      awaitingServerConfirmation: !data.isServerConfirmed,
+      error: null,
+    );
+  }
+
+  @override
+  _RetainedWordsQuerySummary<T> afterError(
+    _RetainedWordsQuerySummary<T> current,
+    Object error,
+    StackTrace stackTrace,
+  ) {
+    return _RetainedWordsQuerySummary<T>(
+      connectionState: ConnectionState.active,
+      lastSuccessfulResult: current.lastSuccessfulResult,
+      hasNewResult: false,
+      awaitingServerConfirmation: false,
+      error: error,
+    );
+  }
+
+  @override
+  _RetainedWordsQuerySummary<T> afterDone(
+    _RetainedWordsQuerySummary<T> current,
+  ) {
+    return _RetainedWordsQuerySummary<T>(
+      connectionState: ConnectionState.done,
+      lastSuccessfulResult: current.lastSuccessfulResult,
+      hasNewResult: current.hasNewResult,
+      awaitingServerConfirmation: current.awaitingServerConfirmation,
+      error: current.error,
+    );
+  }
+
+  @override
+  _RetainedWordsQuerySummary<T> afterDisconnected(
+    _RetainedWordsQuerySummary<T> current,
+  ) {
+    return _RetainedWordsQuerySummary<T>(
+      connectionState: ConnectionState.none,
+      lastSuccessfulResult: current.lastSuccessfulResult,
+      hasNewResult: false,
+      awaitingServerConfirmation: false,
+      error: null,
+    );
+  }
+
+  @override
+  Widget build(
+    BuildContext context,
+    _RetainedWordsQuerySummary<T> currentSummary,
+  ) {
+    return builder(context, currentSummary.resolve(dataKey));
+  }
+}
+
 class WordsWidget extends StatefulWidget {
-  const WordsWidget({super.key});
+  const WordsWidget({
+    super.key,
+    this.wordsStreamFactory,
+    this.wordReviewsStreamFactory,
+    this.userReferenceProvider,
+    this.sessionCacheKeyOverride,
+  });
+
+  final WordsQueryStreamFactory<UserWordsRecord>? wordsStreamFactory;
+  final WordsQueryStreamFactory<WordReviewsRecord>? wordReviewsStreamFactory;
+  final DocumentReference? Function()? userReferenceProvider;
+  final String? sessionCacheKeyOverride;
 
   static String routeName = 'Words';
   static String routePath = '/words';
@@ -24,7 +272,14 @@ class WordsWidget extends StatefulWidget {
 }
 
 class _WordsWidgetState extends State<WordsWidget> {
+  static const double _reviewBarFadeExtraHeight = 36.0;
+
   late WordsModel _model;
+  DocumentReference? _activeUserReference;
+  late Object _wordsDataKey;
+  late Object _wordReviewsDataKey;
+  Stream<WordsQueryResult<UserWordsRecord>>? _wordsStream;
+  Stream<WordsQueryResult<WordReviewsRecord>>? _wordReviewsStream;
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -32,14 +287,10 @@ class _WordsWidgetState extends State<WordsWidget> {
   void initState() {
     super.initState();
     _model = createModel(context, () => WordsModel());
-    _model.wordsStream = queryUserWordsRecord(
-      parent: currentUserReference,
-    );
-    _model.wordReviewsStream = queryWordReviewsRecord(
-      parent: currentUserReference,
-    );
+    WordsModel.ensureSessionCacheLifecycleRegistered();
+    _configureDataSources(_resolveUserReference());
 
-    final userRef = currentUserReference;
+    final userRef = _activeUserReference;
     if (userRef != null) {
       unawaited(
         FlashcardReviewRepository.ensureWordReviewsBackfilled(
@@ -50,17 +301,266 @@ class _WordsWidgetState extends State<WordsWidget> {
   }
 
   @override
+  void didUpdateWidget(covariant WordsWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final nextUserReference = _resolveUserReference();
+    final userChanged = _activeUserReference?.path != nextUserReference?.path;
+    if (userChanged ||
+        oldWidget.wordsStreamFactory != widget.wordsStreamFactory ||
+        oldWidget.wordReviewsStreamFactory != widget.wordReviewsStreamFactory ||
+        oldWidget.sessionCacheKeyOverride != widget.sessionCacheKeyOverride) {
+      _configureDataSources(nextUserReference);
+      if (userChanged && nextUserReference != null) {
+        unawaited(
+          FlashcardReviewRepository.ensureWordReviewsBackfilled(
+            userRef: nextUserReference,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
   void dispose() {
     _model.dispose();
 
     super.dispose();
   }
 
-  String _dueCountLabel(int dueCount) {
-    if (dueCount > 99) {
-      return '99+';
+  DocumentReference? _resolveUserReference() =>
+      widget.userReferenceProvider?.call() ?? currentUserReference;
+
+  void _configureDataSources(DocumentReference? userReference) {
+    _activeUserReference = userReference;
+    final cacheKey = widget.sessionCacheKeyOverride ?? userReference?.path;
+    _model.userCacheKey = cacheKey;
+    final dataKeyScope = cacheKey ?? 'anonymous:${identityHashCode(this)}';
+    _wordsDataKey = 'words:$dataKeyScope';
+    _wordReviewsDataKey = 'word-reviews:$dataKeyScope';
+    _wordsStream = (widget.wordsStreamFactory ?? _watchUserWords)(
+      userReference,
+    );
+    _wordReviewsStream = (widget.wordReviewsStreamFactory ?? _watchWordReviews)(
+      userReference,
+    );
+  }
+
+  void _retryData() {
+    setState(() {
+      _wordsStream = (widget.wordsStreamFactory ?? _watchUserWords)(
+        _activeUserReference,
+      );
+      _wordReviewsStream =
+          (widget.wordReviewsStreamFactory ?? _watchWordReviews)(
+        _activeUserReference,
+      );
+    });
+  }
+
+  int _dueWordsCount(List<WordReviewsRecord> reviews) {
+    final now = DateTime.now();
+    return reviews
+        .where(
+          (review) => review.dueAt != null && !review.dueAt!.isAfter(now),
+        )
+        .length;
+  }
+
+  double _reviewBarBottomOffset(BuildContext context) {
+    final navClearance =
+        Theme.of(context).platform == TargetPlatform.android ? 12.0 : 10.0;
+    return MediaQuery.paddingOf(context).bottom + navClearance;
+  }
+
+  double _contentBottomPadding(
+    BuildContext context, {
+    required bool showReviewBar,
+  }) {
+    if (!showReviewBar) {
+      return MediaQuery.paddingOf(context).bottom + ExpatlioDesign.space16;
     }
-    return dueCount.toString();
+    return _reviewBarBottomOffset(context) +
+        reviewWordsBarHeight +
+        ExpatlioDesign.space16;
+  }
+
+  Future<void> _openWordPage(UserWordsRecord wordDoc) async {
+    await Navigator.of(context, rootNavigator: true).push<void>(
+      MaterialPageRoute(
+        builder: (_) => WordDetailWidget(
+          initialWord: wordDoc,
+          wordRef: wordDoc.reference,
+        ),
+      ),
+    );
+  }
+
+  int? _reviewCountForState(
+    UxLoadingState<List<WordReviewsRecord>> state,
+  ) {
+    final result = state.displayedResult;
+    if (result == null) {
+      return null;
+    }
+    return _dueWordsCount(result.data ?? const <WordReviewsRecord>[]);
+  }
+
+  Widget _buildWordsViewport({
+    required UxLoadingState<List<UserWordsRecord>> wordsState,
+    required UxLoadingState<List<WordReviewsRecord>> reviewsState,
+    required bool showReviewBar,
+  }) {
+    final localizations = FFLocalizations.of(context);
+    final displayedResult = wordsState.displayedResult;
+    final hasDisplayResult = displayedResult != null;
+    final hasRefreshError = wordsState.isErrorWithPreviousResult ||
+        (hasDisplayResult && reviewsState.hasError);
+
+    Widget content;
+    if (wordsState.isInitialLoading) {
+      final label = localizations.getVariableText(
+        ruText: 'Загрузка словаря',
+        enText: 'Loading dictionary',
+      );
+      content = Semantics(
+        key: wordsInitialLoadingKey,
+        container: true,
+        liveRegion: true,
+        label: label,
+        child: const ExcludeSemantics(
+          child: Center(child: AppLoadingIndicator()),
+        ),
+      );
+    } else if (wordsState.isErrorWithoutData) {
+      content = Padding(
+        padding: EdgeInsetsDirectional.only(
+          bottom: _contentBottomPadding(
+            context,
+            showReviewBar: showReviewBar,
+          ),
+        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Center(
+                  child: UxErrorState(
+                    stateKey: wordsFullErrorStateKey,
+                    title: localizations.getVariableText(
+                      ruText: 'Не удалось загрузить словарь',
+                      enText: 'Could not load dictionary',
+                    ),
+                    message: localizations.getVariableText(
+                      ruText: 'Проверьте подключение и попробуйте снова.',
+                      enText: 'Check your connection and try again.',
+                    ),
+                    onRetry: _retryData,
+                    retryLabel: localizations.getVariableText(
+                      ruText: 'Повторить',
+                      enText: 'Try again',
+                    ),
+                    retryButtonKey: wordsRetryButtonKey,
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      );
+    } else if (displayedResult?.isEmpty ?? false) {
+      content = KeyedSubtree(
+        key: wordsEmptyStateKey,
+        child: Padding(
+          padding: EdgeInsetsDirectional.only(
+            bottom: _contentBottomPadding(
+              context,
+              showReviewBar: showReviewBar,
+            ),
+          ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return SingleChildScrollView(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                  child: Center(
+                    child: EmptyWidget(
+                      shrinkWrap: true,
+                      topPadding: ExpatlioDesign.space0,
+                      txt: localizations.getVariableText(
+                        ruText: 'В этом разделе будут появляться слова, '
+                            'которые вы добавите во время занятий. '
+                            'Сохраните первое слово, чтобы начать '
+                            'формировать свой личный словарь.',
+                        enText:
+                            'Words you save during lessons will appear here. '
+                            'Save your first word to start building your '
+                            'personal dictionary.',
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    } else {
+      final words = displayedResult?.data ?? const <UserWordsRecord>[];
+      content = ListView.separated(
+        key: wordsListKey,
+        primary: false,
+        padding: EdgeInsetsDirectional.fromSTEB(
+          ExpatlioDesign.pagePadding,
+          ExpatlioDesign.compactSpacing,
+          ExpatlioDesign.pagePadding,
+          _contentBottomPadding(
+            context,
+            showReviewBar: showReviewBar,
+          ),
+        ),
+        itemCount: words.length,
+        separatorBuilder: (context, index) => const Divider(
+          height: 1.0,
+          thickness: 1.0,
+          color: ExpatlioDesign.border,
+        ),
+        itemBuilder: (context, index) {
+          final word = words[index];
+          final entry = word.entry.firstOrNull;
+          return DictionaryWordRow(
+            key: wordsRowKey(word.reference.path),
+            sourceText: valueOrDefault<String>(entry?.text, '-'),
+            translationText: valueOrDefault<String>(
+              entry?.tr.firstOrNull?.text,
+              '-',
+            ),
+            onTap: () async => _openWordPage(word),
+          );
+        },
+      );
+    }
+
+    content = Stack(
+      fit: StackFit.passthrough,
+      children: [
+        content,
+        if (hasRefreshError)
+          PositionedDirectional(
+            top: ExpatlioDesign.space8,
+            start: ExpatlioDesign.space8,
+            end: ExpatlioDesign.space8,
+            child: Center(
+              child: _WordsRefreshErrorPill(onRetry: _retryData),
+            ),
+          ),
+      ],
+    );
+
+    return SizedBox.expand(
+      key: wordsContentViewportKey,
+      child: content,
+    );
   }
 
   @override
@@ -72,619 +572,201 @@ class _WordsWidgetState extends State<WordsWidget> {
       },
       child: Scaffold(
         key: scaffoldKey,
-        backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
-        body: SingleChildScrollView(
-          primary: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.max,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              StreamBuilder<List<WordReviewsRecord>>(
-                stream: _model.wordReviewsStream,
-                builder: (context, reviewSnapshot) {
-                  final reviews = reviewSnapshot.data ?? const <WordReviewsRecord>[];
-                  final now = DateTime.now();
-                  final dueCount = reviews
-                      .where(
-                        (review) =>
-                            review.dueAt != null && !review.dueAt!.isAfter(now),
+        backgroundColor: ExpatlioDesign.background,
+        body: _RetainedWordsQueryBuilder<WordReviewsRecord>(
+          key: ValueKey<Object>(_wordReviewsDataKey),
+          stream: _wordReviewsStream,
+          dataKey: _wordReviewsDataKey,
+          initialItems: _model.cachedWordReviews,
+          onAcceptedItems: _model.cacheWordReviews,
+          builder: (context, reviewsState) {
+            return _RetainedWordsQueryBuilder<UserWordsRecord>(
+              key: ValueKey<Object>(_wordsDataKey),
+              stream: _wordsStream,
+              dataKey: _wordsDataKey,
+              initialItems: _model.cachedWords,
+              onAcceptedItems: _model.cacheWords,
+              builder: (context, wordsState) {
+                final dueCount = _reviewCountForState(reviewsState);
+                final hasDueWords = (dueCount ?? 0) > 0;
+                final showReviewBar =
+                    wordsState.displayedResult?.data?.isNotEmpty ?? false;
+                final localizations = FFLocalizations.of(context);
+                final countText = dueCount == null
+                    ? '—'
+                    : reviewWordsVisibleLabel(
+                        count: dueCount,
+                        languageCode: localizations.languageCode,
+                      );
+                final countSemanticsLabel = dueCount == null
+                    ? localizations.getVariableText(
+                        ruText: reviewsState.hasError
+                            ? 'Не удалось загрузить данные повторения'
+                            : 'Данные повторения загружаются',
+                        enText: reviewsState.hasError
+                            ? 'Could not load review data'
+                            : 'Review data is loading',
                       )
-                      .length;
+                    : reviewWordsCountSemanticsLabel(
+                        count: dueCount,
+                        languageCode: localizations.languageCode,
+                      );
 
-                  return Padding(
-                    padding: const EdgeInsetsDirectional.fromSTEB(6.0, 0.0, 6.0, 0.0),
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(20.0),
-                        onTap: () async {
-                          context.pushNamed(FlashcardWidget.routeName);
-                        },
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20.0),
+                return Stack(
+                  children: [
+                    Column(
+                      mainAxisSize: MainAxisSize.max,
+                      children: [
+                        SafeArea(
+                          bottom: false,
+                          child: SizedBox(
+                            key: wordsHeaderKey,
+                            height: ExpatlioDesign.pageHeaderHeight,
+                            child: Center(
+                              child: Text(
+                                localizations.getVariableText(
+                                  ruText: 'Словарь',
+                                  enText: 'Dictionary',
+                                ),
+                                style: ExpatlioDesign.pageHeaderTitleStyle(
+                                  context,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: _buildWordsViewport(
+                            wordsState: wordsState,
+                            reviewsState: reviewsState,
+                            showReviewBar: showReviewBar,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (showReviewBar) ...[
+                      PositionedDirectional(
+                        start: 0.0,
+                        end: 0.0,
+                        bottom: 0.0,
+                        child: IgnorePointer(
                           child: Container(
-                            width: double.infinity,
-                            height: 172.0,
+                            height: _reviewBarBottomOffset(context) +
+                                reviewWordsBarHeight +
+                                _reviewBarFadeExtraHeight,
                             decoration: BoxDecoration(
                               gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
                                 colors: [
-                                  const Color(0xFFA765FC),
-                                  FlutterFlowTheme.of(context).secondary,
+                                  ExpatlioDesign.background
+                                      .withValues(alpha: 0.0),
+                                  ExpatlioDesign.background
+                                      .withValues(alpha: 0.92),
+                                  ExpatlioDesign.background,
                                 ],
-                                stops: const [0.0, 1.0],
-                                begin: const AlignmentDirectional(-0.07, 1.0),
-                                end: const AlignmentDirectional(0.07, -1.0),
+                                stops: const [0.0, 0.42, 1.0],
                               ),
-                              borderRadius: BorderRadius.circular(20.0),
-                            ),
-                            child: Stack(
-                              children: [
-                                Align(
-                                  alignment: const AlignmentDirectional(1.0, 0.0),
-                                  child: Padding(
-                                    padding: const EdgeInsetsDirectional.fromSTEB(
-                                        128.0, 0.0, 0.0, 0.0),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(8.0),
-                                      child: Image.asset(
-                                        'assets/images/Dot_pattern.png',
-                                        width: 300.0,
-                                        height: 200.0,
-                                        fit: BoxFit.cover,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                Padding(
-                                  padding:
-                                      const EdgeInsetsDirectional.fromSTEB(16.0, 16.0, 16.0, 16.0),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(
-                                                horizontal: 10.0,
-                                                vertical: 6.0,
-                                              ),
-                                              decoration: BoxDecoration(
-                                                color: const Color(0x24FFFFFF),
-                                                borderRadius: BorderRadius.circular(18.0),
-                                              ),
-                                              child: Text(
-                                                FFLocalizations.of(context).getVariableText(
-                                                  ruText:
-                                                      '${_dueCountLabel(dueCount)} к повторению',
-                                                  enText:
-                                                      '${_dueCountLabel(dueCount)} due now',
-                                                ),
-                                                style: FlutterFlowTheme.of(context)
-                                                    .bodyMedium
-                                                    .override(
-                                                      fontFamily: 'sf pro display',
-                                                      color: Colors.white,
-                                                      fontSize: 13.0,
-                                                      letterSpacing: 0.0,
-                                                      fontWeight: FontWeight.w600,
-                                                    ),
-                                              ),
-                                            ),
-                                            const SizedBox(height: 10.0),
-                                            Text(
-                                              FFLocalizations.of(context).getText(
-                                                'w44p5wo4' /* Flash‑cards */,
-                                              ),
-                                              style: FlutterFlowTheme.of(context)
-                                                  .bodyMedium
-                                                  .override(
-                                                    fontFamily: 'sf pro display',
-                                                    color: Colors.white,
-                                                    fontSize: 20.0,
-                                                    letterSpacing: 0.0,
-                                                    fontWeight: FontWeight.w600,
-                                                  ),
-                                            ),
-                                            const SizedBox(height: 4.0),
-                                            Text(
-                                              FFLocalizations.of(context).getVariableText(
-                                                ruText: 'Откройте карточки и повторите слова по интервальному плану.',
-                                                enText:
-                                                    'Open flashcards and review words on their interval schedule.',
-                                              ),
-                                              style: FlutterFlowTheme.of(context)
-                                                  .bodyMedium
-                                                  .override(
-                                                    fontFamily: 'sf pro display',
-                                                    color: const Color(0xCCFFFFFF),
-                                                    fontSize: 13.0,
-                                                    letterSpacing: 0.0,
-                                                    fontWeight: FontWeight.normal,
-                                                  ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      Padding(
-                                        padding: const EdgeInsetsDirectional.fromSTEB(
-                                            12.0, 0.0, 8.0, 0.0),
-                                        child: ClipRRect(
-                                          borderRadius: BorderRadius.circular(8.0),
-                                          child: Image.asset(
-                                            'assets/images/Cards-2.png',
-                                            height: 124.0,
-                                            fit: BoxFit.cover,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  );
-                },
-              ),
-              Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(30.0, 0.0, 30.0, 0.0),
-                child: Container(
-                  width: double.infinity,
-                  height: 8.0,
-                  decoration: BoxDecoration(
-                    color: FlutterFlowTheme.of(context).secondary,
-                    borderRadius: BorderRadius.only(
-                      bottomLeft: Radius.circular(20.0),
-                      bottomRight: Radius.circular(20.0),
-                      topLeft: Radius.circular(0.0),
-                      topRight: Radius.circular(0.0),
-                    ),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(50.0, 0.0, 50.0, 0.0),
-                child: Container(
-                  width: double.infinity,
-                  height: 8.0,
-                  decoration: BoxDecoration(
-                    color: FlutterFlowTheme.of(context).primary,
-                    borderRadius: BorderRadius.only(
-                      bottomLeft: Radius.circular(20.0),
-                      bottomRight: Radius.circular(20.0),
-                      topLeft: Radius.circular(0.0),
-                      topRight: Radius.circular(0.0),
-                    ),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(0.0, 40.0, 0.0, 0.0),
-                child: StreamBuilder<List<UserWordsRecord>>(
-                  stream: _model.wordsStream,
-                  builder: (context, snapshot) {
-                    if (!snapshot.hasData) {
-                      return Center(
-                        child: SizedBox(
-                          width: 50.0,
-                          height: 50.0,
-                          child: SpinKitCircle(
-                            color: FlutterFlowTheme.of(context).secondary,
-                            size: 50.0,
-                          ),
+                      PositionedDirectional(
+                        start: ExpatlioDesign.pagePadding,
+                        end: ExpatlioDesign.pagePadding,
+                        bottom: _reviewBarBottomOffset(context),
+                        child: ReviewWordsBar(
+                          text: countText,
+                          semanticsLabel: countSemanticsLabel,
+                          onTap: hasDueWords
+                              ? () {
+                                  context.pushNamed(FlashcardWidget.routeName);
+                                }
+                              : null,
                         ),
-                      );
-                    }
-                    List<UserWordsRecord> containerUserWordsRecordList =
-                        snapshot.data!;
-
-                    return Container(
-                      decoration: BoxDecoration(),
-                      child: Builder(
-                        builder: (context) {
-                          if (containerUserWordsRecordList.isNotEmpty) {
-                            return Column(
-                              mainAxisSize: MainAxisSize.max,
-                              children: [
-                                Container(
-                                  height: 45.0,
-                                  decoration: BoxDecoration(),
-                                  child: SingleChildScrollView(
-                                    scrollDirection: Axis.horizontal,
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.max,
-                                      children: [
-                                        InkWell(
-                                          splashColor: Colors.transparent,
-                                          focusColor: Colors.transparent,
-                                          hoverColor: Colors.transparent,
-                                          highlightColor: Colors.transparent,
-                                          onTap: () async {
-                                            _model.pos = '';
-                                            safeSetState(() {});
-                                          },
-                                          child: Container(
-                                            height: 100.0,
-                                            decoration: BoxDecoration(
-                                              color: valueOrDefault<Color>(
-                                                _model.pos == null ||
-                                                        _model.pos == ''
-                                                    ? FlutterFlowTheme.of(
-                                                            context)
-                                                        .primary
-                                                    : FlutterFlowTheme.of(
-                                                            context)
-                                                        .primaryBackground,
-                                                FlutterFlowTheme.of(context)
-                                                    .primary,
-                                              ),
-                                              borderRadius:
-                                                  BorderRadius.circular(24.0),
-                                              shape: BoxShape.rectangle,
-                                            ),
-                                            child: Align(
-                                              alignment: AlignmentDirectional(
-                                                  0.0, 0.0),
-                                              child: Padding(
-                                                padding: EdgeInsetsDirectional
-                                                    .fromSTEB(
-                                                        16.0, 0.0, 16.0, 0.0),
-                                                child: Text(
-                                                  FFLocalizations.of(context)
-                                                      .getText(
-                                                    'itgwbmq6' /* Все */,
-                                                  ),
-                                                  style:
-                                                      FlutterFlowTheme.of(
-                                                              context)
-                                                          .bodyMedium
-                                                          .override(
-                                                            fontFamily:
-                                                                'sf pro display',
-                                                            color:
-                                                                valueOrDefault<
-                                                                    Color>(
-                                                              _model.pos == null ||
-                                                                      _model.pos ==
-                                                                          ''
-                                                                  ? FlutterFlowTheme.of(
-                                                                          context)
-                                                                      .primaryBackground
-                                                                  : FlutterFlowTheme.of(
-                                                                          context)
-                                                                      .primaryText,
-                                                              FlutterFlowTheme.of(
-                                                                      context)
-                                                                  .primaryBackground,
-                                                            ),
-                                                            fontSize: 16.0,
-                                                            letterSpacing: 0.0,
-                                                          ),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        wrapWithModel(
-                                          model: _model.wordPosChipModel1,
-                                          updateCallback: () =>
-                                              safeSetState(() {}),
-                                          child: WordPosChipWidget(
-                                            text: FFLocalizations.of(context)
-                                                .getText(
-                                              'lgijjwoy' /* Существительное */,
-                                            ),
-                                            pos: 'noun',
-                                            selectedPos: valueOrDefault<String>(
-                                              _model.pos,
-                                              '-',
-                                            ),
-                                            action: (pos) async {
-                                              _model.pos = pos;
-                                              safeSetState(() {});
-                                            },
-                                          ),
-                                        ),
-                                        wrapWithModel(
-                                          model: _model.wordPosChipModel2,
-                                          updateCallback: () =>
-                                              safeSetState(() {}),
-                                          child: WordPosChipWidget(
-                                            text: FFLocalizations.of(context)
-                                                .getText(
-                                              'o5rmy0ju' /* Глагол */,
-                                            ),
-                                            pos: 'verb',
-                                            selectedPos: valueOrDefault<String>(
-                                              _model.pos,
-                                              '-',
-                                            ),
-                                            action: (pos) async {
-                                              _model.pos = pos;
-                                              safeSetState(() {});
-                                            },
-                                          ),
-                                        ),
-                                        wrapWithModel(
-                                          model: _model.wordPosChipModel3,
-                                          updateCallback: () =>
-                                              safeSetState(() {}),
-                                          child: WordPosChipWidget(
-                                            text: FFLocalizations.of(context)
-                                                .getText(
-                                              'e5h653gn' /* Прилагательное */,
-                                            ),
-                                            pos: 'adjective',
-                                            selectedPos: valueOrDefault<String>(
-                                              _model.pos,
-                                              '-',
-                                            ),
-                                            action: (pos) async {
-                                              _model.pos = pos;
-                                              safeSetState(() {});
-                                            },
-                                          ),
-                                        ),
-                                        wrapWithModel(
-                                          model: _model.wordPosChipModel4,
-                                          updateCallback: () =>
-                                              safeSetState(() {}),
-                                          child: WordPosChipWidget(
-                                            text: FFLocalizations.of(context)
-                                                .getText(
-                                              'afe30qzp' /* Наречие */,
-                                            ),
-                                            pos: 'adverb',
-                                            selectedPos: valueOrDefault<String>(
-                                              _model.pos,
-                                              '-',
-                                            ),
-                                            action: (pos) async {
-                                              _model.pos = pos;
-                                              safeSetState(() {});
-                                            },
-                                          ),
-                                        ),
-                                        wrapWithModel(
-                                          model: _model.wordPosChipModel5,
-                                          updateCallback: () =>
-                                              safeSetState(() {}),
-                                          child: WordPosChipWidget(
-                                            text: FFLocalizations.of(context)
-                                                .getText(
-                                              'wyn9ioic' /* Местоимение */,
-                                            ),
-                                            pos: 'pronoun',
-                                            selectedPos: valueOrDefault<String>(
-                                              _model.pos,
-                                              '-',
-                                            ),
-                                            action: (pos) async {
-                                              _model.pos = pos;
-                                              safeSetState(() {});
-                                            },
-                                          ),
-                                        ),
-                                        wrapWithModel(
-                                          model: _model.wordPosChipModel6,
-                                          updateCallback: () =>
-                                              safeSetState(() {}),
-                                          child: WordPosChipWidget(
-                                            text: FFLocalizations.of(context)
-                                                .getText(
-                                              'jeewyk0t' /* Предлог */,
-                                            ),
-                                            pos: 'preposition',
-                                            selectedPos: valueOrDefault<String>(
-                                              _model.pos,
-                                              '-',
-                                            ),
-                                            action: (pos) async {
-                                              _model.pos = pos;
-                                              safeSetState(() {});
-                                            },
-                                          ),
-                                        ),
-                                        wrapWithModel(
-                                          model: _model.wordPosChipModel7,
-                                          updateCallback: () =>
-                                              safeSetState(() {}),
-                                          child: WordPosChipWidget(
-                                            text: FFLocalizations.of(context)
-                                                .getText(
-                                              '09jddjbc' /* Союз */,
-                                            ),
-                                            pos: 'conjunction',
-                                            selectedPos: valueOrDefault<String>(
-                                              _model.pos,
-                                              '-',
-                                            ),
-                                            action: (pos) async {
-                                              _model.pos = pos;
-                                              safeSetState(() {});
-                                            },
-                                          ),
-                                        ),
-                                        wrapWithModel(
-                                          model: _model.wordPosChipModel8,
-                                          updateCallback: () =>
-                                              safeSetState(() {}),
-                                          child: WordPosChipWidget(
-                                            text: FFLocalizations.of(context)
-                                                .getText(
-                                              'd8fv2zgh' /* Междометие */,
-                                            ),
-                                            pos: 'interjection',
-                                            selectedPos: valueOrDefault<String>(
-                                              _model.pos,
-                                              '-',
-                                            ),
-                                            action: (pos) async {
-                                              _model.pos = pos;
-                                              safeSetState(() {});
-                                            },
-                                          ),
-                                        ),
-                                        wrapWithModel(
-                                          model: _model.wordPosChipModel9,
-                                          updateCallback: () =>
-                                              safeSetState(() {}),
-                                          child: WordPosChipWidget(
-                                            text: FFLocalizations.of(context)
-                                                .getText(
-                                              '6jcnedaf' /* Частица */,
-                                            ),
-                                            pos: 'particle',
-                                            selectedPos: valueOrDefault<String>(
-                                              _model.pos,
-                                              '-',
-                                            ),
-                                            action: (pos) async {
-                                              _model.pos = pos;
-                                              safeSetState(() {});
-                                            },
-                                          ),
-                                        ),
-                                        wrapWithModel(
-                                          model: _model.wordPosChipModel10,
-                                          updateCallback: () =>
-                                              safeSetState(() {}),
-                                          child: WordPosChipWidget(
-                                            text: FFLocalizations.of(context)
-                                                .getText(
-                                              'qhknk21t' /* Артикль */,
-                                            ),
-                                            pos: 'article',
-                                            selectedPos: valueOrDefault<String>(
-                                              _model.pos,
-                                              '-',
-                                            ),
-                                            action: (pos) async {
-                                              _model.pos = pos;
-                                              safeSetState(() {});
-                                            },
-                                          ),
-                                        ),
-                                        wrapWithModel(
-                                          model: _model.wordPosChipModel11,
-                                          updateCallback: () =>
-                                              safeSetState(() {}),
-                                          child: WordPosChipWidget(
-                                            text: FFLocalizations.of(context)
-                                                .getText(
-                                              't6bc6qig' /* Числительное */,
-                                            ),
-                                            pos: 'numeral',
-                                            selectedPos: valueOrDefault<String>(
-                                              _model.pos,
-                                              '-',
-                                            ),
-                                            action: (pos) async {
-                                              _model.pos = pos;
-                                              safeSetState(() {});
-                                            },
-                                          ),
-                                        ),
-                                        wrapWithModel(
-                                          model: _model.wordPosChipModel12,
-                                          updateCallback: () =>
-                                              safeSetState(() {}),
-                                          child: WordPosChipWidget(
-                                            text: FFLocalizations.of(context)
-                                                .getText(
-                                              'cev0022q' /* Причастие */,
-                                            ),
-                                            pos: 'participle',
-                                            selectedPos: valueOrDefault<String>(
-                                              _model.pos,
-                                              '-',
-                                            ),
-                                            action: (pos) async {
-                                              _model.pos = pos;
-                                              safeSetState(() {});
-                                            },
-                                          ),
-                                        ),
-                                      ]
-                                          .divide(SizedBox(width: 6.0))
-                                          .around(SizedBox(width: 6.0)),
-                                    ),
-                                  ),
-                                ),
-                                Padding(
-                                  padding: EdgeInsetsDirectional.fromSTEB(
-                                      6.0, 12.0, 6.0, 0.0),
-                                  child: Container(
-                                    decoration: BoxDecoration(),
-                                    child: Builder(
-                                      builder: (context) {
-                                        final pronoun =
-                                            containerUserWordsRecordList
-                                                .where((e) =>
-                                                    _model.pos != null &&
-                                                            _model.pos != ''
-                                                        ? (e.entry.firstOrNull
-                                                                ?.pos ==
-                                                            _model.pos)
-                                                        : true)
-                                                .toList();
-                                        if (pronoun.isEmpty) {
-                                          return Center(
-                                            child: EmptyWidget(
-                                              txt:
-                                                  'По выбранной части речи пока ничего нет. Попробуйте другой фильтр.',
-                                            ),
-                                          );
-                                        }
-
-                                        return Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: List.generate(
-                                              pronoun.length, (pronounIndex) {
-                                            final pronounItem =
-                                                pronoun[pronounIndex];
-                                            return Padding(
-                                              padding: EdgeInsetsDirectional
-                                                  .fromSTEB(
-                                                0.0,
-                                                pronounIndex == 0 ? 0.0 : 6.0,
-                                                0.0,
-                                                0.0,
-                                              ),
-                                              child: WordCardWidget(
-                                                key: Key(
-                                                    'Keyeax_${pronounIndex}_of_${pronoun.length}'),
-                                                wordDoc: pronounItem,
-                                              ),
-                                            );
-                                          }),
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            );
-                          } else {
-                            return EmptyWidget(
-                              txt:
-                                  'В этом разделе будут появляться слова, \nкоторые вы добавите во время занятий. \nСохраните первое слово, чтобы начать формировать свой личный словарь',
-                            );
-                          }
-                        },
                       ),
-                    );
-                  },
+                    ],
+                  ],
+                );
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _WordsRefreshErrorPill extends StatelessWidget {
+  const _WordsRefreshErrorPill({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final localizations = FFLocalizations.of(context);
+    final label = localizations.getVariableText(
+      ruText: 'Не удалось обновить словарь',
+      enText: 'Could not refresh dictionary',
+    );
+    final semanticsLabel = localizations.getVariableText(
+      ruText: '$label. Повторить',
+      enText: '$label. Try again',
+    );
+
+    return Semantics(
+      key: wordsRefreshErrorIndicatorKey,
+      container: true,
+      liveRegion: true,
+      button: true,
+      label: semanticsLabel,
+      onTap: onRetry,
+      child: ExcludeSemantics(
+        child: Material(
+          color: ExpatlioDesign.card,
+          borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
+          elevation: 2.0,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              minWidth: 48.0,
+              minHeight: 48.0,
+            ),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(ExpatlioDesign.radiusCapsule),
+              onTap: onRetry,
+              child: Padding(
+                padding: const EdgeInsetsDirectional.fromSTEB(
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space8,
+                  ExpatlioDesign.space12,
+                  ExpatlioDesign.space8,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.cloud_off_outlined,
+                      size: 16.0,
+                      color: ExpatlioDesign.danger,
+                    ),
+                    const SizedBox(width: ExpatlioDesign.space8),
+                    Flexible(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: ExpatlioDesign.textStyle(
+                          context,
+                          size: 14.0,
+                          weight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ]
-                .addToStart(SizedBox(height: 55.0))
-                .addToEnd(SizedBox(height: 120.0)),
+            ),
           ),
         ),
       ),

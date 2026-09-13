@@ -9,7 +9,9 @@ import 'package:mime_type/mime_type.dart';
 import 'package:video_player/video_player.dart';
 
 import '../auth/firebase_auth/auth_util.dart';
+import '/components/bottom_sheet_header.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'flutter_flow_util.dart';
 
 const allowedFormats = {'image/png', 'image/jpeg', 'video/mp4', 'image/gif'};
@@ -81,58 +83,68 @@ Future<List<SelectedFile>?> selectMediaWithSourceBottomSheet({
           );
   final mediaSource = await showModalBottomSheet<MediaSource>(
       context: context,
-      backgroundColor: backgroundColor,
+      backgroundColor: Colors.transparent,
       builder: (context) {
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (!kIsWeb) ...[
-              Padding(
-                padding: EdgeInsets.fromLTRB(0, 8, 0, 0),
-                child: ListTile(
-                  title: Text(
-                    'Choose Source',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.getFont(
-                      pickerFontFamily,
-                      color: textColor.applyAlpha(0.65),
-                      fontWeight: FontWeight.w500,
-                      fontSize: 20,
-                    ),
+        return Container(
+          decoration: ExpatlioDesign.sheetDecoration(color: backgroundColor),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (!kIsWeb) ...[
+                BottomSheetHeader(
+                  title: FFLocalizations.of(context).getVariableText(
+                    ruText: 'Выберите источник',
+                    enText: 'Choose source',
                   ),
-                  tileColor: backgroundColor,
-                  dense: false,
                 ),
-              ),
-              const Divider(),
+                const Divider(),
+              ],
+              if (allowPhoto && allowVideo) ...[
+                createUploadMediaListTile(
+                  FFLocalizations.of(context).getVariableText(
+                    ruText: 'Галерея (фото)',
+                    enText: 'Gallery (photo)',
+                  ),
+                  MediaSource.photoGallery,
+                ),
+                const Divider(),
+                createUploadMediaListTile(
+                  FFLocalizations.of(context).getVariableText(
+                    ruText: 'Галерея (видео)',
+                    enText: 'Gallery (video)',
+                  ),
+                  MediaSource.videoGallery,
+                ),
+              ] else if (allowPhoto)
+                createUploadMediaListTile(
+                  FFLocalizations.of(context).getVariableText(
+                    ruText: 'Галерея',
+                    enText: 'Gallery',
+                  ),
+                  MediaSource.photoGallery,
+                )
+              else
+                createUploadMediaListTile(
+                  FFLocalizations.of(context).getVariableText(
+                    ruText: 'Галерея',
+                    enText: 'Gallery',
+                  ),
+                  MediaSource.videoGallery,
+                ),
+              if (!kIsWeb) ...[
+                const Divider(),
+                createUploadMediaListTile(
+                  FFLocalizations.of(context).getVariableText(
+                    ruText: 'Камера',
+                    enText: 'Camera',
+                  ),
+                  MediaSource.camera,
+                ),
+                const Divider(),
+              ],
+              const SizedBox(height: ExpatlioDesign.space12),
             ],
-            if (allowPhoto && allowVideo) ...[
-              createUploadMediaListTile(
-                'Gallery (Photo)',
-                MediaSource.photoGallery,
-              ),
-              const Divider(),
-              createUploadMediaListTile(
-                'Gallery (Video)',
-                MediaSource.videoGallery,
-              ),
-            ] else if (allowPhoto)
-              createUploadMediaListTile(
-                'Gallery',
-                MediaSource.photoGallery,
-              )
-            else
-              createUploadMediaListTile(
-                'Gallery',
-                MediaSource.videoGallery,
-              ),
-            if (!kIsWeb) ...[
-              const Divider(),
-              createUploadMediaListTile('Camera', MediaSource.camera),
-              const Divider(),
-            ],
-            const SizedBox(height: 10),
-          ],
+          ),
         );
       });
   if (mediaSource == null) {
@@ -230,13 +242,22 @@ Future<List<SelectedFile>?> selectMedia({
 }
 
 bool validateFileFormat(String filePath, BuildContext context) {
-  if (allowedFormats.contains(mime(filePath))) {
+  final detectedMime = mime(filePath);
+  if (allowedFormats.contains(detectedMime)) {
     return true;
   }
+  debugPrint('Rejected unsupported upload MIME type: $detectedMime');
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(
-      content: Text('Invalid file format: ${mime(filePath)}'),
+      content: Text(
+        FFLocalizations.of(context).getVariableText(
+          ruText:
+              'Неподдерживаемый формат файла. Выберите PNG, JPEG, GIF или MP4.',
+          enText:
+              'Unsupported file format. Choose a PNG, JPEG, GIF, or MP4 file.',
+        ),
+      ),
     ));
   return false;
 }
@@ -386,7 +407,8 @@ void showUploadMessage(
           children: [
             if (showLoading)
               Padding(
-                padding: EdgeInsetsDirectional.only(end: 10.0),
+                padding:
+                    EdgeInsetsDirectional.only(end: ExpatlioDesign.space12),
                 child: CircularProgressIndicator(
                   valueColor: Theme.of(context).brightness == Brightness.dark
                       ? AlwaysStoppedAnimation<Color>(

@@ -3,10 +3,11 @@ import 'package:small_talk/authorization/acquaintance_s_t_u_d_e_n_t/student_onbo
 import 'package:small_talk/backend/schema/enums/enums.dart';
 import 'package:small_talk/backend/schema/structs/index.dart';
 
-CountryStruct _country([String code = 'US']) => CountryStruct(
-      code: code,
-      nameEn: code,
-    );
+CountryStruct _country([
+  String code = 'US',
+  String cityKey = 'new_york',
+]) =>
+    CountryStruct(code: code, cityKey: cityKey, nameEn: '$code:$cityKey');
 
 void main() {
   group('buildStudentOnboardingInitialState', () {
@@ -22,7 +23,7 @@ void main() {
         gender: Gender.female,
         level: Level.Intermediate,
         learningLanguage: learningLanguage,
-        country: _country('ES'),
+        country: _country('ID', 'bali'),
       );
 
       learningLanguage.code = 'de';
@@ -33,7 +34,8 @@ void main() {
       expect(initialState.level, Level.Intermediate);
       expect(initialState.learningLanguage?.code, 'es');
       expect(initialState.learningLanguage?.alternateCodes, <String>['spa']);
-      expect(initialState.country?.code, 'ES');
+      expect(initialState.country?.code, 'ID');
+      expect(initialState.country?.cityKey, 'bali');
     });
 
     test('exposes widget-safe defaults for missing draft fields', () {
@@ -49,6 +51,18 @@ void main() {
       expect(initialState.genderMale, isTrue);
       expect(initialState.level, defaultStudentOnboardingLevel);
       expect(initialState.learningLanguage, isNull);
+      expect(initialState.country, isNull);
+    });
+
+    test('does not treat a legacy country-only value as a location', () {
+      final initialState = buildStudentOnboardingInitialState(
+        displayName: 'Alice',
+        gender: Gender.female,
+        level: Level.Basic,
+        learningLanguage: LanguageStruct(code: 'en'),
+        country: CountryStruct(code: 'US', nameEn: 'United States'),
+      );
+
       expect(initialState.country, isNull);
     });
   });
@@ -75,7 +89,7 @@ void main() {
         gender: Gender.female,
         level: Level.Fluent,
         learningLanguage: legacyLanguage,
-        country: _country('KZ'),
+        country: _country('AE', 'dubai'),
       );
 
       legacyLanguage.code = 'ru';
@@ -92,7 +106,8 @@ void main() {
       expect(updated.level, Level.Fluent);
       expect(updated.learningLanguage?.code, 'kk');
       expect(updated.learningLanguage?.alternateCodes, <String>['kaz']);
-      expect(updated.country?.code, 'KZ');
+      expect(updated.country?.code, 'AE');
+      expect(updated.country?.cityKey, 'dubai');
 
       final cleared = updateStudentOnboardingDraft(
         updated,
@@ -139,7 +154,7 @@ void main() {
             model: 'kaz-Latn',
             alternateCodes: <String>['kaz'],
           ),
-          country: _country('KZ'),
+          country: _country('ID', 'bali'),
         ),
       );
 
@@ -148,7 +163,8 @@ void main() {
       expect(payload.level, defaultStudentOnboardingLevel);
       expect(payload.learningLanguage?.code, 'kk');
       expect(payload.learningLanguage?.alternateCodes, <String>['kaz']);
-      expect(payload.country?.code, 'KZ');
+      expect(payload.country?.code, 'ID');
+      expect(payload.country?.cityKey, 'bali');
     });
 
     test('builds firestore updates for the student onboarding contract', () {
@@ -162,7 +178,7 @@ void main() {
               code: 'ja',
               alternateCodes: <String>['jpn'],
             ),
-            country: _country('JP'),
+            country: _country('TH', 'phuket'),
           ),
         ),
         markProfileComplete: true,
@@ -173,7 +189,11 @@ void main() {
       expect(updateData['isProfileComplete'], isTrue);
       expect(updateData['learningLanguage.code'], 'ja');
       expect(updateData['learningLanguage.alternateCodes'], <String>['jpn']);
-      expect(updateData['Country_NS.code'], 'JP');
+      expect(updateData['Country_NS.code'], 'TH');
+      expect(updateData['Country_NS.cityKey'], 'phuket');
+      expect(updateData['profileCity.countryCode'], 'TH');
+      expect(updateData['profileCity.cityKey'], 'phuket');
+      expect(updateData.containsKey('availabilityToday'), isTrue);
       expect(updateData.containsKey('photo_url'), isFalse);
     });
 
@@ -252,7 +272,7 @@ void main() {
             country: null,
           ),
         ),
-        'Выберите страну из списка',
+        'Выберите локацию из списка',
       );
     });
 
@@ -284,7 +304,7 @@ void main() {
             code: 'kk',
             alternateCodes: <String>['kaz'],
           ),
-          country: _country('KZ'),
+          country: _country('ID', 'bali'),
         ),
         isTrue,
       );

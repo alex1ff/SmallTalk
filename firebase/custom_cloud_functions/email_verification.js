@@ -1,9 +1,17 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const axios = require("axios");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "email_verification"});
 
 const RESEND_SEND_EMAIL_URL = "https://api.resend.com/emails";
 const RESEND_TIMEOUT_MS = 10000;
+const DEFAULT_EMAIL_ACTION_HANDLER_URL =
+  "https://smalltalk-2109b.firebaseapp.com/auth/action";
+const DEFAULT_APP_DEEP_LINK =
+  "smalltalk://smalltalk.com/?emailVerified=1";
+const BRAND_NAME = "Expatlio";
+const resendSecrets = ["RESEND_API_KEY"];
 
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -23,6 +31,10 @@ function resolveEmailConfig(env = process.env) {
     resendApiKey: normalizeString(env.RESEND_API_KEY),
     emailFrom: normalizeString(env.EMAIL_FROM),
     emailReplyTo: normalizeString(env.EMAIL_REPLY_TO),
+    emailActionHandlerUrl:
+      normalizeString(env.EMAIL_ACTION_HANDLER_URL) ||
+      DEFAULT_EMAIL_ACTION_HANDLER_URL,
+    appDeepLink: normalizeString(env.APP_DEEP_LINK) || DEFAULT_APP_DEEP_LINK,
   };
 }
 
@@ -31,7 +43,7 @@ function formatSenderAddress(emailFrom) {
     return "";
   }
 
-  return emailFrom.includes("<") ? emailFrom : `SmallTalk <${emailFrom}>`;
+  return emailFrom.includes("<") ? emailFrom : `${BRAND_NAME} <${emailFrom}>`;
 }
 
 function assertEmailConfig(config) {
@@ -46,80 +58,149 @@ function assertEmailConfig(config) {
   }
 }
 
+function normalizeLocale(value) {
+  const locale = normalizeString(value).toLowerCase();
+  return locale.startsWith("en") ? "en" : "ru";
+}
+
+function buildEmailActionHandlerLink({
+  firebaseLink,
+  locale,
+  handlerUrl,
+  appDeepLink,
+}) {
+  const sourceUrl = new URL(firebaseLink);
+  const actionUrl = new URL(handlerUrl);
+
+  for (const key of ["mode", "oobCode", "apiKey"]) {
+    const value = sourceUrl.searchParams.get(key);
+    if (value) {
+      actionUrl.searchParams.set(key, value);
+    }
+  }
+
+  actionUrl.searchParams.set("lang", normalizeLocale(locale));
+  actionUrl.searchParams.set("continueUrl", appDeepLink);
+
+  return actionUrl.toString();
+}
+
 function buildVerificationEmailText({
   displayName = "",
   verificationLink,
+  locale = "ru",
 }) {
+  if (normalizeLocale(locale) === "en") {
+    const greeting = displayName ? `Hi ${displayName},` : "Hi,";
+
+    return [
+      greeting,
+      "",
+      `Confirm your email to finish setting up ${BRAND_NAME} and keep your account secure.`,
+      "",
+      `Verification link: ${verificationLink}`,
+      "",
+      `If you did not create a ${BRAND_NAME} account, you can ignore this email.`,
+      "",
+      BRAND_NAME,
+    ].join("\n");
+  }
+
   const greeting = displayName ? `${displayName}, здравствуйте!` : "Здравствуйте!";
 
   return [
     greeting,
     "",
-    "Подтвердите email для SmallTalk, чтобы мы могли присылать важные уведомления и помочь восстановить аккаунт при необходимости.",
+    `Подтвердите email, чтобы завершить настройку ${BRAND_NAME} и защитить аккаунт.`,
     "",
     `Ссылка для подтверждения: ${verificationLink}`,
     "",
-    "Если вы не создавали аккаунт в SmallTalk, просто проигнорируйте это письмо.",
+    `Если вы не создавали аккаунт в ${BRAND_NAME}, просто проигнорируйте это письмо.`,
     "",
-    "SmallTalk",
+    BRAND_NAME,
   ].join("\n");
 }
 
 function buildVerificationEmailHtml({
   displayName = "",
   verificationLink,
+  locale = "ru",
 }) {
   const safeDisplayName = escapeHtml(displayName);
   const safeLink = escapeHtml(verificationLink);
-  const greeting = safeDisplayName ?
-    `${safeDisplayName}, подтвердите email` :
-    "Подтвердите email";
+  const isEnglish = normalizeLocale(locale) === "en";
+  const greeting = isEnglish ?
+    (safeDisplayName ? `Hi ${safeDisplayName}, confirm your email` :
+      "Confirm your email") :
+    (safeDisplayName ? `${safeDisplayName}, подтвердите email` :
+      "Подтвердите email");
+  const title = isEnglish ?
+    `Confirm your email for ${BRAND_NAME}` :
+    `Подтвердите email в ${BRAND_NAME}`;
+  const body = isEnglish ?
+    `One tap confirms your address and helps keep your ${BRAND_NAME} account secure.` :
+    `Один клик подтвердит адрес и поможет защитить ваш аккаунт ${BRAND_NAME}.`;
+  const button = isEnglish ? "Confirm email" : "Подтвердить email";
+  const fallbackIntro = isEnglish ?
+    "If the button does not work, open this link manually:" :
+    "Если кнопка не работает, откройте ссылку вручную:";
+  const footer = isEnglish ?
+    `If you did not create a ${BRAND_NAME} account, you can ignore this email.` :
+    `Если вы не создавали аккаунт в ${BRAND_NAME}, просто проигнорируйте это письмо.`;
+  const preheader = isEnglish ?
+    `Confirm your ${BRAND_NAME} email in one tap.` :
+    `Подтвердите email в ${BRAND_NAME} одним нажатием.`;
 
   return `<!doctype html>
-<html lang="ru">
+<html lang="${isEnglish ? "en" : "ru"}">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light">
-    <title>Подтвердите email для SmallTalk</title>
+    <title>${title}</title>
   </head>
-  <body style="margin:0;background:#f4f1ea;color:#161616;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
+  <body style="margin:0;background:#f2f2f7;color:#000000;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
     <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
-      Один клик, чтобы подтвердить адрес и защитить аккаунт SmallTalk.
+      ${preheader}
     </div>
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f1ea;padding:28px 12px;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f2f2f7;padding:28px 12px;">
       <tr>
         <td align="center">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#fffdf8;border-radius:30px;overflow:hidden;border:1px solid #e8dfcf;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border-radius:20px;overflow:hidden;border:1px solid #e5e5ea;">
             <tr>
-              <td style="padding:30px 28px 10px;">
-                <div style="font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:#8a6b43;font-weight:700;">SmallTalk</div>
-                <h1 style="margin:18px 0 10px;font-size:32px;line-height:1.05;color:#141414;font-weight:800;">${greeting}</h1>
-                <p style="margin:0;color:#5f5a51;font-size:16px;line-height:1.55;">
-                  Подтвердите адрес, чтобы получать важные уведомления, безопасно восстанавливать аккаунт и не пропустить сообщения от собеседников.
+              <td style="padding:30px 28px 8px;">
+                <table role="presentation" cellspacing="0" cellpadding="0">
+                  <tr>
+                    <td style="width:42px;height:42px;border-radius:14px;background:#7430e8;color:#ffffff;text-align:center;font-size:23px;line-height:42px;font-weight:800;">E</td>
+                    <td style="padding-left:12px;font-size:18px;line-height:1.2;color:#000000;font-weight:800;">${BRAND_NAME}</td>
+                  </tr>
+                </table>
+                <h1 style="margin:24px 0 10px;font-size:30px;line-height:1.12;color:#000000;font-weight:800;">${greeting}</h1>
+                <p style="margin:0;color:#6b6b73;font-size:16px;line-height:1.55;">
+                  ${body}
                 </p>
               </td>
             </tr>
             <tr>
               <td style="padding:18px 28px 8px;">
-                <a href="${safeLink}" style="display:inline-block;background:#141414;color:#ffffff;text-decoration:none;border-radius:999px;padding:15px 24px;font-size:16px;font-weight:700;">
-                  Подтвердить email
+                <a href="${safeLink}" style="display:inline-block;background:#7430e8;color:#ffffff;text-decoration:none;border-radius:16px;padding:15px 22px;font-size:16px;font-weight:700;">
+                  ${button}
                 </a>
               </td>
             </tr>
             <tr>
               <td style="padding:18px 28px 28px;">
-                <p style="margin:0 0 10px;color:#7b756b;font-size:13px;line-height:1.5;">
-                  Если кнопка не работает, откройте ссылку вручную:
+                <p style="margin:0 0 10px;color:#6b6b73;font-size:13px;line-height:1.5;">
+                  ${fallbackIntro}
                 </p>
-                <p style="margin:0;word-break:break-all;color:#141414;font-size:13px;line-height:1.5;">
-                  <a href="${safeLink}" style="color:#141414;">${safeLink}</a>
+                <p style="margin:0;word-break:break-all;color:#000000;font-size:13px;line-height:1.5;">
+                  <a href="${safeLink}" style="color:#7430e8;">${safeLink}</a>
                 </p>
               </td>
             </tr>
             <tr>
-              <td style="background:#191919;padding:20px 28px;color:#f6efe2;font-size:13px;line-height:1.5;">
-                Если вы не создавали аккаунт в SmallTalk, просто проигнорируйте это письмо.
+              <td style="background:#f8f8fb;padding:18px 28px;color:#6b6b73;font-size:13px;line-height:1.5;border-top:1px solid #e5e5ea;">
+                ${footer}
               </td>
             </tr>
           </table>
@@ -134,6 +215,7 @@ async function sendEmailWithResend({
   email,
   displayName,
   verificationLink,
+  locale,
   config,
   resendClient = axios,
 }) {
@@ -142,14 +224,18 @@ async function sendEmailWithResend({
   const payload = {
     from: formatSenderAddress(config.emailFrom),
     to: [email],
-    subject: "Подтвердите email для SmallTalk",
+    subject: normalizeLocale(locale) === "en" ?
+      `Confirm your email for ${BRAND_NAME}` :
+      `Подтвердите email в ${BRAND_NAME}`,
     html: buildVerificationEmailHtml({
       displayName,
       verificationLink,
+      locale,
     }),
     text: buildVerificationEmailText({
       displayName,
       verificationLink,
+      locale,
     }),
   };
 
@@ -176,6 +262,7 @@ async function sendEmailWithResend({
 
 async function sendCustomEmailVerificationHandler(data, context, deps = {}) {
   const uid = normalizeString(context?.auth?.uid);
+  const locale = normalizeLocale(data?.locale);
   if (!uid) {
     throw new functions.https.HttpsError(
       "unauthenticated",
@@ -205,14 +292,21 @@ async function sendCustomEmailVerificationHandler(data, context, deps = {}) {
 
   const config = resolveEmailConfig(deps.env || process.env);
   assertEmailConfig(config);
-  const verificationLink =
+  const firebaseVerificationLink =
     await authClient.generateEmailVerificationLink(email);
+  const verificationLink = buildEmailActionHandlerLink({
+    firebaseLink: firebaseVerificationLink,
+    locale,
+    handlerUrl: config.emailActionHandlerUrl,
+    appDeepLink: config.appDeepLink,
+  });
 
   try {
     const sendResult = await sendEmailWithResend({
       email,
       displayName: user.displayName || "",
       verificationLink,
+      locale,
       config,
       resendClient: deps.resendClient || axios,
     });
@@ -227,11 +321,10 @@ async function sendCustomEmailVerificationHandler(data, context, deps = {}) {
       throw error;
     }
 
-    console.error("sendCustomEmailVerification failed", {
+    safeLog.error("verification_email_failed", {
       uid,
-      code: error?.code || null,
-      response: error?.response?.data || null,
-      message: error?.message || "Unknown error",
+      errorCode: error?.code,
+      error,
     });
 
     throw new functions.https.HttpsError(
@@ -244,14 +337,16 @@ async function sendCustomEmailVerificationHandler(data, context, deps = {}) {
   }
 }
 
-exports.sendCustomEmailVerification = functions.https.onCall(
-  sendCustomEmailVerificationHandler,
-);
+exports.sendCustomEmailVerification = functions
+  .runWith({secrets: resendSecrets})
+  .https.onCall(sendCustomEmailVerificationHandler);
 
 exports.__private__ = {
+  buildEmailActionHandlerLink,
   buildVerificationEmailHtml,
   buildVerificationEmailText,
   formatSenderAddress,
+  normalizeLocale,
   resolveEmailConfig,
   sendCustomEmailVerificationHandler,
   sendEmailWithResend,

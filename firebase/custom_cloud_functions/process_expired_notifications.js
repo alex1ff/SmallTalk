@@ -1,14 +1,441 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const { sendApnsVoip } = require("./apns_voip");
+const { getUserVoipTokens } = require("./voip_tokens");
+const {
+  CALL_EVENT_OUTCOME_MISSED,
+  ensureConversationCallEventForSession,
+} = require("./chats_shared");
+const {
+  hasActiveAcceptLockForResponder,
+} = require("./accept_lock_policy");
+const {
+  resolveDailyRoomName,
+} = require("./daily_room");
+const {
+  deleteDailyRoomForSession,
+} = require("./daily_room_cleanup");
+const {
+  buildTeacherIncomingCallApnsPayload,
+  buildTeacherIncomingCallFcmMessage,
+  cancelProtocolV2NotificationsInTransaction,
+  createIncomingCallNotificationInTransaction,
+} = require("./call_notifications");
+const {
+  normalizeRole,
+  VIDEO_SESSION_STATUS,
+} = require("./video_sessions_shared");
+const {
+  findNextCallableCandidateInTransaction,
+} = require("./call_candidate_tokens");
+const {
+  SEARCH_REQUEST_STATUS,
+} = require("./search_requests");
+const {
+  applyPreparedSessionPairLockReleaseWrites,
+  applyPreparedPairLockWrites,
+  prepareExistingSessionNextResponderPairLockInTransaction,
+  prepareSessionPairLockReleaseInTransaction,
+} = require("./match_pair_lock");
+const {
+  buildResponderFailurePoolFingerprint,
+  collectAvailableRespondersAfterFailure,
+  isDirectMatchSession,
+  readAvailableRespondersAfterFailure,
+  responderFailurePoolFingerprintMatches,
+  resolveResponderFailureStopReason,
+} = require("./responder_failure_policy");
+const {
+  logCallLifecycleError,
+  logCallLifecycleEvent,
+} = require("./call_lifecycle_logs");
+const {
+  reconcileReleasedProtocolV2Match,
+} = require("./start_search").__private__;
+const {
+  reconcileSessionTrialCallsInTransaction,
+} = require("./trial_access");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "process_expired_notifications"});
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
+const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
+const PENDING_RESPONSE_SESSION_STATUSES = new Set([
+  VIDEO_SESSION_STATUS.SEARCHING,
+  VIDEO_SESSION_STATUS.PENDING_CONFIRMATION,
+]);
+
+function normalizeSessionId(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function getPendingAssignedResponderId(sessionData = {}) {
+  return normalizeSessionId(sessionData.currentResponderId) ||
+    normalizeSessionId(sessionData.currentTutorId);
+}
+
+function isPendingSessionAssignedToResponder(sessionData = {}, responderId = "") {
+  const assignedResponderId = getPendingAssignedResponderId(sessionData);
+  const normalizedResponderId = normalizeSessionId(responderId);
+  return Boolean(
+    assignedResponderId &&
+      normalizedResponderId &&
+      assignedResponderId === normalizedResponderId,
+  );
+}
+
+function resolveTimedOutResponderForNotification({
+  sessionData = {},
+  notificationData = {},
+} = {}) {
+  const currentResponderId = getPendingAssignedResponderId(sessionData);
+  const expiredResponderId = normalizeSessionId(notificationData.recipientId);
+  if (!currentResponderId) {
+    return {
+      ok: false,
+      skipReason: "missing_current_responder",
+      currentResponderId,
+      expiredResponderId,
+      timedOutResponderId: "",
+    };
+  }
+  if (
+    currentResponderId &&
+    expiredResponderId &&
+    currentResponderId !== expiredResponderId
+  ) {
+    return {
+      ok: false,
+      skipReason: `current_responder_changed_${currentResponderId}`,
+      currentResponderId,
+      expiredResponderId,
+      timedOutResponderId: "",
+    };
+  }
+
+  return {
+    ok: true,
+    skipReason: "",
+    currentResponderId,
+    expiredResponderId,
+    timedOutResponderId: currentResponderId,
+  };
+}
+
+function buildTimeoutResponderDecision({
+  sessionData = {},
+  notificationData = {},
+  nowMillis = Date.now(),
+} = {}) {
+  const responderTimeout = resolveTimedOutResponderForNotification({
+    sessionData,
+    notificationData,
+  });
+  if (!responderTimeout.ok) {
+    return {
+      ...responderTimeout,
+      shouldProcess: false,
+      shouldExpireNotification: true,
+    };
+  }
+  if (
+    hasActiveAcceptLockForResponder({
+      sessionData,
+      responderId: responderTimeout.timedOutResponderId,
+      nowMillis,
+    })
+  ) {
+    return {
+      ...responderTimeout,
+      ok: false,
+      skipReason: "accept_lock_active",
+      shouldProcess: false,
+      shouldExpireNotification: false,
+    };
+  }
+  return {
+    ...responderTimeout,
+    shouldProcess: true,
+    shouldExpireNotification: true,
+  };
+}
+
+function buildTerminalTimeoutSessionProjection({
+  sessionData = {},
+  triedTutors = [],
+} = {}) {
+  return {
+    ...sessionData,
+    triedTutors,
+    currentTutorId: null,
+    currentResponderId: null,
+    currentResponderRole: null,
+    status: VIDEO_SESSION_STATUS.EXPIRED,
+    pairStatus: VIDEO_SESSION_STATUS.EXPIRED,
+  };
+}
+
+function readRequesterIdForResponderFailure(sessionData = {}) {
+  return sessionData.requesterId ||
+    sessionData.studentId ||
+    sessionData.matchContext?.requesterId ||
+    "";
+}
+
+function buildProtocolV2NotificationTimeoutRouting({
+  sessionData = {},
+  timedOutParticipantId = "",
+} = {}) {
+  const participantIds = Array.from(new Set(
+    (sessionData.participantIds || [])
+      .map(normalizeSessionId)
+      .filter(Boolean),
+  ));
+  const restoreParticipantIds = participantIds.filter((participantId) =>
+    participantId !== timedOutParticipantId &&
+    sessionData.participantRoles?.[participantId] === "student" &&
+    sessionData.participantStates?.[participantId]?.decision !== "declined",
+  );
+  return {
+    participantIds,
+    restoreParticipantIds,
+    restoreExcludedCandidateIdsByParticipantId: Object.fromEntries(
+      restoreParticipantIds.map((participantId) => [
+        participantId,
+        timedOutParticipantId ? [timedOutParticipantId] : [],
+      ]),
+    ),
+  };
+}
+
+function buildProtocolV2NotificationTimeoutDecision({
+  sessionData = {},
+  notificationData = {},
+} = {}) {
+  const pairAttemptId = normalizeSessionId(sessionData.pairAttemptId);
+  const notificationPairAttemptId = normalizeSessionId(
+    notificationData.pairAttemptId,
+  );
+  const participantId = normalizeSessionId(notificationData.recipientId);
+  if (
+    Number(sessionData.matchProtocolVersion) < 2 ||
+    Number(notificationData.matchProtocolVersion) < 2 ||
+    !pairAttemptId ||
+    pairAttemptId !== notificationPairAttemptId ||
+    !(sessionData.participantIds || []).includes(participantId)
+  ) {
+    return {
+      shouldProcess: false,
+      reason: "protocol_v2_attempt_stale",
+      pairAttemptId,
+      participantId,
+    };
+  }
+  const participantState = sessionData.participantStates?.[participantId] || {};
+  if (participantState.decision !== "pending") {
+    return {
+      shouldProcess: false,
+      reason: `participant_${participantState.decision || "unknown"}`,
+      pairAttemptId,
+      participantId,
+    };
+  }
+  if (
+    participantState.surface !== "callkit" ||
+    !["dispatching", "sent", "failed"].includes(participantState.delivery)
+  ) {
+    return {
+      shouldProcess: false,
+      reason: "callkit_surface_not_active",
+      pairAttemptId,
+      participantId,
+    };
+  }
+  return {
+    shouldProcess: true,
+    reason: "callkit_timeout",
+    pairAttemptId,
+    participantId,
+  };
+}
+
+function buildTimeoutResponderFailureRouting({
+  sessionData = {},
+  responderId = "",
+  availableTutors = null,
+}) {
+  if (isDirectMatchSession(sessionData)) {
+    return {
+      availableTutors: [],
+      requesterId: readRequesterIdForResponderFailure(sessionData),
+      restoreSearchParticipantIds: [],
+      restoreSearchExcludedCandidateIdsByParticipantId: {},
+      terminalStopReason: "direct_call_timeout",
+    };
+  }
+
+  const requesterId = readRequesterIdForResponderFailure(sessionData);
+  const restoreSearchParticipantIds = requesterId ? [requesterId] : [];
+  return {
+    availableTutors: Array.isArray(availableTutors) ?
+      availableTutors :
+      readAvailableRespondersAfterFailure({
+        sessionData,
+        responderId,
+      }),
+    requesterId,
+    restoreSearchParticipantIds,
+    restoreSearchExcludedCandidateIdsByParticipantId: requesterId ?
+      {[requesterId]: [responderId]} :
+      {},
+    terminalStopReason: resolveResponderFailureStopReason({
+      sessionData,
+      responderId,
+      fallbackStopReason: "no_available_responder_after_timeout",
+      studentPairStopReason: "student_pair_response_timeout",
+    }),
+  };
+}
+
+function buildTimeoutNextResponderPairLockInput({
+  db,
+  transaction,
+  sessionId = "",
+  sessionData = {},
+  timedOutResponderId = "",
+  nextCandidate = {},
+  serverTimestamp,
+  lockExpiresAt,
+  fieldDelete,
+}) {
+  return {
+    db,
+    transaction,
+    sessionId,
+    sessionData,
+    currentResponderId: timedOutResponderId,
+    responderId: nextCandidate.candidateId,
+    responderRole: nextCandidate.role,
+    expectedLanguage: sessionData.language,
+    triedTutors: nextCandidate.triedCandidateIds,
+    serverTimestamp,
+    lockExpiresAt,
+    fieldDelete,
+    currentResponderSearchRequestStatus: SEARCH_REQUEST_STATUS.EXPIRED,
+    currentResponderStopReason: "response_timeout",
+    requesterExcludedCandidateIds: timedOutResponderId ?
+      [timedOutResponderId] :
+      [],
+  };
+}
+
+function normalizePushResultString(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function buildTimeoutPushLifecycleDecision({pushResult = {}} = {}) {
+  if (pushResult.sent === true) {
+    return {
+      event: "timeout_push_sent",
+      result: "sent",
+      isError: false,
+    };
+  }
+
+  const reason =
+    normalizePushResultString(pushResult.reason) || "push_not_sent";
+  const errorCode =
+    normalizePushResultString(pushResult.errorCode) || reason;
+  const errorMessage =
+    normalizePushResultString(pushResult.errorMessage) || reason;
+  const nonErrorSkipReasons = new Set([
+    "tutor_not_found",
+    "no_push_tokens",
+    "no_fcm_token",
+  ]);
+
+  if (nonErrorSkipReasons.has(reason)) {
+    return {
+      event: "timeout_push_skipped",
+      result: "skipped",
+      skipReason: reason,
+      isError: false,
+    };
+  }
+
+  return {
+    event: "timeout_push_failed",
+    result: "error",
+    reason: errorMessage,
+    errorCode,
+    isError: true,
+  };
+}
+
+async function collectFreshTimeoutFailureResponderIds({
+  db,
+  sessionRef,
+  notificationData = {},
+  nowMillis = Date.now(),
+  failureResponderCollector = collectAvailableRespondersAfterFailure,
+}) {
+  if (!sessionRef || typeof sessionRef.get !== "function") {
+    return null;
+  }
+
+  const preflightSessionSnap = await sessionRef.get();
+  if (!preflightSessionSnap.exists) {
+    return null;
+  }
+
+  const preflightSessionData = preflightSessionSnap.data() || {};
+  const preflightTimeout = resolveTimedOutResponderForNotification({
+    sessionData: preflightSessionData,
+    notificationData,
+  });
+  const preflightTimeoutDecision = buildTimeoutResponderDecision({
+    sessionData: preflightSessionData,
+    notificationData,
+    nowMillis,
+  });
+  if (
+    !preflightTimeout.ok ||
+    !preflightTimeoutDecision.shouldProcess ||
+    !PENDING_RESPONSE_SESSION_STATUSES.has(preflightSessionData.status)
+  ) {
+    return null;
+  }
+
+  const preflightRequesterId =
+    readRequesterIdForResponderFailure(preflightSessionData);
+  const freshFailureRouting =
+    await failureResponderCollector({
+      db,
+      sessionData: preflightSessionData,
+      responderId: preflightTimeout.timedOutResponderId,
+      requesterId: preflightRequesterId,
+      now: new Date(nowMillis),
+      nowMillis,
+    });
+  if (!Array.isArray(freshFailureRouting?.availableTutors)) {
+    return null;
+  }
+  return {
+    availableTutors: freshFailureRouting.availableTutors,
+    fingerprint: freshFailureRouting.fingerprint ||
+      buildResponderFailurePoolFingerprint({
+        sessionData: preflightSessionData,
+        responderId: preflightTimeout.timedOutResponderId,
+        requesterId: preflightRequesterId,
+      }),
+  };
+}
 
 exports.processExpiredNotifications = functions
-  .runWith({ secrets: apnsSecrets })
+  .runWith({ secrets: [...apnsSecrets, ...dailySecrets] })
   .pubsub.schedule("every 1 minutes")
   .onRun(async () => {
-    console.log("⏰ Processing expired notifications (updated version)...");
+    safeLog.log("expired_notifications_run_started");
     const now = admin.firestore.Timestamp.now();
 
     try {
@@ -22,74 +449,103 @@ exports.processExpiredNotifications = functions
         .get();
 
       if (expiredQuery.empty) {
-        console.log("📭 No expired notifications found");
+        safeLog.log("expired_notifications_empty");
         return null;
       }
 
-      console.log(`⏰ Found ${expiredQuery.size} expired notifications`);
-
-      // Обрабатываем каждое истекшее уведомление
-      const batch = admin.firestore().batch();
-      const sessionsToProcess = new Set();
-
-      expiredQuery.docs.forEach((doc) => {
-        const notificationData = doc.data();
-
-        console.log(
-          `📝 Marking notification ${doc.id} as expired for tutor: ${notificationData.recipientId}`,
-        );
-
-        // Отмечаем уведомление как истекшее
-        batch.update(doc.ref, {
-          status: "expired",
-          expiredAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-
-        // Добавляем sessionId для дальнейшей обработки
-        if (notificationData.sessionId) {
-          sessionsToProcess.add(notificationData.sessionId);
-        }
+      safeLog.log("expired_notifications_found", {
+        counts: {expired: expiredQuery.size},
       });
 
-      // Применяем изменения к уведомлениям
-      await batch.commit();
-      console.log("✅ All expired notifications marked");
-
-      // Обрабатываем каждую уникальную сессию
-      console.log(`🔄 Processing ${sessionsToProcess.size} video sessions...`);
-
-      for (const sessionId of sessionsToProcess) {
+      for (const doc of expiredQuery.docs) {
         try {
-          await processExpiredSession(sessionId);
+          await processExpiredNotification(doc);
         } catch (error) {
-          console.error(
-            `❌ Error processing session ${sessionId}:`,
-            error.message,
-          );
+          safeLog.error("expired_notification_failed", {
+            notificationId: doc.id,
+            error,
+          });
         }
       }
 
-      console.log("✅ Expired notifications processing completed");
+      safeLog.log("expired_notifications_run_completed");
       return null;
     } catch (error) {
-      console.error("❌ Error processing expired notifications:", error);
+      safeLog.error("expired_notifications_run_failed", {error});
       return null;
     }
   });
 
-// ОБРАБОТКА ИСТЕКШЕЙ СЕССИИ
-async function processExpiredSession(sessionId) {
+// ОБРАБОТКА ИСТЕКШЕГО УВЕДОМЛЕНИЯ
+async function processExpiredNotification(notificationDoc) {
+  const notificationId = notificationDoc.id;
+  const initialNotificationData = notificationDoc.data() || {};
+  const sessionId = initialNotificationData.sessionId;
   try {
-    console.log(`📺 Processing expired session: ${sessionId}`);
-    const sessionRef = admin
-      .firestore()
-      .collection("videoSessions")
-      .doc(sessionId);
+    safeLog.log("expired_notification_started", {notificationId, sessionId});
+    logCallLifecycleEvent({
+      event: "timeout_processing_started",
+      source: "processExpiredNotifications",
+      sessionId,
+      notificationId,
+      responderId: initialNotificationData.recipientId,
+    });
+    const db = admin.firestore();
+    const sessionRef = sessionId
+      ? db.collection("videoSessions").doc(sessionId)
+      : null;
+    let freshFailureResponderRouting = null;
+    if (Number(initialNotificationData.matchProtocolVersion) < 2) {
+      try {
+        freshFailureResponderRouting =
+          await collectFreshTimeoutFailureResponderIds({
+            db,
+            sessionRef,
+            notificationData: initialNotificationData,
+            nowMillis: Date.now(),
+          });
+      } catch (error) {
+        safeLog.error("timeout_responder_pool_failed", {sessionId, error});
+      }
+    }
 
-    const transition = await admin.firestore().runTransaction(
+    const transition = await db.runTransaction(
       async (transaction) => {
+        const freshNotificationSnap = await transaction.get(notificationDoc.ref);
+        if (!freshNotificationSnap.exists) {
+          return {
+            shouldNotify: false,
+            skipReason: "notification_not_found",
+          };
+        }
+
+        const freshNotificationData = freshNotificationSnap.data() || {};
+        if (
+          freshNotificationData.type !== "incoming_call" ||
+          freshNotificationData.status !== "sent"
+        ) {
+          return {
+            shouldNotify: false,
+            skipReason: `notification_status_${freshNotificationData.status || "unknown"}`,
+          };
+        }
+
+        const expireNotificationUpdate = {
+          status: "expired",
+          expiredAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        if (!sessionRef) {
+          transaction.update(notificationDoc.ref, expireNotificationUpdate);
+          return {
+            shouldNotify: false,
+            skipReason: "missing_session_id",
+          };
+        }
+
         const freshSessionSnap = await transaction.get(sessionRef);
         if (!freshSessionSnap.exists) {
+          transaction.update(notificationDoc.ref, expireNotificationUpdate);
           return {
             shouldNotify: false,
             skipReason: "session_not_found",
@@ -98,68 +554,595 @@ async function processExpiredSession(sessionId) {
 
         const freshSessionData = freshSessionSnap.data() || {};
         const status = freshSessionData.status || "unknown";
-        if (status !== "searching") {
+        if (!PENDING_RESPONSE_SESSION_STATUSES.has(status)) {
+          transaction.update(notificationDoc.ref, expireNotificationUpdate);
           return {
             shouldNotify: false,
             skipReason: `status_${status}`,
           };
         }
 
-        const currentTutorId = freshSessionData.currentTutorId;
-        if (!currentTutorId) {
+        const isProtocolV2 =
+          Number(freshSessionData.matchProtocolVersion) >= 2 ||
+          Number(freshNotificationData.matchProtocolVersion) >= 2;
+        if (isProtocolV2) {
+          const protocolV2TimeoutDecision =
+            buildProtocolV2NotificationTimeoutDecision({
+              sessionData: freshSessionData,
+              notificationData: freshNotificationData,
+            });
+          if (!protocolV2TimeoutDecision.shouldProcess) {
+            transaction.update(notificationDoc.ref, expireNotificationUpdate);
+            return {
+              shouldNotify: false,
+              skipReason: protocolV2TimeoutDecision.reason,
+            };
+          }
+          const pairAttemptId = protocolV2TimeoutDecision.pairAttemptId;
+          const timedOutParticipantId =
+            protocolV2TimeoutDecision.participantId;
+          const routing = buildProtocolV2NotificationTimeoutRouting({
+            sessionData: freshSessionData,
+            timedOutParticipantId,
+          });
+          const serverTimestamp =
+            admin.firestore.FieldValue.serverTimestamp();
+          const fieldDelete = admin.firestore.FieldValue.delete();
+          const preparedRelease =
+            await prepareSessionPairLockReleaseInTransaction({
+              db,
+              transaction,
+              sessionId,
+              sessionData: freshSessionData,
+              participantIds: routing.participantIds,
+              serverTimestamp,
+              fieldDelete,
+              searchRequestStatus: SEARCH_REQUEST_STATUS.EXPIRED,
+              stopReason: "match_timeout",
+              releaseCallState: true,
+              restoreSearchParticipantIds: routing.restoreParticipantIds,
+              restoreSearchExcludedCandidateIdsByParticipantId:
+                routing.restoreExcludedCandidateIdsByParticipantId,
+            });
+          await reconcileSessionTrialCallsInTransaction({
+            db,
+            transaction,
+            sessionId,
+            sessionData: freshSessionData,
+            durationSeconds: 0,
+            technicalFailure: true,
+            nowMillis: Date.now(),
+          });
+          applyPreparedSessionPairLockReleaseWrites({
+            transaction,
+            prepared: preparedRelease,
+          });
+          const participantStates = {
+            ...(freshSessionData.participantStates || {}),
+            [timedOutParticipantId]: {
+              ...(freshSessionData.participantStates?.[
+                timedOutParticipantId
+              ] || {}),
+              decision: "declined",
+              actionId: `notification-timeout-${notificationId}`,
+              updatedAt: serverTimestamp,
+            },
+          };
+          cancelProtocolV2NotificationsInTransaction({
+            db,
+            transaction,
+            sessionId,
+            pairAttemptId,
+            participantStates,
+            cancelReason: "match_timeout",
+            serverTimestamp,
+          });
+          transaction.update(notificationDoc.ref, expireNotificationUpdate);
+          transaction.update(sessionRef, {
+            status: VIDEO_SESSION_STATUS.EXPIRED,
+            pairStatus: VIDEO_SESSION_STATUS.EXPIRED,
+            participantStates,
+            currentTutorId: fieldDelete,
+            currentResponderId: fieldDelete,
+            currentResponderRole: fieldDelete,
+            acceptingTutorId: fieldDelete,
+            acceptingAt: fieldDelete,
+            acceptAttemptId: fieldDelete,
+            endedAt: serverTimestamp,
+            expiredAt: serverTimestamp,
+            expireReason: "match_timeout",
+            matchRecovery: {
+              status: "pending",
+              attempts: 0,
+              pairAttemptId,
+              reason: "match_timeout",
+              restoreParticipantIds: routing.restoreParticipantIds,
+              requestedAt: serverTimestamp,
+            },
+          });
           return {
+            protocolV2: true,
+            pairAttemptId,
+            participantStates,
+            restoreParticipantIds: routing.restoreParticipantIds,
             shouldNotify: false,
-            skipReason: "missing_current_tutor",
+            shouldRecordMissed: true,
+            timedOutResponderId: timedOutParticipantId,
+            statusBefore: freshSessionData.status,
+            statusAfter: VIDEO_SESSION_STATUS.EXPIRED,
+            terminalStopReason: "match_timeout",
+            sessionData: buildTerminalTimeoutSessionProjection({
+              sessionData: freshSessionData,
+            }),
           };
         }
 
+        const timeoutDecision = buildTimeoutResponderDecision({
+          sessionData: freshSessionData,
+          notificationData: freshNotificationData,
+        });
+        if (!timeoutDecision.shouldProcess) {
+          if (timeoutDecision.shouldExpireNotification) {
+            transaction.update(notificationDoc.ref, expireNotificationUpdate);
+          }
+          return {
+            shouldNotify: false,
+            skipReason: timeoutDecision.skipReason,
+          };
+        }
+        const timedOutResponderId = timeoutDecision.timedOutResponderId;
         const triedTutors = [...(freshSessionData.triedTutors || [])];
-        if (!triedTutors.includes(currentTutorId)) {
-          triedTutors.push(currentTutorId);
+        if (!triedTutors.includes(timedOutResponderId)) {
+          triedTutors.push(timedOutResponderId);
         }
 
-        transaction.update(sessionRef, {
-          triedTutors: triedTutors,
-          currentTutorId: admin.firestore.FieldValue.delete(),
+        const failureRouting = buildTimeoutResponderFailureRouting({
+          sessionData: freshSessionData,
+          responderId: timedOutResponderId,
+          availableTutors: responderFailurePoolFingerprintMatches(
+            freshFailureResponderRouting?.fingerprint,
+            buildResponderFailurePoolFingerprint({
+              sessionData: freshSessionData,
+              responderId: timedOutResponderId,
+            }),
+          ) ?
+            freshFailureResponderRouting.availableTutors :
+            null,
         });
+        const availableTutors = failureRouting.availableTutors;
+        const terminalStopReason = failureRouting.terminalStopReason;
+        let nextTutor = null;
+        let nextTriedTutors = triedTutors;
+        let preparedPairLock = null;
+        const skippedCandidateIds = [];
+        const skippedLockCandidateIds = [];
+        while (true) {
+          const nextCandidate = await findNextCallableCandidateInTransaction({
+            db,
+            transaction,
+            candidateIds: availableTutors,
+            triedCandidateIds: nextTriedTutors,
+            language: freshSessionData.language,
+          });
+          skippedCandidateIds.push(...nextCandidate.skippedCandidateIds);
+          if (!nextCandidate.candidateId) {
+            nextTriedTutors = nextCandidate.triedCandidateIds;
+            break;
+          }
+
+          const lockExpiresAt = admin.firestore.Timestamp.fromMillis(
+            Date.now() + 45 * 1000,
+          );
+          const candidatePairLock =
+            await prepareExistingSessionNextResponderPairLockInTransaction({
+              ...buildTimeoutNextResponderPairLockInput({
+                db,
+                transaction,
+                sessionId,
+                sessionData: freshSessionData,
+                timedOutResponderId,
+                nextCandidate,
+                serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+                lockExpiresAt,
+                fieldDelete: admin.firestore.FieldValue.delete(),
+              }),
+            });
+          if (candidatePairLock.locked) {
+            nextTutor = nextCandidate.candidateId;
+            nextTriedTutors = nextCandidate.triedCandidateIds;
+            preparedPairLock = candidatePairLock;
+            break;
+          }
+
+          skippedLockCandidateIds.push({
+            candidateId: nextCandidate.candidateId,
+            reason: candidatePairLock.reason,
+          });
+          nextTriedTutors = Array.from(new Set([
+            ...nextCandidate.triedCandidateIds,
+            nextCandidate.candidateId,
+          ]));
+        }
+        if (skippedCandidateIds.length > 0) {
+          safeLog.log("non_callable_candidates_skipped", {
+            counts: {skipped: skippedCandidateIds.length},
+          });
+        }
+        if (skippedLockCandidateIds.length > 0) {
+          safeLog.log("locked_candidates_skipped", {
+            counts: {skipped: skippedLockCandidateIds.length},
+          });
+        }
+
+        if (!nextTutor) {
+          const preparedRelease =
+            await prepareSessionPairLockReleaseInTransaction({
+              db,
+              transaction,
+              sessionId,
+              sessionData: freshSessionData,
+              serverTimestamp:
+                admin.firestore.FieldValue.serverTimestamp(),
+              fieldDelete: admin.firestore.FieldValue.delete(),
+              searchRequestStatus: SEARCH_REQUEST_STATUS.EXPIRED,
+              stopReason: terminalStopReason,
+              restoreSearchParticipantIds:
+                failureRouting.restoreSearchParticipantIds,
+              restoreSearchExcludedCandidateIdsByParticipantId:
+                failureRouting.restoreSearchExcludedCandidateIdsByParticipantId,
+            });
+          await reconcileSessionTrialCallsInTransaction({
+            db,
+            transaction,
+            sessionId,
+            sessionData: freshSessionData,
+            durationSeconds: 0,
+            technicalFailure: true,
+            nowMillis: Date.now(),
+          });
+          applyPreparedSessionPairLockReleaseWrites({
+            transaction,
+            prepared: preparedRelease,
+          });
+          transaction.update(notificationDoc.ref, expireNotificationUpdate);
+          transaction.update(sessionRef, {
+            triedTutors: nextTriedTutors,
+            currentTutorId: admin.firestore.FieldValue.delete(),
+            currentResponderId: admin.firestore.FieldValue.delete(),
+            currentResponderRole: admin.firestore.FieldValue.delete(),
+            acceptingTutorId: admin.firestore.FieldValue.delete(),
+            acceptingAt: admin.firestore.FieldValue.delete(),
+            acceptAttemptId: admin.firestore.FieldValue.delete(),
+            status: VIDEO_SESSION_STATUS.EXPIRED,
+            pairStatus: VIDEO_SESSION_STATUS.EXPIRED,
+            endedAt: admin.firestore.FieldValue.serverTimestamp(),
+            expiredAt: admin.firestore.FieldValue.serverTimestamp(),
+            expireReason: terminalStopReason,
+          });
+          return {
+            shouldNotify: false,
+            shouldRecordMissed: true,
+            skipReason: "no_available_tutors",
+            timedOutResponderId,
+            statusBefore: freshSessionData.status,
+            statusAfter: VIDEO_SESSION_STATUS.EXPIRED,
+            terminalStopReason,
+            dailyRoomName: resolveDailyRoomName(freshSessionData),
+            sessionData: buildTerminalTimeoutSessionProjection({
+              sessionData: freshSessionData,
+              triedTutors: nextTriedTutors,
+            }),
+          };
+        }
+
+        transaction.update(notificationDoc.ref, expireNotificationUpdate);
+        const nextSessionData = {
+          ...freshSessionData,
+          ...(preparedPairLock?.writes?.sessionUpdate || {}),
+          triedTutors: nextTriedTutors,
+          currentTutorId: nextTutor,
+          currentResponderId: nextTutor,
+        };
+        const notification = createIncomingCallNotificationInTransaction({
+          db,
+          transaction,
+          sessionId,
+          recipientId: nextTutor,
+          sessionData: nextSessionData,
+          studentNameFallback: "Student",
+        });
+
+        applyPreparedPairLockWrites(transaction, preparedPairLock);
 
         return {
           shouldNotify: true,
-          timedOutTutorId: currentTutorId,
-          sessionData: {
-            ...freshSessionData,
-            triedTutors: triedTutors,
-            currentTutorId: null,
-          },
+          shouldRecordMissed: true,
+          timedOutResponderId,
+          nextTutor,
+          statusBefore: freshSessionData.status,
+          statusAfter: VIDEO_SESSION_STATUS.PENDING_CONFIRMATION,
+          sessionData: nextSessionData,
+          notificationId: notification.notificationId,
+          pushPayload: notification.pushPayload,
         };
       },
     );
 
-    if (!transition || !transition.shouldNotify) {
-      console.log(
-        "⏭️ Skipping expired session processing for",
+    if (!transition || (!transition.shouldNotify && !transition.shouldRecordMissed)) {
+      safeLog.log("expired_notification_skipped", {
+        notificationId,
+        reasonCode: transition?.skipReason || "unknown",
+      });
+      logCallLifecycleEvent({
+        event: "timeout_skipped",
+        source: "processExpiredNotifications",
         sessionId,
-        "reason:",
-        transition?.skipReason || "unknown",
-      );
+        notificationId,
+        responderId: initialNotificationData.recipientId,
+        skipReason: transition?.skipReason || "unknown",
+        result: "skipped",
+      });
       return;
     }
 
-    console.log(
-      `👨‍🏫 Current tutor ${transition.timedOutTutorId} did not respond - searching next`,
-    );
-    await sendNotificationToNextTutor(sessionId, transition.sessionData || {});
-    console.log(`✅ Session ${sessionId} processed successfully`);
+    const logTimeoutCompleted = () => {
+      logCallLifecycleEvent({
+        event: "timeout_completed",
+        source: "processExpiredNotifications",
+        sessionId,
+        notificationId,
+        responderId: transition.timedOutResponderId,
+        nextResponderId: transition.nextTutor,
+        statusBefore: transition.statusBefore,
+        statusAfter: transition.statusAfter,
+        reason: transition.terminalStopReason,
+        result: transition.shouldNotify ? "handoff" : "terminal",
+      });
+    };
+
+    if (transition.shouldRecordMissed) {
+      safeLog.log("timed_out_responder_reroute", {
+        notificationId,
+        responderId: transition.timedOutResponderId,
+      });
+      try {
+        await ensureConversationCallEventForSession({
+          db: admin.firestore(),
+          sessionId,
+          sessionRef,
+          sessionData: {
+            ...(transition.sessionData || {}),
+            currentTutorId: transition.timedOutResponderId,
+            currentResponderId: transition.timedOutResponderId,
+          },
+          callOutcome: CALL_EVENT_OUTCOME_MISSED,
+          eventMillis: Date.now(),
+          partnerId: transition.timedOutResponderId,
+        });
+      } catch (error) {
+        safeLog.error("missed_call_event_write_failed", {
+          sessionId,
+          error,
+        });
+      }
+    }
+
+    if (transition.dailyRoomName) {
+      await deleteDailyRoomForSession({
+        sessionId,
+        roomName: transition.dailyRoomName,
+        source: "processExpiredNotifications",
+      });
+    }
+
+    if (transition.protocolV2) {
+      await reconcileReleasedProtocolV2Match({
+        db,
+        sessionId,
+        pairAttemptId: transition.pairAttemptId,
+      }).catch(() => {});
+      logTimeoutCompleted();
+      return;
+    }
+
+    if (transition.shouldNotify) {
+      const pushPayload = transition.pushPayload || {};
+      safeLog.log("timeout_handoff_notification_created", {
+        sessionId,
+        responderId: transition.nextTutor,
+      });
+
+      const validationReads = [sessionRef.get()];
+      if (transition.notificationId) {
+        validationReads.push(
+          db.collection("notifications").doc(transition.notificationId).get(),
+        );
+      }
+
+      const [freshValidationSnap, notificationValidationSnap] =
+        await Promise.all(validationReads);
+      if (!freshValidationSnap.exists) {
+        safeLog.warn("timeout_push_session_missing", {sessionId});
+        logCallLifecycleEvent({
+          event: "timeout_push_skipped",
+          source: "processExpiredNotifications",
+          sessionId,
+          notificationId: transition.notificationId,
+          responderId: transition.nextTutor,
+          skipReason: "session_missing_after_assignment",
+          result: "skipped",
+        });
+        logTimeoutCompleted();
+        return;
+      }
+
+      const freshValidationData = freshValidationSnap.data() || {};
+      if (
+        !PENDING_RESPONSE_SESSION_STATUSES.has(freshValidationData.status) ||
+        !isPendingSessionAssignedToResponder(
+          freshValidationData,
+          transition.nextTutor,
+        )
+      ) {
+        safeLog.log("timeout_push_assignment_changed", {sessionId});
+        logCallLifecycleEvent({
+          event: "timeout_push_skipped",
+          source: "processExpiredNotifications",
+          sessionId,
+          notificationId: transition.notificationId,
+          responderId: transition.nextTutor,
+          statusBefore: transition.statusAfter,
+          statusAfter: freshValidationData.status,
+          skipReason: "assignment_changed_after_transaction",
+          result: "skipped",
+        });
+        logTimeoutCompleted();
+        return;
+      }
+      if (
+        hasActiveAcceptLockForResponder({
+          sessionData: freshValidationData,
+          responderId: transition.nextTutor,
+        })
+      ) {
+        safeLog.log("timeout_push_responder_busy", {sessionId});
+        logCallLifecycleEvent({
+          event: "timeout_push_skipped",
+          source: "processExpiredNotifications",
+          sessionId,
+          notificationId: transition.notificationId,
+          responderId: transition.nextTutor,
+          skipReason: "accept_lock_active",
+          result: "skipped",
+        });
+        logTimeoutCompleted();
+        return;
+      }
+      if (transition.notificationId) {
+        const notificationData = notificationValidationSnap?.data?.() || {};
+        if (
+          !notificationValidationSnap.exists ||
+          notificationData.status !== "sent" ||
+          notificationData.sessionId !== sessionId ||
+          notificationData.recipientId !== transition.nextTutor
+        ) {
+          safeLog.log("timeout_push_notification_changed", {sessionId});
+          logCallLifecycleEvent({
+            event: "timeout_push_skipped",
+            source: "processExpiredNotifications",
+            sessionId,
+            notificationId: transition.notificationId,
+            responderId: transition.nextTutor,
+            skipReason: "notification_changed_after_assignment",
+            result: "skipped",
+          });
+          logTimeoutCompleted();
+          return;
+        }
+      }
+
+      try {
+        const pushResult = await sendVoipPushToTutor(transition.nextTutor, {
+          ...pushPayload,
+          sessionId: pushPayload.sessionId || sessionId,
+          studentName: pushPayload.studentName || "Student",
+          studentId: pushPayload.studentId || "",
+          studentPhoto: pushPayload.studentPhoto,
+          language: pushPayload.language || "",
+        });
+        const pushLogDecision = buildTimeoutPushLifecycleDecision({
+          pushResult,
+        });
+        if (pushLogDecision.isError) {
+          safeLog.error("timeout_voip_push_failed", {
+            sessionId,
+            errorCode: pushLogDecision.errorCode,
+          });
+          logCallLifecycleError({
+            event: pushLogDecision.event,
+            source: "processExpiredNotifications",
+            sessionId,
+            notificationId: transition.notificationId,
+            responderId: transition.nextTutor,
+            errorCode: pushLogDecision.errorCode,
+            reason: pushLogDecision.reason,
+          });
+        } else {
+          if (pushLogDecision.result === "sent") {
+            safeLog.log("timeout_voip_push_sent", {
+              sessionId,
+              responderId: transition.nextTutor,
+            });
+          } else {
+            safeLog.log("timeout_voip_push_skipped", {
+              sessionId,
+              reasonCode: pushLogDecision.skipReason || "unknown",
+            });
+          }
+          logCallLifecycleEvent({
+            event: pushLogDecision.event,
+            source: "processExpiredNotifications",
+            sessionId,
+            notificationId: transition.notificationId,
+            responderId: transition.nextTutor,
+            skipReason: pushLogDecision.skipReason,
+            result: pushLogDecision.result,
+          });
+        }
+      } catch (pushError) {
+        safeLog.error("timeout_voip_push_failed", {sessionId, error: pushError});
+        logCallLifecycleError({
+          event: "timeout_push_failed",
+          source: "processExpiredNotifications",
+          sessionId,
+          notificationId: transition.notificationId,
+          responderId: transition.nextTutor,
+          errorCode: pushError.code || pushError.name,
+          reason: pushError.message,
+        });
+      }
+    }
+
+    logTimeoutCompleted();
+    safeLog.log("expired_notification_completed", {notificationId, sessionId});
   } catch (error) {
-    console.error(`❌ Error processing session ${sessionId}:`, error);
+    safeLog.error("expired_notification_failed", {
+      notificationId,
+      sessionId,
+      error,
+    });
+    logCallLifecycleError({
+      event: "timeout_failed",
+      source: "processExpiredNotifications",
+      sessionId,
+      notificationId,
+      responderId: initialNotificationData.recipientId,
+      errorCode: error.code || error.name,
+      reason: error.message,
+    });
     throw error;
   }
 }
 
+exports.__private__ = {
+  buildProtocolV2NotificationTimeoutDecision,
+  buildProtocolV2NotificationTimeoutRouting,
+  buildTerminalTimeoutSessionProjection,
+  buildTimeoutNextResponderPairLockInput,
+  buildTimeoutPushLifecycleDecision,
+  buildTimeoutResponderDecision,
+  buildTimeoutResponderFailureRouting,
+  collectFreshTimeoutFailureResponderIds,
+  getPendingAssignedResponderId,
+  isPendingSessionAssignedToResponder,
+  readRequesterIdForResponderFailure,
+  resolveTimedOutResponderForNotification,
+};
+
 // 🔔 ОТПРАВКА VOIP PUSH ПРЕПОДАВАТЕЛЮ
 async function sendVoipPushToTutor(tutorId, callData) {
   try {
-    console.log("📲 Preparing VoIP push for tutor:", tutorId);
+    safeLog.log("voip_push_prepare", {tutorId});
 
     const tutorDoc = await admin
       .firestore()
@@ -168,33 +1151,34 @@ async function sendVoipPushToTutor(tutorId, callData) {
       .get();
 
     if (!tutorDoc.exists) {
-      console.log("⚠️ Tutor document not found:", tutorId);
-      return;
+      safeLog.warn("voip_push_recipient_not_found", {tutorId});
+      return {
+        sent: false,
+        reason: "tutor_not_found",
+      };
     }
 
     const tutorData = tutorDoc.data();
-    const bundleId = process.env.IOS_BUNDLE_ID || "com.appwave.smalltalk";
+    if (normalizeRole(tutorData?.role) !== "native_speaker") {
+      return {sent: false, reason: "student_native_disabled"};
+    }
+    const bundleId = process.env.IOS_BUNDLE_ID || "com.appwave.expatlio";
     const voipTopic =
       process.env.IOS_VOIP_TOPIC ||
       (bundleId.endsWith(".voip") ? bundleId : `${bundleId}.voip`);
-    const voipPushToken = tutorData.voipPushToken;
-    const fcmToken = tutorData.voipToken;
+    const { voipPushToken, voipToken: fcmToken } =
+      await getUserVoipTokens(tutorId, tutorData);
 
     if (!voipPushToken && !fcmToken) {
-      console.log("⚠️ Tutor has no push tokens saved");
-      return;
+      safeLog.warn("voip_push_tokens_missing", {tutorId});
+      return {
+        sent: false,
+        reason: "no_push_tokens",
+      };
     }
 
     if (voipPushToken) {
-      const apnsPayload = {
-        aps: { "content-available": 1 },
-        type: "incoming_call",
-        sessionId: callData.sessionId,
-        callerName: callData.studentName,
-        callerId: callData.studentId,
-        callerPhoto: callData.studentPhoto || "",
-        language: callData.language || "",
-      };
+      const apnsPayload = buildTeacherIncomingCallApnsPayload(callData);
 
       try {
         await sendApnsVoip({
@@ -202,208 +1186,55 @@ async function sendVoipPushToTutor(tutorId, callData) {
           topic: voipTopic,
           payload: apnsPayload,
         });
-        console.log("✅ APNs VoIP push sent successfully");
-        return;
+        safeLog.log("voip_apns_push_sent", {tutorId});
+        return {
+          sent: true,
+          channel: "apns",
+        };
       } catch (error) {
-        console.error("❌ Error sending APNs VoIP push:", error.message);
+        safeLog.error("voip_apns_push_failed", {tutorId, error});
+        if (!fcmToken) {
+          return {
+            sent: false,
+            reason: "apns_failed_no_fcm",
+            errorCode: error.code || error.name,
+            errorMessage: error.message,
+          };
+        }
       }
     }
 
     if (!fcmToken) {
-      console.log("⚠️ No FCM token available for fallback");
-      return;
+      safeLog.warn("voip_fcm_token_missing", {tutorId});
+      return {
+        sent: false,
+        reason: "no_fcm_token",
+      };
     }
 
-    console.log("📱 FCM token found:", fcmToken.substring(0, 20) + "...");
-    console.log("📦 Using apns-topic for FCM fallback:", bundleId);
+    safeLog.log("voip_fcm_fallback", {tutorId, platform: "ios"});
 
-    const message = {
+    const message = buildTeacherIncomingCallFcmMessage({
       token: fcmToken,
-      data: {
-        type: "incoming_call",
-        sessionId: callData.sessionId,
-        callerName: callData.studentName,
-        callerId: callData.studentId,
-        callerPhoto: callData.studentPhoto || "",
-        language: callData.language || "",
-      },
-      apns: {
-        headers: {
-          "apns-priority": "10",
-          "apns-push-type": "alert",
-          "apns-topic": bundleId,
-        },
-        payload: {
-          aps: {
-            "content-available": 1,
-            alert: {
-              title: "Входящий звонок",
-              body: `${callData.studentName} хочет попрактиковать ${callData.language}`,
-            },
-            sound: "default",
-          },
-        },
-      },
-      android: {
-        priority: "high",
-      },
-    };
+      callData,
+      bundleId,
+    });
 
     const response = await admin.messaging().send(message);
-    console.log("✅ FCM push sent successfully. Message ID:", response);
+    safeLog.log("voip_fcm_push_sent", {tutorId});
 
-    return response;
-  } catch (error) {
-    console.error("❌ Error sending VoIP push to tutor:", error);
-    return null;
-  }
-}
-
-// ОТПРАВКА УВЕДОМЛЕНИЯ СЛЕДУЮЩЕМУ ПРЕПОДАВАТЕЛЮ
-async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) {
-  try {
-    const sessionRef = admin
-      .firestore()
-      .collection("videoSessions")
-      .doc(sessionId);
-
-    const assignment = await admin.firestore().runTransaction(
-      async (transaction) => {
-        const freshSessionSnap = await transaction.get(sessionRef);
-        if (!freshSessionSnap.exists) {
-          return {
-            shouldNotify: false,
-            skipReason: "session_not_found",
-          };
-        }
-
-        const freshSessionData = freshSessionSnap.data() || {};
-        const status = freshSessionData.status || "unknown";
-        if (status !== "searching") {
-          return {
-            shouldNotify: false,
-            skipReason: `status_${status}`,
-          };
-        }
-
-        if (freshSessionData.currentTutorId) {
-          return {
-            shouldNotify: false,
-            skipReason: `tutor_already_assigned_${freshSessionData.currentTutorId}`,
-          };
-        }
-
-        const availableTutors = freshSessionData.availableTutors || [];
-        const triedTutors = freshSessionData.triedTutors || [];
-
-        console.log("🎯 Available tutors:", availableTutors);
-        console.log("❌ Tried tutors:", triedTutors);
-
-        const nextTutor = availableTutors.find(
-          (tutorId) => !triedTutors.includes(tutorId),
-        );
-
-        if (!nextTutor) {
-          transaction.update(sessionRef, {
-            status: "no_tutors_available",
-          });
-          return {
-            shouldNotify: false,
-            skipReason: "no_available_tutors",
-          };
-        }
-
-        transaction.update(sessionRef, {
-          currentTutorId: nextTutor,
-        });
-
-        return {
-          shouldNotify: true,
-          nextTutor,
-          sessionData: freshSessionData,
-        };
-      },
-    );
-
-    if (!assignment || !assignment.shouldNotify) {
-      console.log(
-        "⏭️ Skipping next tutor notification for session",
-        sessionId,
-        "reason:",
-        assignment?.skipReason || "unknown",
-      );
-      return;
-    }
-
-    const nextTutor = assignment.nextTutor;
-    const sessionData = assignment.sessionData || fallbackSessionData || {};
-    const studentInfo = sessionData.studentInfo || fallbackSessionData.studentInfo || {};
-    const studentName = studentInfo.name || "Student";
-    const studentPhoto = studentInfo.photo || null;
-    const studentId = sessionData.studentId || fallbackSessionData.studentId || "";
-    const language = sessionData.language || fallbackSessionData.language || "";
-
-    const freshValidationSnap = await sessionRef.get();
-    if (!freshValidationSnap.exists) {
-      console.log(
-        "⏭️ Skipping next tutor notification. Session disappeared:",
-        sessionId,
-      );
-      return;
-    }
-
-    const freshValidation = freshValidationSnap.data() || {};
-    if (
-      freshValidation.status !== "searching" ||
-      freshValidation.currentTutorId !== nextTutor
-    ) {
-      console.log(
-        "⏭️ Skipping next tutor notification after validation. reason:",
-        `status_${freshValidation.status || "unknown"}`,
-        `currentTutor_${freshValidation.currentTutorId || "none"}`,
-      );
-      return;
-    }
-
-    console.log("📨 Sending notification to next tutor:", nextTutor);
-
-    // Создаем уведомление в Firestore
-    const expiresAt = new Date();
-    expiresAt.setSeconds(expiresAt.getSeconds() + 45);
-
-    const notificationData = {
-      recipientId: nextTutor,
-      sessionId: sessionId,
-      type: "incoming_call",
-      status: "sent",
-      title: "Входящий звонок",
-      message: `${studentName} хочет попрактиковать ${language}`,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
-      studentInfo: studentInfo,
+    return {
+      sent: true,
+      channel: "fcm",
+      messageId: response,
     };
-
-    await admin.firestore().collection("notifications").add(notificationData);
-    console.log("✅ Firestore notification created for tutor:", nextTutor);
-
-    // 🔔 Отправляем VoIP push преподавателю
-    console.log("📲 Sending VoIP push to next tutor...");
-    try {
-      await sendVoipPushToTutor(nextTutor, {
-        sessionId: sessionId,
-        studentName: studentName,
-        studentId: studentId,
-        studentPhoto: studentPhoto,
-        language: language,
-      });
-      console.log("✅ VoIP push sent to next tutor");
-    } catch (pushError) {
-      console.error(
-        "⚠️ Failed to send VoIP push (non-critical):",
-        pushError.message,
-      );
-    }
   } catch (error) {
-    console.error("❌ Error sending notification to next tutor:", error);
+    safeLog.error("voip_push_failed", {tutorId, error});
+    return {
+      sent: false,
+      reason: "push_send_failed",
+      errorCode: error.code || error.name,
+      errorMessage: error.message,
+    };
   }
 }

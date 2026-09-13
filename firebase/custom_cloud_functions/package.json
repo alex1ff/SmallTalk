@@ -3,29 +3,55 @@
   "description": "Cloud Functions for Firebase",
   "scripts": {
     "backfill:video-session-review-flags": "node scripts/backfill_video_session_review_flags.js",
+    "validate:deployment-readiness": "node scripts/validate_deployment_readiness.js",
+    "validate:backend-source": "node scripts/validate_backend_source.js",
+    "inventory:backend-source": "bash scripts/inventory_backend_source.sh",
+    "inventory:backend-source:snapshot": "bash scripts/inventory_backend_source.sh --json --output ../../audit/firebase-production-inventory.json",
+    "validate:secret-readiness": "node scripts/validate_secret_readiness.js --config ../firebase.json",
     "set:admin-claim": "node scripts/set_admin_claim.js",
     "migrate:pair-reviews": "node scripts/migrate_pair_reviews.js",
+    "generate:event-city-catalog": "node scripts/generate_event_city_catalog.js",
+    "backfill:event-public-projections": "node scripts/backfill_event_public_projections.js",
+    "backfill:conversation-participant-info": "node scripts/backfill_conversation_participant_info.js",
+    "test:events": "node --test event_chat_inbox.test.js create_event.test.js edit_event.test.js cancel_event.test.js join_event.test.js leave_event.test.js create_video_session.test.js send_event_chat_message.test.js get_event_chat_access_state.test.js report_event.test.js report_event_chat_message.test.js get_event_history.test.js open_event_organizer_chat.test.js event_city_catalog.test.js event_city_catalog_generation.test.js event_public_projection.test.js event_public_backfill.test.js sync_event_public_projection.test.js get_event_details.test.js trial_access.test.js revenue_cat_webhook.test.js deployment_readiness.test.js call_lifecycle_contract.test.js",
+    "test:password-reset": "node --test password_reset.test.js email_verification.test.js",
+    "test:backend-source": "node --test backend_source.test.js",
+    "test:safe-logging": "node --test safe_log.test.js call_lifecycle_logs.test.js",
+    "test:legacy-fallback-manifest": "node --test legacy_fallback_manifest.test.js",
+    "test:performance-budget": "node --test performance_budget.test.js",
+    "test:critical-flow-matrix": "node --test critical_flow_matrix.test.js",
+    "test:eslint-config": "node --test eslint_config.test.js",
+    "test:call-lifecycle-emulator": "node --test call_lifecycle_emulator.test.js",
+    "test:event-rules": "node --test event_rules.test.js",
     "lint": "eslint .",
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",
     "start": "npm run shell",
-    "deploy": "firebase deploy --only functions",
-    "logs": "firebase functions:log"
+    "deploy": "npm run deploy:readiness-functions && npm run backfill:event-public-projections",
+    "deploy:retry-pending-transfers": "npx -y firebase-tools@latest deploy --project smalltalk-2109b --config ../firebase.json --only functions:custom_cloud_functions:retryPendingRevenueCatTransfers",
+    "deploy:call-integrations": "firebase deploy --project smalltalk-2109b --config ../firebase.json --only firestore:rules,firestore:indexes,functions:custom_cloud_functions:translateTerm,functions:custom_cloud_functions:saveTranslatedTerm,functions:custom_cloud_functions:generateCallFeedback,functions:custom_cloud_functions:cleanupUserCallIntegrationsOnDelete",
+    "deploy:readiness-functions": "firebase deploy --project smalltalk-2109b --config ../firebase.json --only firestore:rules,firestore:indexes,hosting,functions:custom_cloud_functions:cleanupUserCallIntegrationsOnDelete,functions:custom_cloud_functions:createVideoSession,functions:custom_cloud_functions:acceptCall,functions:custom_cloud_functions:declineCall,functions:custom_cloud_functions:cancelCall,functions:custom_cloud_functions:startSearch,functions:custom_cloud_functions:respondToMatch,functions:custom_cloud_functions:processMatchProtocolV2State,functions:custom_cloud_functions:recoverMatchProtocolV2State,functions:custom_cloud_functions:stopSearch,functions:custom_cloud_functions:heartbeatSearch,functions:custom_cloud_functions:cleanupStaleSearchRequests,functions:custom_cloud_functions:endSession,functions:custom_cloud_functions:cleanupExpiredSessions,functions:custom_cloud_functions:processExpiredNotifications,functions:custom_cloud_functions:getSessionTokens,functions:custom_cloud_functions:getDeepgramToken,functions:custom_cloud_functions:translateTerm,functions:custom_cloud_functions:saveTranslatedTerm,functions:custom_cloud_functions:generateCallFeedback,functions:custom_cloud_functions:requestSessionExtension,functions:custom_cloud_functions:persistCallChat,functions:custom_cloud_functions:processConversationUnlockEvents,functions:custom_cloud_functions:repairMissingConversationUnlockEvents,functions:custom_cloud_functions:dailyWebhook,functions:custom_cloud_functions:cleanupFailedDailyRoomDeletes,functions:custom_cloud_functions:getDirectCallStatus,functions:custom_cloud_functions:markSessionConnected,functions:custom_cloud_functions:registerVoipToken,functions:custom_cloud_functions:migrateLegacyVoipTokens,functions:custom_cloud_functions:scheduledLegacyVoipTokenMigration,functions:custom_cloud_functions:claimRegistrationGift,functions:custom_cloud_functions:cleanupExpiredGifts,functions:custom_cloud_functions:createPaymentSession,functions:custom_cloud_functions:createEvent,functions:custom_cloud_functions:editEvent,functions:custom_cloud_functions:cancelEvent,functions:custom_cloud_functions:joinEvent,functions:custom_cloud_functions:leaveEvent,functions:custom_cloud_functions:getEventDetails,functions:custom_cloud_functions:syncEventPublicProjection,functions:custom_cloud_functions:repairEventPublicProjections,functions:custom_cloud_functions:retryPendingRevenueCatTransfers,functions:custom_cloud_functions:sendEventChatMessage,functions:custom_cloud_functions:getEventChatAccessState,functions:custom_cloud_functions:reportEvent,functions:custom_cloud_functions:reportEventChatMessage,functions:custom_cloud_functions:getEventHistory,functions:custom_cloud_functions:openEventOrganizerChat,functions:custom_cloud_functions:getCallHistory,functions:custom_cloud_functions:requestWithdrawal,functions:custom_cloud_functions:syncUserPublicProfile,functions:custom_cloud_functions:syncTeacherVerificationRequest,functions:custom_cloud_functions:revenueCatWebhook,functions:custom_cloud_functions:grantPromoEntitlement,functions:custom_cloud_functions:redeemPromoCode,functions:custom_cloud_functions:sendCustomEmailVerification,functions:custom_cloud_functions:requestPasswordReset,functions:custom_cloud_functions:processPasswordResetRequest,functions:custom_cloud_functions:submitReview,functions:custom_cloud_functions:joinPassiveSearch,functions:custom_cloud_functions:leavePassiveSearch,functions:custom_cloud_functions:connectPassiveSearch,functions:custom_cloud_functions:notifyPassiveSearchPartners,functions:custom_cloud_functions:notifyPassiveSearchOnJoin",
+    "logs": "firebase functions:log",
+    "test:passive-search": "node --test passive_search_policy.test.js",
+    "test:passive-search-emulator": "node --test passive_search_emulator.test.js"
   },
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "dependencies": {
+    "@google-cloud/translate": "^9.4.2",
+    "@google/genai": "^2.15.0",
     "axios": "^1.6.0",
-    "firebase-admin": "^11.11.0",
-    "firebase-functions": "^7.2.5"
+    "firebase-admin": "^13.10.0",
+    "firebase-functions": "^7.3.2"
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
     "@firebase/rules-unit-testing": "^5.0.0",
-    "eslint": "^8.15.0",
-    "eslint-config-google": "^0.14.0",
+    "eslint": "10.9.1",
     "firebase": "^12.12.0",
-    "firebase-functions-test": "^3.1.0"
+    "firebase-functions-test": "^3.1.0",
+    "globals": "17.11.0"
   },
   "private": true
 }
