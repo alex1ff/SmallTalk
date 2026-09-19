@@ -59,10 +59,12 @@ const _trialPlan = StudentPayPlan(
   kind: StudentPayPlanKind.trialMonthly,
   productId: SubscriptionProductIds.trialMonthly,
   title: '1 месяц',
-  subtitle: '3 дня бесплатно, затем полный доступ',
+  subtitle: '3 дня бесплатно, а далее',
   periodLabel: 'мес',
   icon: Icons.calendar_today_rounded,
   badge: '3 ДНЯ БЕСПЛАТНО',
+  subtitleAccent: '3 дня бесплатно',
+  subtitleRemainder: 'а далее',
   features: [],
 );
 
@@ -256,11 +258,13 @@ class _PayWidgetState extends State<PayWidget> {
       StudentPayPlanKind.trialMonthly => plan.copyWith(
           title: _localized('1 месяц', '1 month'),
           subtitle: _localized(
-            '3 дня бесплатно, затем полный доступ',
-            '3 days free, then full access',
+            '3 дня бесплатно, а далее',
+            '3 days free, then',
           ),
           periodLabel: _localized('мес', 'month'),
           badge: _localized('3 ДНЯ БЕСПЛАТНО', '3 DAYS FREE'),
+          subtitleAccent: _localized('3 дня бесплатно', '3 days free'),
+          subtitleRemainder: _localized('а далее', ' then'),
         ),
       StudentPayPlanKind.monthly => plan.copyWith(
           title: _localized('1 месяц', '1 month'),

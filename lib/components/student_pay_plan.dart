@@ -12,6 +12,8 @@ class StudentPayPlan {
     required this.icon,
     required this.features,
     this.badge,
+    this.subtitleAccent,
+    this.subtitleRemainder,
   });
 
   final StudentPayPlanKind kind;
@@ -22,6 +24,8 @@ class StudentPayPlan {
   final IconData icon;
   final List<String> features;
   final String? badge;
+  final String? subtitleAccent;
+  final String? subtitleRemainder;
 
   StudentPayPlan copyWith({
     StudentPayPlanKind? kind,
@@ -32,6 +36,8 @@ class StudentPayPlan {
     IconData? icon,
     List<String>? features,
     String? badge,
+    String? subtitleAccent,
+    String? subtitleRemainder,
   }) {
     return StudentPayPlan(
       kind: kind ?? this.kind,
@@ -42,6 +48,8 @@ class StudentPayPlan {
       icon: icon ?? this.icon,
       features: features ?? this.features,
       badge: badge ?? this.badge,
+      subtitleAccent: subtitleAccent ?? this.subtitleAccent,
+      subtitleRemainder: subtitleRemainder ?? this.subtitleRemainder,
     );
   }
 }

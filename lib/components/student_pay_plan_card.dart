@@ -91,15 +91,7 @@ class StudentPayPlanCard extends StatelessWidget {
                     children: [
                       _StudentPayPlanTitle(plan: plan),
                       const SizedBox(height: ExpatlioDesign.space4),
-                      Text(
-                        plan.subtitle,
-                        style: ExpatlioDesign.textStyle(
-                          context,
-                          color: ExpatlioDesign.muted,
-                          size: 14.0,
-                          height: 1.25,
-                        ),
-                      ),
+                      _StudentPayPlanSubtitle(plan: plan),
                       const SizedBox(height: ExpatlioDesign.space4),
                       _StudentPayPriceLine(
                         kind: plan.kind,
@@ -114,6 +106,46 @@ class StudentPayPlanCard extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _StudentPayPlanSubtitle extends StatelessWidget {
+  const _StudentPayPlanSubtitle({required this.plan});
+
+  final StudentPayPlan plan;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = plan.subtitleAccent;
+    final remainder = plan.subtitleRemainder;
+    final style = ExpatlioDesign.textStyle(
+      context,
+      color: ExpatlioDesign.muted,
+      size: 14.0,
+      height: 1.25,
+    );
+
+    if (accent == null || remainder == null) {
+      return Text(plan.subtitle, style: style);
+    }
+
+    return RichText(
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      textScaler: MediaQuery.of(context).textScaler,
+      text: TextSpan(
+        children: [
+          TextSpan(
+            text: accent,
+            style: style.copyWith(
+              color: ExpatlioDesign.primary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          TextSpan(text: remainder, style: style),
+        ],
       ),
     );
   }
