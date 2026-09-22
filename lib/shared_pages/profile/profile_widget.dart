@@ -3,7 +3,6 @@ import 'dart:math' as math;
 
 import '/auth/firebase_auth/auth_util.dart';
 import '/services/subscription_service.dart';
-import '/components/acquaintance_n_s_s_t_a_r_t_widget.dart';
 import '/backend/backend.dart';
 import '/backend/schema/enums/enums.dart';
 import '/components/profile_dropdown_menu_item.dart';
@@ -20,7 +19,6 @@ import '/shared_pages/design/expatlio_design.dart';
 import '/custom_code/actions/index.dart' as actions;
 import '/index.dart';
 import '/services/email_verification_service.dart';
-import '/services/teacher_verification_request_service.dart';
 import '/services/ux_loading_state.dart';
 import '/services/user_match_profile.dart';
 import '/utils/subscription_utils.dart';
@@ -1331,61 +1329,6 @@ class _ProfileWidgetState extends State<ProfileWidget>
     );
   }
 
-  Future<void> _handleTeacherTrackAction(UsersRecord user) async {
-    TeacherAccreditationStatus? existingRequestStatus;
-    try {
-      final existingRequestSnapshot =
-          await teacherVerificationRequestRefForUser(
-        user.reference.id,
-      ).get();
-      existingRequestStatus = resolveTeacherVerificationRequestStatus(
-        existingRequestSnapshot.data(),
-      );
-    } catch (error) {
-      debugPrint(
-        'Profile: failed to load existing teacher verification request: $error',
-      );
-    }
-
-    if (canRestoreNativeSpeakerTrack(
-      user,
-      requestStatus: existingRequestStatus,
-    )) {
-      final restoreData = <String, dynamic>{
-        ...createUsersRecordData(
-          role: UserRole.native_speaker,
-          availabilityToday: createAvailabilityTodayStruct(
-            enabled: false,
-            clearUnsetFields: false,
-          ),
-        ),
-      };
-      if (shouldMirrorPendingTeacherStatusOnRestore(
-        user,
-        requestStatus: existingRequestStatus,
-      )) {
-        restoreData.addAll(
-          createUsersRecordData(
-            teacherAccreditationStatus: TeacherAccreditationStatus.pending,
-            verifNS: false,
-          ),
-        );
-      }
-
-      await user.reference.update(restoreData);
-      await ensureCanonicalCurrentUserDocument(
-        preferredUid: user.reference.id,
-        canonicalUserRef: user.reference,
-      );
-      if (!mounted) {
-        return;
-      }
-      context.goNamed(DashboardNSWidget.routeName);
-    } else {
-      await _showProfileSheet(AcquaintanceNSSTARTWidget());
-    }
-  }
-
   Widget _profileTitle(BuildContext context, String text) {
     return Padding(
       padding: const EdgeInsetsDirectional.fromSTEB(
@@ -2279,48 +2222,6 @@ class _ProfileWidgetState extends State<ProfileWidget>
     );
   }
 
-  Widget _roleSwitchMenuRow(BuildContext context, UsersRecord user) {
-    final teacherTrackAction = resolveTeacherTrackProfileAction(user);
-    final label = switch (teacherTrackAction) {
-      TeacherTrackProfileAction.reapply =>
-        FFLocalizations.of(context).getVariableText(
-          ruText: 'Подать заявку снова',
-          enText: 'Submit again',
-        ),
-      TeacherTrackProfileAction.apply =>
-        FFLocalizations.of(context).getVariableText(
-          ruText: 'Стать учителем',
-          enText: 'Become a teacher',
-        ),
-      TeacherTrackProfileAction.none => FFLocalizations.of(context).getText(
-          'dmupsasg' /* Стать учеником */,
-        ),
-    };
-
-    return _menuRow(
-      context,
-      icon: teacherTrackAction == TeacherTrackProfileAction.none
-          ? FFIcons.kuserCircle
-          : FFIcons.kgraduationHat02,
-      label: label,
-      color: teacherTrackAction == TeacherTrackProfileAction.none
-          ? null
-          : ExpatlioDesign.orange,
-      onTap: () async {
-        if (teacherTrackAction != TeacherTrackProfileAction.none) {
-          await _handleTeacherTrackAction(user);
-        } else {
-          final studentTrackUpdate = createUsersRecordData(
-            role: UserRole.student,
-          );
-          studentTrackUpdate['availabilityToday'] = FieldValue.delete();
-          await user.reference.update(studentTrackUpdate);
-          safeSetState(() {});
-        }
-      },
-    );
-  }
-
   Widget _menuRow(
     BuildContext context, {
     required IconData icon,
@@ -2414,8 +2315,6 @@ class _ProfileWidgetState extends State<ProfileWidget>
           clipBehavior: Clip.antiAlias,
           child: Column(
             children: [
-              _roleSwitchMenuRow(context, user),
-              _menuDivider(),
               _menuRow(
                 context,
                 rowKey: _appLanguageMenuKey,
@@ -3332,236 +3231,6 @@ class _ProfileWidgetState extends State<ProfileWidget>
                                 mainAxisAlignment: MainAxisAlignment.start,
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  AuthUserStreamWidget(
-                                    builder: (context) {
-                                      final teacherTrackAction =
-                                          resolveTeacherTrackProfileAction(
-                                        currentUserDocument,
-                                      );
-
-                                      if (teacherTrackAction !=
-                                          TeacherTrackProfileAction.none) {
-                                        final actionLabel =
-                                            teacherTrackAction ==
-                                                    TeacherTrackProfileAction
-                                                        .reapply
-                                                ? FFLocalizations.of(context)
-                                                    .getVariableText(
-                                                    ruText:
-                                                        'Подать заявку снова',
-                                                    enText: 'Submit again',
-                                                  )
-                                                : FFLocalizations.of(context)
-                                                    .getVariableText(
-                                                    ruText: 'Стать учителем',
-                                                    enText: 'Become a teacher',
-                                                  );
-
-                                        return InkWell(
-                                          splashColor: Colors.transparent,
-                                          focusColor: Colors.transparent,
-                                          hoverColor: Colors.transparent,
-                                          highlightColor: Colors.transparent,
-                                          onTap: () async {
-                                            TeacherAccreditationStatus?
-                                                existingRequestStatus;
-                                            if (currentUserReference != null) {
-                                              try {
-                                                final existingRequestSnapshot =
-                                                    await teacherVerificationRequestRefForUser(
-                                                            currentUserReference!
-                                                                .id)
-                                                        .get();
-                                                existingRequestStatus =
-                                                    resolveTeacherVerificationRequestStatus(
-                                                  existingRequestSnapshot
-                                                      .data(),
-                                                );
-                                              } catch (error) {
-                                                debugPrint(
-                                                  'Profile: failed to load existing teacher verification request: $error',
-                                                );
-                                              }
-                                            }
-
-                                            if (canRestoreNativeSpeakerTrack(
-                                              currentUserDocument,
-                                              requestStatus:
-                                                  existingRequestStatus,
-                                            )) {
-                                              final restoreData =
-                                                  <String, dynamic>{
-                                                ...createUsersRecordData(
-                                                  role: UserRole.native_speaker,
-                                                  availabilityToday:
-                                                      createAvailabilityTodayStruct(
-                                                    enabled: false,
-                                                    clearUnsetFields: false,
-                                                  ),
-                                                ),
-                                              };
-                                              if (shouldMirrorPendingTeacherStatusOnRestore(
-                                                currentUserDocument,
-                                                requestStatus:
-                                                    existingRequestStatus,
-                                              )) {
-                                                restoreData.addAll(
-                                                  createUsersRecordData(
-                                                    teacherAccreditationStatus:
-                                                        TeacherAccreditationStatus
-                                                            .pending,
-                                                    verifNS: false,
-                                                  ),
-                                                );
-                                              }
-
-                                              await currentUserReference!
-                                                  .update(restoreData);
-                                              await ensureCanonicalCurrentUserDocument(
-                                                preferredUid: currentUserUid,
-                                                canonicalUserRef:
-                                                    currentUserReference,
-                                              );
-                                              if (!mounted) {
-                                                return;
-                                              }
-                                              context.goNamed(
-                                                DashboardNSWidget.routeName,
-                                              );
-                                            } else {
-                                              await showModalBottomSheet(
-                                                useRootNavigator: true,
-                                                isScrollControlled: true,
-                                                backgroundColor:
-                                                    Colors.transparent,
-                                                context: context,
-                                                builder: (context) {
-                                                  return GestureDetector(
-                                                    onTap: () {
-                                                      FocusScope.of(context)
-                                                          .unfocus();
-                                                      FocusManager
-                                                          .instance.primaryFocus
-                                                          ?.unfocus();
-                                                    },
-                                                    child: Padding(
-                                                      padding: MediaQuery
-                                                          .viewInsetsOf(
-                                                              context),
-                                                      child:
-                                                          AcquaintanceNSSTARTWidget(),
-                                                    ),
-                                                  );
-                                                },
-                                              ).then((value) =>
-                                                  safeSetState(() {}));
-                                            }
-                                          },
-                                          child: Container(
-                                            height: 50,
-                                            decoration: BoxDecoration(),
-                                            child: Padding(
-                                              padding: EdgeInsetsDirectional
-                                                  .fromSTEB(16, 0, 16, 0),
-                                              child: Row(
-                                                mainAxisSize: MainAxisSize.max,
-                                                mainAxisAlignment:
-                                                    MainAxisAlignment
-                                                        .spaceBetween,
-                                                children: [
-                                                  Text(
-                                                    actionLabel,
-                                                    style: FlutterFlowTheme.of(
-                                                            context)
-                                                        .bodyMedium
-                                                        .override(
-                                                          fontFamily:
-                                                              'sf pro display',
-                                                          fontSize: 15,
-                                                          letterSpacing: 0.0,
-                                                          fontWeight:
-                                                              FontWeight.w500,
-                                                        ),
-                                                  ),
-                                                  Icon(
-                                                    FFIcons.kchevronRight,
-                                                    color: Color(0xFFC5C5C6),
-                                                    size: 18,
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
-                                        );
-                                      } else {
-                                        return InkWell(
-                                          splashColor: Colors.transparent,
-                                          focusColor: Colors.transparent,
-                                          hoverColor: Colors.transparent,
-                                          highlightColor: Colors.transparent,
-                                          onTap: () async {
-                                            final studentTrackUpdate =
-                                                createUsersRecordData(
-                                              role: UserRole.student,
-                                            );
-                                            studentTrackUpdate[
-                                                    'availabilityToday'] =
-                                                FieldValue.delete();
-                                            await currentUserReference!
-                                                .update(studentTrackUpdate);
-                                            safeSetState(() {});
-                                          },
-                                          child: Container(
-                                            height: 45,
-                                            decoration: BoxDecoration(),
-                                            child: Padding(
-                                              padding: EdgeInsetsDirectional
-                                                  .fromSTEB(16, 0, 16, 0),
-                                              child: Row(
-                                                mainAxisSize: MainAxisSize.max,
-                                                mainAxisAlignment:
-                                                    MainAxisAlignment
-                                                        .spaceBetween,
-                                                children: [
-                                                  Text(
-                                                    FFLocalizations.of(context)
-                                                        .getText(
-                                                      'dmupsasg' /* Стать учеником */,
-                                                    ),
-                                                    style: FlutterFlowTheme.of(
-                                                            context)
-                                                        .bodyMedium
-                                                        .override(
-                                                          fontFamily:
-                                                              'sf pro display',
-                                                          fontSize: 15,
-                                                          letterSpacing: 0.0,
-                                                          fontWeight:
-                                                              FontWeight.w500,
-                                                        ),
-                                                  ),
-                                                  Icon(
-                                                    FFIcons.kchevronRight,
-                                                    color: FlutterFlowTheme.of(
-                                                            context)
-                                                        .secondaryText,
-                                                    size: 18,
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
-                                        );
-                                      }
-                                    },
-                                  ),
-                                  Divider(
-                                    height: 1,
-                                    thickness: 1,
-                                    indent: 12,
-                                    endIndent: 16,
-                                    color: ExpatlioDesign.border,
-                                  ),
                                   InkWell(
                                     splashColor: Colors.transparent,
                                     focusColor: Colors.transparent,

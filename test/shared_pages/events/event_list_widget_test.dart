@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:small_talk/app_state.dart';
 import 'package:small_talk/auth/firebase_auth/auth_util.dart';
 import 'package:small_talk/backend/backend.dart';
 import 'package:small_talk/components/ux_refreshing_indicator_overlay.dart';
@@ -35,6 +36,7 @@ import 'package:small_talk/services/event_level_helper.dart';
 import 'package:small_talk/services/event_language_catalog.dart';
 import 'package:small_talk/services/event_list_cache_invalidation.dart';
 import 'package:small_talk/services/events_analytics_service.dart';
+import 'package:small_talk/services/location_filter_preferences.dart';
 import 'package:small_talk/services/user_public_profile_preload_repository.dart';
 
 const _supportedLocales = [
@@ -155,7 +157,8 @@ void main() {
     FirebaseAuthPlatform.instance = _TestFirebaseAuthPlatform();
   });
 
-  setUp(() {
+  setUp(() async {
+    FFAppState().prefs = await SharedPreferences.getInstance();
     EventsAnalyticsService.defaultTracker = const _NoopEventsAnalyticsTracker();
   });
 
@@ -12905,6 +12908,47 @@ void main() {
     expect(find.text('Выберите локацию, чтобы увидеть события.'), findsNothing);
     expect(find.byKey(const ValueKey<String>('event_city_chip_RU_moscow')),
         findsNothing);
+  });
+
+  testWidgets('restores an Events city independently from profile city',
+      (tester) async {
+    const userId = 'saved-events-city-user';
+    currentUser = _TestAuthUser(userId);
+    currentUserDocument = _userFixture(
+      uid: userId,
+      data: {
+        'Country_NS': {'code': 'US', 'cityKey': 'new_york'},
+        'profileCity': _profileCityFixture(
+          countryCode: 'US',
+          cityKey: 'new_york',
+          catalogVersion: _catalog.catalogVersion,
+        ).toMap(),
+      },
+    );
+    await LocationFilterPreferences(FFAppState().prefs).writeSelected(
+      userId: userId,
+      scope: LocationFilterScope.events,
+      countryCode: 'ID',
+      cityKey: 'bali',
+      eventSource: EventCitySelectionSource.manual,
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        home: EventListWidget(cityCatalogOverride: _catalog),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(eventListActiveCitySelectorKey), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(eventListActiveCitySelectorKey),
+        matching: find.text('Bali, Indonesia'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('New York, US'), findsNothing);
   });
 
   testWidgets('tracks event list opened once for resolved profile city',

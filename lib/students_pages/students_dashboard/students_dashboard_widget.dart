@@ -18,6 +18,7 @@ import '/components/passive_search_panel.dart';
 import '/services/nearby_partner_count_cache.dart';
 import '/services/nearby_partner_preview_cache.dart';
 import '/services/match_coordinator.dart';
+import '/services/location_filter_preferences.dart';
 import '/services/safe_debug_log.dart';
 import '/services/supported_location_catalog.dart';
 import '/shared_pages/design/expatlio_design.dart';
@@ -155,10 +156,13 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
   final scaffoldKey = GlobalKey<ScaffoldState>();
   late final NearbyPartnerCountCache _partnerCountCache;
   late final NearbyPartnerPreviewCache _partnerPreviewCache;
+  late final LocationFilterPreferences _locationFilterPreferences;
   final Map<String, int> _partnerCountMemoryCache = <String, int>{};
   final Set<String> _partnerCountCacheKeysLoaded = <String>{};
   final Set<String> _partnerCountRefreshesStarted = <String>{};
   String? _partnerCacheUserId;
+  String? _homeLocationFilterUserId;
+  CountryStruct? _homePreferredLocation;
   String? _activePartnerCountCacheKey;
   String? _partnerPreviewCacheKey;
   Future<List<OrbitingAvatarData>>? _partnerPreviewFuture;
@@ -1732,12 +1736,54 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
   }
 
   CountryStruct? _preferredLocation(UsersRecord? user) {
-    if (user == null || !user.preferences.hasPreferredLocation()) {
+    if (user == null) {
       return null;
     }
 
-    final preferredLocation = user.preferences.preferredLocation;
-    return _hasCountryData(preferredLocation) ? preferredLocation : null;
+    final userId = user.reference.id.trim();
+    if (userId.isEmpty) {
+      return null;
+    }
+    if (_homeLocationFilterUserId == userId) {
+      return _homePreferredLocation;
+    }
+
+    _homeLocationFilterUserId = userId;
+    final stored = _locationFilterPreferences.read(
+      userId: userId,
+      scope: LocationFilterScope.homeSearch,
+    );
+    if (stored?.isAny == true) {
+      _homePreferredLocation = null;
+      return null;
+    }
+
+    final storedLocation = resolveSupportedLocation(
+      stored?.countryCode,
+      stored?.cityKey,
+    );
+    if (storedLocation != null) {
+      _homePreferredLocation = storedLocation.toCountryStruct();
+      return _homePreferredLocation;
+    }
+
+    final profileLocation = resolveSupportedProfileCity(
+      user.hasProfileCity() ? user.profileCity : null,
+    );
+    _homePreferredLocation = profileLocation?.toCountryStruct();
+    if (profileLocation == null) {
+      unawaited(_locationFilterPreferences.writeAny(userId: userId));
+    } else {
+      unawaited(
+        _locationFilterPreferences.writeSelected(
+          userId: userId,
+          scope: LocationFilterScope.homeSearch,
+          countryCode: profileLocation.countryCode,
+          cityKey: profileLocation.cityKey,
+        ),
+      );
+    }
+    return _homePreferredLocation;
   }
 
   String _preferredLocationLabel(BuildContext context, CountryStruct? country) {
@@ -1799,21 +1845,14 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
   }
 
   Future<void> _clearPreferredLocation() async {
-    final userRef = currentUserReference;
-    if (userRef == null) {
+    final userId = currentUserUid.trim();
+    if (userId.isEmpty) {
       return;
     }
 
-    await userRef.update(
-      _studentUserUpdate(createUsersRecordData(
-        preferences: createPreferencesStruct(
-          fieldValues: {
-            'preferredLocation': FieldValue.delete(),
-          },
-          clearUnsetFields: false,
-        ),
-      )),
-    );
+    _homeLocationFilterUserId = userId;
+    _homePreferredLocation = null;
+    await _locationFilterPreferences.writeAny(userId: userId);
   }
 
   Future<void> _setPreferredPartnerLevel(Level? level) async {
@@ -1978,16 +2017,21 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
       (country) => '${country.code}:${country.cityKey}' == selectedIdentity,
     );
 
-    await currentUserReference!.update(
-      _studentUserUpdate(createUsersRecordData(
-        preferences: createPreferencesStruct(
-          preferredLocation: updateCountryStruct(
-            selectedCountry,
-            clearUnsetFields: false,
-          ),
-          clearUnsetFields: false,
-        ),
-      )),
+    final userId = currentUserUid.trim();
+    if (userId.isEmpty) {
+      return;
+    }
+    final selectedLocation = resolveSupportedCountryStruct(selectedCountry);
+    if (selectedLocation == null) {
+      return;
+    }
+    _homeLocationFilterUserId = userId;
+    _homePreferredLocation = selectedLocation.toCountryStruct();
+    await _locationFilterPreferences.writeSelected(
+      userId: userId,
+      scope: LocationFilterScope.homeSearch,
+      countryCode: selectedLocation.countryCode,
+      cityKey: selectedLocation.cityKey,
     );
 
     safeSetState(() {});
@@ -3528,6 +3572,7 @@ class _StudentsDashboardWidgetState extends State<StudentsDashboardWidget>
     super.initState();
     _partnerCountCache = NearbyPartnerCountCache(FFAppState().prefs);
     _partnerPreviewCache = NearbyPartnerPreviewCache(FFAppState().prefs);
+    _locationFilterPreferences = LocationFilterPreferences(FFAppState().prefs);
     _searchAppState = _searchAppStateForLifecycle(
       WidgetsBinding.instance.lifecycleState,
     );

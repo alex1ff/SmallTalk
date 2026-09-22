@@ -356,6 +356,8 @@ void main() {
     bool hasActiveAccess = true,
     bool hasGiftAccess = false,
     bool isInCall = false,
+    String? countryCode,
+    String? cityKey,
   }) {
     currentUser = _TestAuthUser(
       isLoggedIn: isLoggedIn,
@@ -370,6 +372,11 @@ void main() {
           'code': 'en',
           'name': 'English',
         },
+        if (countryCode != null && cityKey != null)
+          'profileCity': {
+            'countryCode': countryCode,
+            'cityKey': cityKey,
+          },
         if (hasActiveAccess)
           'subscription': {
             'productId': 'test',
@@ -846,6 +853,39 @@ void main() {
     expect(find.text('Ищем собеседника'), findsNothing);
     expect(find.text('Соединяем'), findsNothing);
     expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('student dashboard defaults location from onboarding profile',
+      (tester) async {
+    const userId = 'student-registration-location-default-test';
+    setActiveStudent(
+      userId,
+      countryCode: 'US',
+      cityKey: 'new_york',
+    );
+    CountryStruct? capturedLocation;
+
+    await tester.pumpWidget(
+      _buildDashboardTestApp(
+        StudentsDashboardWidget(
+          partnerCountLoader: ({
+            required preferredLocation,
+            required preferredPartnerLevel,
+          }) async {
+            capturedLocation = preferredLocation;
+            return 1;
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(capturedLocation?.code, 'US');
+    expect(capturedLocation?.cityKey, 'new_york');
+    expect(find.text('New York, US'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });

@@ -79,6 +79,34 @@ void main() {
     expect(harness.sources.stats, hasLength(1));
   });
 
+  testWidgets('profile does not expose role switching', (tester) async {
+    final studentHarness = _ProfileHarness(
+      userId: 'student',
+      user: _user('student', name: 'Student', totalCalls: 0),
+    );
+    final teacherHarness = _ProfileHarness(
+      userId: 'teacher',
+      user: _user(
+        'teacher',
+        name: 'Teacher',
+        totalCalls: 0,
+        role: UserRole.native_speaker,
+      ),
+    );
+    addTearDown(studentHarness.close);
+    addTearDown(teacherHarness.close);
+
+    await tester.pumpWidget(studentHarness.buildApp());
+    await tester.pump();
+    expect(find.text('Стать учителем'), findsNothing);
+    expect(find.text('Become a teacher'), findsNothing);
+
+    await tester.pumpWidget(teacherHarness.buildApp());
+    await tester.pump();
+    expect(find.text('Стать учеником'), findsNothing);
+    expect(find.text('Become a student'), findsNothing);
+  });
+
   testWidgets('words and stats complete independently without primary reset',
       (tester) async {
     final harness = _ProfileHarness(

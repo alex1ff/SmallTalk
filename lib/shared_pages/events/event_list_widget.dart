@@ -36,6 +36,7 @@ import '/services/event_level_helper.dart';
 import '/services/event_language_catalog.dart';
 import '/services/event_list_cache_invalidation.dart';
 import '/services/events_analytics_service.dart';
+import '/services/location_filter_preferences.dart';
 import '/services/supported_location_catalog.dart';
 import '/services/ux_session_cache_lifecycle.dart';
 import '/services/user_public_profile_preload_repository.dart';
@@ -512,8 +513,12 @@ class EventListWidget extends StatefulWidget {
 
 class _EventListWidgetState extends State<EventListWidget> {
   late final ScrollController _scrollController;
+  late final LocationFilterPreferences _locationFilterPreferences;
   late String _eventListViewStateUserId;
   late EventSelectedCity? _selectedCity;
+  String? _eventLocationFilterUserId;
+  bool _eventLocationFilterInitialized = false;
+  bool _usesInjectedInitialSelectedCity = false;
   EventListDateFilter? _selectedDateFilter;
   String? _selectedLevel;
   Future<EventCityCatalog>? _cityCatalogFuture;
@@ -552,7 +557,10 @@ class _EventListWidgetState extends State<EventListWidget> {
     _scrollController = ScrollController(
       initialScrollOffset: restoredViewState?.scrollOffset ?? 0,
     );
+    _locationFilterPreferences = LocationFilterPreferences(FFAppState().prefs);
     _selectedCity = widget.initialSelectedCity;
+    _usesInjectedInitialSelectedCity = widget.initialSelectedCity != null;
+    _eventLocationFilterInitialized = _usesInjectedInitialSelectedCity;
     _eventCardsOverrideSourceRevision =
         _eventListParticipantActionCoordinator.sourceRevisionForOverride(
       widget.eventCardsOverride,
@@ -691,6 +699,9 @@ class _EventListWidgetState extends State<EventListWidget> {
     }
     if (oldWidget.initialSelectedCity != widget.initialSelectedCity) {
       _selectedCity = widget.initialSelectedCity;
+      _usesInjectedInitialSelectedCity = widget.initialSelectedCity != null;
+      _eventLocationFilterInitialized = _usesInjectedInitialSelectedCity;
+      _eventLocationFilterUserId = null;
     }
     if (oldWidget.cityCatalogOverride != widget.cityCatalogOverride) {
       _cityCatalogFuture = _loadCityCatalog();
@@ -2497,6 +2508,10 @@ class _EventListWidgetState extends State<EventListWidget> {
     required EventCity city,
     required EventCitySelectionSource source,
   }) async {
+    final authenticatedUserId = currentUserUid.trim();
+    final documentUserId = currentUserDocument?.reference.id.trim() ?? '';
+    final userId =
+        authenticatedUserId.isNotEmpty ? authenticatedUserId : documentUserId;
     final chipSource = await _loadCityChipSource();
     final input = await EventTemporaryCitySelectionService(
       chipSource: chipSource,
@@ -2504,6 +2519,10 @@ class _EventListWidgetState extends State<EventListWidget> {
       city: city,
       source: source,
     );
+    if (currentUserUid.trim() != authenticatedUserId ||
+        (currentUserDocument?.reference.id.trim() ?? '') != documentUserId) {
+      return;
+    }
     final selectedState = resolveEventSelectedCityState(
       user: currentUserDocument,
       catalog: catalog,
@@ -2515,9 +2534,23 @@ class _EventListWidgetState extends State<EventListWidget> {
     }
     setState(() {
       _selectedCity = selected;
+      _eventLocationFilterUserId = userId;
+      _eventLocationFilterInitialized = true;
+      _usesInjectedInitialSelectedCity = false;
       _cityChipsFuture = null;
       _cityChipsCatalog = null;
     });
+    if (userId.isNotEmpty) {
+      unawaited(
+        _locationFilterPreferences.writeSelected(
+          userId: userId,
+          scope: LocationFilterScope.events,
+          countryCode: selected.city.countryCode,
+          cityKey: selected.city.cityKey,
+          eventSource: selected.source,
+        ),
+      );
+    }
   }
 
   void _selectDateFilter(EventListDateFilter? filter) {
@@ -2623,7 +2656,7 @@ class _EventListWidgetState extends State<EventListWidget> {
   EventSelectedCityState? _resolveVisibleSelectedCityState(
     EventCityCatalog? catalog,
   ) {
-    if (_selectedCity != null) {
+    if (_usesInjectedInitialSelectedCity && _selectedCity != null) {
       return EventSelectedCityState(
         profileStatus: EventCityResolutionStatus.missingProfileCity,
         countryCodeHint: null,
@@ -2633,9 +2666,97 @@ class _EventListWidgetState extends State<EventListWidget> {
     if (catalog == null) {
       return null;
     }
-    return resolveEventSelectedCityState(
-      user: currentUserDocument,
+    final user = currentUserDocument;
+    final authenticatedUserId = currentUserUid.trim();
+    final documentUserId = user?.reference.id.trim() ?? '';
+    final userId =
+        authenticatedUserId.isNotEmpty ? authenticatedUserId : documentUserId;
+    if (_eventLocationFilterInitialized &&
+        _eventLocationFilterUserId == userId &&
+        _selectedCity != null) {
+      return EventSelectedCityState(
+        profileStatus: EventCityResolutionStatus.missingProfileCity,
+        countryCodeHint: null,
+        selected: _selectedCity,
+      );
+    }
+    if (userId.isEmpty) {
+      return resolveEventSelectedCityState(
+        user: null,
+        catalog: catalog,
+      );
+    }
+    if (user == null) {
+      return null;
+    }
+
+    _ensureEventLocationFilterInitialized(
+      userId: userId,
+      user: user,
       catalog: catalog,
+      preferences: _locationFilterPreferences,
+    );
+    if (_selectedCity != null) {
+      return EventSelectedCityState(
+        profileStatus: EventCityResolutionStatus.missingProfileCity,
+        countryCodeHint: null,
+        selected: _selectedCity,
+      );
+    }
+    return resolveEventSelectedCityState(
+      user: user,
+      catalog: catalog,
+    );
+  }
+
+  void _ensureEventLocationFilterInitialized({
+    required String userId,
+    required UsersRecord user,
+    required EventCityCatalog catalog,
+    required LocationFilterPreferences preferences,
+  }) {
+    if (_eventLocationFilterInitialized &&
+        _eventLocationFilterUserId == userId) {
+      return;
+    }
+
+    _eventLocationFilterUserId = userId;
+    _eventLocationFilterInitialized = true;
+    _selectedCity = null;
+    final stored = preferences.read(
+      userId: userId,
+      scope: LocationFilterScope.events,
+    );
+    final storedCity = catalog.resolveSupported(
+      stored?.countryCode,
+      stored?.cityKey,
+    );
+    final storedSource = stored?.eventSource;
+    if (storedCity != null && storedSource != null) {
+      _selectedCity = EventSelectedCity(
+        city: storedCity,
+        source: storedSource,
+      );
+      return;
+    }
+
+    final profileState = resolveEventSelectedCityState(
+      user: user,
+      catalog: catalog,
+    );
+    final profileSelection = profileState.selected;
+    if (profileSelection == null) {
+      return;
+    }
+    _selectedCity = profileSelection;
+    unawaited(
+      preferences.writeSelected(
+        userId: userId,
+        scope: LocationFilterScope.events,
+        countryCode: profileSelection.city.countryCode,
+        cityKey: profileSelection.city.cityKey,
+        eventSource: profileSelection.source,
+      ),
     );
   }
 
