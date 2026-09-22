@@ -77,10 +77,7 @@ class FlashcardSessionEntry {
 int normalizeFlashcardStage(int stage) => stage.clamp(1, 8).toInt();
 
 FlashcardPromptDirection flashcardDirectionForStage(int stage) {
-  final normalizedStage = normalizeFlashcardStage(stage);
-  return normalizedStage.isOdd
-      ? FlashcardPromptDirection.ruToEn
-      : FlashcardPromptDirection.enToRu;
+  return FlashcardPromptDirection.enToRu;
 }
 
 int flashcardIntervalDaysForStage(int stage) {
@@ -290,7 +287,7 @@ bool flashcardIsSourceWordVisible({
   required FlashcardPromptDirection direction,
   required bool isAnswerVisible,
 }) {
-  return direction == FlashcardPromptDirection.enToRu || isAnswerVisible;
+  return true;
 }
 
 SentenceStruct? selectFlashcardExampleSentence({
@@ -424,7 +421,8 @@ int _scoreFlashcardExampleSentence({
     score += 40;
   }
 
-  if (sentence.translations.any((translation) => translation.text.trim().isNotEmpty)) {
+  if (sentence.translations
+      .any((translation) => translation.text.trim().isNotEmpty)) {
     score += 10;
   }
 
@@ -526,7 +524,8 @@ FlashcardSessionEntry? buildFlashcardSessionEntry({
 
   final stage = normalizeFlashcardStage(review.stage);
   final direction = flashcardDirectionForStage(stage);
-  final resolvedExampleSource = exampleSource ?? _legacyFlashcardExampleSource(word);
+  final resolvedExampleSource =
+      exampleSource ?? _legacyFlashcardExampleSource(word);
   final resolvedExampleTranslation =
       exampleTranslation ?? _legacyFlashcardExampleTranslation(word);
 
@@ -534,10 +533,8 @@ FlashcardSessionEntry? buildFlashcardSessionEntry({
     id: word.reference.id,
     stage: stage,
     direction: direction,
-    promptText:
-        direction == FlashcardPromptDirection.ruToEn ? translationWord : sourceWord,
-    answerText:
-        direction == FlashcardPromptDirection.ruToEn ? sourceWord : translationWord,
+    promptText: sourceWord,
+    answerText: translationWord,
     sourceWord: sourceWord,
     translationWord: translationWord,
     sourceLanguageCode: flashcardSourceLanguageCode(word),

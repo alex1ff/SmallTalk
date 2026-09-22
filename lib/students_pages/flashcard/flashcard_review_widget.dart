@@ -1,5 +1,6 @@
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
 
 import 'flashcard_review_logic.dart';
@@ -52,18 +53,22 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
     List<FlashcardSessionEntry> oldEntries,
     List<FlashcardSessionEntry> newEntries,
   ) {
-    if (!identical(oldEntries, newEntries) && oldEntries.length != newEntries.length) {
+    if (!identical(oldEntries, newEntries) &&
+        oldEntries.length != newEntries.length) {
       return true;
     }
 
-    for (var index = 0; index < oldEntries.length && index < newEntries.length; index++) {
+    for (var index = 0;
+        index < oldEntries.length && index < newEntries.length;
+        index++) {
       if (oldEntries[index].id != newEntries[index].id ||
           oldEntries[index].stage != newEntries[index].stage) {
         return true;
       }
     }
 
-    return !identical(oldEntries, newEntries) && oldEntries.isEmpty != newEntries.isEmpty;
+    return !identical(oldEntries, newEntries) &&
+        oldEntries.isEmpty != newEntries.isEmpty;
   }
 
   void _resetQueue() {
@@ -149,8 +154,8 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
     }
 
     setState(() {
-      _dragOffset =
-          (_dragOffset + details.delta.dx).clamp(-_swipeClampOffset, _swipeClampOffset);
+      _dragOffset = (_dragOffset + details.delta.dx)
+          .clamp(-_swipeClampOffset, _swipeClampOffset);
     });
   }
 
@@ -160,10 +165,10 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
     }
 
     final velocity = details.primaryVelocity ?? 0.0;
-    final shouldRemember =
-        _dragOffset >= _swipeCommitOffset || velocity >= _swipeVelocityThreshold;
-    final shouldForget =
-        _dragOffset <= -_swipeCommitOffset || velocity <= -_swipeVelocityThreshold;
+    final shouldRemember = _dragOffset >= _swipeCommitOffset ||
+        velocity >= _swipeVelocityThreshold;
+    final shouldForget = _dragOffset <= -_swipeCommitOffset ||
+        velocity <= -_swipeVelocityThreshold;
 
     if (shouldRemember) {
       _handleRemembered();
@@ -191,8 +196,12 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
       mainAxisSize: MainAxisSize.max,
       children: [
         Padding(
-          padding: const EdgeInsets.only(bottom: 12.0),
+          padding: const EdgeInsets.only(
+            top: ExpatlioDesign.space12,
+            bottom: ExpatlioDesign.space12,
+          ),
           child: Text(
+            key: const Key('flashcardProgressText'),
             FFLocalizations.of(context).getVariableText(
               ruText:
                   'Осталось ${_queue.length} • Завершено $_completedCards из ${widget.entries.length}',
@@ -201,8 +210,8 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
             ),
             style: FlutterFlowTheme.of(context).bodyMedium.override(
                   fontFamily: 'sf pro display',
-                  color: FlutterFlowTheme.of(context).secondaryText,
-                  fontSize: 14.0,
+                  color: ExpatlioDesign.muted,
+                  fontSize: 15.0,
                   letterSpacing: 0.0,
                   fontWeight: FontWeight.w500,
                 ),
@@ -226,7 +235,7 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
             ],
           ),
         ),
-        const SizedBox(height: 20.0),
+        const SizedBox(height: ExpatlioDesign.space20),
         _buildDecisionButtons(context),
       ],
     );
@@ -238,13 +247,15 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
         children: [
           Expanded(
             child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+              margin:
+                  const EdgeInsets.symmetric(vertical: ExpatlioDesign.space4),
               decoration: BoxDecoration(
                 color: const Color(0x14FF3B30),
-                borderRadius: BorderRadius.circular(28.0),
+                borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
               ),
               alignment: Alignment.centerLeft,
-              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: ExpatlioDesign.space24),
               child: Text(
                 FFLocalizations.of(context).getVariableText(
                   ruText: 'Не помню',
@@ -262,13 +273,15 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
           ),
           Expanded(
             child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+              margin:
+                  const EdgeInsets.symmetric(vertical: ExpatlioDesign.space4),
               decoration: BoxDecoration(
                 color: const Color(0x141FBF75),
-                borderRadius: BorderRadius.circular(28.0),
+                borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
               ),
               alignment: Alignment.centerRight,
-              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: ExpatlioDesign.space24),
               child: Text(
                 FFLocalizations.of(context).getVariableText(
                   ruText: 'Помню',
@@ -290,53 +303,55 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
   }
 
   Widget _buildCard(BuildContext context, FlashcardSessionEntry entry) {
-    final cardColor = FlutterFlowTheme.of(context).primaryBackground;
-    final primaryTextColor = FlutterFlowTheme.of(context).primaryText;
-    final secondaryTextColor = FlutterFlowTheme.of(context).secondaryText;
-    final accentColor = FlutterFlowTheme.of(context).primary;
-    final sourceWordVisible = flashcardIsSourceWordVisible(
-      direction: entry.direction,
-      isAnswerVisible: _isAnswerVisible,
-    );
-    final selectedExampleText =
-        entry.selectedExampleText ?? entry.exampleSource ?? '';
-    final selectedExampleTranslation =
-        entry.selectedExampleTranslation ?? entry.exampleTranslation ?? '';
+    final cardColor = ExpatlioDesign.card;
+    final primaryTextColor = ExpatlioDesign.text;
+    final secondaryTextColor = ExpatlioDesign.muted;
+    final accentColor = ExpatlioDesign.primary;
+    final hasSourceMetadata =
+        (entry.sourceTranscription?.trim().isNotEmpty ?? false) ||
+            entry.sourceSynonyms.isNotEmpty;
 
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+      margin: const EdgeInsets.symmetric(vertical: ExpatlioDesign.space4),
       decoration: BoxDecoration(
         color: cardColor,
-        borderRadius: BorderRadius.circular(28.0),
+        borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
+        border: Border.all(color: ExpatlioDesign.border),
         boxShadow: [
           BoxShadow(
-            blurRadius: 18.0,
-            color: Colors.black.withValues(alpha: 0.06),
-            offset: const Offset(0.0, 8.0),
+            blurRadius: 12.0,
+            color: Colors.black.withValues(alpha: 0.04),
+            offset: const Offset(0.0, 4.0),
           ),
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(24.0, 24.0, 24.0, 28.0),
+        padding: const EdgeInsets.fromLTRB(
+            ExpatlioDesign.space24,
+            ExpatlioDesign.space32,
+            ExpatlioDesign.space24,
+            ExpatlioDesign.space32),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: ExpatlioDesign.space12,
+                      vertical: ExpatlioDesign.space8),
                   decoration: BoxDecoration(
                     color: accentColor.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(20.0),
+                    borderRadius:
+                        BorderRadius.circular(ExpatlioDesign.controlRadius),
                   ),
                   child: Text(
                     _directionLabel(context, entry.direction),
                     style: FlutterFlowTheme.of(context).bodyMedium.override(
                           fontFamily: 'sf pro display',
                           color: accentColor,
-                          fontSize: 13.0,
+                          fontSize: 15.0,
                           letterSpacing: 0.0,
                           fontWeight: FontWeight.w600,
                         ),
@@ -345,7 +360,8 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
                 const Spacer(),
                 InkWell(
                   key: const Key('answerVisibilityToggle'),
-                  borderRadius: BorderRadius.circular(18.0),
+                  borderRadius:
+                      BorderRadius.circular(ExpatlioDesign.radiusLarge),
                   onTap: _isSubmitting
                       ? null
                       : () {
@@ -357,138 +373,107 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
                     width: 40.0,
                     height: 40.0,
                     decoration: BoxDecoration(
-                      color: FlutterFlowTheme.of(context)
-                          .secondaryBackground
-                          .withValues(alpha: 0.9),
-                      borderRadius: BorderRadius.circular(18.0),
+                      color: ExpatlioDesign.background,
+                      shape: BoxShape.circle,
                     ),
                     child: Icon(
                       _isAnswerVisible
                           ? Icons.visibility_off_outlined
                           : Icons.visibility_outlined,
                       color: secondaryTextColor,
-                      size: 22.0,
+                      size: 18.0,
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 24.0),
-            Text(
-              entry.promptText,
-              textAlign: TextAlign.center,
-              style: FlutterFlowTheme.of(context).bodyMedium.override(
-                    fontFamily: 'Cool',
-                    color: primaryTextColor,
-                    fontSize: 34.0,
-                    letterSpacing: 0.0,
-                    fontWeight: FontWeight.normal,
-                  ),
-            ),
-            if (entry.direction == FlashcardPromptDirection.enToRu &&
-                sourceWordVisible) ...[
-              const SizedBox(height: 14.0),
-              _buildSourceMetadata(context, entry),
-            ],
-            const SizedBox(height: 16.0),
-            Text(
-              _isAnswerVisible
-                  ? FFLocalizations.of(context).getVariableText(
-                      ruText: 'Правильный ответ',
-                      enText: 'Correct answer',
-                    )
-                  : FFLocalizations.of(context).getVariableText(
-                      ruText: 'Ответ можно открыть по иконке глаза, но это не обязательно.',
-                      enText: 'You can open the answer with the eye icon, but it is optional.',
-                    ),
-              textAlign: TextAlign.center,
-              style: FlutterFlowTheme.of(context).bodyMedium.override(
-                    fontFamily: 'sf pro display',
-                    color: secondaryTextColor,
-                    fontSize: 15.0,
-                    letterSpacing: 0.0,
-                    fontWeight: FontWeight.normal,
-                  ),
-            ),
-            AnimatedSize(
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOut,
-              child: _isAnswerVisible
-                  ? Column(
-                      children: [
-                        const SizedBox(height: 24.0),
-                        Container(
-                          width: 48.0,
-                          height: 1.0,
-                          color: secondaryTextColor.withValues(alpha: 0.2),
-                        ),
-                        const SizedBox(height: 24.0),
-                        Text(
-                          key: const Key('flashcardAnswerText'),
-                          entry.answerText,
-                          textAlign: TextAlign.center,
-                          style: FlutterFlowTheme.of(context).bodyMedium.override(
-                                fontFamily: 'Cool',
-                                color: primaryTextColor,
-                                fontSize: 30.0,
-                                letterSpacing: 0.0,
-                                fontWeight: FontWeight.normal,
-                              ),
-                        ),
-                        if (entry.direction == FlashcardPromptDirection.ruToEn &&
-                            sourceWordVisible) ...[
-                          const SizedBox(height: 14.0),
-                          _buildSourceMetadata(context, entry),
-                        ],
-                        if (selectedExampleText.isNotEmpty) ...[
-                          const SizedBox(height: 24.0),
-                          Container(
-                            key: const Key('flashcardExampleBlock'),
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(16.0),
-                            decoration: BoxDecoration(
-                              color: FlutterFlowTheme.of(context).secondaryBackground,
-                              borderRadius: BorderRadius.circular(20.0),
+            Expanded(
+              child: Center(
+                child: SingleChildScrollView(
+                  physics: const ClampingScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(
+                      vertical: ExpatlioDesign.space24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        entry.promptText,
+                        textAlign: TextAlign.center,
+                        style: FlutterFlowTheme.of(context).bodyMedium.override(
+                              fontFamily: 'sf pro display',
+                              color: primaryTextColor,
+                              fontSize: 34.0,
+                              letterSpacing: 0.0,
+                              fontWeight: FontWeight.w700,
                             ),
-                            child: Column(
-                              children: [
-                                Text(
-                                  selectedExampleText,
-                                  textAlign: TextAlign.center,
-                                  style: FlutterFlowTheme.of(context)
-                                      .bodyMedium
-                                      .override(
-                                        fontFamily: 'sf pro display',
-                                        color: primaryTextColor,
-                                        fontSize: 16.0,
-                                        letterSpacing: 0.0,
-                                        fontWeight: FontWeight.w500,
-                                        fontStyle: FontStyle.italic,
-                                      ),
-                                ),
-                                if (selectedExampleTranslation.isNotEmpty) ...[
-                                  const SizedBox(height: 8.0),
-                                  Text(
-                                    selectedExampleTranslation,
+                      ),
+                      if (hasSourceMetadata) ...[
+                        const SizedBox(height: ExpatlioDesign.space12),
+                        _buildSourceMetadata(context, entry),
+                      ],
+                      const SizedBox(height: ExpatlioDesign.space32),
+                      SizedBox(
+                        height: 56.0,
+                        child: Center(
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 160),
+                            switchInCurve: Curves.easeOut,
+                            switchOutCurve: Curves.easeIn,
+                            layoutBuilder: (currentChild, previousChildren) {
+                              return Stack(
+                                alignment: Alignment.center,
+                                children: <Widget>[
+                                  ...previousChildren,
+                                  if (currentChild != null) currentChild,
+                                ],
+                              );
+                            },
+                            child: _isAnswerVisible
+                                ? Text(
+                                    key: const Key('flashcardAnswerText'),
+                                    entry.answerText,
                                     textAlign: TextAlign.center,
                                     style: FlutterFlowTheme.of(context)
                                         .bodyMedium
                                         .override(
                                           fontFamily: 'sf pro display',
-                                          color: secondaryTextColor,
-                                          fontSize: 15.0,
+                                          color: accentColor,
+                                          fontSize: 20.0,
                                           letterSpacing: 0.0,
-                                          fontWeight: FontWeight.normal,
+                                          fontWeight: FontWeight.w700,
                                         ),
+                                  )
+                                : ConstrainedBox(
+                                    key: const Key('flashcardAnswerHint'),
+                                    constraints:
+                                        const BoxConstraints(maxWidth: 320.0),
+                                    child: Text(
+                                      FFLocalizations.of(context)
+                                          .getVariableText(
+                                        ruText:
+                                            'Ответ можно открыть по иконке глаза, но это не обязательно.',
+                                        enText:
+                                            'You can open the answer with the eye icon, but it is optional.',
+                                      ),
+                                      textAlign: TextAlign.center,
+                                      style: FlutterFlowTheme.of(context)
+                                          .bodyMedium
+                                          .override(
+                                            fontFamily: 'sf pro display',
+                                            color: secondaryTextColor,
+                                            fontSize: 15.0,
+                                            letterSpacing: 0.0,
+                                            fontWeight: FontWeight.normal,
+                                          ),
+                                    ),
                                   ),
-                                ],
-                              ],
-                            ),
                           ),
-                        ],
-                      ],
-                    )
-                  : const SizedBox.shrink(),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ],
         ),
@@ -519,35 +504,36 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
             textAlign: TextAlign.center,
             style: FlutterFlowTheme.of(context).bodyMedium.override(
                   fontFamily: 'sf pro display',
-                  color: FlutterFlowTheme.of(context).secondaryText,
+                  color: ExpatlioDesign.muted,
                   fontSize: 15.0,
                   letterSpacing: 0.0,
                   fontWeight: FontWeight.w500,
                 ),
           ),
         if (hasSynonyms) ...[
-          if (hasTranscription) const SizedBox(height: 12.0),
+          if (hasTranscription) const SizedBox(height: ExpatlioDesign.space12),
           Wrap(
-            spacing: 8.0,
-            runSpacing: 8.0,
+            spacing: ExpatlioDesign.space8,
+            runSpacing: ExpatlioDesign.space8,
             alignment: WrapAlignment.center,
             children: synonyms
                 .map(
                   (synonym) => Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 12.0,
-                      vertical: 8.0,
+                      horizontal: ExpatlioDesign.space12,
+                      vertical: ExpatlioDesign.space8,
                     ),
                     decoration: BoxDecoration(
-                      color: FlutterFlowTheme.of(context).secondaryBackground,
-                      borderRadius: BorderRadius.circular(18.0),
+                      color: ExpatlioDesign.background,
+                      borderRadius:
+                          BorderRadius.circular(ExpatlioDesign.radiusLarge),
                     ),
                     child: Text(
                       key: ValueKey<String>('sourceSynonym_${synonym.text}'),
                       synonym.text,
                       style: FlutterFlowTheme.of(context).bodyMedium.override(
                             fontFamily: 'sf pro display',
-                            color: FlutterFlowTheme.of(context).primaryText,
+                            color: ExpatlioDesign.text,
                             fontSize: 13.0,
                             letterSpacing: 0.0,
                             fontWeight: FontWeight.w500,
@@ -586,10 +572,10 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
             style: OutlinedButton.styleFrom(
               minimumSize: const Size.fromHeight(56.0),
               side: const BorderSide(
-                color: Color(0xFFFF3B30),
+                color: ExpatlioDesign.border,
               ),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(22.0),
+                borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
               ),
             ),
             child: Text(
@@ -597,17 +583,14 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
                 ruText: 'Не помню',
                 enText: 'I forgot',
               ),
-              style: FlutterFlowTheme.of(context).bodyMedium.override(
-                    fontFamily: 'sf pro display',
-                    color: const Color(0xFFFF3B30),
-                    fontSize: 16.0,
-                    letterSpacing: 0.0,
-                    fontWeight: FontWeight.w600,
-                  ),
+              style: ExpatlioDesign.buttonTextStyle(
+                context,
+                color: const Color(0xFFFF3B30),
+              ),
             ),
           ),
         ),
-        const SizedBox(width: 12.0),
+        const SizedBox(width: ExpatlioDesign.space12),
         Expanded(
           child: ElevatedButton(
             key: const Key('rememberButton'),
@@ -617,7 +600,7 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
               foregroundColor: Colors.white,
               minimumSize: const Size.fromHeight(56.0),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(22.0),
+                borderRadius: BorderRadius.circular(ExpatlioDesign.radiusLarge),
               ),
               elevation: 0.0,
             ),
@@ -635,13 +618,7 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
                       ruText: 'Помню',
                       enText: 'I remember',
                     ),
-                    style: FlutterFlowTheme.of(context).bodyMedium.override(
-                          fontFamily: 'sf pro display',
-                          color: Colors.white,
-                          fontSize: 16.0,
-                          letterSpacing: 0.0,
-                          fontWeight: FontWeight.w600,
-                        ),
+                    style: ExpatlioDesign.buttonTextStyle(context),
                   ),
           ),
         ),
@@ -656,13 +633,13 @@ class _FlashcardReviewWidgetState extends State<FlashcardReviewWidget> {
     switch (direction) {
       case FlashcardPromptDirection.ruToEn:
         return FFLocalizations.of(context).getVariableText(
-          ruText: 'Русский -> English',
-          enText: 'Russian -> English',
+          ruText: 'Русский → English',
+          enText: 'Russian → English',
         );
       case FlashcardPromptDirection.enToRu:
         return FFLocalizations.of(context).getVariableText(
-          ruText: 'English -> Русский',
-          enText: 'English -> Russian',
+          ruText: 'English → Русский',
+          enText: 'English → Russian',
         );
     }
   }

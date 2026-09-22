@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import '/shared_pages/design/expatlio_design.dart';
 
 class FlutterFlowIconButton extends StatefulWidget {
   const FlutterFlowIconButton({
@@ -87,7 +88,9 @@ class _FlutterFlowIconButtonState extends State<FlutterFlowIconButton> {
         (states) {
           if (states.contains(WidgetState.hovered)) {
             return RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(widget.borderRadius ?? 0),
+              borderRadius: BorderRadius.circular(
+                widget.borderRadius ?? ExpatlioDesign.radiusNone,
+              ),
               side: BorderSide(
                 color: widget.hoverBorderColor ??
                     widget.borderColor ??
@@ -99,13 +102,15 @@ class _FlutterFlowIconButtonState extends State<FlutterFlowIconButton> {
           if (states.contains(WidgetState.focused) &&
               widget.focusBorderSide != null) {
             return RoundedRectangleBorder(
-              borderRadius:
-                  widget.focusBorderRadius ?? BorderRadius.circular(8),
+              borderRadius: widget.focusBorderRadius ??
+                  BorderRadius.circular(ExpatlioDesign.radiusSmall),
               side: widget.focusBorderSide!,
             );
           }
           return RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(widget.borderRadius ?? 0),
+            borderRadius: BorderRadius.circular(
+              widget.borderRadius ?? ExpatlioDesign.radiusNone,
+            ),
             side: BorderSide(
               color: widget.borderColor ?? Colors.transparent,
               width: widget.borderWidth ?? 0,

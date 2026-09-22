@@ -1,6 +1,8 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const {FieldValue} = require("firebase-admin/firestore");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "teacher_verification_requests"});
 const {
   readTeacherAccreditationStatusValue,
 } = require("./video_sessions_shared");
@@ -29,18 +31,15 @@ exports.syncTeacherVerificationRequest = functions.firestore
     const requestData = change.after.data() || {};
     const status = normalizeRequestStatus(requestData);
     if (!status) {
-      console.warn("teacherVerificationRequests ignored unknown status", {
-        requestPath: change.after.ref.path,
-        status: requestData.status || null,
+      safeLog.warn("teacher_verification_status_ignored", {
+        userId: context.params.userId,
       });
       return null;
     }
 
     const userId = resolveRequestUserId(requestData, context.params.userId);
     if (!userId) {
-      console.warn("teacherVerificationRequests ignored missing userId", {
-        requestPath: change.after.ref.path,
-      });
+      safeLog.warn("teacher_verification_user_missing");
       return null;
     }
 

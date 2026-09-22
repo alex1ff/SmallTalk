@@ -1,40 +1,129 @@
-# Small Talk
+# SmallTalk
 
-A new Flutter project.
+Flutter/Firebase platform for live language practice. The app matches compatible speakers, supports video sessions and messaging, and extends the core call flow with events, translation, feedback, subscriptions, and trust controls. The runtime product name is **Expatlio**.
 
-## Getting Started
+## Engineering highlights
 
-FlutterFlow projects are built to run on the Flutter _stable_ release.
+- Flutter client with feature-level services and explicit Firebase boundaries;
+- callable Cloud Functions and Firestore/Storage rules for privileged state transitions;
+- server-owned matchmaking, call lifecycle, entitlement, and moderation decisions;
+- Daily-based video sessions, VoIP notifications, translation, and post-call feedback;
+- 1,972 Flutter tests plus focused backend lifecycle/event-contract tests.
 
-## Firebase Tooling
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for component ownership, trust boundaries, and the main call lifecycle.
 
-The repo's Functions code is pinned to `firebase-functions@7.x`. Local backend
-emulator checks should use a pinned `firebase-tools` version as well, because
-older global CLI builds can fail during emulator runtime boot even when the
-project code is correct.
+## Source ownership
 
-Install the local tooling once:
+The first application version originated in FlutterFlow. FlutterFlow export is now retired: this repository is the only source of truth and all files may be maintained normally.
 
-```bash
-npm ci
-```
+- `lib/flutter_flow/` and parts of the widget scaffold retain generated conventions.
+- Product services, Firebase integrations, custom media code, rules, Cloud Functions, and tests are actively maintained in Git.
+- Archived rollback copies are stored as text under `audit/snapshots/`, outside analyzed production source.
 
-Use:
+The project does not claim that generated code is hand-written. Quality is established by explicit boundaries, reviewable changes, static analysis, backend policy tests, and a reproducible local release gate.
 
-```bash
-npm run backend:checks
-```
+## Local setup
 
-This uses the repo-local `firebase-tools@15.14.0`, so the emulator path does
-not depend on a globally installed Firebase CLI or on a runtime `npx` download.
-If you need to override the Firebase project, set `FIREBASE_PROJECT` in the
-environment.
+Required versions:
 
-Custom email verification uses the `sendCustomEmailVerification` callable and
-requires a verified Resend sender before production use:
+- Flutter 3.35.3 / Dart 3.9.2;
+- Node.js 22 and npm;
 
 ```bash
-RESEND_API_KEY=re_...
-EMAIL_FROM=noreply@your-verified-domain.example
-EMAIL_REPLY_TO=support@your-verified-domain.example # optional
+flutter pub get
+flutter analyze
+flutter test
 ```
+
+The backend checks use repository-pinned dependencies:
+
+```bash
+npm ci --ignore-scripts
+npm ci --prefix firebase/custom_cloud_functions
+npm run backend:ci
+```
+
+`firebase/custom_cloud_functions` is the only maintained and configured
+Functions codebase. `backend:ci` validates every backend JavaScript file and
+runs the focused event/lifecycle contract suite without production access. The
+broader `npm run backend:checks` emulator harness remains available for
+environment, security-rule, and call/trial lifecycle transaction audits; it
+writes detailed evidence under `audit/` and is intentionally separate from the
+deterministic release gate.
+
+To verify the production source inventory without deploying anything, use an
+account with read access to the Firebase project:
+
+```bash
+npm --prefix firebase/custom_cloud_functions run inventory:backend-source
+```
+
+The command fails if a deployed function belongs to a codebase other than
+`custom_cloud_functions`.
+
+To update the sanitized, versioned production snapshot (IDs, regions,
+runtimes, hashes, service accounts and triggers; no environment values or
+logs), run:
+
+```bash
+npm --prefix firebase/custom_cloud_functions run inventory:backend-source:snapshot
+```
+
+## Project structure
+
+| Path | Responsibility |
+| --- | --- |
+| `lib/services/` | App-facing use cases and external-service adapters |
+| `lib/backend/` | Typed Firebase records, API requests, and storage helpers |
+| `lib/custom_code/` | Maintained media widgets and custom actions |
+| `lib/shared_pages/` | Shared chat, event, profile, review, and call surfaces |
+| `firebase/custom_cloud_functions/` | Matchmaking, call, event, payment, and moderation backend |
+| `firebase/*.rules` | Firestore and Storage authorization policy |
+| `test/` | Flutter unit, widget, contract, and regression tests |
+| `audit/` | Review evidence, backend harness, and non-production snapshots |
+
+## Runtime configuration
+
+Firebase platform files identify the application but do not contain server credentials. Production-only keys are supplied through runtime configuration or Firebase secrets.
+
+Custom email verification requires a verified Resend sender:
+
+```text
+RESEND_API_KEY
+EMAIL_FROM
+EMAIL_REPLY_TO  # optional
+```
+
+Other external integrations follow the same rule: identifiers may be versioned when safe; credentials never are.
+
+## Local quality gate
+
+Run the complete release check from a clean checkout:
+
+```bash
+./scripts/local_ci.sh
+```
+
+It installs locked Flutter and Node dependencies, audits runtime packages for high-severity advisories, runs static analysis, the complete Flutter suite, backend syntax validation, and the deterministic event/lifecycle contract tests. The command must pass before `main` is considered releasable.
+
+While GitHub Actions is unavailable, run this gate before committing, pushing,
+or deploying a checked change. It records `checks.log` and `result.json` under
+the Git metadata directory (`git rev-parse --git-path local-ci`), outside the
+versioned working tree. The report includes the commit, dirty file list,
+content fingerprint, timestamps and exit code. Logs stay local; inspect them
+before sharing. To follow progress, use `tail -f` on the printed checks log path.
+
+Success requires passing checks and unchanged source inputs during the run.
+If dependency resolution changes a lockfile, review it and rerun. Any later code
+change invalidates that evidence for release; record the final commit alongside
+the report when committing the checked content. The internal `--checks` argument
+only executes the check body and is not a recorded release gate.
+
+This is a local release procedure, not GitHub-enforced branch protection.
+Only a completed report with `status: passed` and `exitCode: 0` is evidence
+of success. A report left `running` after a forced process kill is incomplete;
+rerun the gate after ensuring the previous checks have stopped. Ignored local
+configuration and installed toolchains are outside the source fingerprint;
+changing either also requires a rerun.
+Keep the workflow for future recovery; device/sandbox QA follows development
+as the final step in [the current task list](tech_debt/NEXT_TASKS.md).

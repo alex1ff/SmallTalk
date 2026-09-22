@@ -4,11 +4,20 @@ const {
   createDailyRoom,
   createMeetingToken,
   DAILY_ROOM_CONFIG_VERSION,
+  deleteDailyRoom,
   getDailyRoom,
   getRoomNameFromUrl,
   isDailyRoomConfigCompatible,
 } = require("./daily_room");
-const { getRequesterId, isSessionParticipant } = require("./video_sessions_shared");
+const {
+  getCredentialTtlSeconds,
+  getRequesterId,
+  getSessionExpiryTtlSeconds,
+  isAcceptedSessionCredentialParticipant,
+  isCredentialSessionJoinable,
+} = require("./video_sessions_shared");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "get_session_tokens"});
 
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 const PRECREATED_ROOM_VALIDATION_WINDOW_MS = 60 * 1000;
@@ -31,7 +40,7 @@ exports.getSessionTokens = functions
     );
   }
 
-  const sessionDoc = await admin
+  let sessionDoc = await admin
     .firestore()
     .collection("videoSessions")
     .doc(sessionId)
@@ -41,18 +50,49 @@ exports.getSessionTokens = functions
     throw new functions.https.HttpsError("not-found", "Session not found");
   }
 
-  const sessionData = sessionDoc.data();
+  let sessionData = sessionDoc.data();
   const userId = context.auth.uid;
   const requesterId = getRequesterId(sessionData);
   const isStudent = requesterId === userId;
-  const isTutor = sessionData.tutorId === userId;
 
-  if (!isSessionParticipant(sessionData, userId)) {
+  if (!isAcceptedSessionCredentialParticipant(sessionData, userId)) {
     throw new functions.https.HttpsError(
       "permission-denied",
       "Not allowed to access this session",
     );
   }
+
+  if (!isCredentialSessionJoinable(sessionData)) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      `Session is not joinable (status: ${sessionData.status || "unknown"})`,
+    );
+  }
+
+  const readCredentialTtlSeconds = (currentSessionData = sessionData) => {
+    const credentialTtlSeconds =
+      getCredentialTtlSeconds(currentSessionData, 60 * 60);
+    if (credentialTtlSeconds < 1) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "Session credential window has expired",
+      );
+    }
+    return credentialTtlSeconds;
+  };
+  const readRoomTtlSeconds = (currentSessionData = sessionData) => {
+    const roomTtlSeconds = getSessionExpiryTtlSeconds(
+      currentSessionData,
+      15 * 60,
+    );
+    if (roomTtlSeconds < 1) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "Session room window has expired",
+      );
+    }
+    return roomTtlSeconds;
+  };
 
   let roomUrl = sessionData.dailyRoomUrl || null;
   if (!roomUrl) {
@@ -66,15 +106,12 @@ exports.getSessionTokens = functions
     sessionData.dailyRoomName || getRoomNameFromUrl(sessionData.dailyRoomUrl);
   const derivedName = getRoomNameFromUrl(roomUrl);
   if (derivedName && roomName !== derivedName) {
-    console.log("⚠️ Room name mismatch, using name from URL", {
-      roomName,
-      derivedName,
-    });
+    safeLog.warn("room_name_mismatch", {sessionId});
     roomName = derivedName;
     sessionDoc.ref.update({
       dailyRoomName: roomName,
     }).catch((e) => {
-      console.error("⚠️ Failed to update corrected room name:", e.message);
+      safeLog.error("room_name_update_failed", {sessionId, error: e});
     });
   }
   if (!roomName) {
@@ -94,37 +131,121 @@ exports.getSessionTokens = functions
     const existingRoom = await getDailyRoom(roomName);
     shouldCreateRoom = !existingRoom || !isDailyRoomConfigCompatible(existingRoom);
     if (shouldCreateRoom && existingRoom) {
-      console.warn("⚠️ Daily room uses legacy config, recreating room");
+      safeLog.warn("daily_room_recreate_required", {sessionId});
     }
   } else {
-    console.log(
-      "⚡ Skipping room validation - room is fresh/current (" +
-        roomAgeMs +
-        "ms old)",
-    );
+    safeLog.log("daily_room_validation_skipped", {sessionId});
   }
   if (shouldCreateRoom) {
+    let replacementRoomName = null;
+    const staleRoomName = roomName;
     const dailyRoom = await createDailyRoom({
       language: sessionData.language || "en",
       studentId: requesterId,
       tutorId: sessionData.tutorId,
       studentName: sessionData.studentInfo?.name || "Caller",
       tutorName: sessionData.tutorInfo?.name || "Partner",
-      expSeconds: 15 * 60,
+      expSeconds: readRoomTtlSeconds(),
     });
     roomUrl = dailyRoom.url;
     roomName = dailyRoom.name;
+    replacementRoomName = dailyRoom.name;
     const recoveredRoomCreatedAt = Date.now();
     try {
-      await sessionDoc.ref.update({
-        dailyRoomUrl: roomUrl,
-        dailyRoomName: roomName,
-        "sessionMetadata.roomCreatedAt": recoveredRoomCreatedAt,
-        "sessionMetadata.dailyRoomConfigVersion": DAILY_ROOM_CONFIG_VERSION,
+      const recoveryResult = await admin.firestore().runTransaction(async (transaction) => {
+        const freshSnap = await transaction.get(sessionDoc.ref);
+        if (!freshSnap.exists) {
+          throw new functions.https.HttpsError("not-found", "Session not found");
+        }
+
+        const freshData = freshSnap.data() || {};
+        if (!isAcceptedSessionCredentialParticipant(freshData, userId)) {
+          throw new functions.https.HttpsError(
+            "permission-denied",
+            "Not allowed to access this session",
+          );
+        }
+        if (!isCredentialSessionJoinable(freshData)) {
+          throw new functions.https.HttpsError(
+            "failed-precondition",
+            `Session is not joinable (status: ${freshData.status || "unknown"})`,
+          );
+        }
+
+        const freshRoomUrl = freshData.dailyRoomUrl || null;
+        const freshRoomName =
+          freshData.dailyRoomName || getRoomNameFromUrl(freshRoomUrl);
+        const freshHasCurrentReplacement =
+          freshRoomUrl &&
+          freshRoomName &&
+          freshRoomName !== staleRoomName &&
+          freshRoomName !== replacementRoomName &&
+          freshData.sessionMetadata?.dailyRoomConfigVersion ===
+            DAILY_ROOM_CONFIG_VERSION;
+        if (freshHasCurrentReplacement) {
+          roomUrl = freshRoomUrl;
+          roomName = freshRoomName;
+          sessionData = freshData;
+          return { usedExistingReplacement: true };
+        }
+
+        const recoveredRoomFields = {
+          dailyRoomUrl: roomUrl,
+          dailyRoomName: roomName,
+          "sessionMetadata.roomCreatedAt": recoveredRoomCreatedAt,
+          "sessionMetadata.dailyRoomConfigVersion": DAILY_ROOM_CONFIG_VERSION,
+        };
+        transaction.update(sessionDoc.ref, recoveredRoomFields);
+        sessionData = {
+          ...freshData,
+          dailyRoomUrl: roomUrl,
+          dailyRoomName: roomName,
+          sessionMetadata: {
+            ...(freshData.sessionMetadata || {}),
+            roomCreatedAt: recoveredRoomCreatedAt,
+            dailyRoomConfigVersion: DAILY_ROOM_CONFIG_VERSION,
+          },
+        };
+        return { usedExistingReplacement: false };
       });
+      if (recoveryResult.usedExistingReplacement && replacementRoomName) {
+        await deleteDailyRoom(replacementRoomName);
+      }
+      replacementRoomName = null;
     } catch (e) {
-      console.error("⚠️ Failed to update recovered room info:", e.message);
+      safeLog.error("recovered_room_update_failed", {sessionId, error: e});
+      if (replacementRoomName) {
+        await deleteDailyRoom(replacementRoomName);
+      }
+      throw e;
     }
+  }
+
+  sessionDoc = await sessionDoc.ref.get();
+  if (!sessionDoc.exists) {
+    throw new functions.https.HttpsError("not-found", "Session not found");
+  }
+  sessionData = sessionDoc.data() || {};
+  if (!isAcceptedSessionCredentialParticipant(sessionData, userId)) {
+    throw new functions.https.HttpsError(
+      "permission-denied",
+      "Not allowed to access this session",
+    );
+  }
+  if (!isCredentialSessionJoinable(sessionData)) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      `Session is not joinable (status: ${sessionData.status || "unknown"})`,
+    );
+  }
+
+  roomUrl = sessionData.dailyRoomUrl || roomUrl;
+  roomName = sessionData.dailyRoomName || getRoomNameFromUrl(roomUrl);
+  if (!roomUrl || !roomName) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "Room is not ready yet",
+    );
   }
 
   let userName = isStudent
@@ -140,9 +261,10 @@ exports.getSessionTokens = functions
 
   userName = userName || (isStudent ? "Student" : "Tutor");
 
+  const credentialTtlSeconds = readCredentialTtlSeconds();
   const meetingToken = await createMeetingToken({
     roomName,
-    expSeconds: 60 * 60,
+    expSeconds: credentialTtlSeconds,
     isOwner: isStudent,
     userId,
     userName,

@@ -1,6 +1,8 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const axios = require("axios");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "create_payment_session"});
 
 const INIT_PAYMENT_URL =
   process.env.INIT_PAYMENT_URL ||
@@ -80,7 +82,7 @@ function buildErrorDetails({
 }
 
 exports.createPaymentSession = functions.https.onCall(async (data, context) => {
-  console.log("💳 createPaymentSession started");
+  safeLog.log("payment_session_started");
 
   if (!context.auth) {
     throw new functions.https.HttpsError(
@@ -184,7 +186,7 @@ exports.createPaymentSession = functions.https.onCall(async (data, context) => {
       paymentId: paymentId,
     });
 
-    console.log("💳 createPaymentSession succeeded", {
+    safeLog.log("payment_session_created", {
       uid,
       packageId,
       transactionId: transactionRef.id,
@@ -200,11 +202,12 @@ exports.createPaymentSession = functions.https.onCall(async (data, context) => {
   } catch (error) {
     const providerError = buildProviderErrorInfo(error);
 
-    console.error("❌ createPaymentSession failed", {
+    safeLog.error("payment_session_failed", {
       uid,
       packageId,
       transactionId: transactionRef.id,
-      error: providerError.responseData || error?.message || error,
+      providerCode: providerError.providerCode,
+      error,
     });
 
     await transactionRef.set({
@@ -215,7 +218,7 @@ exports.createPaymentSession = functions.https.onCall(async (data, context) => {
         providerError.providerMessage || "Unable to create payment session",
       paymentInitFailedAt: admin.firestore.FieldValue.serverTimestamp(),
     }).catch((updateError) => {
-      console.error("❌ Failed to mark transaction as failed", updateError);
+      safeLog.error("payment_failure_persist_failed", {error: updateError});
     });
 
     if (error instanceof functions.https.HttpsError) {

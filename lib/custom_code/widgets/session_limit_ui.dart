@@ -1,3 +1,69 @@
+Duration? resolveServerClockOffset({
+  required Object? serverNowMillis,
+  required DateTime requestStartedAt,
+  required Duration roundTripDuration,
+}) {
+  final parsedServerNowMillis = _readPositiveInt(serverNowMillis, 0);
+  if (parsedServerNowMillis == 0 || roundTripDuration.isNegative) {
+    return null;
+  }
+
+  final requestMidpoint = requestStartedAt.add(
+    Duration(microseconds: roundTripDuration.inMicroseconds ~/ 2),
+  );
+  final serverNow = DateTime.fromMillisecondsSinceEpoch(
+    parsedServerNowMillis,
+    isUtc: true,
+  );
+  return serverNow.difference(requestMidpoint);
+}
+
+DateTime resolveServerAlignedNow(
+  Duration? serverClockOffset, {
+  DateTime? deviceNow,
+}) {
+  return (deviceNow ?? DateTime.now()).add(
+    serverClockOffset ?? Duration.zero,
+  );
+}
+
+DateTime resolveSessionLimitNow({
+  required String? sessionStatus,
+  required Duration? serverClockOffset,
+  required DateTime? expiresAt,
+  required Map<String, dynamic>? sessionPolicy,
+  required int elapsedSeconds,
+  DateTime? deviceNow,
+}) {
+  final currentDeviceTime = deviceNow ?? DateTime.now();
+  final normalizedStatus = (sessionStatus ?? '').trim().toLowerCase();
+  if (normalizedStatus == 'active') {
+    return resolveServerAlignedNow(
+      serverClockOffset,
+      deviceNow: currentDeviceTime,
+    );
+  }
+  if (expiresAt == null) {
+    return currentDeviceTime;
+  }
+
+  final effectiveLimitSeconds = resolveSessionPolicyEffectiveLimitSeconds(
+    sessionPolicy,
+  );
+  final safeElapsedSeconds = elapsedSeconds < 0 ? 0 : elapsedSeconds;
+  final remainingSeconds = effectiveLimitSeconds - safeElapsedSeconds;
+  return expiresAt.subtract(
+    Duration(seconds: remainingSeconds < 0 ? 0 : remainingSeconds),
+  );
+}
+
+String formatCallTimerDuration(int totalSeconds) {
+  final safeSeconds = totalSeconds < 0 ? 0 : totalSeconds;
+  final minutes = safeSeconds ~/ 60;
+  final seconds = safeSeconds % 60;
+  return '$minutes:${seconds.toString().padLeft(2, '0')}';
+}
+
 int resolveSessionLimitRemainingSeconds(
   DateTime? expiresAt, {
   DateTime? now,
@@ -10,6 +76,83 @@ int resolveSessionLimitRemainingSeconds(
   return remaining < 0 ? 0 : remaining;
 }
 
+int resolveSessionLimitDisplaySeconds({
+  required DateTime? expiresAt,
+  required Map<String, dynamic>? sessionPolicy,
+  required int elapsedSeconds,
+  required bool useProvisionalCountdown,
+  DateTime? now,
+}) {
+  final effectiveLimitSeconds = resolveSessionPolicyEffectiveLimitSeconds(
+    sessionPolicy,
+  );
+  final safeElapsedSeconds = elapsedSeconds < 0 ? 0 : elapsedSeconds;
+  final elapsedRemainingSeconds = effectiveLimitSeconds - safeElapsedSeconds;
+  final safeElapsedRemaining =
+      elapsedRemainingSeconds < 0 ? 0 : elapsedRemainingSeconds;
+  if (expiresAt == null) {
+    return useProvisionalCountdown ? safeElapsedRemaining : 0;
+  }
+
+  final deadlineRemaining = resolveSessionLimitRemainingSeconds(
+    expiresAt,
+    now: now,
+  );
+  return deadlineRemaining < safeElapsedRemaining
+      ? deadlineRemaining
+      : safeElapsedRemaining;
+}
+
+bool shouldUseSessionLimitCountdown({
+  required String? sessionStatus,
+  required DateTime? expiresAt,
+  required Map<String, dynamic>? sessionPolicy,
+}) {
+  final normalizedStatus = (sessionStatus ?? '').trim().toLowerCase();
+  if (normalizedStatus != 'connecting' && normalizedStatus != 'active') {
+    return false;
+  }
+  return expiresAt != null && sessionPolicy != null && sessionPolicy.isNotEmpty;
+}
+
+bool shouldRunCallDurationTimer({
+  required String? sessionStatus,
+  required bool isDailyConnected,
+  required bool hasRemoteParticipant,
+  required bool hasServerConnectedAt,
+}) {
+  return (sessionStatus ?? '').trim().toLowerCase() == 'active' &&
+      isDailyConnected &&
+      hasRemoteParticipant &&
+      hasServerConnectedAt;
+}
+
+int resolveAuthoritativeCallDurationSeconds({
+  required DateTime? serverConnectedAt,
+  required DateTime serverAlignedNow,
+}) {
+  if (serverConnectedAt == null) {
+    return 0;
+  }
+  final elapsed = serverAlignedNow.difference(serverConnectedAt).inSeconds;
+  return elapsed < 0 ? 0 : elapsed;
+}
+
+bool shouldUseProvisionalSessionLimitCountdown({
+  required bool hasJoinCredentials,
+  required bool hasAuthoritativeCountdown,
+  required String? sessionStatus,
+}) {
+  if (!hasJoinCredentials || hasAuthoritativeCountdown) {
+    return false;
+  }
+  final normalizedStatus = (sessionStatus ?? '').trim().toLowerCase();
+  return normalizedStatus.isEmpty ||
+      normalizedStatus == 'searching' ||
+      normalizedStatus == 'pending_confirmation' ||
+      normalizedStatus == 'connecting';
+}
+
 int _readPositiveInt(
   dynamic value,
   int fallback,
@@ -19,6 +162,16 @@ int _readPositiveInt(
     return fallback;
   }
   return number;
+}
+
+int resolveSessionPolicyEffectiveLimitSeconds(
+  Map<String, dynamic>? sessionPolicy, {
+  int fallback = 300,
+}) {
+  return _readPositiveInt(
+    sessionPolicy?['effectiveLimitSeconds'],
+    fallback,
+  );
 }
 
 Map<String, bool> readSessionExtensionRequests(

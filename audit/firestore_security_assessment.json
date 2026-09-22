@@ -1,0 +1,47 @@
+{
+  "score": 4,
+  "summary": "Deny-by-default, custom-claim authority and participant/owner checks are strong. Confirmed MapDiff addition/removal bypasses and the replayable client promo counter update are fixed and covered. Legacy schema breadth and the recursive support-admin read fallback retain minor hardening gaps.",
+  "findings": [
+    {
+      "check": "Update bypass and field-level security",
+      "severity": "minor",
+      "issue": "Conversation read-marker and promo update validators previously used changedKeys(), which ignored additions and removals. Emulator reproductions confirmed the bypasses.",
+      "recommendation": "Completed locally: affectedKeys() now guards both document and nested-map diffs, with deny regressions."
+    },
+    {
+      "check": "Storage abuse and strict schema",
+      "severity": "minor",
+      "issue": "Several legacy self-owned user/review/learning-data writes do not apply one complete schema validator with size limits to every field.",
+      "recommendation": "Harden one domain at a time with emulator characterization; do not introduce a broad schema rewrite in this maintenance slice."
+    },
+    {
+      "check": "Admin fallback",
+      "severity": "minor",
+      "issue": "The recursive custom-claim admin read fallback exposes new unmatched operational roots to support admins unless they are added to the protected list.",
+      "recommendation": "The manifest and regression test make the behavior explicit. Review every new root and prefer explicit admin reads for sensitive domains."
+    }
+  ],
+  "attack_attempts": [
+    {"id": 1, "attack": "Public list exploit", "outcome": "Private collections reject unauthenticated scans. packages and avatars are documented public exceptions; events_public requires authentication and active status."},
+    {"id": 2, "attack": "Unauthorized read/write", "outcome": "Dedicated suites deny cross-user access for users, sessions, trial, transactions, conversations, events and provider internals."},
+    {"id": 3, "attack": "Update bypass", "outcome": "Emulator reproduced conversation and promo field addition/removal bypasses; affectedKeys() fixes and deny regressions now pass."},
+    {"id": 4, "attack": "Ownership hijacking on create", "outcome": "Client-creatable user, review, message and teacher-request paths bind identity to auth UID/path/ref. Server-only domains deny client create."},
+    {"id": 5, "attack": "Ownership hijacking on update", "outcome": "Authority fields are immutable or server-owned in validated domains; conversation marker updates now affect only the caller key."},
+    {"id": 6, "attack": "Immutable field modification", "outcome": "Event, teacher-request, caption and conversation validators protect immutable fields. Some legacy owner-only documents have no explicit schema; see finding."},
+    {"id": 7, "attack": "Type juggling", "outcome": "Sensitive event, caption, teacher-request and navigation writes have type checks. Legacy self-owned learning data remains only identity-scoped."},
+    {"id": 8, "attack": "Create/update validation mismatch", "outcome": "Client create is denied for most lifecycle domains. Conversation/promo MapDiff mismatch is fixed; legacy owner schemas remain a follow-up."},
+    {"id": 9, "attack": "Resource exhaustion", "outcome": "Captions, event text, event chat and teacher evidence are bounded. Several legacy user/review/learning fields lack complete size limits."},
+    {"id": 10, "attack": "Required field omission", "outcome": "Strict validators enforce required fields in event, caption, chat and teacher-request creates. Legacy owner-only collections are not fully validated."},
+    {"id": 11, "attack": "Privilege escalation", "outcome": "Admin authority comes only from Firebase Auth custom claims; user documents cannot assign admin. Teacher and server-owned fields have deny regressions."},
+    {"id": 12, "attack": "Schema pollution", "outcome": "Strict domains use hasOnly/hasAll and the confirmed MapDiff bypass is fixed. Legacy user/review/learning documents remain a bounded follow-up."},
+    {"id": 13, "attack": "Invalid state transition", "outcome": "Call, trial, billing, membership and moderation lifecycle writes are server-only. Direct event edit remains active-to-active."},
+    {"id": 14, "attack": "Path traversal/scoping", "outcome": "Teacher proof paths are scoped to users/<auth uid>/teacherVerification/proofs/<file>. Identity refs in chat/reviews are exact."},
+    {"id": 15, "attack": "Timestamp manipulation", "outcome": "Client-created chat/caption/teacher data and direct event edits use request.time or immutable timestamps where state depends on them."},
+    {"id": 16, "attack": "Negative value/overflow", "outcome": "Event capacity, rating and caption confidence/utterance values are range-checked. Legacy owner numeric fields remain schema candidates."},
+    {"id": 17, "attack": "Mixed-content leak", "outcome": "users reads are owner/admin scoped; userPublicProfiles is a separate signed-in projection. Tests reject cross-user private reads."},
+    {"id": 18, "attack": "Counter/action replay", "outcome": "Direct client promo writes are denied; the callable transaction creates the per-user redemption and increments usageCount through Admin SDK."},
+    {"id": 19, "attack": "Orphaned subcollection access", "outcome": "Conversation messages and event participant/chat reads validate parent state. Owner-scoped users subcollections cannot cross UID boundaries."},
+    {"id": 20, "attack": "Query mismatch", "outcome": "Suites cover users uid, participantMap inbox, active events/participants and bounded chat queries. Dart verifies event indexes; emulator does not prove deployment."},
+    {"id": 21, "attack": "Validator-pattern check", "outcome": "Sensitive updates call domain validators or are server-only. Some owner-only learning/review writes lack complete schema validators."}
+  ]
+}

@@ -1,8 +1,9 @@
-import '/flutter_flow/flutter_flow_icon_button.dart';
+import '/components/button/button_widget.dart';
+import '/components/onboarding_card.dart';
 import '/flutter_flow/flutter_flow_swipeable_stack.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
-import '/custom_code/widgets/index.dart' as custom_widgets;
+import '/shared_pages/design/expatlio_design.dart';
 import '/index.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_card_swiper/flutter_card_swiper.dart';
@@ -47,219 +48,179 @@ class _OnboardingWidgetState extends State<OnboardingWidget> {
       },
       child: Scaffold(
         key: scaffoldKey,
-        backgroundColor: FlutterFlowTheme.of(context).secondaryBackground,
-        body: Padding(
-          padding: EdgeInsetsDirectional.fromSTEB(6, 55, 6, 35),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: double.infinity,
-                height: 70,
-                decoration: BoxDecoration(
-                  color: FlutterFlowTheme.of(context).primaryBackground,
-                  borderRadius: BorderRadius.circular(100),
-                ),
-                child: Padding(
-                  padding: EdgeInsets.all(2),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.max,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Container(
-                        width: 66,
-                        height: 66,
-                        decoration: BoxDecoration(
-                          color: Color(0xFFE88CD4),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Align(
-                          alignment: AlignmentDirectional(0, 0),
-                          child: Padding(
-                            padding:
-                                EdgeInsetsDirectional.fromSTEB(10, 8, 10, 2),
-                            child: Image.asset(
-                              'assets/images/logo.png',
-                              width: double.infinity,
-                              height: double.infinity,
-                              fit: BoxFit.contain,
-                              alignment: Alignment(0, -0.2),
-                            ),
-                          ),
-                        ),
-                      ),
-                      InkWell(
-                        splashColor: Colors.transparent,
-                        focusColor: Colors.transparent,
-                        hoverColor: Colors.transparent,
-                        highlightColor: Colors.transparent,
-                        onTap: () async {
-                          context.pushNamed(LoginWidget.routeName);
-                        },
-                        child: Row(
-                          mainAxisSize: MainAxisSize.max,
-                          children: [
-                            Padding(
-                              padding:
-                                  EdgeInsetsDirectional.fromSTEB(12, 0, 12, 0),
-                              child: Text(
-                                FFLocalizations.of(context).getText(
-                                  'on7eoqhl' /* Пропустить */,
-                                ),
-                                style: FlutterFlowTheme.of(context)
-                                    .bodyMedium
-                                    .override(
-                                      fontFamily: 'sf pro display',
-                                      color: FlutterFlowTheme.of(context)
-                                          .secondaryText,
-                                      letterSpacing: 0.0,
-                                    ),
-                              ),
-                            ),
-                            Container(
-                              width: 66,
-                              height: 66,
-                              decoration: BoxDecoration(
-                                color: FlutterFlowTheme.of(context)
-                                    .secondaryBackground,
-                                shape: BoxShape.circle,
-                              ),
-                              child: Align(
-                                alignment: AlignmentDirectional(0, 0),
-                                child: Icon(
-                                  Icons.close_rounded,
-                                  color:
-                                      FlutterFlowTheme.of(context).primaryText,
-                                  size: 20,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+        backgroundColor: ExpatlioDesign.background,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsetsDirectional.fromSTEB(
+              ExpatlioDesign.pagePadding,
+              ExpatlioDesign.compactSpacing,
+              ExpatlioDesign.pagePadding,
+              ExpatlioDesign.pagePaddingLarge,
+            ),
+            child: Column(
+              children: [
+                Container(
+                  width: double.infinity,
+                  height: 64.0,
+                  decoration: ExpatlioDesign.cardDecoration(
+                    radius: ExpatlioDesign.cardRadius,
                   ),
-                ),
-              ),
-              Expanded(
-                child: FlutterFlowSwipeableStack(
-                  onSwipeFn: (swipeableStackIndex) async {
-                    if (_model.index <= 2) {
-                      _model.index = _model.index + 1;
-                      safeSetState(() {});
-                    } else {
-                      await Future.delayed(
-                        Duration(
-                          milliseconds: 500,
-                        ),
-                      );
-
-                      context.pushNamed(LoginWidget.routeName);
-                    }
-                  },
-                  onLeftSwipe: (swipeableStackIndex) {},
-                  onRightSwipe: (swipeableStackIndex) {},
-                  onUpSwipe: (swipeableStackIndex) {},
-                  onDownSwipe: (swipeableStackIndex) {},
-                  itemBuilder: (context, index) {
-                    return [
-                      () => Container(
-                            width: double.infinity,
-                            height: double.infinity,
-                            decoration: BoxDecoration(
-                              image: DecorationImage(
-                                fit: BoxFit.cover,
-                                image: Image.asset(
-                                  'assets/images/group_1171275328.webp',
-                                ).image,
+                  child: Padding(
+                    padding: const EdgeInsets.all(ExpatlioDesign.space4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.max,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Container(
+                          width: 56.0,
+                          height: 56.0,
+                          decoration: BoxDecoration(
+                            color:
+                                ExpatlioDesign.primary.withValues(alpha: 0.10),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Align(
+                            alignment: AlignmentDirectional(0, 0),
+                            child: Padding(
+                              padding: const EdgeInsetsDirectional.fromSTEB(
+                                ExpatlioDesign.space12,
+                                ExpatlioDesign.space8,
+                                ExpatlioDesign.space12,
+                                ExpatlioDesign.space4,
                               ),
-                              borderRadius: BorderRadius.circular(20),
+                              child: Image.asset(
+                                'assets/images/logo.png',
+                                width: double.infinity,
+                                height: double.infinity,
+                                cacheWidth: 984,
+                                fit: BoxFit.contain,
+                                alignment: Alignment(0, -0.2),
+                              ),
                             ),
                           ),
-                      () => Container(
-                            width: double.infinity,
-                            height: double.infinity,
-                            decoration: BoxDecoration(
-                              image: DecorationImage(
-                                fit: BoxFit.cover,
-                                image: Image.asset(
-                                  'assets/images/frame_1321318905.webp',
-                                ).image,
-                              ),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                          ),
-                      () => Container(
-                            width: double.infinity,
-                            height: double.infinity,
-                            decoration: BoxDecoration(
-                              image: DecorationImage(
-                                fit: BoxFit.cover,
-                                image: Image.asset(
-                                  'assets/images/frame_1321318906.webp',
-                                ).image,
-                              ),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                          ),
-                    ][index]();
-                  },
-                  itemCount: 3,
-                  controller: _model.swipeableStackController,
-                  loop: false,
-                  cardDisplayCount: 3,
-                  scale: 0.88,
-                  cardPadding: EdgeInsetsDirectional.fromSTEB(0, 5, 0, 50),
-                  backCardOffset: const Offset(0.0, 45),
-                  allowedSwipeDirection:
-                      AllowedSwipeDirection.symmetric(horizontal: true),
-                ),
-              ),
-              Container(
-                height: 60,
-                decoration: BoxDecoration(
-                  color: Colors.black,
-                  borderRadius: BorderRadius.circular(100),
-                ),
-                child: Padding(
-                  padding: EdgeInsets.all(2),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 56,
-                        height: 56,
-                        child: custom_widgets.ProggresBar(
-                          width: 56,
-                          height: 56,
-                          currentStep: _model.index,
-                          totalSteps: 3,
                         ),
-                      ),
-                      FlutterFlowIconButton(
-                        borderRadius: 60,
-                        buttonSize: 56,
-                        fillColor:
-                            FlutterFlowTheme.of(context).primaryBackground,
-                        icon: Icon(
-                          FFIcons.karrowRight,
-                          color: FlutterFlowTheme.of(context).primaryText,
-                          size: 24,
-                        ),
-                        onPressed: () async {
-                          if (_model.index <= 2) {
-                            _model.swipeableStackController.swipeLeft();
-                          } else {
+                        InkWell(
+                          splashColor: Colors.transparent,
+                          focusColor: Colors.transparent,
+                          hoverColor: Colors.transparent,
+                          highlightColor: Colors.transparent,
+                          onTap: () async {
                             context.pushNamed(LoginWidget.routeName);
-                          }
-                        },
-                      ),
-                    ].divide(SizedBox(width: 2)),
+                          },
+                          child: Row(
+                            mainAxisSize: MainAxisSize.max,
+                            children: [
+                              Padding(
+                                padding: EdgeInsetsDirectional.fromSTEB(
+                                    ExpatlioDesign.space12,
+                                    ExpatlioDesign.space0,
+                                    ExpatlioDesign.space12,
+                                    ExpatlioDesign.space0),
+                                child: Text(
+                                  FFLocalizations.of(context).getText(
+                                    'on7eoqhl' /* Пропустить */,
+                                  ),
+                                  style: FlutterFlowTheme.of(context)
+                                      .bodyMedium
+                                      .override(
+                                        fontFamily: 'sf pro display',
+                                        color: FlutterFlowTheme.of(context)
+                                            .secondaryText,
+                                        fontSize: 15.0,
+                                        letterSpacing: 0.0,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                ),
+                              ),
+                              Container(
+                                width: 56.0,
+                                height: 56.0,
+                                decoration: BoxDecoration(
+                                  color: ExpatlioDesign.mutedSurface,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Align(
+                                  alignment: AlignmentDirectional(0, 0),
+                                  child: Icon(
+                                    Icons.close_rounded,
+                                    color: FlutterFlowTheme.of(context)
+                                        .primaryText,
+                                    size: 20,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: ExpatlioDesign.sectionSpacing),
+                Expanded(
+                  child: FlutterFlowSwipeableStack(
+                    onSwipeFn: (swipeableStackIndex) async {
+                      if (_model.index <= 2) {
+                        _model.index = _model.index + 1;
+                        safeSetState(() {});
+                      } else {
+                        await Future.delayed(
+                          const Duration(milliseconds: 500),
+                        );
+
+                        context.pushNamed(LoginWidget.routeName);
+                      }
+                    },
+                    onLeftSwipe: (swipeableStackIndex) {},
+                    onRightSwipe: (swipeableStackIndex) {},
+                    onUpSwipe: (swipeableStackIndex) {},
+                    onDownSwipe: (swipeableStackIndex) {},
+                    itemBuilder: (context, index) {
+                      return [
+                        () => OnboardingCard(
+                              assetPath:
+                                  'assets/images/onboarding_start_search.jpeg',
+                            ),
+                        () => OnboardingCard(
+                              assetPath:
+                                  'assets/images/onboarding_free_small_talk.jpeg',
+                            ),
+                        () => OnboardingCard(
+                              assetPath:
+                                  'assets/images/onboarding_translated_subtitles.jpeg',
+                            ),
+                      ][index]();
+                    },
+                    itemCount: 3,
+                    controller: _model.swipeableStackController,
+                    loop: false,
+                    cardDisplayCount: 1,
+                    scale: 1.0,
+                    cardPadding: const EdgeInsetsDirectional.only(
+                        bottom: ExpatlioDesign.space20),
+                    backCardOffset: Offset.zero,
+                    allowedSwipeDirection:
+                        AllowedSwipeDirection.symmetric(horizontal: true),
+                  ),
+                ),
+                SizedBox(
+                  width: double.infinity,
+                  child: ButtonWidget(
+                    text: FFLocalizations.of(context).getVariableText(
+                      ruText: 'Далее',
+                      enText: 'Next',
+                    ),
+                    action: () async {
+                      if (_model.index <= 2) {
+                        _model.swipeableStackController.swipeLeft();
+                      } else {
+                        context.pushNamed(LoginWidget.routeName);
+                      }
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

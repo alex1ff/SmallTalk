@@ -50,10 +50,15 @@ class PromoCodesRecord extends FirestoreRecord {
   List<PromoUsedByStruct> get usedBy => _usedBy ?? const [];
   bool hasUsedBy() => _usedBy != null;
 
-  // "value_samll_talk" field.
-  int? _valueSamllTalk;
-  int get valueSamllTalk => _valueSamllTalk ?? 0;
-  bool hasValueSamllTalk() => _valueSamllTalk != null;
+  // "minutesGifted" field.
+  int? _minutesGifted;
+  int get minutesGifted => _minutesGifted ?? 0;
+  bool hasMinutesGifted() => _minutesGifted != null;
+
+  // "validForDays" field.
+  int? _validForDays;
+  int get validForDays => _validForDays ?? 0;
+  bool hasValidForDays() => _validForDays != null;
 
   void _initializeFields() {
     _code = snapshotData['code'] as String?;
@@ -66,7 +71,8 @@ class PromoCodesRecord extends FirestoreRecord {
       snapshotData['usedBy'],
       PromoUsedByStruct.fromMap,
     );
-    _valueSamllTalk = castToType<int>(snapshotData['value_samll_talk']);
+    _minutesGifted = castToType<int>(snapshotData['minutesGifted']);
+    _validForDays = castToType<int>(snapshotData['validForDays']);
   }
 
   static CollectionReference get collection =>
@@ -110,7 +116,8 @@ Map<String, dynamic> createPromoCodesRecordData({
   DateTime? createdAt,
   bool? isActive,
   DateTime? expiredDate,
-  int? valueSamllTalk,
+  int? minutesGifted,
+  int? validForDays,
 }) {
   final firestoreData = mapToFirestore(
     <String, dynamic>{
@@ -120,7 +127,8 @@ Map<String, dynamic> createPromoCodesRecordData({
       'createdAt': createdAt,
       'isActive': isActive,
       'expiredDate': expiredDate,
-      'value_samll_talk': valueSamllTalk,
+      'minutesGifted': minutesGifted,
+      'validForDays': validForDays,
     }.withoutNulls,
   );
 
@@ -140,7 +148,8 @@ class PromoCodesRecordDocumentEquality implements Equality<PromoCodesRecord> {
         e1?.isActive == e2?.isActive &&
         e1?.expiredDate == e2?.expiredDate &&
         listEquality.equals(e1?.usedBy, e2?.usedBy) &&
-        e1?.valueSamllTalk == e2?.valueSamllTalk;
+        e1?.minutesGifted == e2?.minutesGifted &&
+        e1?.validForDays == e2?.validForDays;
   }
 
   @override
@@ -152,7 +161,8 @@ class PromoCodesRecordDocumentEquality implements Equality<PromoCodesRecord> {
         e?.isActive,
         e?.expiredDate,
         e?.usedBy,
-        e?.valueSamllTalk
+        e?.minutesGifted,
+        e?.validForDays
       ]);
 
   @override

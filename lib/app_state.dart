@@ -23,8 +23,11 @@ class FFAppState extends ChangeNotifier {
   static const _pendingSocialAuthContextKey = 'ff_pendingSocialAuthContext';
 
   Future initializePersistedState() async {
-    prefs = await SharedPreferences.getInstance();
-    await _loadDefaultLanguagesFromAsset();
+    final preferencesFuture = SharedPreferences.getInstance();
+    final languagesCatalogFuture = _loadDefaultLanguagesFromAsset();
+
+    prefs = await preferencesFuture;
+    await languagesCatalogFuture;
     _safeInit(() {
       _languagesList = prefs
               .getStringList('ff_languagesList')

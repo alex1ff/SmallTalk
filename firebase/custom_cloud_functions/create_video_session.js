@@ -2,7 +2,12 @@ const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const { sendApnsVoip } = require("./apns_voip");
 const {
+  getReadOnlyUserVoipTokenState,
+  getUserVoipTokens,
+} = require("./voip_tokens");
+const {
   createDailyRoom,
+  deleteDailyRoom,
   DAILY_ROOM_CONFIG_VERSION,
 } = require("./daily_room");
 const { evaluateTutorAvailabilityWindow } = require("./availability");
@@ -21,6 +26,7 @@ const {
   readMatchPriorityScore,
   resolveActiveConversationLanguage,
   supportsConversationLanguage,
+  VIDEO_SESSION_STATUS,
 } = require("./video_sessions_shared");
 const {
   buildCandidateRoleCounts,
@@ -31,11 +37,43 @@ const {
   loadSameDayRepeatCandidateIds,
   loadSameDayRepeatCandidateIdsForTransaction,
 } = require("./match_repeat_prevention");
+const {
+  buildTeacherIncomingCallApnsPayload,
+  buildTeacherIncomingCallFcmMessage,
+  createIncomingCallNotificationInTransaction,
+} = require("./call_notifications");
+const {
+  findNextCallableCandidateInTransaction,
+} = require("./call_candidate_tokens");
+const {
+  buildStudentCallAccessDecision,
+  hasActiveCallState,
+} = require("./call_access");
+const {
+  reconcileSessionTrialCallsInTransaction,
+  trialAccessRef,
+} = require("./trial_access");
+const {
+  isActiveStudentSearchRequest,
+} = require("./match_candidate_pool");
+const {
+  hasActiveAcceptLockForResponder,
+} = require("./accept_lock_policy");
+const {
+  reserveDirectPairInTransaction,
+  reserveMatchPairInTransaction,
+} = require("./match_pair_lock");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "create_video_session"});
 
 const apnsSecrets = ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID"];
 const dailySecrets = ["DAILY_API_KEY", "DAILY_DOMAIN"];
 const STUDENT_REVIEW_FLAG_FIELD = "studentHasReviewed";
 const TUTOR_REVIEW_FLAG_FIELD = "tutorHasReviewed";
+const PENDING_RESPONSE_SESSION_STATUSES = new Set([
+  VIDEO_SESSION_STATUS.SEARCHING,
+  VIDEO_SESSION_STATUS.PENDING_CONFIRMATION,
+]);
 const matchDebugSampleRateRaw = Number.parseFloat(
   process.env.MATCH_DEBUG_SAMPLE_RATE || "0.1",
 );
@@ -51,9 +89,6 @@ const CANDIDATE_QUERY_BUILDERS = [
       .collection("users")
       .where("language_instruction_NS.code", "==", languageCode),
 ];
-const HIGH_LEVEL_TEACHER_PRIORITY_GROUP_SIZE = 5;
-const HIGH_LEVEL_TEACHER_PRIORITY_TEACHER_SLOTS = 4;
-
 function buildCreateSessionPolicyFields(nowMillis = Date.now()) {
   const sessionPolicyState = buildInitialSessionPolicyState(nowMillis);
   return {
@@ -61,6 +96,16 @@ function buildCreateSessionPolicyFields(nowMillis = Date.now()) {
       sessionPolicyState.expiresAt,
     ),
     sessionPolicy: sessionPolicyState.sessionPolicy,
+  };
+}
+
+function buildNoAvailableResponderSessionUpdate(nextTriedTutors) {
+  return {
+    triedTutors: nextTriedTutors,
+    status: VIDEO_SESSION_STATUS.CANCELLED,
+    endedAt: admin.firestore.FieldValue.serverTimestamp(),
+    cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+    cancelReason: "no_available_responder",
   };
 }
 
@@ -73,71 +118,28 @@ function isAvailableAfterInFuture(userData = {}, now = new Date()) {
   return availableAfter.toDate() > now;
 }
 
-function isTeacherBoostTargetLevel(level) {
-  return readLevelValue(level).toLowerCase() === "fluent";
-}
-
-function getTeacherBoostScore(tutorProfile = {}, teacherBoostRankingApplied) {
-  return teacherBoostRankingApplied && tutorProfile.approvedTeacher ? 1 : 0;
-}
-
-function orderCandidatesWithTeacherPriority(
+function orderCandidatesByMatchQuality(
   candidateIds = [],
   detailsById = {},
-  teacherPriorityApplied = false,
 ) {
-  const sortedCandidateIds = [...candidateIds].sort((a, b) =>
+  return [...candidateIds].sort((a, b) =>
     compareCandidateDetails(a, b, detailsById));
-  if (!teacherPriorityApplied) {
-    return sortedCandidateIds;
+}
+
+async function hasCallableTeacherToken(
+  userId,
+  userData = {},
+  db = admin.firestore(),
+) {
+  if (normalizeRole(userData.role) !== "native_speaker") {
+    return true;
   }
-
-  const approvedTeachers = sortedCandidateIds.filter(
-    (id) => detailsById[id]?.approvedTeacher === true,
-  );
-  const otherCandidates = sortedCandidateIds.filter(
-    (id) => detailsById[id]?.approvedTeacher !== true,
-  );
-  if (approvedTeachers.length === 0 || otherCandidates.length === 0) {
-    return sortedCandidateIds;
-  }
-
-  const ordered = [];
-  let teacherIndex = 0;
-  let otherIndex = 0;
-  while (
-    teacherIndex < approvedTeachers.length ||
-    otherIndex < otherCandidates.length
-  ) {
-    for (
-      let slot = 0;
-      slot < HIGH_LEVEL_TEACHER_PRIORITY_TEACHER_SLOTS &&
-      teacherIndex < approvedTeachers.length;
-      slot += 1
-    ) {
-      ordered.push(approvedTeachers[teacherIndex]);
-      teacherIndex += 1;
-    }
-
-    const groupHasOtherSlot =
-      HIGH_LEVEL_TEACHER_PRIORITY_TEACHER_SLOTS <
-      HIGH_LEVEL_TEACHER_PRIORITY_GROUP_SIZE;
-    if (groupHasOtherSlot && otherIndex < otherCandidates.length) {
-      ordered.push(otherCandidates[otherIndex]);
-      otherIndex += 1;
-    }
-
-    if (teacherIndex >= approvedTeachers.length) {
-      ordered.push(...otherCandidates.slice(otherIndex));
-      break;
-    }
-    if (otherIndex >= otherCandidates.length) {
-      ordered.push(...approvedTeachers.slice(teacherIndex));
-      break;
-    }
-  }
-
-  return ordered;
+  const tokenState = await getReadOnlyUserVoipTokenState(userId, userData, db);
+  return tokenState.hasUsableToken === true &&
+    (
+      tokenState.hasFcmToken === true ||
+      tokenState.hasVoipPushToken === true
+    );
 }
 
 function compareCandidateDetails(leftId, rightId, detailsById) {
@@ -146,12 +148,6 @@ function compareCandidateDetails(leftId, rightId, detailsById) {
 
   if (left.locationMatch !== right.locationMatch) {
     return left.locationMatch ? -1 : 1;
-  }
-
-  const leftTeacherBoostScore = Number(left.teacherBoostScore) || 0;
-  const rightTeacherBoostScore = Number(right.teacherBoostScore) || 0;
-  if (leftTeacherBoostScore !== rightTeacherBoostScore) {
-    return rightTeacherBoostScore - leftTeacherBoostScore;
   }
 
   if (left.ratingAverage !== right.ratingAverage) {
@@ -177,7 +173,7 @@ function compareCandidateDetails(leftId, rightId, detailsById) {
 exports.createVideoSession = functions
   .runWith({ secrets: [...apnsSecrets, ...dailySecrets] })
   .https.onCall(async (data, context) => {
-    console.log("📹 createVideoSession started");
+    safeLog.log("video_session_start_requested");
 
     try {
       if (!context.auth) {
@@ -194,13 +190,25 @@ exports.createVideoSession = functions
         language,
         preferredCountry,
         preferredPartnerLevel,
+        requestId: rawRequestId,
+        searchRequestId: rawSearchRequestId,
         directTutorId: rawDirectTutorId,
         directUserId: rawDirectUserId,
       } = data;
+      const requesterSearchRequestId = String(
+        rawSearchRequestId || rawRequestId || "",
+      ).trim();
       const directTutorId = String(
         rawDirectUserId || rawDirectTutorId || "",
       ).trim();
       const isDirectTutorCall = directTutorId.length > 0;
+      if (!isDirectTutorCall && !requesterSearchRequestId) {
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          "requestId is required for search matching",
+          {reason: "request_id_required"},
+        );
+      }
       const shouldSampleTutorDebug = Math.random() < MATCH_DEBUG_SAMPLE_RATE;
       const tutorDebugSamples = [];
       const tutorFilterStats = {
@@ -214,6 +222,7 @@ exports.createVideoSession = functions
         sameDayRepeat: 0,
         languageMismatch: 0,
         unapprovedTeacher: 0,
+        missingCallToken: 0,
         missingLevel: 0,
         levelMismatch: 0,
         missingCountry: 0,
@@ -226,7 +235,7 @@ exports.createVideoSession = functions
         tutorDebugSamples.push(payload);
       };
 
-      console.log("📹 createVideoSession params", {
+      safeLog.log("create_video_session_params", {
         requesterId,
         requestedLanguage: readLanguageCode(language) || null,
         matchMode: isDirectTutorCall ? "direct" : "filtered",
@@ -254,6 +263,37 @@ exports.createVideoSession = functions
         );
       }
 
+      // Fast preflight. The same policy is repeated inside the session
+      // creation transaction so concurrent requests cannot bypass trial use.
+      if (requesterRole === "student") {
+        const trialDoc = await trialAccessRef(
+          admin.firestore(),
+          requesterId,
+        ).get();
+        const accessDecision = buildStudentCallAccessDecision({
+          userRole: requesterRole,
+          userData: requesterData,
+          trialData: trialDoc.exists ? trialDoc.data() || {} : null,
+          nowMillis: Date.now(),
+        });
+        if (!accessDecision.allowed) {
+          safeLog.warn("call_access_blocked", {
+            requesterId,
+            reason: accessDecision.reason,
+          });
+          throw new functions.https.HttpsError(
+            accessDecision.code || "failed-precondition",
+            accessDecision.message || "Active subscription is required",
+            {
+              reason: accessDecision.reason,
+              ...(accessDecision.retryAfterMillis ? {
+                retryAfterMillis: accessDecision.retryAfterMillis,
+              } : {}),
+            },
+          );
+        }
+      }
+
       const resolvedLanguage = resolveActiveConversationLanguage(
         requesterData,
         language,
@@ -270,9 +310,6 @@ exports.createVideoSession = functions
       const normalizedPreferredPartnerLevel = readLevelValue(
         preferredPartnerLevel,
       );
-      const teacherBoostRankingApplied = isTeacherBoostTargetLevel(
-        normalizedPreferredPartnerLevel,
-      );
       const requesterBlockedIds = extractBlockedIds(requesterData.blockedUsers);
       const requesterInfo = buildSessionUserInfo(
         requesterData,
@@ -288,6 +325,7 @@ exports.createVideoSession = functions
 
       const availableTutors = [];
       const tutorDetails = {};
+      const candidateEmailsById = {};
       let totalQueriedCandidates = 0;
       let directTutorInfo = null;
       let repeatPreventionContext = null;
@@ -303,7 +341,7 @@ exports.createVideoSession = functions
         totalQueriedCandidates = 1;
 
         if (!directTutorDoc.exists) {
-          console.log("📹 createVideoSession direct tutor not found", {
+          safeLog.warn("direct_tutor_not_found", {
             requesterId,
             directTutorId,
           });
@@ -314,14 +352,15 @@ exports.createVideoSession = functions
         }
 
         const tutorData = directTutorDoc.data() || {};
+        candidateEmailsById[directTutorId] = tutorData.email;
         const tutorRole = normalizeRole(tutorData.role);
-        if (!isSupportedSessionRole(tutorRole) || directTutorId === requesterId) {
+        if (tutorRole !== "native_speaker" || directTutorId === requesterId) {
           if (directTutorId === requesterId) {
             tutorFilterStats.selfExcluded += 1;
           } else {
             tutorFilterStats.unsupportedRole += 1;
           }
-          console.log("📹 createVideoSession direct tutor has invalid role", {
+          safeLog.warn("direct_tutor_invalid_role", {
             requesterId,
             directTutorId,
             role: tutorData.role || null,
@@ -388,7 +427,7 @@ exports.createVideoSession = functions
         const availabilityCheck = evaluateTutorAvailabilityWindow(tutorData);
         const isAvailable = availabilityCheck.isAvailable;
 
-        if (!isAvailable || tutorData.isInCall) {
+        if (!isAvailable || hasActiveCallState(tutorData)) {
           tutorFilterStats.unavailableOrInCall += 1;
           addTutorSample({
             tutorId: directTutorId,
@@ -396,6 +435,7 @@ exports.createVideoSession = functions
             reason: "unavailable_or_in_call",
             isAvailable: !!isAvailable,
             isInCall: !!tutorData.isInCall,
+            currentSessionId: tutorData.currentSessionId || null,
             availabilityReason: availabilityCheck.reason,
             tutorLocalTime: availabilityCheck.localTime || null,
             timezoneOffsetMinutes: availabilityCheck.timezoneOffsetMinutes ?? null,
@@ -410,7 +450,11 @@ exports.createVideoSession = functions
           db,
           requesterId,
           [directTutorId],
-          {bypassUserIds: repeatBypassUserIds},
+          {
+            bypassUserIds: repeatBypassUserIds,
+            requesterEmail: requesterData.email || context.auth.token?.email,
+            userEmailsById: candidateEmailsById,
+          },
         );
         if (repeatPreventionContext.excludedCandidateIds.has(directTutorId)) {
           tutorFilterStats.sameDayRepeat += 1;
@@ -444,36 +488,14 @@ exports.createVideoSession = functions
           };
         }
         const candidateLevel = readMatchLevelValue(tutorData);
-        if (normalizedPreferredPartnerLevel && !candidateLevel) {
-          tutorFilterStats.missingLevel += 1;
-          return {
-            status: "no_tutors_available",
-            message: "Selected partner is not available right now",
-          };
-        }
-        if (
-          normalizedPreferredPartnerLevel &&
-          candidateLevel !== normalizedPreferredPartnerLevel
-        ) {
-          tutorFilterStats.levelMismatch += 1;
-          return {
-            status: "no_tutors_available",
-            message: "Selected partner is not available right now",
-          };
-        }
         const candidateCountry = readMatchCountry(tutorData);
-        if (normalizedPreferredCountry && !candidateCountry) {
-          tutorFilterStats.missingCountry += 1;
-          return {
-            status: "no_tutors_available",
-            message: "Selected partner is not available right now",
-          };
-        }
-        if (
-          normalizedPreferredCountry &&
-          candidateCountry !== normalizedPreferredCountry
-        ) {
-          tutorFilterStats.countryMismatch += 1;
+        if (!(await hasCallableTeacherToken(directTutorId, tutorData, db))) {
+          tutorFilterStats.missingCallToken += 1;
+          addTutorSample({
+            tutorId: directTutorId,
+            outcome: "skip",
+            reason: "missing_call_token",
+          });
           return {
             status: "no_tutors_available",
             message: "Selected partner is not available right now",
@@ -489,13 +511,7 @@ exports.createVideoSession = functions
           ratingCount: tutorProfile.ratingCount,
           level: candidateLevel || null,
           legacyPriorityScore: readMatchPriorityScore(tutorData),
-          teacherBoostScore: getTeacherBoostScore(
-            tutorProfile,
-            teacherBoostRankingApplied,
-          ),
-          locationMatch:
-            !normalizedPreferredCountry ||
-            candidateCountry === normalizedPreferredCountry,
+          locationMatch: true,
           approvedTeacher: tutorProfile.approvedTeacher,
           name: tutorData.display_name || "Partner",
         };
@@ -509,7 +525,7 @@ exports.createVideoSession = functions
         const candidateQueryResults = await Promise.all(
           CANDIDATE_QUERY_BUILDERS.map((buildQuery) =>
             buildQuery(db, normalizedLanguage).get().catch((queryError) => {
-              console.error("❌ Candidate query failed:", queryError.message);
+              safeLog.error("candidate_query_failed", {error: queryError});
               throw new functions.https.HttpsError(
                 "failed-precondition",
                 "Candidate query failed. Ensure required Firestore indexes are deployed.",
@@ -529,7 +545,7 @@ exports.createVideoSession = functions
 
         totalQueriedCandidates = candidateDocsById.size;
         if (candidateDocsById.size === 0) {
-          console.log("📹 createVideoSession found no candidates", {
+          safeLog.log("no_call_candidates", {
             normalizedLanguage,
           });
           return {
@@ -538,11 +554,19 @@ exports.createVideoSession = functions
           };
         }
 
+        for (const [candidateId, doc] of candidateDocsById.entries()) {
+          candidateEmailsById[candidateId] = (doc.data() || {}).email;
+        }
+
         repeatPreventionContext = await loadSameDayRepeatCandidateIds(
           db,
           requesterId,
           Array.from(candidateDocsById.keys()),
-          {bypassUserIds: repeatBypassUserIds},
+          {
+            bypassUserIds: repeatBypassUserIds,
+            requesterEmail: requesterData.email || context.auth.token?.email,
+            userEmailsById: candidateEmailsById,
+          },
         );
 
         for (const [tutorId, doc] of candidateDocsById.entries()) {
@@ -602,6 +626,47 @@ exports.createVideoSession = functions
             continue;
           }
 
+          let candidateSearchRequestId = "";
+          if (tutorRole === "student") {
+            const candidateSearchRequestSnap = await db
+              .collection("searchRequests")
+              .doc(tutorId)
+              .get();
+            const candidateSearchRequestData =
+              candidateSearchRequestSnap.exists ?
+                candidateSearchRequestSnap.data() || {} :
+                {};
+            if (
+              !candidateSearchRequestSnap.exists ||
+              !isActiveStudentSearchRequest(
+                candidateSearchRequestData,
+                Date.now(),
+              ) ||
+              readLanguageCode(candidateSearchRequestData.language) !==
+                normalizedLanguage
+            ) {
+              tutorFilterStats.unavailableOrInCall += 1;
+              addTutorSample({
+                tutorId,
+                outcome: "skip",
+                reason: "student_not_in_active_queue_for_language",
+              });
+              continue;
+            }
+            candidateSearchRequestId = String(
+              candidateSearchRequestData.requestId || "",
+            ).trim();
+            if (!candidateSearchRequestId) {
+              tutorFilterStats.unavailableOrInCall += 1;
+              addTutorSample({
+                tutorId,
+                outcome: "skip",
+                reason: "missing_student_search_request_id",
+              });
+              continue;
+            }
+          }
+
           if (isAvailableAfterInFuture(tutorData)) {
             tutorFilterStats.availableAfterInFuture += 1;
             addTutorSample({
@@ -613,7 +678,7 @@ exports.createVideoSession = functions
           }
 
           const availabilityCheck = evaluateTutorAvailabilityWindow(tutorData);
-          if (!availabilityCheck.isAvailable || tutorData.isInCall) {
+          if (!availabilityCheck.isAvailable || hasActiveCallState(tutorData)) {
             tutorFilterStats.unavailableOrInCall += 1;
             addTutorSample({
               tutorId,
@@ -621,6 +686,7 @@ exports.createVideoSession = functions
               reason: "unavailable_or_in_call",
               isAvailable: !!availabilityCheck.isAvailable,
               isInCall: !!tutorData.isInCall,
+              currentSessionId: tutorData.currentSessionId || null,
               availabilityReason: availabilityCheck.reason,
               tutorLocalTime: availabilityCheck.localTime || null,
               timezoneOffsetMinutes:
@@ -702,6 +768,15 @@ exports.createVideoSession = functions
             });
             continue;
           }
+          if (!(await hasCallableTeacherToken(tutorId, tutorData, db))) {
+            tutorFilterStats.missingCallToken += 1;
+            addTutorSample({
+              tutorId,
+              outcome: "skip",
+              reason: "missing_call_token",
+            });
+            continue;
+          }
 
           availableTutors.push(tutorId);
           tutorFilterStats.matched += 1;
@@ -712,10 +787,7 @@ exports.createVideoSession = functions
             ratingCount: tutorProfile.ratingCount,
             level: candidateLevel || null,
             legacyPriorityScore: readMatchPriorityScore(tutorData),
-            teacherBoostScore: getTeacherBoostScore(
-              tutorProfile,
-              teacherBoostRankingApplied,
-            ),
+            searchRequestId: candidateSearchRequestId || null,
             locationMatch:
               !normalizedPreferredCountry ||
               candidateCountry === normalizedPreferredCountry,
@@ -741,7 +813,9 @@ exports.createVideoSession = functions
         preferredCountry: isDirectTutorCall
           ? "skipped_for_direct_call"
           : (normalizedPreferredCountry || "any"),
-        preferredPartnerLevel: normalizedPreferredPartnerLevel || "any",
+        preferredPartnerLevel: isDirectTutorCall
+          ? "skipped_for_direct_call"
+          : (normalizedPreferredPartnerLevel || "any"),
         totalTutorsQueried,
         totalCandidatesChecked: tutorFilterStats.totalCandidates,
         matchedTutors: tutorFilterStats.matched,
@@ -755,6 +829,7 @@ exports.createVideoSession = functions
           sameDayRepeat: tutorFilterStats.sameDayRepeat,
           languageMismatch: tutorFilterStats.languageMismatch,
           unapprovedTeacher: tutorFilterStats.unapprovedTeacher,
+          missingCallToken: tutorFilterStats.missingCallToken,
           missingLevel: tutorFilterStats.missingLevel,
           levelMismatch: tutorFilterStats.levelMismatch,
           missingCountry: tutorFilterStats.missingCountry,
@@ -769,10 +844,22 @@ exports.createVideoSession = functions
       if (shouldSampleTutorDebug && tutorDebugSamples.length > 0) {
         filteringSummary.sample = tutorDebugSamples;
       }
-      console.log("📊 Tutor filtering summary", filteringSummary);
+      safeLog.log("tutor_filtering_summary", {
+        requesterId: filteringSummary.requesterId,
+        requesterRole: filteringSummary.requesterRole,
+        requestedLanguage: filteringSummary.requestedLanguage,
+        matchMode: filteringSummary.matchMode,
+        directTutorId: filteringSummary.directTutorId,
+        preferredCountry: filteringSummary.preferredCountry,
+        preferredPartnerLevel: filteringSummary.preferredPartnerLevel,
+        totalTutorsQueried: filteringSummary.totalTutorsQueried,
+        totalCandidatesChecked: filteringSummary.totalCandidatesChecked,
+        matchedTutors: filteringSummary.matchedTutors,
+        counts: filteringSummary.rejected,
+      });
 
       if (availableTutors.length === 0) {
-        console.log("📹 createVideoSession no matching tutors after filtering", {
+        safeLog.log("no_matching_tutors", {
           requesterId,
           requestedLanguage: normalizedLanguage,
           matchMode: isDirectTutorCall ? "direct" : "filtered",
@@ -789,22 +876,13 @@ exports.createVideoSession = functions
       }
 
       if (!isDirectTutorCall) {
-        const orderedTutors = orderCandidatesWithTeacherPriority(
+        const orderedTutors = orderCandidatesByMatchQuality(
           availableTutors,
           tutorDetails,
-          teacherBoostRankingApplied,
         );
         availableTutors.splice(0, availableTutors.length, ...orderedTutors);
-        console.log("📊 Matched tutors after sorting", {
+        safeLog.log("tutors_sorted", {
           count: availableTutors.length,
-          topTutorPreview: availableTutors.slice(0, 3).map((id) => ({
-            tutorId: id,
-            locationMatch: tutorDetails[id].locationMatch,
-            approvedTeacher: tutorDetails[id].approvedTeacher,
-            teacherBoostScore: tutorDetails[id].teacherBoostScore,
-            ratingAverage: tutorDetails[id].ratingAverage,
-            legacyPriorityScore: tutorDetails[id].legacyPriorityScore,
-          })),
         });
       }
 
@@ -829,12 +907,9 @@ exports.createVideoSession = functions
         precreatedRoomName = dailyRoom.name;
         precreatedRoomCreatedAt = Date.now();
 
-        console.log("✅ Precreated Daily room for session", {
-          roomName: precreatedRoomName,
-          roomUrl: precreatedRoomUrl,
-        });
+        safeLog.log("daily_room_precreated", {requesterId});
       } catch (roomError) {
-        console.error("⚠️ Failed to precreate Daily room:", roomError.message);
+        safeLog.error("daily_room_precreate_failed", {requesterId, error: roomError});
       }
 
       const sessionData = {
@@ -856,22 +931,26 @@ exports.createVideoSession = functions
         studentInfo: requesterInfo,
         matchContext: {
           version: "v2_all_to_all",
+          matcher: isDirectTutorCall ? "directCall" : "createVideoSession",
+          matchMode: isDirectTutorCall ? "direct" : "filtered",
           requesterId,
           requesterRole,
           requestedLanguage: normalizedLanguage,
           requestedLanguageSource: resolvedLanguage.source || null,
+          directTutorId: isDirectTutorCall ? directTutorId : null,
           directCandidateId: isDirectTutorCall ? directTutorId : null,
           requesterProfile,
-          filters: {
+          filters: isDirectTutorCall ? null : {
             preferredCountry: normalizedPreferredCountry || null,
             preferredPartnerLevel: normalizedPreferredPartnerLevel || null,
           },
           ranking: {
             friendPriorityApplied: false,
-            locationApplied: !!normalizedPreferredCountry,
-            levelApplied: !!normalizedPreferredPartnerLevel,
-            teacherBoostApplied:
-              !isDirectTutorCall && teacherBoostRankingApplied,
+            locationApplied:
+              !isDirectTutorCall && !!normalizedPreferredCountry,
+            levelApplied:
+              !isDirectTutorCall && !!normalizedPreferredPartnerLevel,
+            rolePriorityApplied: false,
             internalRankingScore: 0,
             legacyPriorityUsedAsTiebreaker: true,
           },
@@ -911,7 +990,11 @@ exports.createVideoSession = functions
             db,
             requesterId,
             availableTutors,
-            {bypassUserIds: repeatBypassUserIds},
+            {
+              bypassUserIds: repeatBypassUserIds,
+              requesterEmail: requesterData.email || context.auth.token?.email,
+              userEmailsById: candidateEmailsById,
+            },
           );
         const finalAvailableTutors = filterRepeatCandidates(
           availableTutors,
@@ -925,33 +1008,200 @@ exports.createVideoSession = functions
           };
         }
 
-        const finalSessionData = {
-          ...sessionData,
-          availableTutors: finalAvailableTutors,
-          matchContext: {
-            ...sessionData.matchContext,
-            candidatePoolSize: finalAvailableTutors.length,
-            candidateIds: finalAvailableTutors,
-            candidateRoleCounts: buildCandidateRoleCounts(
-              finalAvailableTutors,
-              tutorDetails,
+        if (isDirectTutorCall) {
+          const selectedResponderId = finalAvailableTutors[0] || "";
+          const selectedResponderRole =
+            tutorDetails[selectedResponderId]?.role || "";
+          const finalSessionData = {
+            ...sessionData,
+            availableTutors: finalAvailableTutors,
+            triedTutors: [],
+            currentTutorId: selectedResponderId,
+            matchContext: {
+              ...sessionData.matchContext,
+              candidatePoolSize: finalAvailableTutors.length,
+              candidateIds: finalAvailableTutors,
+              selectedResponderId,
+              selectedResponderRole,
+              candidateRoleCounts: buildCandidateRoleCounts(
+                finalAvailableTutors,
+                tutorDetails,
+              ),
+            },
+          };
+          const directLockNowMillis = Date.now();
+          const lockResult = await reserveDirectPairInTransaction({
+            db,
+            transaction,
+            requesterId,
+            responderId: selectedResponderId,
+            responderRole: selectedResponderRole,
+            sessionRef,
+            sessionData: finalSessionData,
+            nowMillis: directLockNowMillis,
+            serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+            lockExpiresAt: admin.firestore.Timestamp.fromMillis(
+              directLockNowMillis + 45 * 1000,
             ),
-          },
-        };
-        transaction.set(sessionRef, finalSessionData);
+          });
+          if (!lockResult.locked) {
+            return {
+              created: false,
+              repeatPreventionContext: finalRepeatPreventionContext,
+              lockFailure: lockResult,
+            };
+          }
+
+          const notification = createIncomingCallNotificationInTransaction({
+            db,
+            transaction,
+            sessionId: sessionRef.id,
+            recipientId: selectedResponderId,
+            sessionData: finalSessionData,
+            studentNameFallback: "Student",
+          });
+          return {
+            created: true,
+            sessionData: finalSessionData,
+            matchedTutors: finalAvailableTutors.length,
+            selectedResponderId,
+            selectedResponderRole,
+            notificationId: notification.notificationId,
+            pushPayload: notification.pushPayload,
+            repeatPreventionContext: finalRepeatPreventionContext,
+          };
+        }
+
+        let selectedResponderId = "";
+        let selectedResponderRole = "";
+        let selectedTriedTutors = [];
+        let finalSessionData = null;
+        let nextTriedTutors = [];
+        let lockResult;
+        const skippedLockCandidateIds = [];
+        while (true) {
+          const nextCandidate = await findNextCallableCandidateInTransaction({
+            db,
+            transaction,
+            candidateIds: finalAvailableTutors,
+            triedCandidateIds: nextTriedTutors,
+            language: normalizedLanguage,
+          });
+          if (!nextCandidate.candidateId) {
+            lockResult = {
+              locked: false,
+              reason: "no_callable_candidates",
+            };
+            break;
+          }
+
+          const candidateResponderId = nextCandidate.candidateId;
+          const candidateResponderRole =
+            nextCandidate.role ||
+            tutorDetails[candidateResponderId]?.role ||
+            "";
+          const candidateSessionData = {
+            ...sessionData,
+            availableTutors: finalAvailableTutors,
+            triedTutors: nextCandidate.triedCandidateIds,
+            currentTutorId: candidateResponderId,
+            matchContext: {
+              ...sessionData.matchContext,
+              candidatePoolSize: finalAvailableTutors.length,
+              candidateIds: finalAvailableTutors,
+              selectedResponderId: candidateResponderId,
+              selectedResponderRole: candidateResponderRole || null,
+              candidateRoleCounts: buildCandidateRoleCounts(
+                finalAvailableTutors,
+                tutorDetails,
+              ),
+            },
+          };
+          const lockNowMillis = Date.now();
+          lockResult = await reserveMatchPairInTransaction({
+            now: Date.now,
+            db,
+            transaction,
+            requesterId,
+            responderId: candidateResponderId,
+            responderRole: candidateResponderRole,
+            requesterSearchRequestId,
+            responderSearchRequestId:
+              tutorDetails[candidateResponderId]?.searchRequestId || "",
+            expectedLanguage: normalizedLanguage,
+            sessionRef,
+            sessionData: candidateSessionData,
+            nowMillis: lockNowMillis,
+            serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+            lockExpiresAt: admin.firestore.Timestamp.fromMillis(
+              lockNowMillis + 45 * 1000,
+            ),
+          });
+          if (lockResult.locked) {
+            selectedResponderId = candidateResponderId;
+            selectedResponderRole = candidateResponderRole;
+            selectedTriedTutors = nextCandidate.triedCandidateIds;
+            finalSessionData = candidateSessionData;
+            break;
+          }
+
+          if (String(lockResult.reason || "").startsWith("requester_")) {
+            break;
+          }
+          skippedLockCandidateIds.push({
+            candidateId: candidateResponderId,
+            reason: lockResult.reason,
+          });
+          nextTriedTutors = Array.from(new Set([
+            ...nextCandidate.triedCandidateIds,
+            candidateResponderId,
+          ]));
+        }
+        if (skippedLockCandidateIds.length > 0) {
+          safeLog.log("locked_candidates_skipped", {
+            counts: {skipped: skippedLockCandidateIds.length},
+          });
+        }
+        if (!lockResult?.locked || !selectedResponderId || !finalSessionData) {
+          return {
+            created: false,
+            repeatPreventionContext: finalRepeatPreventionContext,
+            lockFailure: lockResult || {
+              locked: false,
+              reason: "pair_lock_failed",
+            },
+          };
+        }
+
+        const notification = createIncomingCallNotificationInTransaction({
+          db,
+          transaction,
+          sessionId: sessionRef.id,
+          recipientId: selectedResponderId,
+          sessionData: finalSessionData,
+          studentNameFallback: "Student",
+        });
         return {
           created: true,
           sessionData: finalSessionData,
           matchedTutors: finalAvailableTutors.length,
+          selectedResponderId,
+          selectedResponderRole,
+          triedTutors: selectedTriedTutors,
+          notificationId: notification.notificationId,
+          pushPayload: notification.pushPayload,
           repeatPreventionContext: finalRepeatPreventionContext,
         };
       });
 
       if (!creation.created) {
+        if (precreatedRoomName) {
+          await deleteDailyRoom(precreatedRoomName);
+        }
         const excludedCount = countExcludedRepeatCandidates(
           creation.repeatPreventionContext,
         );
-        console.log("📹 createVideoSession final repeat guard blocked session", {
+        safeLog.log("repeat_guard_blocked", {
           requesterId,
           requestedLanguage: normalizedLanguage,
           matchMode: isDirectTutorCall ? "direct" : "filtered",
@@ -968,13 +1218,32 @@ exports.createVideoSession = functions
         };
       }
 
-      console.log("✅ Video session created:", sessionRef.id);
+      safeLog.log("video_session_created", {sessionId: sessionRef.id});
 
-      // Уведомляем первого преподавателя
-      await sendNotificationToNextTutor(sessionRef.id, creation.sessionData);
+      if (creation.selectedResponderId && creation.pushPayload) {
+        const freshValidationSnap = await sessionRef.get();
+        const freshValidation = freshValidationSnap.exists ?
+          freshValidationSnap.data() || {} :
+          {};
+        if (
+          PENDING_RESPONSE_SESSION_STATUSES.has(freshValidation.status) &&
+          freshValidation.currentTutorId === creation.selectedResponderId &&
+          !hasActiveAcceptLockForResponder({
+            sessionData: freshValidation,
+            responderId: creation.selectedResponderId,
+          })
+        ) {
+          await sendVoipPushToTutor(
+            creation.selectedResponderId,
+            creation.pushPayload,
+          );
+        }
+      } else {
+        safeLog.log("legacy_notification_skipped", {sessionId: sessionRef.id});
+      }
 
       return {
-        status: "searching",
+        status: isDirectTutorCall ? "calling" : "searching",
         sessionId: sessionRef.id,
         message: isDirectTutorCall
           ? "Calling selected partner..."
@@ -982,16 +1251,19 @@ exports.createVideoSession = functions
         matchedTutors: creation.matchedTutors,
       };
     } catch (error) {
-      console.error("❌ Error creating video session:", error);
+      safeLog.error("video_session_create_failed", {error});
       if (error.code) throw error;
-      throw new functions.https.HttpsError("internal", error.message);
+      throw new functions.https.HttpsError(
+        "internal",
+        "Unable to start a call right now. Please try again.",
+      );
     }
   });
 
 // 🔔 ОТПРАВКА VOIP PUSH ПРЕПОДАВАТЕЛЮ
 async function sendVoipPushToTutor(tutorId, callData) {
   try {
-    console.log("📲 Preparing VoIP push for tutor:", tutorId);
+    safeLog.log("voip_push_prepare", {tutorId});
 
     const tutorDoc = await admin
       .firestore()
@@ -1000,33 +1272,28 @@ async function sendVoipPushToTutor(tutorId, callData) {
       .get();
 
     if (!tutorDoc.exists) {
-      console.log("⚠️ Tutor document not found:", tutorId);
+      safeLog.warn("voip_push_recipient_not_found", {tutorId});
       return;
     }
 
     const tutorData = tutorDoc.data();
-    const bundleId = process.env.IOS_BUNDLE_ID || "com.appwave.smalltalk";
+    if (normalizeRole(tutorData?.role) !== "native_speaker") {
+      return {sent: false, reason: "student_native_disabled"};
+    }
+    const bundleId = process.env.IOS_BUNDLE_ID || "com.appwave.expatlio";
     const voipTopic =
       process.env.IOS_VOIP_TOPIC ||
       (bundleId.endsWith(".voip") ? bundleId : `${bundleId}.voip`);
-    const voipPushToken = tutorData.voipPushToken;
-    const fcmToken = tutorData.voipToken;
+    const { voipPushToken, voipToken: fcmToken } =
+      await getUserVoipTokens(tutorId, tutorData);
 
     if (!voipPushToken && !fcmToken) {
-      console.log("⚠️ Tutor has no push tokens saved");
+      safeLog.warn("voip_push_tokens_missing", {tutorId});
       return;
     }
 
     if (voipPushToken) {
-      const apnsPayload = {
-        aps: { "content-available": 1 },
-        type: "incoming_call",
-        sessionId: callData.sessionId,
-        callerName: callData.studentName,
-        callerId: callData.studentId,
-        callerPhoto: callData.studentPhoto || "",
-        language: callData.language || "",
-      };
+      const apnsPayload = buildTeacherIncomingCallApnsPayload(callData);
 
       try {
         await sendApnsVoip({
@@ -1034,75 +1301,51 @@ async function sendVoipPushToTutor(tutorId, callData) {
           topic: voipTopic,
           payload: apnsPayload,
         });
-        console.log("✅ APNs VoIP push sent successfully");
+        safeLog.log("voip_apns_push_sent", {tutorId});
         return;
       } catch (error) {
-        console.error("❌ Error sending APNs VoIP push:", error.message);
+        safeLog.error("voip_apns_push_failed", {tutorId, error});
       }
     }
 
     if (!fcmToken) {
-      console.log("⚠️ No FCM token available for fallback");
+      safeLog.warn("voip_fcm_token_missing", {tutorId});
       return;
     }
 
-    console.log("📱 FCM token found:", fcmToken.substring(0, 20) + "...");
-    console.log("📦 Using apns-topic for FCM fallback:", bundleId);
+    safeLog.log("voip_fcm_fallback", {tutorId, platform: "ios"});
 
-    const message = {
+    const message = buildTeacherIncomingCallFcmMessage({
       token: fcmToken,
-      data: {
-        type: "incoming_call",
-        sessionId: callData.sessionId,
-        callerName: callData.studentName,
-        callerId: callData.studentId,
-        callerPhoto: callData.studentPhoto || "",
-        language: callData.language || "",
-      },
-      apns: {
-        headers: {
-          "apns-priority": "10",
-          "apns-push-type": "alert",
-          "apns-topic": bundleId,
-        },
-        payload: {
-          aps: {
-            "content-available": 1,
-            alert: {
-              title: "Входящий звонок",
-              body: `${callData.studentName} хочет попрактиковать ${callData.language}`,
-            },
-            sound: "default",
-          },
-        },
-      },
-      android: {
-        priority: "high",
-      },
-    };
+      callData,
+      bundleId,
+    });
 
     const response = await admin.messaging().send(message);
-    console.log("✅ FCM push sent successfully. Message ID:", response);
+    safeLog.log("voip_fcm_push_sent", {tutorId});
 
     return response;
   } catch (error) {
-    console.error("❌ Error sending VoIP push to tutor:", error);
+    safeLog.error("voip_push_failed", {tutorId, error});
     return null;
   }
 }
 
 exports.__private__ = {
   buildCreateSessionPolicyFields,
+  buildNoAvailableResponderSessionUpdate,
   compareCandidateDetails,
-  getTeacherBoostScore,
-  isTeacherBoostTargetLevel,
-  orderCandidatesWithTeacherPriority,
+  hasCallableTeacherToken,
+  orderCandidatesByMatchQuality,
 };
 
+// Retained as a tested recovery contract until the legacy tutor handoff is
+// migrated to the active matchmaking owner.
+// eslint-disable-next-line no-unused-vars
 async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) {
   try {
-    const sessionRef = admin
-      .firestore()
+    const db = admin.firestore();
+    const sessionRef = db
       .collection("videoSessions")
       .doc(sessionId);
 
@@ -1118,7 +1361,7 @@ async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) 
 
         const freshSessionData = freshSessionSnap.data() || {};
         const status = freshSessionData.status || "unknown";
-        if (status !== "searching") {
+        if (status !== VIDEO_SESSION_STATUS.SEARCHING) {
           return {
             shouldNotify: false,
             skipReason: `status_${status}`,
@@ -1134,109 +1377,123 @@ async function sendNotificationToNextTutor(sessionId, fallbackSessionData = {}) 
 
         const availableTutors = freshSessionData.availableTutors || [];
         const triedTutors = freshSessionData.triedTutors || [];
-        const nextTutor = availableTutors.find(
-          (tutorId) => !triedTutors.includes(tutorId),
-        );
+        const nextCandidate = await findNextCallableCandidateInTransaction({
+          db,
+          transaction,
+          candidateIds: availableTutors,
+          triedCandidateIds: triedTutors,
+          language: freshSessionData.language,
+        });
+        const nextTutor = nextCandidate.candidateId;
+        const nextTriedTutors = nextCandidate.triedCandidateIds;
 
         if (!nextTutor) {
-          transaction.update(sessionRef, {
-            status: "no_tutors_available",
+          await reconcileSessionTrialCallsInTransaction({
+            db,
+            transaction,
+            sessionId,
+            sessionData: freshSessionData,
+            durationSeconds: 0,
+            technicalFailure: true,
+            nowMillis: Date.now(),
           });
+          transaction.update(
+              sessionRef,
+              buildNoAvailableResponderSessionUpdate(nextTriedTutors),
+          );
           return {
             shouldNotify: false,
             skipReason: "no_available_tutors",
           };
         }
 
+        const notification = createIncomingCallNotificationInTransaction({
+          db,
+          transaction,
+          sessionId,
+          recipientId: nextTutor,
+          sessionData: {
+            ...freshSessionData,
+            triedTutors: nextTriedTutors,
+            currentTutorId: nextTutor,
+          },
+          studentNameFallback: "Student",
+        });
+
         transaction.update(sessionRef, {
+          triedTutors: nextTriedTutors,
           currentTutorId: nextTutor,
+          status: VIDEO_SESSION_STATUS.PENDING_CONFIRMATION,
         });
 
         return {
           shouldNotify: true,
           nextTutor,
-          sessionData: freshSessionData,
+          sessionData: {
+            ...freshSessionData,
+            triedTutors: nextTriedTutors,
+            currentTutorId: nextTutor,
+            status: VIDEO_SESSION_STATUS.PENDING_CONFIRMATION,
+          },
+          notificationId: notification.notificationId,
+          pushPayload: notification.pushPayload,
         };
       },
     );
 
     if (!assignment || !assignment.shouldNotify) {
-      console.log(
-        "⏭️ Skipping tutor notification for session",
+      safeLog.log("tutor_notification_skipped", {
         sessionId,
-        "reason:",
-        assignment?.skipReason || "unknown",
-      );
+        reasonCode: assignment?.skipReason || "unknown",
+      });
       return;
     }
 
     const nextTutor = assignment.nextTutor;
-    const sessionData = assignment.sessionData || fallbackSessionData || {};
-    const studentInfo = sessionData.studentInfo || fallbackSessionData.studentInfo || {};
-    const studentName = studentInfo.name || "Student";
-    const studentPhoto = studentInfo.photo || null;
-    const studentId = sessionData.studentId || fallbackSessionData.studentId || "";
-    const language = sessionData.language || fallbackSessionData.language || "";
+    const pushPayload = assignment.pushPayload || {};
 
     const freshValidationSnap = await sessionRef.get();
     if (!freshValidationSnap.exists) {
-      console.log(
-        "⏭️ Skipping tutor notification. Session disappeared:",
-        sessionId,
-      );
+      safeLog.warn("tutor_notification_session_missing", {sessionId});
       return;
     }
 
     const freshValidation = freshValidationSnap.data() || {};
     if (
-      freshValidation.status !== "searching" ||
-      freshValidation.currentTutorId !== nextTutor
+      !PENDING_RESPONSE_SESSION_STATUSES.has(freshValidation.status) ||
+      freshValidation.currentTutorId !== nextTutor ||
+      hasActiveAcceptLockForResponder({
+        sessionData: freshValidation,
+        responderId: nextTutor,
+      })
     ) {
-      console.log(
-        "⏭️ Skipping tutor notification after validation. reason:",
-        `status_${freshValidation.status || "unknown"}`,
-        `currentTutor_${freshValidation.currentTutorId || "none"}`,
-      );
+      safeLog.log("tutor_notification_assignment_changed", {
+        sessionId,
+        reasonCode: `status_${freshValidation.status || "unknown"}`,
+      });
       return;
     }
 
-    // Создаём уведомление в Firestore
-    const expiresAt = new Date();
-    expiresAt.setSeconds(expiresAt.getSeconds() + 45);
-
-    const notificationData = {
-      recipientId: nextTutor,
+    safeLog.log("tutor_notification_created", {
       sessionId,
-      type: "incoming_call",
-      status: "sent",
-      title: "Входящий звонок",
-      message: `${studentName} хочет попрактиковать ${language}`,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
-      studentInfo,
-    };
+      responderId: nextTutor,
+    });
 
-    await admin.firestore().collection("notifications").add(notificationData);
-    console.log("✅ Firestore notification created for tutor:", nextTutor);
-
-    // 🔔 Отправляем VoIP push преподавателю
-    console.log("📲 Sending VoIP push to tutor...");
+    safeLog.log("voip_push_send_started", {sessionId, responderId: nextTutor});
     try {
       await sendVoipPushToTutor(nextTutor, {
-        sessionId: sessionId,
-        studentName: studentName,
-        studentId: studentId,
-        studentPhoto: studentPhoto,
-        language: language,
+        ...pushPayload,
+        sessionId: pushPayload.sessionId || sessionId,
+        studentName: pushPayload.studentName || "Student",
+        studentId: pushPayload.studentId || "",
+        studentPhoto: pushPayload.studentPhoto,
+        language: pushPayload.language || "",
       });
-      console.log("✅ VoIP push sent to tutor");
+      safeLog.log("voip_push_sent", {sessionId, responderId: nextTutor});
     } catch (pushError) {
-      console.error(
-        "⚠️ Failed to send VoIP push (non-critical):",
-        pushError.message,
-      );
+      safeLog.error("voip_push_failed", {sessionId, responderId: nextTutor, error: pushError});
     }
   } catch (error) {
-    console.error("❌ Error sending notification:", error);
+    safeLog.error("tutor_notification_failed", {sessionId, error});
   }
 }

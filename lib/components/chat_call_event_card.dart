@@ -1,0 +1,137 @@
+import 'package:flutter/material.dart';
+
+import '/flutter_flow/flutter_flow_theme.dart';
+import '/shared_pages/design/expatlio_design.dart';
+
+enum ChatCallEventTone {
+  normal,
+  alert,
+}
+
+class ChatCallEventCard extends StatelessWidget {
+  const ChatCallEventCard({
+    super.key,
+    required this.title,
+    required this.details,
+    this.icon = Icons.phone_rounded,
+    this.tone = ChatCallEventTone.normal,
+    this.onTap,
+  });
+
+  final String title;
+  final String details;
+  final IconData icon;
+  final ChatCallEventTone tone;
+  final VoidCallback? onTap;
+
+  static const List<BoxShadow> _shadow = [
+    BoxShadow(
+      color: Color(0x0A000000),
+      blurRadius: 8.0,
+      offset: Offset(0.0, 2.0),
+    ),
+  ];
+
+  Color _resolvedIconColor(BuildContext context) {
+    return switch (tone) {
+      ChatCallEventTone.normal => FlutterFlowTheme.of(context).primary,
+      ChatCallEventTone.alert => FlutterFlowTheme.of(context).error,
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: AlignmentDirectional.center,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 244.0),
+        child: Padding(
+          padding:
+              const EdgeInsetsDirectional.only(bottom: ExpatlioDesign.space12),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: ExpatlioDesign.card,
+              borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
+              border: Border.all(color: ExpatlioDesign.border),
+              boxShadow: _shadow,
+            ),
+            child: Material(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(ExpatlioDesign.radiusMedium),
+              child: InkWell(
+                borderRadius:
+                    BorderRadius.circular(ExpatlioDesign.radiusMedium),
+                onTap: onTap,
+                child: Padding(
+                  padding: const EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.space16,
+                    ExpatlioDesign.space12,
+                    ExpatlioDesign.space16,
+                    ExpatlioDesign.space12,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 32.0,
+                        height: 32.0,
+                        decoration: BoxDecoration(
+                          color: _resolvedIconColor(context)
+                              .withValues(alpha: 0.08),
+                          shape: BoxShape.circle,
+                        ),
+                        alignment: Alignment.center,
+                        child: Icon(
+                          icon,
+                          color: _resolvedIconColor(context),
+                          size: 17.0,
+                        ),
+                      ),
+                      const SizedBox(width: ExpatlioDesign.space12),
+                      Flexible(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: FlutterFlowTheme.of(context)
+                                  .bodyMedium
+                                  .override(
+                                    fontFamily: 'sf pro display',
+                                    color: ExpatlioDesign.text,
+                                    fontSize: 15.0,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.0,
+                                  ),
+                            ),
+                            const SizedBox(height: ExpatlioDesign.space4),
+                            Text(
+                              details,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: FlutterFlowTheme.of(context)
+                                  .bodyMedium
+                                  .override(
+                                    fontFamily: 'sf pro display',
+                                    color: ExpatlioDesign.muted,
+                                    fontSize: 12.0,
+                                    letterSpacing: 0.0,
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

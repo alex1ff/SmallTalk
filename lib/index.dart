@@ -34,10 +34,27 @@ export '/authorization/recover_pass/recover_pass_widget.dart'
     show RecoverPassWidget;
 export '/authorization/policy/policy_widget.dart' show PolicyWidget;
 export '/teachers_pages/pay_copy/pay_copy_widget.dart' show PayCopyWidget;
-export '/students_pages/pay_web_wiew/pay_web_wiew_widget.dart'
-    show PayWebWiewWidget;
+// ─── SUBSCRIPTION REWORK ─ removed. T-Bank pay WebView is gone;
+// payments go through RC paywall now.
+// export '/students_pages/pay_web_wiew/pay_web_wiew_widget.dart'
+//     show PayWebWiewWidget;
 export '/shared_pages/black_list/black_list_widget.dart' show BlackListWidget;
 export '/teachers_pages/my_rew_n_s/my_rew_n_s_widget.dart' show MyRewNSWidget;
 export '/students_pages/favorite/favorite_widget.dart' show FavoriteWidget;
 export '/students_pages/flashcard/flashcard_widget.dart' show FlashcardWidget;
 export '/shared_pages/my_calls/my_calls_widget.dart' show MyCallsWidget;
+export '/shared_pages/events/event_list_widget.dart' show EventListWidget;
+export '/shared_pages/events/event_detail_widget.dart' show EventDetailWidget;
+export '/shared_pages/events/event_detail_route_widget.dart'
+    show
+        EventDetailPublicPreview,
+        EventDetailRouteWidget,
+        eventDetailPublicPreviewDescription,
+        eventDetailPublicPreviewExtraKey,
+        eventDetailPublicPreviewFromParam;
+export '/shared_pages/events/event_history_widget.dart' show EventHistoryWidget;
+export '/shared_pages/events/event_create_widget.dart'
+    show EventCreateWidget, EventFormMode;
+export '/shared_pages/events/event_edit_widget.dart' show EventEditWidget;
+export '/shared_pages/events/event_group_chat_widget.dart'
+    show EventGroupChatWidget;

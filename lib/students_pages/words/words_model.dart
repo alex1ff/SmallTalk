@@ -1,73 +1,69 @@
 import '/backend/backend.dart';
-import '/components/word_pos_chip/word_pos_chip_widget.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/services/ux_session_loaded_result_cache.dart';
+import '/services/ux_session_cache_lifecycle.dart';
 import 'words_widget.dart' show WordsWidget;
 import 'package:flutter/material.dart';
 
 class WordsModel extends FlutterFlowModel<WordsWidget> {
-  ///  Local state fields for this page.
+  static final UxSessionLoadedResultCache<List<UserWordsRecord>> _wordsCache =
+      UxSessionLoadedResultCache<List<UserWordsRecord>>();
+  static final UxSessionLoadedResultCache<List<WordReviewsRecord>>
+      _wordReviewsCache = UxSessionLoadedResultCache<List<WordReviewsRecord>>();
 
-  String? pos = '';
+  String? userCacheKey;
 
-  // Cached stream so it is not recreated on every build().
-  Stream<List<UserWordsRecord>>? wordsStream;
-  Stream<List<WordReviewsRecord>>? wordReviewsStream;
+  static void ensureSessionCacheLifecycleRegistered() {
+    UxSessionCacheLifecycle.register(debugClearSessionCache);
+  }
 
-  ///  State fields for stateful widgets in this page.
+  List<UserWordsRecord>? get cachedWords {
+    final cacheKey = userCacheKey;
+    if (cacheKey == null) {
+      return null;
+    }
+    return _wordsCache.readItems(cacheKey);
+  }
 
-  // Model for wordPosChip component.
-  late WordPosChipModel wordPosChipModel1;
-  // Model for wordPosChip component.
-  late WordPosChipModel wordPosChipModel2;
-  // Model for wordPosChip component.
-  late WordPosChipModel wordPosChipModel3;
-  // Model for wordPosChip component.
-  late WordPosChipModel wordPosChipModel4;
-  // Model for wordPosChip component.
-  late WordPosChipModel wordPosChipModel5;
-  // Model for wordPosChip component.
-  late WordPosChipModel wordPosChipModel6;
-  // Model for wordPosChip component.
-  late WordPosChipModel wordPosChipModel7;
-  // Model for wordPosChip component.
-  late WordPosChipModel wordPosChipModel8;
-  // Model for wordPosChip component.
-  late WordPosChipModel wordPosChipModel9;
-  // Model for wordPosChip component.
-  late WordPosChipModel wordPosChipModel10;
-  // Model for wordPosChip component.
-  late WordPosChipModel wordPosChipModel11;
-  // Model for wordPosChip component.
-  late WordPosChipModel wordPosChipModel12;
-  @override
-  void initState(BuildContext context) {
-    wordPosChipModel1 = createModel(context, () => WordPosChipModel());
-    wordPosChipModel2 = createModel(context, () => WordPosChipModel());
-    wordPosChipModel3 = createModel(context, () => WordPosChipModel());
-    wordPosChipModel4 = createModel(context, () => WordPosChipModel());
-    wordPosChipModel5 = createModel(context, () => WordPosChipModel());
-    wordPosChipModel6 = createModel(context, () => WordPosChipModel());
-    wordPosChipModel7 = createModel(context, () => WordPosChipModel());
-    wordPosChipModel8 = createModel(context, () => WordPosChipModel());
-    wordPosChipModel9 = createModel(context, () => WordPosChipModel());
-    wordPosChipModel10 = createModel(context, () => WordPosChipModel());
-    wordPosChipModel11 = createModel(context, () => WordPosChipModel());
-    wordPosChipModel12 = createModel(context, () => WordPosChipModel());
+  List<WordReviewsRecord>? get cachedWordReviews {
+    final cacheKey = userCacheKey;
+    if (cacheKey == null) {
+      return null;
+    }
+    return _wordReviewsCache.readItems(cacheKey);
+  }
+
+  void cacheWords(List<UserWordsRecord> words) {
+    final cacheKey = userCacheKey;
+    if (cacheKey == null) {
+      return;
+    }
+    _wordsCache.writeItems(dataKey: cacheKey, items: words);
+  }
+
+  void cacheWordReviews(List<WordReviewsRecord> reviews) {
+    final cacheKey = userCacheKey;
+    if (cacheKey == null) {
+      return;
+    }
+    _wordReviewsCache.writeItems(dataKey: cacheKey, items: reviews);
+  }
+
+  static void debugClearSessionCache() {
+    _wordsCache.clear();
+    _wordReviewsCache.clear();
+  }
+
+  static bool shouldCacheStreamSnapshot<T>(
+    AsyncSnapshot<List<T>> snapshot,
+  ) {
+    return snapshot.hasData &&
+        snapshot.connectionState != ConnectionState.waiting;
   }
 
   @override
-  void dispose() {
-    wordPosChipModel1.dispose();
-    wordPosChipModel2.dispose();
-    wordPosChipModel3.dispose();
-    wordPosChipModel4.dispose();
-    wordPosChipModel5.dispose();
-    wordPosChipModel6.dispose();
-    wordPosChipModel7.dispose();
-    wordPosChipModel8.dispose();
-    wordPosChipModel9.dispose();
-    wordPosChipModel10.dispose();
-    wordPosChipModel11.dispose();
-    wordPosChipModel12.dispose();
-  }
+  void initState(BuildContext context) {}
+
+  @override
+  void dispose() {}
 }

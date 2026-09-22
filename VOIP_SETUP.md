@@ -1,120 +1,69 @@
+# VoIP: текущее устройство и проверка
 
-# VoIP Setup Documentation
+Актуальный backlog и границы рефакторинга:
+[`tech_debt/P1-08-voip-service-decomposition.md`](tech_debt/P1-08-voip-service-decomposition.md).
+Приложение больше не поддерживается через FlutterFlow; обычные файлы Flutter
+являются редактируемым production-кодом.
 
-## ✅ Что уже настроено
+## Что реализовано
 
-### 1. Flutter Dependencies
-- `flutter_callkit_incoming: ^3.0.0` - CallKit (iOS) + ConnectionService (Android)
-- `firebase_messaging: ^15.2.7` - Push notifications
+- FCM и PushKit token registration выполняется через callable
+  `registerVoipToken`; приватные токены не пишутся клиентом напрямую.
+- Backend уже отправляет входящие уведомления и ведёт server-owned lifecycle
+  сессии. `acceptCall`, `declineCall`, `endSession` и восстановление активной
+  сессии реализованы.
+- `VoIPService` обрабатывает CallKit/ConnectionService Accept, Decline, End и
+  Timeout, проверяет payload/session identity и передаёт подтверждённый звонок
+  в `VideoCallPage`.
+- Ранние CallKit-события переживают cold start через bounded queue с TTL,
+  приоритетом, dedupe и привязкой к текущему Firebase Auth пользователю.
+- iOS background modes и Android full-screen/foreground permissions находятся
+  в platform-конфигурации репозитория.
 
-### 2. VoIP Service (`lib/services/voip_service.dart`)
-- Инициализация FCM токенов
-- Обработка CallKit/ConnectionService событий
-- Показ входящих звонков
-- Обработка Accept/Decline/End/Timeout
+## Локальная проверка
 
-### 3. Integration в `main.dart`
-- Background message handler
-- VoIP service initialization
-- Обработка входящих звонков в фоне
-
-### 4. iOS Configuration (`ios/Runner/Info.plist`)
-- `UIBackgroundModes`: voip, remote-notification, processing, audio
-- Camera и Microphone permissions
-
-### 5. Android Configuration (`android/app/src/main/AndroidManifest.xml`)
-- VoIP permissions (WAKE_LOCK, FOREGROUND_SERVICE, etc.)
-- Full-screen intent для звонков поверх экрана блокировки
-
----
-
-## 🚧 Что осталось сделать
-
-### 1. Обновить Cloud Functions для отправки VoIP Push
-
-В файле `acceptCall` функции добавить отправку VoIP push студенту:
-```javascript
-// После создания Daily room
-await sendVoipPushToStudent(sessionData.studentId, {
-  sessionId: sessionId,
-  callerName: tutorData.display_name,
-  callerId: tutorId,
-  callerPhoto: tutorData.photo_url,
-  roomUrl: dailyRoom.url,
-  meetingToken: dailyRoom.token,
-});
-```
-
-### 2. Настроить VoIP Certificate (iOS)
-
-1. Apple Developer → Certificates, Identifiers & Profiles
-2. Создать VoIP Services Certificate
-3. Экспортировать `.p12`
-4. Загрузить в Firebase Cloud Messaging
-
-### 3. Интегрировать навигацию на VideoCallPage
-
-В `voip_service.dart` функции `_handleCallAccept()` добавить:
-- Вызов Cloud Function `acceptCall`
-- Навигация на `VideoCallPage` с параметрами
-
-### 4. Тестирование
-
-- [ ] Тест на iOS реальном устройстве
-- [ ] Тест на Android реальном устройстве
-- [ ] CallKit экран показывается
-- [ ] Accept работает
-- [ ] Decline работает
-- [ ] Timeout обрабатывается
-
----
-
-## 🔄 Workflow с GitHub
-
-### При изменениях из FlutterFlow:
 ```bash
-git checkout develop
-git pull origin flutterflow
-git merge flutterflow
-# Разрешить конфликты если есть
-git push origin develop
+flutter test \
+  test/services/voip_service_accept_helpers_test.dart \
+  test/services/voip_service_decline_helpers_test.dart \
+  test/services/voip_service_timeout_helpers_test.dart \
+  test/services/voip_pending_callkit_action_queue_test.dart \
+  test/services/voip_token_registry_test.dart
+flutter analyze
 ```
 
-### VoIP код остается в ветке `develop` и НЕ перезаписывается FlutterFlow!
+Unit/widget tests не заменяют native delivery smoke: они не вызывают APNs,
+PushKit, CallKit или Android ConnectionService.
 
----
+## Обязательный device smoke перед релизом
 
-## 📱 Deploy в TestFlight
+Проверить на физическом iPhone и Android-устройстве с production-like build:
 
-1. Merge `develop` → `main`
-2. FlutterFlow → Deploy from GitHub (branch: main)
-3. Automatic upload to TestFlight
+- foreground, background и terminated/killed state;
+- входящий экран на lock screen;
+- Accept открывает ровно одну страницу правильной сессии;
+- Decline и Timeout закрывают только соответствующий системный звонок;
+- повторный/устаревший push не открывает звонок;
+- logout/login другим пользователем не воспроизводит старое действие;
+- token rotation и переустановка обновляют регистрацию;
+- отсутствие camera/microphone permission корректно отменяет accept;
+- relaunch после принятия восстанавливает активную сессию без duplicate accept.
 
----
+Результат smoke фиксировать: платформа/OS, build, начальное состояние,
+sessionId (без room URL/token), ожидаемый и фактический результат.
 
-## 🔍 Troubleshooting
+## Troubleshooting
 
-### iOS: CallKit не показывается
-- Проверьте VoIP Certificate в Firebase
-- Проверьте FCM token сохранен в Firestore
-- Проверьте `apns-push-type: voip` в push payload
+- iOS: проверить Push Notifications/VoIP entitlements, APNs environment,
+  `apns-push-type: voip`, актуальность PushKit token и device console.
+- Android: проверить `POST_NOTIFICATIONS`, full-screen intent, foreground
+  service permissions и battery restrictions.
+- Не логировать PushKit/FCM token, Daily room URL или meeting token.
+- Не добавлять `Future.delayed` для исправления race без воспроизводящего теста.
+- Call action handling должен становиться ready только после Firebase Auth и
+  инициализации обязательного CallKit pipeline.
 
-### Android: Уведомления не приходят
-- Проверьте POST_NOTIFICATIONS permission
-- Android 13+ требует runtime permission
-- Проверьте FCM token актуален
-
-### Background handler не срабатывает
-- iOS: Проверьте `@pragma('vm:entry-point')`
-- Android: Проверьте `FOREGROUND_SERVICE` permission
-- Проверьте что handler зарегистрирован ДО `initFirebase()`
-
----
-
-## 📚 Полезные ссылки
-
-- [flutter_callkit_incoming docs](https://pub.dev/packages/flutter_callkit_incoming)
-- [Firebase Cloud Messaging](https://firebase.google.com/docs/cloud-messaging)
-- [Apple CallKit](https://developer.apple.com/documentation/callkit)
-- [Android ConnectionService](https://developer.android.com/reference/android/telecom/ConnectionService)
-
+Полезные источники: [flutter_callkit_incoming](https://pub.dev/packages/flutter_callkit_incoming),
+[Firebase Cloud Messaging](https://firebase.google.com/docs/cloud-messaging),
+[Apple CallKit](https://developer.apple.com/documentation/callkit),
+[Android ConnectionService](https://developer.android.com/reference/android/telecom/ConnectionService).

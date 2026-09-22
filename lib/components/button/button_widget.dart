@@ -1,5 +1,5 @@
-import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
+import '/shared_pages/design/expatlio_design.dart';
 import 'package:flutter/material.dart';
 import 'button_model.dart';
 export 'button_model.dart';
@@ -17,9 +17,8 @@ class ButtonWidget extends StatefulWidget {
     this.loadingText,
     this.busyStyle = ButtonBusyStyle.debounceOnly,
     this.trailingContent,
-    this.keyboardAwarePadding = true,
     this.enabled = true,
-    this.padding,
+    this.busy = false,
   });
 
   final Future Function()? action;
@@ -27,16 +26,14 @@ class ButtonWidget extends StatefulWidget {
   final String? loadingText;
   final ButtonBusyStyle busyStyle;
   final Widget? trailingContent;
-  final bool keyboardAwarePadding;
   final bool enabled;
-  final EdgeInsetsGeometry? padding;
+  final bool busy;
 
   @override
   State<ButtonWidget> createState() => _ButtonWidgetState();
 }
 
 class _ButtonWidgetState extends State<ButtonWidget> {
-  static const _circleKey = ValueKey<String>('button_widget_circle');
   static const _spinnerKey = ValueKey<String>('button_widget_spinner');
   static const _animationDuration = Duration(milliseconds: 160);
 
@@ -62,7 +59,7 @@ class _ButtonWidgetState extends State<ButtonWidget> {
   }
 
   Future<void> _handleTap() async {
-    if (!widget.enabled || _isBusy || widget.action == null) {
+    if (!widget.enabled || widget.busy || _isBusy || widget.action == null) {
       return;
     }
 
@@ -78,111 +75,92 @@ class _ButtonWidgetState extends State<ButtonWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final isInteractive = widget.enabled && widget.action != null;
-    final showsSpinner = _isBusy && widget.busyStyle == ButtonBusyStyle.spinner;
+    final isBusy = widget.busy || _isBusy;
+    final isInteractive = widget.enabled && !isBusy && widget.action != null;
+    final showsSpinner = isBusy && widget.busyStyle == ButtonBusyStyle.spinner;
     final displayedText = valueOrDefault<String>(
       showsSpinner ? widget.loadingText ?? widget.text : widget.text,
       '-',
     );
-    final opacity = !widget.enabled
-        ? 0.45
-        : showsSpinner
-            ? 0.75
-            : _isBusy
-                ? 0.9
-                : 1.0;
-    final isKeyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
-
-    final resolvedPadding = widget.padding ??
-        EdgeInsetsDirectional.fromSTEB(
-          6.0,
-          0.0,
-          6.0,
-          widget.keyboardAwarePadding
-              ? valueOrDefault<double>(
-                  isKeyboardVisible ? 6.0 : 35.0,
-                  6.0,
-                )
-              : 0.0,
-        );
-
-    return AnimatedPadding(
-      duration: _animationDuration,
-      curve: Curves.easeOutCubic,
-      padding: resolvedPadding,
-      child: AnimatedOpacity(
-        duration: _animationDuration,
-        opacity: opacity,
-        child: InkWell(
-          splashColor: Colors.transparent,
-          focusColor: Colors.transparent,
-          hoverColor: Colors.transparent,
-          highlightColor: Colors.transparent,
-          onTap: isInteractive ? _handleTap : null,
-          child: Container(
-            height: 60.0,
-            decoration: BoxDecoration(
-              color: FlutterFlowTheme.of(context).primaryText,
-              borderRadius: BorderRadius.circular(50.0),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(2.0),
-              child: Row(
-                mainAxisSize: MainAxisSize.max,
-                children: [
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsetsDirectional.fromSTEB(
-                          16.0, 0.0, 0.0, 0.0),
+    final opacity = showsSpinner
+        ? 0.75
+        : isBusy
+            ? 0.9
+            : 1.0;
+    final backgroundColor = widget.enabled
+        ? ExpatlioDesign.primary
+        : ExpatlioDesign.inactive.withValues(alpha: 0.30);
+    return Semantics(
+      container: true,
+      button: true,
+      enabled: isInteractive,
+      label: displayedText,
+      liveRegion: isBusy,
+      onTap: isInteractive ? _handleTap : null,
+      child: ExcludeSemantics(
+        child: AnimatedOpacity(
+          duration: _animationDuration,
+          opacity: opacity,
+          child: InkWell(
+            splashColor: Colors.transparent,
+            focusColor: Colors.transparent,
+            hoverColor: Colors.transparent,
+            highlightColor: Colors.transparent,
+            onTap: isInteractive ? _handleTap : null,
+            child: Container(
+              height: ExpatlioDesign.buttonHeight,
+              decoration: BoxDecoration(
+                color: backgroundColor,
+                borderRadius:
+                    BorderRadius.circular(ExpatlioDesign.buttonRadius),
+              ),
+              child: Padding(
+                padding: const EdgeInsetsDirectional.fromSTEB(
+                    ExpatlioDesign.space20,
+                    ExpatlioDesign.space0,
+                    ExpatlioDesign.space20,
+                    ExpatlioDesign.space0),
+                child: Row(
+                  mainAxisAlignment:
+                      widget.trailingContent != null && !showsSpinner
+                          ? MainAxisAlignment.spaceBetween
+                          : MainAxisAlignment.center,
+                  children: [
+                    if (showsSpinner) ...[
+                      SizedBox(
+                        key: _spinnerKey,
+                        width: 20.0,
+                        height: 20.0,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          valueColor: const AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: ExpatlioDesign.space12),
+                    ],
+                    Flexible(
+                      fit: widget.trailingContent != null && !showsSpinner
+                          ? FlexFit.tight
+                          : FlexFit.loose,
                       child: Text(
                         displayedText,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: FlutterFlowTheme.of(context).bodyMedium.override(
-                              fontFamily: 'Cool',
-                              color: FlutterFlowTheme.of(context)
-                                  .primaryBackground,
-                              fontSize: 20.0,
-                              letterSpacing: 0.0,
-                              fontWeight: FontWeight.normal,
-                            ),
+                        textAlign:
+                            widget.trailingContent != null && !showsSpinner
+                                ? TextAlign.start
+                                : TextAlign.center,
+                        style: ExpatlioDesign.buttonTextStyle(context),
                       ),
                     ),
-                  ),
-                  if (widget.trailingContent != null && !showsSpinner) ...[
-                    widget.trailingContent!,
-                    const SizedBox(width: 12.0),
+                    if (widget.trailingContent != null && !showsSpinner) ...[
+                      const SizedBox(width: ExpatlioDesign.space12),
+                      widget.trailingContent!,
+                    ],
                   ],
-                  Container(
-                    key: _circleKey,
-                    width: 56.0,
-                    height: 56.0,
-                    decoration: BoxDecoration(
-                      color: FlutterFlowTheme.of(context).primaryBackground,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Align(
-                      alignment: const AlignmentDirectional(0.0, 0.0),
-                      child: showsSpinner
-                          ? SizedBox(
-                              key: _spinnerKey,
-                              width: 20.0,
-                              height: 20.0,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  FlutterFlowTheme.of(context).primaryText,
-                                ),
-                              ),
-                            )
-                          : const Icon(
-                              FFIcons.karrowRight,
-                              color: Colors.black,
-                              size: 20.0,
-                            ),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ),

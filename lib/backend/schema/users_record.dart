@@ -206,6 +206,11 @@ class UsersRecord extends FirestoreRecord {
   CountryStruct get countryNS => _countryNS ?? CountryStruct();
   bool hasCountryNS() => _countryNS != null;
 
+  // "profileCity" field.
+  ProfileCityStruct? _profileCity;
+  ProfileCityStruct get profileCity => _profileCity ?? ProfileCityStruct();
+  bool hasProfileCity() => _profileCity != null;
+
   // "verif_NS" field.
   bool? _verifNS;
   bool get verifNS => _verifNS ?? false;
@@ -267,6 +272,22 @@ class UsersRecord extends FirestoreRecord {
   LanguageStruct get nativeLanguageNS => _nativeLanguageNS ?? LanguageStruct();
   bool hasNativeLanguageNS() => _nativeLanguageNS != null;
 
+  // "subscription" field. ─── SUBSCRIPTION REWORK ───────────────────────────
+  // Mirrored from RevenueCat by the revenueCatWebhook Cloud Function. Read
+  // for gating (subscription?.expiresAt is in the future = active). Never
+  // mutate from the client. Preserve through FlutterFlow regenerations.
+  SubscriptionStruct? _subscription;
+  SubscriptionStruct? get subscription => _subscription;
+  bool hasSubscription() => _subscription != null;
+
+  // "giftMinutes" field. Short-lived free minutes (registration trial
+  // and promo-code grants). Independent of subscription. Server reads
+  // and decrements via end_session.js; client only reads for UI.
+  GiftMinutesStruct? _giftMinutes;
+  GiftMinutesStruct? get giftMinutes => _giftMinutes;
+  bool hasGiftMinutes() => _giftMinutes != null;
+  // ──────────────────────────────────────────────────────────────────────
+
   void _initializeFields() {
     _email = snapshotData['email'] as String?;
     _uid = snapshotData['uid'] as String?;
@@ -309,6 +330,9 @@ class UsersRecord extends FirestoreRecord {
     _countryNS = snapshotData['Country_NS'] is CountryStruct
         ? snapshotData['Country_NS']
         : CountryStruct.maybeFromMap(snapshotData['Country_NS']);
+    _profileCity = snapshotData['profileCity'] is ProfileCityStruct
+        ? snapshotData['profileCity']
+        : ProfileCityStruct.maybeFromMap(snapshotData['profileCity']);
     _verifNS = snapshotData['verif_NS'] as bool?;
     _teacherAccreditationStatus = _teacherAccreditationStatusFrom(
         snapshotData['teacherAccreditationStatus']);
@@ -332,6 +356,14 @@ class UsersRecord extends FirestoreRecord {
     _nativeLanguageNS = snapshotData['native_language_NS'] is LanguageStruct
         ? snapshotData['native_language_NS']
         : LanguageStruct.maybeFromMap(snapshotData['native_language_NS']);
+    // ─── SUBSCRIPTION REWORK ─ preserve through FlutterFlow regenerate ──
+    _subscription = snapshotData['subscription'] is SubscriptionStruct
+        ? snapshotData['subscription']
+        : SubscriptionStruct.maybeFromMap(snapshotData['subscription']);
+    _giftMinutes = snapshotData['giftMinutes'] is GiftMinutesStruct
+        ? snapshotData['giftMinutes']
+        : GiftMinutesStruct.maybeFromMap(snapshotData['giftMinutes']);
+    // ────────────────────────────────────────────────────────────────────
   }
 
   static CollectionReference get collection =>
@@ -391,6 +423,7 @@ Map<String, dynamic> createUsersRecordData({
   Level? level,
   bool? acquaintance,
   CountryStruct? countryNS,
+  ProfileCityStruct? profileCity,
   bool? verifNS,
   TeacherAccreditationStatus? teacherAccreditationStatus,
   DocumentReference? selectedAvatarDocRef,
@@ -400,6 +433,10 @@ Map<String, dynamic> createUsersRecordData({
   int? totalCalls,
   LanguageStruct? languageInstructionNS,
   LanguageStruct? nativeLanguageNS,
+  // ─── SUBSCRIPTION REWORK ───────────────────────────────────────────────
+  SubscriptionStruct? subscription,
+  GiftMinutesStruct? giftMinutes,
+  // ──────────────────────────────────────────────────────────────────────
 }) {
   final firestoreData = mapToFirestore(
     <String, dynamic>{
@@ -426,6 +463,7 @@ Map<String, dynamic> createUsersRecordData({
       'level': level,
       'Acquaintance': acquaintance,
       'Country_NS': CountryStruct().toMap(),
+      'profileCity': ProfileCityStruct().toMap(),
       'verif_NS': verifNS,
       'teacherAccreditationStatus': teacherAccreditationStatus,
       'selectedAvatarDocRef': selectedAvatarDocRef,
@@ -453,6 +491,9 @@ Map<String, dynamic> createUsersRecordData({
   // Handle nested data for "Country_NS" field.
   addCountryStructData(firestoreData, countryNS, 'Country_NS');
 
+  // Handle nested data for "profileCity" field.
+  addProfileCityStructData(firestoreData, profileCity, 'profileCity');
+
   // Handle nested data for "balanceST" field.
   addBalanceStructData(firestoreData, balanceST, 'balanceST');
 
@@ -466,6 +507,12 @@ Map<String, dynamic> createUsersRecordData({
 
   // Handle nested data for "native_language_NS" field.
   addLanguageStructData(firestoreData, nativeLanguageNS, 'native_language_NS');
+
+  // ─── SUBSCRIPTION REWORK ─ Handle nested data for "subscription" field.
+  addSubscriptionStructData(firestoreData, subscription, 'subscription');
+  // Handle nested data for "giftMinutes" field.
+  addGiftMinutesStructData(firestoreData, giftMinutes, 'giftMinutes');
+  // ──────────────────────────────────────────────────────────────────────
 
   return firestoreData;
 }
@@ -501,6 +548,7 @@ class UsersRecordDocumentEquality implements Equality<UsersRecord> {
         e1?.level == e2?.level &&
         e1?.acquaintance == e2?.acquaintance &&
         e1?.countryNS == e2?.countryNS &&
+        e1?.profileCity == e2?.profileCity &&
         e1?.verifNS == e2?.verifNS &&
         e1?.teacherAccreditationStatus == e2?.teacherAccreditationStatus &&
         e1?.selectedAvatarDocRef == e2?.selectedAvatarDocRef &&
@@ -510,7 +558,11 @@ class UsersRecordDocumentEquality implements Equality<UsersRecord> {
         e1?.availabilityToday == e2?.availabilityToday &&
         e1?.totalCalls == e2?.totalCalls &&
         e1?.languageInstructionNS == e2?.languageInstructionNS &&
-        e1?.nativeLanguageNS == e2?.nativeLanguageNS;
+        e1?.nativeLanguageNS == e2?.nativeLanguageNS &&
+        // ─── SUBSCRIPTION REWORK ───────────────────────────────────────
+        e1?.subscription == e2?.subscription &&
+        e1?.giftMinutes == e2?.giftMinutes;
+    // ──────────────────────────────────────────────────────────────
   }
 
   @override
@@ -539,6 +591,7 @@ class UsersRecordDocumentEquality implements Equality<UsersRecord> {
         e?.level,
         e?.acquaintance,
         e?.countryNS,
+        e?.profileCity,
         e?.verifNS,
         e?.teacherAccreditationStatus,
         e?.selectedAvatarDocRef,
@@ -548,7 +601,11 @@ class UsersRecordDocumentEquality implements Equality<UsersRecord> {
         e?.availabilityToday,
         e?.totalCalls,
         e?.languageInstructionNS,
-        e?.nativeLanguageNS
+        e?.nativeLanguageNS,
+        // ─── SUBSCRIPTION REWORK ─────────────────────────────────────
+        e?.subscription,
+        e?.giftMinutes,
+        // ────────────────────────────────────────────────────────────
       ]);
 
   @override

@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-31",
+  "entries": [
+    {
+      "id": "voip-legacy-user-token-read",
+      "fieldsOrBranch": ["users.voipToken", "users.voipPushToken"],
+      "canonicalFields": ["userPrivateTokens.voipToken", "userPrivateTokens.voipPushToken"],
+      "legacyFields": ["users.voipToken", "users.voipPushToken"],
+      "owner": "backend/voip token registration",
+      "sources": [{"path": "firebase/custom_cloud_functions/voip_tokens.js", "symbol": "getUserVoipTokens", "contains": "legacyUserData.voipPushToken"}, {"path": "firebase/custom_cloud_functions/migrate_legacy_voip_tokens.js", "symbol": "migrateLegacyVoipTokensBatch", "contains": "migrateLegacyVoipTokensBatch"}, {"path": "lib/services/voip_service.dart", "symbol": "VoipTokenRegistry", "contains": "registerVoipToken"}],
+      "writeClassification": "client callable writes canonical private token; scheduled server migration reads legacy token",
+      "clientVersionEvidence": null,
+      "productionUsageEvidence": null,
+      "privacyRisk": "device push identifiers",
+      "retirementPrerequisites": ["migration usage aggregate", "delivery smoke on supported iOS/Android versions", "owner approval"]
+    },
+    {
+      "id": "match-profile-raw-country-level",
+      "fieldsOrBranch": ["Country_NS", "level"],
+      "canonicalFields": ["matchProfile.country", "matchProfile.level"],
+      "legacyFields": ["Country_NS", "level"],
+      "owner": "onboarding/profile and match-profile sync",
+      "sources": [{"path": "lib/authorization/acquaintance_s_t_u_d_e_n_t/student_onboarding_logic.dart", "symbol": "buildStudentOnboardingUpdateData", "contains": "countryNS"}, {"path": "lib/components/edit_country_widget.dart", "symbol": "countryNS", "contains": "countryNS"}, {"path": "lib/shared_pages/profile_edit/profile_edit_widget.dart", "symbol": "countryNS", "contains": "countryNS"}, {"path": "firebase/custom_cloud_functions/user_match_profile_sync.js", "symbol": "syncUserMatchProfile", "contains": "syncUserMatchProfile"}, {"path": "firebase/custom_cloud_functions/video_sessions_shared.js", "symbol": "readStoredMatchProfile", "contains": "Country_NS"}],
+      "writeClassification": "active client writes; raw fields take precedence during projection",
+      "clientVersionEvidence": null,
+      "productionUsageEvidence": null,
+      "privacyRisk": "profile/filter integrity",
+      "retirementPrerequisites": ["all supported clients write normalized projection", "conflict aggregate is empty", "forward repair complete", "owner approval"]
+    },
+    {
+      "id": "video-session-participant-aliases",
+      "fieldsOrBranch": ["participantIds"],
+      "canonicalFields": ["participantIds", "participantStates"],
+      "legacyFields": ["studentId", "tutorId", "currentTutorId"],
+      "owner": "call lifecycle and matchmaking",
+      "sources": [{"path": "firebase/custom_cloud_functions/create_video_session.js", "symbol": "createVideoSession", "contains": "currentTutorId"}, {"path": "firebase/custom_cloud_functions/match_pair_lock.js", "symbol": "buildVideoSessionPairLockData", "contains": "currentTutorId"}, {"path": "firebase/custom_cloud_functions/accept_call.js", "symbol": "acceptCall", "contains": "participantIds"}, {"path": "firebase/custom_cloud_functions/video_sessions_shared.js", "symbol": "getSessionParticipantIds", "contains": "participantIds"}],
+      "writeClassification": "active server dual-schema contract; do not stop writes",
+      "clientVersionEvidence": null,
+      "productionUsageEvidence": null,
+      "privacyRisk": "call authorization and participant identity",
+      "retirementPrerequisites": ["server schema version rollout", "call history migration", "runtime usage aggregate", "terminated/background device smoke", "owner approval"]
+    },
+    {
+      "id": "active-call-history-alias-query",
+      "fieldsOrBranch": ["studentId", "tutorId", "currentTutorId"],
+      "canonicalFields": ["participantIds"],
+      "legacyFields": ["studentId", "tutorId", "currentTutorId"],
+      "owner": "call history callable",
+      "sources": [{"path": "firebase/custom_cloud_functions/get_call_history.js", "symbol": "getCallHistory", "contains": "currentTutorId"}, {"path": "lib/services/call_history_repository.dart", "symbol": "loadCallHistorySessions", "contains": "loadCallHistorySessions"}, {"path": "lib/shared_pages/my_calls/my_calls_widget.dart", "symbol": "_loadCallHistory", "contains": "loadCallHistorySessions"}],
+      "writeClassification": "active server read path; runtime caller confirmed via MyCalls",
+      "clientVersionEvidence": null,
+      "productionUsageEvidence": null,
+      "privacyRisk": "history query correctness",
+      "retirementPrerequisites": ["replacement query parity", "legacy usage aggregate reaches zero", "owner approval"]
+    },
+    {
+      "id": "unused-generated-history-helper",
+      "fieldsOrBranch": ["studentId", "tutorId", "currentTutorId"],
+      "canonicalFields": ["participantIds"],
+      "legacyFields": ["studentId", "tutorId", "currentTutorId"],
+      "owner": "Flutter generated backend query helper",
+      "sources": [{"path": "lib/backend/backend.dart", "symbol": "fetchRecentHubCallSessions", "contains": "fetchRecentHubCallSessions"}],
+      "writeClassification": "source-present; runtime caller unconfirmed/unused, preserve until evidence",
+      "clientVersionEvidence": null,
+      "productionUsageEvidence": null,
+      "privacyRisk": "history query correctness",
+      "retirementPrerequisites": ["runtime telemetry or static caller confirmation", "replacement query parity", "owner approval"]
+    }
+  ]
+}

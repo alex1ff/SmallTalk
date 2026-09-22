@@ -1,12 +1,14 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const {FieldPath, FieldValue} = require("firebase-admin/firestore");
+const {createSafeConsole} = require("./safe_log");
+const safeLog = createSafeConsole({source: "conversation_unlock_events"});
 const {
-  buildCallEventMessageId,
-  buildCallEventMessagePayload,
+  buildConversationParticipantMap,
+  buildConversationParticipantInfoByUserId,
   buildConversationSeed,
   buildUnlockEventPayload,
-  conversationMatchesUnlockParticipants,
+  ensureConversationCallEventForSession,
   getChatsRolloutTimestamp,
   getMaintenanceCursorState,
   getMaintenanceJobRef,
@@ -193,11 +195,20 @@ async function processPendingUnlockEvent(eventRef, sessionId) {
           buildConversationSeed({
             participants,
             sessionRef,
+            sessionData,
           }),
         );
       } else {
         const updates = {
           isUnlocked: true,
+          participantMap: buildConversationParticipantMap(
+            participants.participantIds,
+          ),
+          participantInfoByUserId: buildConversationParticipantInfoByUserId({
+            participants,
+            sessionData,
+            existingInfoByUserId: conversationData.participantInfoByUserId,
+          }),
           updatedAt: FieldValue.serverTimestamp(),
         };
 
@@ -247,9 +258,9 @@ async function processPendingUnlockEvent(eventRef, sessionId) {
     return outcome;
   } catch (error) {
     await markUnlockEventFailedIfCurrent(eventRef, claimed.attemptCount, error);
-    console.error("❌ Error processing unlock event:", {
+    safeLog.error("chat_unlock_write_failed", {
       sessionId,
-      message: error.message,
+      error,
     });
     return null;
   }
@@ -377,68 +388,47 @@ async function ensureCallEventMessageForProcessedConversation({
     return { status: "skipped_ineligible_session", reason: eligibility.reason };
   }
 
-  const messageRef = conversationRef
-    .collection("messages")
-    .doc(buildCallEventMessageId(sessionId));
-  const messagePayload = buildCallEventMessagePayload({
+  const writerResult = await ensureConversationCallEventForSession({
+    db,
     sessionId,
     sessionRef,
     sessionData,
+    conversationRef,
   });
 
-  return db.runTransaction(async (transaction) => {
-    const conversationSnap = await transaction.get(conversationRef);
-    if (!conversationSnap.exists || conversationSnap.data()?.isUnlocked !== true) {
-      return { status: "skipped_missing_conversation" };
-    }
-
-    const conversationData = conversationSnap.data() || {};
-    const conversationMatchesSession =
-      conversationRef.id === eligibility.pairId &&
-      conversationMatchesUnlockParticipants(
-        {
-          ...conversationData,
-          pairId: conversationData.pairId || conversationRef.id,
-        },
-        eligibility,
-      );
-    if (!conversationMatchesSession) {
-      transaction.set(
-        eventRef,
-        {
-          callEventSkipReason: "conversation_pair_mismatch",
-          callEventErrorCode: FieldValue.delete(),
-          callEventErrorMessage: FieldValue.delete(),
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true },
-      );
-      return { status: "skipped_conversation_pair_mismatch" };
-    }
-
-    const messageSnap = await transaction.get(messageRef);
-    if (!messageSnap.exists) {
-      transaction.set(messageRef, messagePayload);
-    }
-
-    transaction.set(
-      eventRef,
+  if (writerResult.status === "skipped_conversation_pair_mismatch") {
+    await eventRef.set(
       {
-        callEventMessageRef: messageRef,
-        callEventWrittenAt: FieldValue.serverTimestamp(),
-        callEventSkipReason: FieldValue.delete(),
+        callEventSkipReason: "conversation_pair_mismatch",
         callEventErrorCode: FieldValue.delete(),
         callEventErrorMessage: FieldValue.delete(),
         updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true },
     );
+    return { status: "skipped_conversation_pair_mismatch" };
+  }
 
-    return {
-      status: messageSnap.exists ? "already_exists" : "created",
-      messageRef,
-    };
-  });
+  if (writerResult.status === "skipped") {
+    return writerResult;
+  }
+
+  await eventRef.set(
+    {
+      callEventMessageRef: writerResult.messageRef,
+      callEventWrittenAt: FieldValue.serverTimestamp(),
+      callEventSkipReason: FieldValue.delete(),
+      callEventErrorCode: FieldValue.delete(),
+      callEventErrorMessage: FieldValue.delete(),
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+
+  return {
+    status: writerResult.status === "created" ? "created" : "already_exists",
+    messageRef: writerResult.messageRef,
+  };
 }
 
 async function maybeWriteCallEventForProcessedOutcome({
@@ -484,9 +474,9 @@ async function maybeWriteCallEventForProcessedOutcome({
       },
       { merge: true },
     );
-    console.error("❌ Error creating conversation call event:", {
+    safeLog.error("conversation_event_write_failed", {
       sessionId,
-      message: error?.message || "Unknown error",
+      error,
     });
     return { status: "failed" };
   }

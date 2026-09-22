@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "matrix": [
+    {"id": "routing-public-auth", "level": "routing-characterization", "preconditions": ["signed-out synthetic auth"], "actions": ["open onboarding", "open login"], "postconditions": ["both routes remain accessible"], "cleanup": "reset currentUser and redirect state", "command": "flutter test test/critical_flows_smoke_test.dart", "status": "pr"},
+    {"id": "routing-protected-redirects", "level": "routing-characterization", "preconditions": ["signed-out synthetic auth"], "actions": ["open each protected route"], "postconditions": ["redirect to onboarding", "redirect recorded"], "cleanup": "reset currentUser and redirect state", "command": "flutter test test/critical_flows_smoke_test.dart", "status": "pr"},
+    {"id": "routing-pending-restore", "level": "routing-characterization", "preconditions": ["signed-out synthetic auth", "pending protected route"], "actions": ["update synthetic auth to signed-in"], "postconditions": ["original route restored", "redirect cleared"], "cleanup": "reset currentUser and redirect state", "command": "flutter test test/critical_flows_smoke_test.dart", "status": "pr"},
+    {"id": "firebase-auth-register-login", "level": "real-emulator", "preconditions": ["Firebase Auth emulator"], "actions": ["register", "login", "persist profile"], "postconditions": ["auth token and profile exist"], "cleanup": "delete emulator account and profile", "command": "manual/emulator", "status": "not_implemented"},
+    {"id": "daily-call-and-revenuecat", "level": "device-sandbox", "preconditions": ["RevenueCat sandbox", "Daily room", "physical iOS/Android"], "actions": ["purchase", "join", "reconnect", "end"], "postconditions": ["entitlement, captions, timer and review state reconcile"], "cleanup": "sandbox account cleanup", "command": "manual/nightly", "status": "not_implemented"}
+  ]
+}

@@ -14,6 +14,8 @@ class CallSummaryModel extends FlutterFlowModel<CallSummaryWidget> {
 
   bool black = false;
 
+  bool skipToday = false;
+
   bool favTouched = false;
 
   bool blackTouched = false;
@@ -36,7 +38,7 @@ class CallSummaryModel extends FlutterFlowModel<CallSummaryWidget> {
   late ButtonModel buttonModel;
 
   // Cached future so it is not recreated on every build().
-  Future<UsersRecord>? userFuture;
+  Future<UserPublicProfilesRecord?>? userFuture;
 
   @override
   void initState(BuildContext context) {

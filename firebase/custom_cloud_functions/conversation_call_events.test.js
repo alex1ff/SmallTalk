@@ -5,10 +5,19 @@ const {Timestamp} = require("firebase-admin/firestore");
 
 const {
   CALL_EVENT_KIND_VIDEO,
+  CALL_EVENT_OUTCOME_CANCELLED,
+  CALL_EVENT_OUTCOME_COMPLETED,
+  CALL_EVENT_OUTCOME_MISSED,
   CONVERSATION_MESSAGE_TYPE_CALL_EVENT,
   buildCallEventMessageId,
   buildCallEventMessagePayload,
+  buildConversationParticipantInfoByUserId,
+  buildConversationParticipantMap,
   buildConversationSummaryUpdate,
+  ensureConversationCallEventForSession,
+  getConnectedCallStartMillis,
+  getConversationCallEventEligibility,
+  getUnlockEligibility,
 } = require("./chats_shared");
 const {
   __private__: {
@@ -103,10 +112,184 @@ test("buildCallEventMessagePayload materializes video call metadata", () => {
   assert.equal(payload.type, CONVERSATION_MESSAGE_TYPE_CALL_EVENT);
   assert.equal(payload.text, "Video call");
   assert.equal(payload.callKind, CALL_EVENT_KIND_VIDEO);
+  assert.equal(payload.callOutcome, CALL_EVENT_OUTCOME_COMPLETED);
   assert.equal(payload.sessionRef.path, "videoSessions/session-1");
   assert.equal(payload.callDurationSeconds, 750);
   assert.equal(payload.callStartedAt.toMillis(), startedAtMillis);
+  assert.equal(payload.callEndedAt.toMillis(), endedAtMillis);
   assert.equal(payload.createdAt.toMillis(), endedAtMillis);
+});
+
+test("startedAt alone is not a connected-call proof", () => {
+  const startedAtMillis = Date.parse("2026-04-19T09:00:30Z");
+  const sessionData = {
+    status: "ended",
+    studentId: "student",
+    tutorId: "teacher",
+    createdAt: Timestamp.fromMillis(Date.parse("2026-04-19T09:00:00Z")),
+    acceptedAt: Timestamp.fromMillis(Date.parse("2026-04-19T09:00:01Z")),
+    startedAt: Timestamp.fromMillis(startedAtMillis),
+  };
+
+  assert.equal(getConnectedCallStartMillis(sessionData), 0);
+  assert.deepEqual(getUnlockEligibility(sessionData), {
+    eligible: false,
+    reason: "ignored_not_connected",
+  });
+});
+
+test("buildConversationParticipantMap materializes query-friendly participants", () => {
+  assert.deepEqual(
+    buildConversationParticipantMap([" student ", "", "teacher", null]),
+    {
+      student: true,
+      teacher: true,
+    },
+  );
+});
+
+test("conversation participant snapshot keeps safe identity and explicit avatar removal", () => {
+  const participants = {
+    studentId: "student",
+    tutorId: "teacher",
+    participantIds: ["student", "teacher"],
+  };
+  const result = buildConversationParticipantInfoByUserId({
+    participants,
+    existingInfoByUserId: {
+      outsider: {displayName: "Must not leak"},
+    },
+    sessionData: {
+      participantInfos: {
+        student: {displayName: "  Alice  ", photoUrl: null, email: "private"},
+        teacher: {displayName: "Bob", photoUrl: " https://new/teacher "},
+      },
+    },
+  });
+
+  assert.deepEqual(result, {
+    student: {displayName: "Alice", photoUrl: null},
+    teacher: {displayName: "Bob", photoUrl: "https://new/teacher"},
+  });
+
+  assert.deepEqual(
+    buildConversationParticipantInfoByUserId({
+      participants,
+      existingInfoByUserId: {
+        student: {displayName: "Current Alice", photoUrl: null},
+      },
+      sessionData: {
+        participantInfos: {
+          student: {
+            displayName: "Historical Alice",
+            photoUrl: "https://historical/alice",
+          },
+        },
+      },
+    }).student,
+    {displayName: "Current Alice", photoUrl: null},
+  );
+});
+
+test("startedAt-only sessions are not treated as verified connected calls", () => {
+  const sessionData = {
+    status: "ended",
+    createdAt: Timestamp.fromMillis(Date.parse("2026-04-19T09:00:00Z")),
+    startedAt: Timestamp.fromMillis(Date.parse("2026-04-19T09:00:10Z")),
+    endedAt: Timestamp.fromMillis(Date.parse("2026-04-19T09:05:00Z")),
+    acceptedAt: Timestamp.fromMillis(Date.parse("2026-04-19T09:00:00Z")),
+    studentId: "student",
+    tutorId: "teacher",
+  };
+
+  assert.equal(getConnectedCallStartMillis(sessionData), 0);
+  assert.deepEqual(
+    getConversationCallEventEligibility(sessionData, {
+      callOutcome: CALL_EVENT_OUTCOME_COMPLETED,
+    }),
+    {
+      eligible: false,
+      reason: "ignored_not_connected",
+    },
+  );
+});
+
+test("ensureConversationCallEventForSession creates missed event for assigned unanswered call", async () => {
+  const {db, store, makeRef} = createFakeFirestore({
+    "videoSessions/session-missed": {
+      status: "searching",
+    },
+  });
+  const sessionRef = makeRef("videoSessions/session-missed");
+  const eventMillis = Date.parse("2026-04-19T10:05:00Z");
+
+  const result = await ensureConversationCallEventForSession({
+    db,
+    sessionId: "session-missed",
+    sessionRef,
+    callOutcome: CALL_EVENT_OUTCOME_MISSED,
+    eventMillis,
+    partnerId: "teacher",
+    sessionData: {
+      createdAt: Timestamp.fromMillis(Date.parse("2026-04-19T10:00:00Z")),
+      status: "searching",
+      studentId: "student",
+      currentTutorId: "teacher",
+      participantInfos: {
+        student: {displayName: "Alice", photoUrl: null},
+        teacher: {displayName: "Bob", photoUrl: "https://img/bob"},
+      },
+    },
+  });
+
+  const messagePath =
+    "conversations/student_teacher/messages/" +
+    buildCallEventMessageId("session-missed", CALL_EVENT_OUTCOME_MISSED);
+  assert.equal(result.status, "created");
+  assert.equal(store.get("conversations/student_teacher").isUnlocked, true);
+  assert.equal(
+    store.get("conversations/student_teacher").lastMessageType,
+    CONVERSATION_MESSAGE_TYPE_CALL_EVENT,
+  );
+  assert.equal(
+    store.get("conversations/student_teacher").lastCallOutcome,
+    CALL_EVENT_OUTCOME_MISSED,
+  );
+  assert.equal(store.get(messagePath).callOutcome, CALL_EVENT_OUTCOME_MISSED);
+  assert.equal(store.get(messagePath).callerId, "student");
+  assert.equal(store.get(messagePath).recipientId, "teacher");
+  assert.deepEqual(
+    store.get("conversations/student_teacher").participantInfoByUserId,
+    {
+      student: {displayName: "Alice", photoUrl: null},
+      teacher: {displayName: "Bob", photoUrl: "https://img/bob"},
+    },
+  );
+});
+
+test("ensureConversationCallEventForSession creates cancelled event for cancelled session", async () => {
+  const {db, store, makeRef} = createFakeFirestore();
+  const sessionRef = makeRef("videoSessions/session-cancelled");
+  const eventMillis = Date.parse("2026-04-19T10:05:00Z");
+
+  const result = await ensureConversationCallEventForSession({
+    db,
+    sessionId: "session-cancelled",
+    sessionRef,
+    eventMillis,
+    sessionData: {
+      createdAt: Timestamp.fromMillis(Date.parse("2026-04-19T10:00:00Z")),
+      status: "cancelled",
+      studentId: "student",
+      currentTutorId: "teacher",
+    },
+  });
+
+  const messagePath =
+    "conversations/student_teacher/messages/" +
+    buildCallEventMessageId("session-cancelled", CALL_EVENT_OUTCOME_CANCELLED);
+  assert.equal(result.status, "created");
+  assert.equal(store.get(messagePath).callOutcome, CALL_EVENT_OUTCOME_CANCELLED);
 });
 
 test("ensureCallEventMessageForProcessedConversation creates one deterministic call event", async () => {
@@ -157,7 +340,22 @@ test("ensureCallEventMessageForProcessedConversation creates one deterministic c
   assert.equal(firstResult.status, "created");
   assert.equal(secondResult.status, "already_exists");
   assert.ok(store.has(messagePath));
+  assert.deepEqual(
+    store.get("conversations/student_teacher").participantMap,
+    {
+      student: true,
+      teacher: true,
+    },
+  );
   assert.equal(store.get(messagePath).type, CONVERSATION_MESSAGE_TYPE_CALL_EVENT);
+  assert.equal(
+    store.get("conversations/student_teacher").lastMessageType,
+    CONVERSATION_MESSAGE_TYPE_CALL_EVENT,
+  );
+  assert.equal(
+    store.get("conversations/student_teacher").lastCallOutcome,
+    CALL_EVENT_OUTCOME_COMPLETED,
+  );
 });
 
 test("ensureCallEventMessageForProcessedConversation rejects pair mismatch", async () => {
@@ -217,6 +415,9 @@ test("buildConversationSummaryUpdate materializes lastMessageType for call event
       type: CONVERSATION_MESSAGE_TYPE_CALL_EVENT,
       text: "",
       callKind: CALL_EVENT_KIND_VIDEO,
+      callOutcome: CALL_EVENT_OUTCOME_MISSED,
+      callerId: "student",
+      recipientId: "teacher",
       createdAt,
       senderId: null,
     },
@@ -224,8 +425,11 @@ test("buildConversationSummaryUpdate materializes lastMessageType for call event
   });
 
   assert.equal(update.lastMessageType, CONVERSATION_MESSAGE_TYPE_CALL_EVENT);
-  assert.equal(update.lastMessageText, "Video call");
+  assert.equal(update.lastMessageText, "Missed video call");
   assert.equal(update.lastMessageSenderId, null);
+  assert.equal(update.lastCallOutcome, CALL_EVENT_OUTCOME_MISSED);
+  assert.equal(update.lastCallCallerId, "student");
+  assert.equal(update.lastCallRecipientId, "teacher");
   assert.equal(update.lastMessageAt.toMillis(), createdAt.toMillis());
   assert.equal("lastUnreadMessageAt" in update, false);
   assert.equal("lastUnreadMessageSenderId" in update, false);

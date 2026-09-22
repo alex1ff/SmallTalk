@@ -3,6 +3,7 @@ platform :ios, '14.0.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+require 'fileutils'
 
 project 'Runner', {
   'Debug' => :debug,
@@ -27,6 +28,120 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 
 flutter_ios_podfile_setup
 
+# flutter_callkit_incoming 3.1.3 still keeps one global PushKit payload on iOS.
+# A later push can therefore make end/decline/connected target a different
+# CallKit UUID. Patch the CocoaPods build copy without mutating the pub cache.
+def patch_callkit_incoming_exact_identity(installer)
+  target = installer.pods_project.targets.find do |candidate|
+    candidate.name == 'flutter_callkit_incoming'
+  end
+  raise 'flutter_callkit_incoming pod target not found' if target.nil?
+
+  source_ref = target.source_build_phase.files_references.find do |reference|
+    File.basename(reference.path.to_s) == 'SwiftFlutterCallkitIncomingPlugin.swift'
+  end
+  raise 'flutter_callkit_incoming Swift source not found' if source_ref.nil?
+
+  upstream_path = File.expand_path(
+    File.join(
+      __dir__,
+      '.symlinks',
+      'plugins',
+      'flutter_callkit_incoming',
+      'ios',
+      'flutter_callkit_incoming',
+      'Classes',
+      'SwiftFlutterCallkitIncomingPlugin.swift',
+    ),
+  )
+  raise 'flutter_callkit_incoming upstream Swift source not found' unless File.exist?(upstream_path)
+
+  # Always patch the immutable plugin source. On a repeated `pod install`, the
+  # existing Pods project may already point at our generated build copy.
+  source = File.binread(upstream_path).force_encoding(Encoding::UTF_8)
+  raise 'flutter_callkit_incoming Swift source is not valid UTF-8' unless source.valid_encoding?
+  # Some cached copies can contain zero padding after the final source brace.
+  # Strip only that padding and fail if a NUL appears inside real Swift code.
+  source = source.sub(/\x00+\z/, '')
+  raise 'flutter_callkit_incoming Swift source contains an embedded NUL' if source.include?("\0")
+  source = source.gsub("\r\n", "\n")
+  replacements = {
+    <<-'OLD' => <<-'NEW',
+        // PushKit branch reads uuid from self.data (stored during showCallkitIncoming);
+        // non-PushKit reads from the incoming data. Either source can be invalid.
+        let uuidSourceString: String
+        if self.isFromPushKit {
+            guard let stored = self.data else {
+                NSLog("[CallkitIncoming] endCall: PushKit branch but self.data is nil — ignored")
+                return
+            }
+            uuidSourceString = stored.uuid
+            self.isFromPushKit = false
+            self.sendEvent(SwiftFlutterCallkitIncomingPlugin.ACTION_CALL_ENDED, data.toJSON())
+        } else {
+            uuidSourceString = data.uuid
+        }
+    OLD
+        // SmallTalk: programmatic end must always use the requested UUID.
+        let uuidSourceString = data.uuid
+        self.isFromPushKit = false
+    NEW
+    <<-'OLD' => <<-'NEW',
+        let uuidSourceString: String
+        if self.isFromPushKit {
+            guard let stored = self.data else {
+                NSLog("[CallkitIncoming] connectedCall: PushKit branch but self.data is nil — ignored")
+                return
+            }
+            uuidSourceString = stored.uuid
+            self.isFromPushKit = false
+        } else {
+            uuidSourceString = data.uuid
+        }
+    OLD
+        // SmallTalk: connected state is scoped to the requested UUID.
+        let uuidSourceString = data.uuid
+        self.isFromPushKit = false
+    NEW
+    <<-'OLD' => <<-'NEW',
+        guard let call = self.callManager.callWithUUID(uuid: action.callUUID) else {
+            if(self.answerCall == nil && self.outgoingCall == nil){
+                sendEvent(SwiftFlutterCallkitIncomingPlugin.ACTION_CALL_TIMEOUT, self.data?.toJSON())
+            } else {
+                sendEvent(SwiftFlutterCallkitIncomingPlugin.ACTION_CALL_ENDED, self.data?.toJSON())
+            }
+            action.fail()
+            return
+        }
+    OLD
+        guard let call = self.callManager.callWithUUID(uuid: action.callUUID) else {
+            // SmallTalk: never emit a different call's global PushKit payload.
+            action.fail()
+            return
+        }
+    NEW
+    'sendEvent(SwiftFlutterCallkitIncomingPlugin.ACTION_CALL_DECLINE, self.data?.toJSON())' =>
+      'sendEvent(SwiftFlutterCallkitIncomingPlugin.ACTION_CALL_DECLINE, call.data.toJSON())',
+  }
+
+  replacements.each do |before, after|
+    count = source.scan(before).length
+    raise "Unexpected flutter_callkit_incoming source (match count #{count})" unless count == 1
+    source = source.sub(before, after)
+  end
+
+  patched_dir = File.join(
+    installer.sandbox.root.to_s,
+    'SmallTalkPatchedSources',
+    'flutter_callkit_incoming',
+  )
+  FileUtils.mkdir_p(patched_dir)
+  patched_path = File.join(patched_dir, 'SwiftFlutterCallkitIncomingPlugin.swift')
+  File.open(patched_path, 'wb') { |file| file.write(source) }
+  source_ref.path = patched_path
+  source_ref.source_tree = '<absolute>'
+end
+
 target 'Runner' do
   use_frameworks! :linkage => :static
   use_modular_headers!
@@ -36,6 +151,7 @@ target 'Runner' do
 end
 
 post_install do |installer|
+  patch_callkit_incoming_exact_identity(installer)
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
     target.build_configurations.each do |config|

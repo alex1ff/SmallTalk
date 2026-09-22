@@ -137,6 +137,33 @@ void main() {
   });
 
   group('native speaker accreditation helpers', () {
+    test('native speaker onboarding resets legacy availabilityToday', () {
+      final payload = buildNativeSpeakerOnboardingPayload(
+        draft: buildNativeSpeakerOnboardingDraft(
+          displayName: 'Alice',
+          languageInstruction: null,
+          nativeLanguage: null,
+          gender: Gender.female,
+          country: null,
+          aboutMe: 'About me',
+          teachingExperience: '1_3_years',
+          qualificationProof: 'certificate',
+          localPhoto: null,
+          existingPhotoUrl: '',
+        ),
+        photoUrl: 'https://cdn.example.com/photo.jpg',
+      );
+
+      final updateData = buildNativeSpeakerOnboardingUpdateData(
+        payload: payload,
+        markProfileComplete: true,
+        switchToNativeSpeakerRole: true,
+      );
+
+      expect(updateData['availabilityToday.enabled'], isFalse);
+      expect(updateData['availabilityToday.intervals'], isEmpty);
+    });
+
     test('builds trimmed payload with only remaining accreditation keys', () {
       final draft = buildNativeSpeakerOnboardingDraft(
         displayName: 'Alice',
